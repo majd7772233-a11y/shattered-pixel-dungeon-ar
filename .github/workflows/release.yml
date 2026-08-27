@@ -1,0 +1,68 @@
+name: Build and Release Signed APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Signed Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Decode Keystore File
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MY_KEYSTORE_JKS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/my_keystore.jks
+            echo "Keystore decoded successfully."
+          else
+            echo "MY_KEYSTORE_JKS secret is not set."
+          fi
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_FILE: my_keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Sign APK with apksigner if Keystore Available
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          APK_PATH=$(find android/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -f "android/my_keystore.jks" ] && [ -n "$APK_PATH" ]; then
+            echo "Signing APK: $APK_PATH using Android apksigner"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+              --ks android/my_keystore.jks \
+              --ks-pass pass:"$KEYSTORE_PASSWORD" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass pass:"$KEY_PASSWORD" \
+              "$APK_PATH"
+          fi
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShatteredPixelDungeon-Release-APK
+          path: android/build/outputs/apk/release/*.apk
