@@ -1,9 +1,6 @@
 name: Build and Release Signed APK
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 jobs:
