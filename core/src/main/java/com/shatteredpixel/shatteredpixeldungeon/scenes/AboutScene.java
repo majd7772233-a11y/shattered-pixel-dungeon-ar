@@ -69,7 +69,7 @@ public class AboutScene extends PixelScene {
 		CreditsBlock shpx = new CreditsBlock(true, Window.SHPX_COLOR,
 				"Shattered Pixel Dungeon",
 				Icons.SHPX.get(),
-				"Developed by: _Evan Debenham_\nBased on Pixel Dungeon's open source",
+				"Developed by: _Magd Anwer_\nBased on Pixel Dungeon's open source",
 				"ShatteredPixel.com",
 				"https://ShatteredPixel.com");
 		if (landscape()){
@@ -117,9 +117,9 @@ public class AboutScene extends PixelScene {
 		CreditsBlock wata = new CreditsBlock(true, WATA_COLOR,
 				"Pixel Dungeon",
 				Icons.WATA.get(),
-				"Developed by: _Watabou_\nInspired by Brian Walker's Brogue",
-				"watabou.itch.io",
-				"https://watabou.itch.io/");
+				"Developed by: _Magd Anwer_\nمقتبسة من  Brian Walker's Brogue",
+				"magd.github.io",
+				"https://magd.github.io/");
 		if (landscape()){
 			wata.setRect(shpx.left(), lumine.bottom() + 8, colWidth, 0);
 		} else {
