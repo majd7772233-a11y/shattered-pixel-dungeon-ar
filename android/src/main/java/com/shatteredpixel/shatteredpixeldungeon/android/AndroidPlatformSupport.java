@@ -205,6 +205,8 @@ public class AndroidPlatformSupport extends PlatformSupport {
 	private static FreeTypeFontGenerator ZHFontGenerator;
 	//droid sans / noto sans, for use with Japanese
 	private static FreeTypeFontGenerator JPFontGenerator;
+	//noto sans arabic / droid sans arabic
+	private static FreeTypeFontGenerator ARFontGenerator;
 	
 	//special logic for handling korean android 6.0 font oddities
 	private static boolean koreanAndroid6OTF = false;
@@ -292,10 +294,23 @@ public class AndroidPlatformSupport extends PlatformSupport {
 			
 		}
 		
+		if (Gdx.files.absolute("/system/fonts/NotoSansArabic-Regular.ttf").exists()){
+			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/NotoSansArabic-Regular.ttf"));
+		} else if (Gdx.files.absolute("/system/fonts/NotoSansArabic-UI-Regular.ttf").exists()){
+			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/NotoSansArabic-UI-Regular.ttf"));
+		} else if (Gdx.files.absolute("/system/fonts/DroidSansArabic.ttf").exists()){
+			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/DroidSansArabic.ttf"));
+		} else if (Gdx.files.absolute("/system/fonts/DroidSansFallback.ttf").exists()){
+			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/DroidSansFallback.ttf"));
+		} else {
+			ARFontGenerator = basicFontGenerator;
+		}
+
 		if (basicFontGenerator != null) fonts.put(basicFontGenerator, new HashMap<>());
 		if (KRFontGenerator != null) fonts.put(KRFontGenerator, new HashMap<>());
 		if (ZHFontGenerator != null) fonts.put(ZHFontGenerator, new HashMap<>());
 		if (JPFontGenerator != null) fonts.put(JPFontGenerator, new HashMap<>());
+		if (ARFontGenerator != null) fonts.put(ARFontGenerator, new HashMap<>());
 		
 		//would be nice to use RGBA4444 to save memory, but this causes problems on some gpus =S
 		packer = new PixmapPacker(pageSize, pageSize, Pixmap.Format.RGBA8888, 1, false);
@@ -304,10 +319,13 @@ public class AndroidPlatformSupport extends PlatformSupport {
 	private static Matcher KRMatcher = Pattern.compile("\\p{InHangul_Syllables}").matcher("");
 	private static Matcher ZHMatcher = Pattern.compile("\\p{InCJK_Unified_Ideographs}|\\p{InCJK_Symbols_and_Punctuation}|\\p{InHalfwidth_and_Fullwidth_Forms}").matcher("");
 	private static Matcher JPMatcher = Pattern.compile("\\p{InHiragana}|\\p{InKatakana}").matcher("");
+	private static Matcher ARMatcher = Pattern.compile("\\p{InArabic}|[\\u0600-\\u06FF\\u0750-\\u077F\\u08A0-\\u08FF\\uFB50-\\uFDFF\\uFE70-\\uFEFF]").matcher("");
 
 	@Override
 	protected FreeTypeFontGenerator getGeneratorForString( String input ){
-		if (KRMatcher.reset(input).find()){
+		if (ARMatcher.reset(input).find()){
+			return ARFontGenerator;
+		} else if (KRMatcher.reset(input).find()){
 			return KRFontGenerator;
 		} else if (ZHMatcher.reset(input).find()){
 			return ZHFontGenerator;
@@ -318,14 +336,15 @@ public class AndroidPlatformSupport extends PlatformSupport {
 		}
 	}
 
-	//splits on newline (for layout), chinese/japanese (for font choice), and '_'/'**' (for highlighting)
+	//splits on newline (for layout), chinese/japanese/arabic (for font choice), and '_'/'**' (for highlighting)
 	private Pattern regularsplitter = Pattern.compile(
 			"(?<=\n)|(?=\n)|(?<=_)|(?=_)|(?<=\\*\\*)|(?=\\*\\*)|" +
 					"(?<=\\p{InHiragana})|(?=\\p{InHiragana})|" +
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
 					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})");
+					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})|" +
+					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
 
 	//additionally splits on spaces, so that each word can be laid out individually
 	private Pattern regularsplitterMultiline = Pattern.compile(
@@ -334,7 +353,8 @@ public class AndroidPlatformSupport extends PlatformSupport {
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
 					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})");
+					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})|" +
+					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
 	
 	//splits on each non-hangul character. Needed for weird android 6.0 font files
 	private Pattern android6KRSplitter = Pattern.compile(
