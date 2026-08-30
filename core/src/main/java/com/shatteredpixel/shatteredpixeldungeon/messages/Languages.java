@@ -86,6 +86,10 @@ public enum Languages {
 		return status;
 	}
 
+	public boolean isRTL(){
+		return this == ARABIC;
+	}
+
 	public String[] reviewers() {
 		if (reviewers == null) return new String[]{};
 		else return reviewers.clone();

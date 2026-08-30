@@ -21,6 +21,7 @@
 
 package com.shatteredpixel.shatteredpixeldungeon.ui;
 
+import com.shatteredpixel.shatteredpixeldungeon.messages.ArabicHandler;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Languages;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.PixelScene;
@@ -38,6 +39,7 @@ public class RenderedTextBlock extends Component {
 	private static final RenderedText SPACE = new RenderedText();
 	private static final RenderedText NEWLINE = new RenderedText();
 	
+	protected String rawText;
 	protected String text;
 	protected String[] tokens = null;
 	protected ArrayList<RenderedText> words = new ArrayList<>();
@@ -53,7 +55,14 @@ public class RenderedTextBlock extends Component {
 	public static final int LEFT_ALIGN = 1;
 	public static final int CENTER_ALIGN = 2;
 	public static final int RIGHT_ALIGN = 3;
-	private int alignment = LEFT_ALIGN;
+	private int alignment = -1;
+
+	public int align(){
+		if (alignment == -1){
+			return Messages.lang() != null && Messages.lang().isRTL() ? RIGHT_ALIGN : LEFT_ALIGN;
+		}
+		return alignment;
+	}
 	
 	public RenderedTextBlock(int size){
 		this.size = size;
@@ -65,12 +74,15 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public void text(String text){
-		this.text = text;
+		this.rawText = text;
+		if (text != null && (Messages.lang().isRTL() || ArabicHandler.containsArabic(text))) {
+			this.text = ArabicHandler.process(text);
+		} else {
+			this.text = text;
+		}
 
-		if (text != null && !text.equals("")) {
-			
-			tokens = Game.platform.splitforTextBlock(text, multiline);
-			
+		if (this.text != null && !this.text.equals("")) {
+			tokens = Game.platform.splitforTextBlock(this.text, multiline);
 			build();
 		}
 	}
@@ -81,10 +93,7 @@ public class RenderedTextBlock extends Component {
 		for (String word : words) {
 			fullText.append(word);
 		}
-		text = fullText.toString();
-
-		tokens = words;
-		build();
+		text(fullText.toString());
 	}
 
 	public void text(String text, int maxWidth){
@@ -101,7 +110,7 @@ public class RenderedTextBlock extends Component {
 		if (this.maxWidth != maxWidth){
 			this.maxWidth = maxWidth;
 			multiline = true;
-			text(text);
+			text(rawText != null ? rawText : text);
 		}
 	}
 
@@ -264,16 +273,17 @@ public class RenderedTextBlock extends Component {
 		}
 		this.height = (y - this.y) + height;
 
-		if (alignment != LEFT_ALIGN){
+		int effectiveAlign = align();
+		if (effectiveAlign != LEFT_ALIGN){
 			for (ArrayList<RenderedText> line : lines){
 				if (line.size() == 0) continue;
 				float lineWidth = line.get(line.size()-1).width() + line.get(line.size()-1).x - this.x;
-				if (alignment == CENTER_ALIGN){
+				if (effectiveAlign == CENTER_ALIGN){
 					for (RenderedText text : line){
 						text.x += (width() - lineWidth)/2f;
 						PixelScene.align(text);
 					}
-				} else if (alignment == RIGHT_ALIGN) {
+				} else if (effectiveAlign == RIGHT_ALIGN) {
 					for (RenderedText text : line){
 						text.x += width() - lineWidth;
 						PixelScene.align(text);
