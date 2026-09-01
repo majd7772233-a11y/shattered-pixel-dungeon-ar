@@ -208,11 +208,17 @@ public class IOSPlatformSupport extends PlatformSupport {
 		resetGenerators(false);
 		fonts = new HashMap<>();
 
+		if (Gdx.files.internal("fonts/dejavu_sans.ttf").exists()) {
+			arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/dejavu_sans.ttf"));
+		} else {
+			arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+		}
+
 		if (systemfont) {
-			basicFontGenerator = asianFontGenerator = arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+			basicFontGenerator = asianFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
 		} else {
 			basicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/pixel_font.ttf"));
-			asianFontGenerator = arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+			asianFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
 		}
 
 		fonts.put(basicFontGenerator, new HashMap<>());
