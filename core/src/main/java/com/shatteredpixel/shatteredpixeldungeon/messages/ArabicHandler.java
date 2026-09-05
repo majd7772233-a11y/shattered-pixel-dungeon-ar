@@ -72,6 +72,11 @@ public class ArabicHandler {
 		ARABIC_MAP.put(ch, new GlyphForms(isolated, end, middle, beginning));
 	}
 
+	private static boolean isDiacritic(char ch) {
+		// Arabic Tashkeel / Harakat characters (\u064B - \u0652, \u0670, \u0653 - \u065F)
+		return (ch >= '\u064B' && ch <= '\u0652') || ch == '\u0670' || (ch >= '\u0653' && ch <= '\u065F');
+	}
+
 	private static boolean isNonConnectingRight(char ch) {
 		// Letters that only connect to the right (previous letter) and do NOT connect to the left (following letter)
 		return ch == '\u0621' || ch == '\u0622' || ch == '\u0623' || ch == '\u0624' || ch == '\u0625' ||
@@ -122,11 +127,22 @@ public class ArabicHandler {
 				continue;
 			}
 
-			boolean prevConnects = (i > 0) && isArabicLetter(chars[i - 1]) && !isNonConnectingRight(chars[i - 1]);
+			// Find preceding non-diacritic Arabic letter index
+			int prevIndex = i - 1;
+			while (prevIndex >= 0 && isDiacritic(chars[prevIndex])) {
+				prevIndex--;
+			}
+			boolean prevConnects = (prevIndex >= 0) && isArabicLetter(chars[prevIndex]) && !isNonConnectingRight(chars[prevIndex]);
 
-			// Lam-Alef compulsory ligature check
-			if (c == '\u0644' && (i < len - 1)) {
-				char next = chars[i + 1];
+			// Find succeeding non-diacritic Arabic letter index
+			int nextIndex = i + 1;
+			while (nextIndex < len && isDiacritic(chars[nextIndex])) {
+				nextIndex++;
+			}
+
+			// Lam-Alef compulsory ligature check (skipping diacritics on Lam if any)
+			if (c == '\u0644' && nextIndex < len) {
+				char next = chars[nextIndex];
 				char ligature = 0;
 				if (next == '\u0622') { // ALEF WITH MADDA
 					ligature = prevConnects ? '\uFEF6' : '\uFEF5';
@@ -140,12 +156,16 @@ public class ArabicHandler {
 
 				if (ligature != 0) {
 					result.append(ligature);
-					i++; // skip next character (Alef)
+					// Attach any diacritics attached to Lam between current index and nextIndex
+					for (int d = i + 1; d < nextIndex; d++) {
+						result.append(chars[d]);
+					}
+					i = nextIndex; // skip to Alef
 					continue;
 				}
 			}
 
-			boolean nextConnects = (i < len - 1) && isArabicLetter(chars[i + 1]) && !isNonConnectingRight(c);
+			boolean nextConnects = (nextIndex < len) && isArabicLetter(chars[nextIndex]) && !isNonConnectingRight(c);
 
 			GlyphForms forms = ARABIC_MAP.get(c);
 			if (forms == null) {
@@ -172,10 +192,31 @@ public class ArabicHandler {
 			return text;
 		}
 
+		// Reorder line by line to preserve line order (top to bottom)
+		if (text.contains("\n")) {
+			String[] lines = text.split("\n", -1);
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < lines.length; i++) {
+				if (i > 0) {
+					sb.append('\n');
+				}
+				sb.append(reorderBidiLine(lines[i]));
+			}
+			return sb.toString();
+		} else {
+			return reorderBidiLine(text);
+		}
+	}
+
+	private static String reorderBidiLine(String line) {
+		if (line == null || line.length() <= 1) {
+			return line;
+		}
+
 		try {
-			Bidi bidi = new Bidi(text, Bidi.DIRECTION_RIGHT_TO_LEFT);
+			Bidi bidi = new Bidi(line, Bidi.DIRECTION_RIGHT_TO_LEFT);
 			if (bidi.isLeftToRight()) {
-				return text;
+				return line;
 			}
 
 			int count = bidi.getRunCount();
@@ -195,7 +236,7 @@ public class ArabicHandler {
 				int end = bidi.getRunLimit(runIndex);
 				int level = bidi.getRunLevel(runIndex);
 
-				String sub = text.substring(start, end);
+				String sub = line.substring(start, end);
 				if ((level & 1) != 0) { // RTL run
 					sb.append(reverseString(sub));
 				} else { // LTR run
@@ -204,7 +245,7 @@ public class ArabicHandler {
 			}
 			return sb.toString();
 		} catch (Exception e) {
-			return text;
+			return line;
 		}
 	}
 
