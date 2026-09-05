@@ -133,17 +133,19 @@ public class DesktopPlatformSupport extends PlatformSupport {
 			asianFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
 		}
 
-		FileHandle arFont = null;
-		if (Gdx.files.absolute("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf").exists()){
-			arFont = Gdx.files.absolute("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-		} else if (Gdx.files.absolute("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf").exists()){
-			arFont = Gdx.files.absolute("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf");
-		} else if (Gdx.files.absolute("C:/Windows/Fonts/arial.ttf").exists()){
-			arFont = Gdx.files.absolute("C:/Windows/Fonts/arial.ttf");
-		} else if (Gdx.files.absolute("/System/Library/Fonts/Supplemental/Arial.ttf").exists()){
-			arFont = Gdx.files.absolute("/System/Library/Fonts/Supplemental/Arial.ttf");
-		} else {
-			arFont = Gdx.files.internal("fonts/droid_sans.ttf");
+		FileHandle arFont = Gdx.files.internal("fonts/noto_sans_arabic.ttf");
+		if (!arFont.exists()) {
+			if (Gdx.files.absolute("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf").exists()){
+				arFont = Gdx.files.absolute("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+			} else if (Gdx.files.absolute("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf").exists()){
+				arFont = Gdx.files.absolute("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf");
+			} else if (Gdx.files.absolute("C:/Windows/Fonts/arial.ttf").exists()){
+				arFont = Gdx.files.absolute("C:/Windows/Fonts/arial.ttf");
+			} else if (Gdx.files.absolute("/System/Library/Fonts/Supplemental/Arial.ttf").exists()){
+				arFont = Gdx.files.absolute("/System/Library/Fonts/Supplemental/Arial.ttf");
+			} else {
+				arFont = Gdx.files.internal("fonts/droid_sans.ttf");
+			}
 		}
 		arabicFontGenerator = new FreeTypeFontGenerator(arFont);
 		

@@ -209,10 +209,16 @@ public class IOSPlatformSupport extends PlatformSupport {
 		fonts = new HashMap<>();
 
 		if (systemfont) {
-			basicFontGenerator = asianFontGenerator = arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+			basicFontGenerator = asianFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
 		} else {
 			basicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/pixel_font.ttf"));
-			asianFontGenerator = arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+			asianFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/droid_sans.ttf"));
+		}
+
+		if (Gdx.files.internal("fonts/noto_sans_arabic.ttf").exists()) {
+			arabicFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/noto_sans_arabic.ttf"));
+		} else {
+			arabicFontGenerator = asianFontGenerator;
 		}
 
 		fonts.put(basicFontGenerator, new HashMap<>());
