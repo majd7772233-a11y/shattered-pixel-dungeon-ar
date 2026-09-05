@@ -294,7 +294,9 @@ public class AndroidPlatformSupport extends PlatformSupport {
 			
 		}
 		
-		if (Gdx.files.absolute("/system/fonts/NotoSansArabic-Regular.ttf").exists()){
+		if (Gdx.files.internal("fonts/noto_sans_arabic.ttf").exists()){
+			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.internal("fonts/noto_sans_arabic.ttf"));
+		} else if (Gdx.files.absolute("/system/fonts/NotoSansArabic-Regular.ttf").exists()){
 			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/NotoSansArabic-Regular.ttf"));
 		} else if (Gdx.files.absolute("/system/fonts/NotoSansArabic-UI-Regular.ttf").exists()){
 			ARFontGenerator = new FreeTypeFontGenerator(Gdx.files.absolute("/system/fonts/NotoSansArabic-UI-Regular.ttf"));
