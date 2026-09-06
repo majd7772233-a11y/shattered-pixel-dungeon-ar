@@ -73,8 +73,11 @@ public class ArabicHandler {
 	}
 
 	private static boolean isDiacritic(char ch) {
-		// Arabic Tashkeel / Harakat characters (\u064B - \u0652, \u0670, \u0653 - \u065F)
-		return (ch >= '\u064B' && ch <= '\u0652') || ch == '\u0670' || (ch >= '\u0653' && ch <= '\u065F');
+		// Arabic Tashkeel / Harakat characters (\u064B - \u0652, \u0670, \u0653 - \u065F, \u0610 - \u061A, \u06D6 - \u06ED)
+		// and any Unicode non-spacing mark
+		return (ch >= '\u064B' && ch <= '\u0652') || ch == '\u0670' || (ch >= '\u0653' && ch <= '\u065F')
+				|| (ch >= '\u0610' && ch <= '\u061A') || (ch >= '\u06D6' && ch <= '\u06ED')
+				|| Character.getType(ch) == Character.NON_SPACING_MARK;
 	}
 
 	private static boolean isNonConnectingRight(char ch) {
@@ -249,27 +252,57 @@ public class ArabicHandler {
 		}
 	}
 
+	private static char mirrorChar(char c) {
+		switch (c) {
+			case '(': return ')';
+			case ')': return '(';
+			case '[': return ']';
+			case ']': return '[';
+			case '{': return '}';
+			case '}': return '{';
+			case '<': return '>';
+			case '>': return '<';
+			case '«': return '»';
+			case '»': return '«';
+			default:  return c;
+		}
+	}
+
 	private static String reverseString(String s) {
-		char[] chars = s.toCharArray();
-		int len = chars.length;
-		char[] rev = new char[len];
-		for (int i = 0; i < len; i++) {
-			char c = chars[len - 1 - i];
-			// Mirror brackets / parentheses in RTL runs
-			switch (c) {
-				case '(': rev[i] = ')'; break;
-				case ')': rev[i] = '('; break;
-				case '[': rev[i] = ']'; break;
-				case ']': rev[i] = '['; break;
-				case '{': rev[i] = '}'; break;
-				case '}': rev[i] = '{'; break;
-				case '<': rev[i] = '>'; break;
-				case '>': rev[i] = '<'; break;
-				case '«': rev[i] = '»'; break;
-				case '»': rev[i] = '«'; break;
-				default:  rev[i] = c;   break;
+		if (s == null || s.length() <= 1) {
+			return s;
+		}
+
+		// Group string into clusters: each base character followed by any diacritics attached to it
+		int len = s.length();
+		java.util.List<String> clusters = new java.util.ArrayList<>();
+		int i = 0;
+		while (i < len) {
+			int start = i;
+			i++;
+			while (i < len && isDiacritic(s.charAt(i))) {
+				i++;
+			}
+			clusters.add(s.substring(start, i));
+		}
+
+		// Reverse clusters as units so diacritics stay attached to their base letters in LTR memory order,
+		// and mirror bracket characters on base letters
+		StringBuilder sb = new StringBuilder(len);
+		for (int c = clusters.size() - 1; c >= 0; c--) {
+			String cluster = clusters.get(c);
+			char baseChar = cluster.charAt(0);
+			char mirroredBase = mirrorChar(baseChar);
+			if (mirroredBase != baseChar) {
+				sb.append(mirroredBase);
+				if (cluster.length() > 1) {
+					sb.append(cluster.substring(1));
+				}
+			} else {
+				sb.append(cluster);
 			}
 		}
-		return new String(rev);
+
+		return sb.toString();
 	}
 }
