@@ -76,7 +76,7 @@ public class RenderedTextBlock extends Component {
 	public void text(String text){
 		this.rawText = text;
 		if (text != null && (Messages.lang().isRTL() || ArabicHandler.containsArabic(text))) {
-			this.text = ArabicHandler.process(text);
+			this.text = ArabicHandler.shapeArabic(text);
 		} else {
 			this.text = text;
 		}
@@ -222,11 +222,16 @@ public class RenderedTextBlock extends Component {
 		ArrayList<RenderedText> curLine = new ArrayList<>();
 		lines.add(curLine);
 
+		ArrayList<ArrayList<RenderedText>> lineWords = new ArrayList<>();
+		ArrayList<RenderedText> curLineWords = new ArrayList<>();
+		lineWords.add(curLineWords);
+
 		width = 0;
 		for (int i = 0; i < words.size(); i++){
 			RenderedText word = words.get(i);
 			if (word == SPACE){
 				x += 1.667f;
+				curLineWords.add(SPACE);
 			} else if (word == NEWLINE) {
 				//newline
 				y += height+2f;
@@ -234,6 +239,8 @@ public class RenderedTextBlock extends Component {
 				nLines++;
 				curLine = new ArrayList<>();
 				lines.add(curLine);
+				curLineWords = new ArrayList<>();
+				lineWords.add(curLineWords);
 			} else {
 				if (word.height() > height) height = word.height();
 
@@ -255,6 +262,8 @@ public class RenderedTextBlock extends Component {
 					nLines++;
 					curLine = new ArrayList<>();
 					lines.add(curLine);
+					curLineWords = new ArrayList<>();
+					lineWords.add(curLineWords);
 				}
 
 				word.x = x;
@@ -262,6 +271,7 @@ public class RenderedTextBlock extends Component {
 				PixelScene.align(word);
 				x += word.width();
 				curLine.add(word);
+				curLineWords.add(word);
 
 				if ((x - this.x) > width) width = (x - this.x);
 				
@@ -272,6 +282,49 @@ public class RenderedTextBlock extends Component {
 			}
 		}
 		this.height = (y - this.y) + height;
+
+		boolean isRTL = Messages.lang() != null && (Messages.lang().isRTL() || (text != null && ArabicHandler.containsArabic(text)));
+		if (isRTL) {
+			width = 0;
+			for (int l = 0; l < lines.size(); l++) {
+				ArrayList<RenderedText> line = lines.get(l);
+				ArrayList<RenderedText> items = lineWords.get(l);
+				if (line.isEmpty()) continue;
+
+				StringBuilder lineString = new StringBuilder();
+				for (RenderedText item : items) {
+					if (item == SPACE) {
+						lineString.append(" ");
+					} else if (item != NEWLINE && item != null && item.text() != null) {
+						lineString.append(item.text());
+					}
+				}
+
+				String reorderedLine = ArabicHandler.reorderBidiLine(lineString.toString());
+				String[] reorderedTokens = Game.platform.splitforTextBlock(reorderedLine, true);
+
+				float curX = this.x;
+				float curY = line.get(0).y;
+				int wordIdx = 0;
+
+				for (String token : reorderedTokens) {
+					if (token.equals(" ")) {
+						curX += 1.667f;
+					} else if (!token.equals("\n") && !token.isEmpty()) {
+						if (wordIdx < line.size()) {
+							RenderedText word = line.get(wordIdx++);
+							word.text(token);
+							word.x = curX;
+							word.y = curY;
+							PixelScene.align(word);
+							curX += word.width() - 0.667f;
+						}
+					}
+				}
+
+				if ((curX - this.x) > width) width = (curX - this.x);
+			}
+		}
 
 		int effectiveAlign = align();
 		if (effectiveAlign != LEFT_ALIGN){

@@ -211,7 +211,7 @@ public class ArabicHandler {
 		}
 	}
 
-	private static String reorderBidiLine(String line) {
+	public static String reorderBidiLine(String line) {
 		if (line == null || line.length() <= 1) {
 			return line;
 		}
