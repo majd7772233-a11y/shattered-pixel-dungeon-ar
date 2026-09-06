@@ -23,6 +23,27 @@ android {
         targetSdkVersion appAndroidTargetSDK
     }
 
+    signingConfigs {
+        release {
+            def ksFilePath = System.getenv("KEYSTORE_FILE")
+            if (ksFilePath != null) {
+                def ksFile = file(ksFilePath)
+                if (!ksFile.exists()) {
+                    ksFile = rootProject.file(ksFilePath)
+                }
+                if (ksFile.exists()) {
+                    storeFile ksFile
+                    storePassword System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias System.getenv("KEY_ALIAS")
+                    keyPassword System.getenv("KEY_PASSWORD")
+                    println "Configured release signing with keystore: ${ksFile.absolutePath}"
+                } else {
+                    println "Keystore file not found at: ${ksFilePath}"
+                }
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".indev"
@@ -33,6 +54,16 @@ android {
             }
         }
         release {
+            def ksFilePath = System.getenv("KEYSTORE_FILE")
+            if (ksFilePath != null) {
+                def ksFile = file(ksFilePath)
+                if (!ksFile.exists()) {
+                    ksFile = rootProject.file(ksFilePath)
+                }
+                if (ksFile.exists()) {
+                    signingConfig signingConfigs.release
+                }
+            }
 
             //These lines enable R8, which is a code shrinker/optimizer/obfuscator.
             //This makes release APKs smaller and more efficient, but also makes debugging trickier
