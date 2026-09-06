@@ -114,4 +114,23 @@ public class ArabicHandlerTest {
 		Assert.assertEquals('(', processed.charAt(0));
 		Assert.assertEquals(')', processed.charAt(processed.length() - 1));
 	}
+
+	@Test
+	public void testReorderBidiLineDirectly() {
+		String line1 = "السطر الأول من النص";
+		String line2 = "السطر الثاني من النص";
+
+		String shapedLine1 = ArabicHandler.shapeArabic(line1);
+		String shapedLine2 = ArabicHandler.shapeArabic(line2);
+
+		String reordered1 = ArabicHandler.reorderBidiLine(shapedLine1);
+		String reordered2 = ArabicHandler.reorderBidiLine(shapedLine2);
+
+		Assert.assertNotNull(reordered1);
+		Assert.assertNotNull(reordered2);
+		Assert.assertFalse(reordered1.isEmpty());
+		Assert.assertFalse(reordered2.isEmpty());
+		Assert.assertEquals(shapedLine1.length(), reordered1.length());
+		Assert.assertEquals(shapedLine2.length(), reordered2.length());
+	}
 }
