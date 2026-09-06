@@ -172,14 +172,13 @@ public class DesktopPlatformSupport extends PlatformSupport {
 		}
 	}
 	
-	//splits on newline (for layout), chinese/japanese/arabic (for font choice), and '_'/'**' (for highlighting)
+	//splits on newline (for layout), chinese/japanese (for font choice), and '_'/'**' (for highlighting)
 	private Pattern regularsplitter = Pattern.compile(
 			"(?<=\n)|(?=\n)|(?<=_)|(?=_)|(?<=\\*\\*)|(?=\\*\\*)|" +
 					"(?<=\\p{InHiragana})|(?=\\p{InHiragana})|" +
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
-					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
+					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})");
 	
 	//additionally splits on spaces, so that each word can be laid out individually
 	private Pattern regularsplitterMultiline = Pattern.compile(
@@ -187,8 +186,7 @@ public class DesktopPlatformSupport extends PlatformSupport {
 					"(?<=\\p{InHiragana})|(?=\\p{InHiragana})|" +
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
-					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
+					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})");
 	
 	@Override
 	public String[] splitforTextBlock(String text, boolean multiline) {

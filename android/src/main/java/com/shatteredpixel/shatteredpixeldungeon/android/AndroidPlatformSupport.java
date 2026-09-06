@@ -338,15 +338,14 @@ public class AndroidPlatformSupport extends PlatformSupport {
 		}
 	}
 
-	//splits on newline (for layout), chinese/japanese/arabic (for font choice), and '_'/'**' (for highlighting)
+	//splits on newline (for layout), chinese/japanese (for font choice), and '_'/'**' (for highlighting)
 	private Pattern regularsplitter = Pattern.compile(
 			"(?<=\n)|(?=\n)|(?<=_)|(?=_)|(?<=\\*\\*)|(?=\\*\\*)|" +
 					"(?<=\\p{InHiragana})|(?=\\p{InHiragana})|" +
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
 					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})|" +
-					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
+					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})");
 
 	//additionally splits on spaces, so that each word can be laid out individually
 	private Pattern regularsplitterMultiline = Pattern.compile(
@@ -355,8 +354,7 @@ public class AndroidPlatformSupport extends PlatformSupport {
 					"(?<=\\p{InKatakana})|(?=\\p{InKatakana})|" +
 					"(?<=\\p{InCJK_Unified_Ideographs})|(?=\\p{InCJK_Unified_Ideographs})|" +
 					"(?<=\\p{InCJK_Symbols_and_Punctuation})|(?=\\p{InCJK_Symbols_and_Punctuation})|" +
-					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})|" +
-					"(?<=\\p{InArabic})|(?=\\p{InArabic})");
+					"(?<=\\p{InHalfwidth_and_Fullwidth_Forms})|(?=\\p{InHalfwidth_and_Fullwidth_Forms})");
 	
 	//splits on each non-hangul character. Needed for weird android 6.0 font files
 	private Pattern android6KRSplitter = Pattern.compile(
