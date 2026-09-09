@@ -49,15 +49,14 @@ public class RenderedTextBlock extends Component {
 	protected boolean multiline = false;
 
 	/*
-	 * This stores the logical/shaped text corresponding to each visible
-	 * RenderedText item in 'words'.
+	 * Keeps the original logical/shaped text for every RenderedText object.
 	 *
-	 * It is intentionally separate from RenderedText.text(), because the
-	 * RenderedText instance may contain the visually reordered form after
-	 * layout. Keeping the logical form here prevents a later layout() call
-	 * from reordering already-reordered text a second time.
+	 * This is deliberately separate from RenderedText.text(), because the
+	 * latter may contain the visually reordered text used by the renderer.
+	 * layout() can therefore safely be called multiple times without
+	 * reordering already-reordered text.
 	 *
-	 * Entries for SPACE and NEWLINE are null.
+	 * SPACE and NEWLINE entries are null.
 	 */
 	private ArrayList<String> logicalTexts = new ArrayList<>();
 
@@ -71,11 +70,14 @@ public class RenderedTextBlock extends Component {
 	public static final int LEFT_ALIGN = 1;
 	public static final int CENTER_ALIGN = 2;
 	public static final int RIGHT_ALIGN = 3;
+
 	private int alignment = -1;
 
 	public int align(){
 		if (alignment == -1){
-			return Messages.lang() != null && Messages.lang().isRTL() ? RIGHT_ALIGN : LEFT_ALIGN;
+			return Messages.lang() != null && Messages.lang().isRTL()
+					? RIGHT_ALIGN
+					: LEFT_ALIGN;
 		}
 		return alignment;
 	}
@@ -90,48 +92,68 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public void text(String text){
+
 		this.rawText = text;
 
-		if (text != null && !text.isEmpty()
+		/*
+		 * Keep the text in logical order and only perform contextual Arabic
+		 * shaping here.
+		 *
+		 * BiDi visual reordering is intentionally NOT done here. It is done
+		 * later per already-wrapped line inside layout().
+		 */
+		if (text != null
+				&& !text.isEmpty()
 				&& Messages.lang() != null
 				&& (Messages.lang().isRTL() || ArabicHandler.containsArabic(text))) {
+
 			this.text = ArabicHandler.shapeArabic(text);
+
 		} else {
+
 			this.text = text;
 		}
 
 		/*
-		 * Clear the current contents when text is null/empty.
-		 * Without this, assigning an empty string could leave stale text
-		 * from the previous value on screen.
+		 * Clear old contents when assigning null/empty text.
 		 */
 		if (this.text == null || this.text.isEmpty()) {
+
 			tokens = null;
 			logicalTexts.clear();
+
 			clear();
 			words.clear();
+
 			width = 0;
 			height = 0;
 			nLines = 0;
+
 			return;
 		}
 
 		tokens = Game.platform.splitforTextBlock(this.text, multiline);
+
 		build();
 	}
 
-	//for manual text block splitting, a space between each word is assumed
+	// for manual text block splitting, a space between each word is assumed
 	public void tokens(String... words){
+
 		StringBuilder fullText = new StringBuilder();
+
 		for (String word : words) {
 			fullText.append(word);
 		}
+
 		text(fullText.toString());
 	}
 
 	public void text(String text, int maxWidth){
+
 		this.maxWidth = maxWidth;
 		multiline = true;
+
 		text(text);
 	}
 
@@ -140,9 +162,12 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public void maxWidth(int maxWidth){
+
 		if (this.maxWidth != maxWidth){
+
 			this.maxWidth = maxWidth;
 			multiline = true;
+
 			text(rawText != null ? rawText : text);
 		}
 	}
@@ -152,51 +177,49 @@ public class RenderedTextBlock extends Component {
 	}
 
 	private synchronized void build(){
-		if (tokens == null) return;
+
+		if (tokens == null) {
+			return;
+		}
 
 		clear();
 
 		words = new ArrayList<>();
 		logicalTexts = new ArrayList<>();
 
-		/*
-		 * Recalculate height from scratch whenever the contents are rebuilt.
-		 */
 		height = 0;
 
 		boolean highlighting = false;
 
 		for (String str : tokens){
 
-			//if highlighting is enabled, '_' or '**' is used to toggle highlighting on or off
-			//the actual symbols are not rendered
+			/*
+			 * If highlighting is enabled, '_' or '**' toggles highlighting.
+			 * The markers themselves are not rendered.
+			 */
 			if ((str.equals("_") || str.equals("**")) && highlightingEnabled){
 
 				highlighting = !highlighting;
 
-			} else if (str.equals("\n")) {
+			} else if (str.equals("\n")){
 
 				words.add(NEWLINE);
 				logicalTexts.add(null);
 
-			} else if (str.equals(" ")) {
+			} else if (str.equals(" ")){
 
 				words.add(SPACE);
 				logicalTexts.add(null);
 
 			} else {
 
-				/*
-				 * Store the shaped/logical text separately.
-				 *
-				 * RenderedText.text() may later be changed to the visual
-				 * order during RTL layout, so we must never use it as our
-				 * source of truth for another layout pass.
-				 */
 				RenderedText word = new RenderedText(str, size);
 
-				if (highlighting) word.hardlight(hightlightColor);
-				else if (color != -1) word.hardlight(color);
+				if (highlighting) {
+					word.hardlight(hightlightColor);
+				} else if (color != -1) {
+					word.hardlight(color);
+				}
 
 				word.scale.set(zoom);
 
@@ -215,9 +238,11 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void zoom(float zoom){
+
 		this.zoom = zoom;
 
-		for (RenderedText word : words) {
+		for (RenderedText word : words){
+
 			if (word != null) {
 				word.scale.set(zoom);
 			}
@@ -227,9 +252,11 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void hardlight(int color){
+
 		this.color = color;
 
-		for (RenderedText word : words) {
+		for (RenderedText word : words){
+
 			if (word != null) {
 				word.hardlight(color);
 			}
@@ -237,9 +264,11 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void resetColor(){
+
 		this.color = -1;
 
-		for (RenderedText word : words) {
+		for (RenderedText word : words){
+
 			if (word != null) {
 				word.resetColor();
 			}
@@ -247,7 +276,9 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void alpha(float value){
-		for (RenderedText word : words) {
+
+		for (RenderedText word : words){
+
 			if (word != null) {
 				word.alpha(value);
 			}
@@ -255,21 +286,29 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void setHightlighting(boolean enabled){
+
 		setHightlighting(enabled, Window.TITLE_COLOR);
 	}
 
 	public synchronized void setHightlighting(boolean enabled, int color){
-		if (enabled != highlightingEnabled || color != hightlightColor) {
+
+		if (enabled != highlightingEnabled || color != hightlightColor){
+
 			hightlightColor = color;
 			highlightingEnabled = enabled;
+
 			build();
 		}
 	}
 
 	public synchronized void invert(){
-		if (words != null) {
-			for (RenderedText word : words) {
-				if (word != null) {
+
+		if (words != null){
+
+			for (RenderedText word : words){
+
+				if (word != null){
+
 					word.ra = 0.77f;
 					word.ga = 0.73f;
 					word.ba = 0.62f;
@@ -283,58 +322,74 @@ public class RenderedTextBlock extends Component {
 	}
 
 	public synchronized void align(int align){
+
 		alignment = align;
 		layout();
 	}
 
 	/*
-	 * A visual layout item.
+	 * Represents one logical item in a wrapped line.
 	 *
-	 * For normal text:
-	 *  - word      = the RenderedText object
-	 *  - logical   = the logical/shaped text belonging to it
+	 * For a normal RenderedText:
+	 *   logical = shaped logical-order text
 	 *
-	 * For spaces:
-	 *  - word      = SPACE
-	 *  - logical   = null
+	 * For SPACE:
+	 *   logical = null
 	 *
-	 * start/end refer to the character range inside the logical line string.
-	 * visualPosition is the first visual position belonging to that item.
+	 * start/end are character offsets in the complete logical line string.
 	 */
 	private static class VisualPart {
 
 		final RenderedText word;
 		final String logical;
+
 		final int start;
 		final int end;
+
 		final boolean space;
 
 		int visualPosition = Integer.MAX_VALUE;
 
-		VisualPart(RenderedText word, String logical, int start, int end, boolean space) {
+		VisualPart(
+				RenderedText word,
+				String logical,
+				int start,
+				int end,
+				boolean space
+		){
+
 			this.word = word;
 			this.logical = logical;
+
 			this.start = start;
 			this.end = end;
+
 			this.space = space;
 		}
 	}
 
 	/*
-	 * Builds the visual order of the already-wrapped logical line.
+	 * Performs BiDi layout on ONE already-wrapped line.
 	 *
 	 * IMPORTANT:
-	 * We do NOT reorder the complete line into a String and then split that
-	 * String again. Doing that was the source of the previous "letters are
-	 * completely reversed/unreadable" bug.
+	 *
+	 * We do NOT:
+	 *
+	 *     logical line
+	 *          -> visual String
+	 *          -> split visual String
+	 *          -> put visual pieces back into logical objects
+	 *
+	 * That was the source of the previous completely reversed Arabic text.
 	 *
 	 * Instead:
-	 *   logical shaped text
-	 *        -> java.text.Bidi
-	 *        -> visual order of RenderedText items
-	 *        -> each individual item's own visual text
 	 *
-	 * This keeps object identity, highlighting, sizing and wrapping intact.
+	 *     logical line
+	 *          -> java.text.Bidi
+	 *          -> visual order of RenderedText objects
+	 *          -> reorder each individual object's text
+	 *
+	 * This also keeps highlighting and object identity intact.
 	 */
 	private void layoutRTLLine(
 			ArrayList<RenderedText> line,
@@ -342,200 +397,306 @@ public class RenderedTextBlock extends Component {
 			ArrayList<String> itemLogicalTexts,
 			float lineY,
 			ArrayList<Float> lineWidths
-	) {
+	){
 
-		if (items.isEmpty()) {
+		if (items.isEmpty()){
+
 			lineWidths.add(0f);
+
 			return;
 		}
 
-		/*
-		 * Build the logical line exactly as it was originally tokenized.
-		 * SPACE is represented by one actual space character.
-		 */
 		StringBuilder lineString = new StringBuilder();
 
 		ArrayList<VisualPart> parts = new ArrayList<>();
 
 		int logicalPosition = 0;
 
-		for (int i = 0; i < items.size(); i++) {
+		/*
+		 * Build the logical line and remember the exact character range
+		 * corresponding to every RenderedText token.
+		 */
+		for (int i = 0; i < items.size(); i++){
 
 			RenderedText item = items.get(i);
 			String logical = itemLogicalTexts.get(i);
 
-			if (item == SPACE) {
+			if (item == SPACE){
 
 				int start = logicalPosition;
+
 				lineString.append(' ');
 				logicalPosition++;
 
-				parts.add(new VisualPart(
-						SPACE,
-						null,
-						start,
-						logicalPosition,
-						true
-				));
+				parts.add(
+						new VisualPart(
+								SPACE,
+								null,
+								start,
+								logicalPosition,
+								true
+						)
+				);
 
-			} else if (item != NEWLINE && item != null && logical != null) {
+			} else if (
+					item != NEWLINE
+							&& item != null
+							&& logical != null
+			){
 
 				int start = logicalPosition;
 
 				lineString.append(logical);
 				logicalPosition += logical.length();
 
-				parts.add(new VisualPart(
-						item,
-						logical,
-						start,
-						logicalPosition,
-						false
-				));
+				parts.add(
+						new VisualPart(
+								item,
+								logical,
+								start,
+								logicalPosition,
+								false
+						)
+				);
 			}
 		}
 
-		if (lineString.length() == 0) {
+		if (lineString.length() == 0){
+
 			lineWidths.add(0f);
+
 			return;
 		}
 
-		/*
-		 * java.text.Bidi computes the visual mapping without modifying our
-		 * source string.
-		 */
 		Bidi bidi;
 
 		try {
+
 			bidi = new Bidi(
 					lineString.toString(),
 					Bidi.DIRECTION_RIGHT_TO_LEFT
 			);
-		} catch (Exception e) {
+
+		} catch (Exception e){
+
 			/*
-			 * This should not normally happen, but falling back to the
-			 * logical order is much safer than rendering a corrupted string.
+			 * Defensive fallback.
+			 *
+			 * Better to render logical order than to corrupt the text.
 			 */
 			float fallbackX = this.x;
 
-			for (VisualPart part : parts) {
+			for (VisualPart part : parts){
 
-				if (part.space) {
+				if (part.space){
+
 					fallbackX += 1.667f;
+
 					continue;
 				}
 
 				part.word.text(part.logical);
+
 				part.word.x = fallbackX;
 				part.word.y = lineY;
 
 				PixelScene.align(part.word);
 
 				fallbackX += part.word.width() - 0.667f;
-
-				if (!line.contains(part.word)) {
-					line.add(part.word);
-				}
 			}
 
-			lineWidths.add(Math.max(0f, fallbackX - this.x));
+			lineWidths.add(
+					Math.max(
+							0f,
+							fallbackX - this.x
+					)
+			);
+
 			return;
 		}
 
 		/*
-		 * visualMap[visualIndex] = logicalIndex
+		 * The Bidi API available in the project's Java environment does not
+		 * provide getVisualMap().
 		 *
-		 * Convert it to:
-		 * logicalToVisual[logicalIndex] = visualIndex
-		 *
-		 * This lets us determine where each RenderedText token belongs in
-		 * the visual line without changing its logical source text.
+		 * Therefore we construct the character-level visual mapping using
+		 * the supported Bidi.reorderVisually() API.
 		 */
-		int[] visualMap = bidi.getVisualMap();
-		int[] logicalToVisual = new int[visualMap.length];
+		int textLength = lineString.length();
 
-		for (int visualIndex = 0; visualIndex < visualMap.length; visualIndex++) {
-			int logicalIndex = visualMap[visualIndex];
+		byte[] charLevels = new byte[textLength];
 
-			if (logicalIndex >= 0 && logicalIndex < logicalToVisual.length) {
+		/*
+		 * Expand the BiDi run levels so every character has its resolved
+		 * embedding level.
+		 */
+		for (int run = 0; run < bidi.getRunCount(); run++){
+
+			int start = bidi.getRunStart(run);
+			int end = bidi.getRunLimit(run);
+
+			byte level = (byte)bidi.getRunLevel(run);
+
+			for (int i = start; i < end; i++){
+
+				charLevels[i] = level;
+			}
+		}
+
+		/*
+		 * Start with logical character indices.
+		 *
+		 * reorderVisually() changes this array into visual order.
+		 */
+		Integer[] visualCharacters = new Integer[textLength];
+
+		for (int i = 0; i < textLength; i++){
+
+			visualCharacters[i] = i;
+		}
+
+		Bidi.reorderVisually(
+				charLevels,
+				0,
+				visualCharacters,
+				0,
+				textLength
+		);
+
+		/*
+		 * Convert:
+		 *
+		 *     visual index -> logical index
+		 *
+		 * into:
+		 *
+		 *     logical index -> visual index
+		 */
+		int[] logicalToVisual = new int[textLength];
+
+		for (int visualIndex = 0;
+			 visualIndex < textLength;
+			 visualIndex++){
+
+			int logicalIndex = visualCharacters[visualIndex];
+
+			if (
+					logicalIndex >= 0
+							&& logicalIndex < textLength
+			){
+
 				logicalToVisual[logicalIndex] = visualIndex;
 			}
 		}
 
 		/*
-		 * Determine the first visual position belonging to every token.
+		 * Find the first visual character belonging to every item.
 		 */
-		for (VisualPart part : parts) {
+		for (VisualPart part : parts){
 
 			int visualPosition = Integer.MAX_VALUE;
 
-			for (int p = part.start; p < part.end && p < logicalToVisual.length; p++) {
+			int end = Math.min(
+					part.end,
+					logicalToVisual.length
+			);
+
+			for (
+					int p = part.start;
+					p < end;
+					p++
+			){
+
 				visualPosition = Math.min(
 						visualPosition,
 						logicalToVisual[p]
 				);
 			}
 
+			/*
+			 * Defensive fallback for an impossible/empty mapping.
+			 */
+			if (visualPosition == Integer.MAX_VALUE){
+
+				visualPosition = part.start;
+			}
+
 			part.visualPosition = visualPosition;
 		}
 
 		/*
-		 * Sort the actual layout objects into visual order.
-		 *
-		 * Stable ordering is intentional: when two pieces resolve to the same
-		 * position, their original order is preserved.
+		 * Sort the actual RenderedText objects according to their visual
+		 * position.
 		 */
-		Collections.sort(parts, new Comparator<VisualPart>() {
-			@Override
-			public int compare(VisualPart a, VisualPart b) {
-				return Integer.compare(a.visualPosition, b.visualPosition);
-			}
-		});
+		Collections.sort(
+				parts,
+				new Comparator<VisualPart>() {
+					@Override
+					public int compare(
+							VisualPart a,
+							VisualPart b
+					){
+
+						return Integer.compare(
+								a.visualPosition,
+								b.visualPosition
+						);
+					}
+				}
+		);
 
 		/*
-		 * Place the objects from visual-left to visual-right.
-		 *
-		 * For Arabic text, reorderBidiLine() is applied only to the individual
-		 * RenderedText item. The entire line is NEVER converted to a visual
-		 * String and tokenized again.
+		 * Place every object in visual left-to-right order.
 		 */
 		float curX = this.x;
 
-		for (VisualPart part : parts) {
+		for (VisualPart part : parts){
 
-			if (part.space) {
+			if (part.space){
+
 				curX += 1.667f;
+
 				continue;
 			}
 
+			/*
+			 * Keep the logical/shaped source intact.
+			 *
+			 * Only this individual token is transformed to visual order.
+			 */
 			String visualText = part.logical;
 
-			if (visualText != null && !visualText.isEmpty()) {
-				visualText = ArabicHandler.reorderBidiLine(visualText);
+			if (
+					visualText != null
+							&& !visualText.isEmpty()
+			){
+
+				visualText =
+						ArabicHandler.reorderBidiLine(
+								visualText
+						);
 			}
 
 			part.word.text(visualText);
+
 			part.word.x = curX;
 			part.word.y = lineY;
 
 			PixelScene.align(part.word);
 
 			curX += part.word.width() - 0.667f;
-
-			/*
-			 * Keep the normal RenderedText line list synchronized with the
-			 * final set of visible items. No duplicate entries are added.
-			 */
-			if (!line.contains(part.word)) {
-				line.add(part.word);
-			}
 		}
 
-		lineWidths.add(Math.max(0f, curX - this.x));
+		lineWidths.add(
+				Math.max(
+						0f,
+						curX - this.x
+				)
+		);
 	}
 
 	@Override
-	protected synchronized void layout() {
+	protected synchronized void layout(){
 
 		super.layout();
 
@@ -546,26 +707,37 @@ public class RenderedTextBlock extends Component {
 
 		nLines = 1;
 
-		ArrayList<ArrayList<RenderedText>> lines = new ArrayList<>();
-		ArrayList<RenderedText> curLine = new ArrayList<>();
+		ArrayList<ArrayList<RenderedText>> lines =
+				new ArrayList<>();
+
+		ArrayList<RenderedText> curLine =
+				new ArrayList<>();
+
 		lines.add(curLine);
 
 		/*
-		 * This contains both visible words and SPACE/NEWLINE markers.
+		 * Contains every item in the line, including SPACE.
 		 */
-		ArrayList<ArrayList<RenderedText>> lineWords = new ArrayList<>();
-		ArrayList<ArrayList<String>> lineLogicalTexts = new ArrayList<>();
+		ArrayList<ArrayList<RenderedText>> lineWords =
+				new ArrayList<>();
 
-		ArrayList<RenderedText> curLineWords = new ArrayList<>();
-		ArrayList<String> curLineLogicalTexts = new ArrayList<>();
+		ArrayList<ArrayList<String>> lineLogicalTexts =
+				new ArrayList<>();
+
+		ArrayList<RenderedText> curLineWords =
+				new ArrayList<>();
+
+		ArrayList<String> curLineLogicalTexts =
+				new ArrayList<>();
 
 		lineWords.add(curLineWords);
 		lineLogicalTexts.add(curLineLogicalTexts);
 
 		/*
-		 * Width of each line before alignment is applied.
+		 * Width of every physical line before alignment.
 		 */
-		ArrayList<Float> lineWidths = new ArrayList<>();
+		ArrayList<Float> lineWidths =
+				new ArrayList<>();
 
 		width = 0;
 
@@ -573,49 +745,60 @@ public class RenderedTextBlock extends Component {
 
 			RenderedText word = words.get(i);
 
-			if (word == SPACE) {
+			if (word == SPACE){
 
 				x += 1.667f;
 
 				curLineWords.add(SPACE);
 				curLineLogicalTexts.add(null);
 
-			} else if (word == NEWLINE) {
+			} else if (word == NEWLINE){
 
 				/*
-				 * Explicit newline.
+				 * Explicit line break.
 				 */
-				lineWidths.add(Math.max(0f, x - this.x));
+				lineWidths.add(
+						Math.max(
+								0f,
+								x - this.x
+						)
+				);
 
 				y += height + 2f;
 				x = this.x;
 
 				nLines++;
 
-				curLine = new ArrayList<>();
+				curLine =
+						new ArrayList<>();
+
 				lines.add(curLine);
 
-				curLineWords = new ArrayList<>();
-				curLineLogicalTexts = new ArrayList<>();
+				curLineWords =
+						new ArrayList<>();
+
+				curLineLogicalTexts =
+						new ArrayList<>();
 
 				lineWords.add(curLineWords);
 				lineLogicalTexts.add(curLineLogicalTexts);
 
 			} else {
 
-				if (word.height() > height) {
+				if (word.height() > height){
+
 					height = word.height();
 				}
 
 				float fullWidth = word.width();
+
 				int j = i + 1;
 
 				/*
-				 * This is so that words split only by highlighting are still
-				 * grouped in layout.
+				 * This causes pieces split only for highlighting to be
+				 * treated as one layout word.
 				 *
-				 * Chinese/Japanese always render every character separately
-				 * without spaces however.
+				 * Chinese/Japanese render characters individually.
 				 */
 				while (
 						Messages.lang() != Languages.CHI_SMPL
@@ -625,27 +808,46 @@ public class RenderedTextBlock extends Component {
 								&& words.get(j) != SPACE
 								&& words.get(j) != NEWLINE
 				){
-					fullWidth += words.get(j).width() - 0.667f;
+
+					fullWidth +=
+							words.get(j).width() - 0.667f;
+
 					j++;
 				}
 
+				/*
+				 * Wrap to the next line when the whole word will not fit.
+				 */
 				if (
-						(x - this.x) + fullWidth - 0.001f > maxWidth
+						(x - this.x)
+								+ fullWidth
+								- 0.001f
+								> maxWidth
 								&& !curLine.isEmpty()
 				){
 
-					lineWidths.add(Math.max(0f, x - this.x));
+					lineWidths.add(
+							Math.max(
+									0f,
+									x - this.x
+							)
+					);
 
 					y += height + 2f;
 					x = this.x;
 
 					nLines++;
 
-					curLine = new ArrayList<>();
+					curLine =
+							new ArrayList<>();
+
 					lines.add(curLine);
 
-					curLineWords = new ArrayList<>();
-					curLineLogicalTexts = new ArrayList<>();
+					curLineWords =
+							new ArrayList<>();
+
+					curLineLogicalTexts =
+							new ArrayList<>();
 
 					lineWords.add(curLineWords);
 					lineLogicalTexts.add(curLineLogicalTexts);
@@ -661,75 +863,89 @@ public class RenderedTextBlock extends Component {
 				curLine.add(word);
 
 				/*
-				 * logicalTexts is parallel to words, so the shaped/logical
-				 * source for this RenderedText is preserved.
+				 * Store the exact logical text corresponding to this object.
 				 */
 				curLineWords.add(word);
-				curLineLogicalTexts.add(logicalTexts.get(i));
+				curLineLogicalTexts.add(
+						logicalTexts.get(i)
+				);
 
-				if ((x - this.x) > width) {
-					width = (x - this.x);
+				if ((x - this.x) > width){
+
+					width = x - this.x;
 				}
 
 				/*
-				 * Note that spacing currently doesn't factor in halfwidth and
-				 * fullwidth characters (e.g. Ideographic full stop).
+				 * Existing Shattered Pixel Dungeon spacing behavior.
 				 */
 				x -= 0.667f;
 			}
 		}
 
 		/*
-		 * Save the final line width when it wasn't terminated by an explicit
-		 * newline or a wrapping operation.
+		 * Store the final line width when it wasn't terminated by an
+		 * explicit newline or a wrapping event.
 		 */
-		if (lineWidths.size() < lines.size()) {
-			lineWidths.add(Math.max(0f, x - this.x));
+		if (lineWidths.size() < lines.size()){
+
+			lineWidths.add(
+					Math.max(
+							0f,
+							x - this.x
+					)
+			);
 		}
 
-		this.height = (y - this.y) + height;
+		this.height =
+				(y - this.y)
+						+ height;
 
 		/*
-		 * Arabic/RTL handling:
-		 *
-		 * We only reorder the contents of each already-wrapped line.
-		 * The order of the lines themselves is NEVER reversed.
-		 *
-		 * This is the important difference from the broken implementation:
-		 * there is no:
-		 *
-		 *   whole line -> visual String -> split -> assign back
-		 *
-		 * Instead, the RenderedText objects themselves are placed in their
-		 * visual order.
+		 * RTL detection.
 		 */
 		boolean isRTL =
 				Messages.lang() != null
 						&& (
 						Messages.lang().isRTL()
-								|| (text != null && ArabicHandler.containsArabic(text))
+								|| (
+								text != null
+										&& ArabicHandler.containsArabic(text)
+						)
 				);
 
-		if (isRTL) {
+		if (isRTL){
 
 			width = 0;
 
-			ArrayList<Float> rtlLineWidths = new ArrayList<>();
+			ArrayList<Float> rtlLineWidths =
+					new ArrayList<>();
 
-			for (int l = 0; l < lines.size(); l++) {
+			/*
+			 * Process every physical line independently.
+			 *
+			 * Crucially, the order of the lines themselves is never reversed.
+			 * This preserves normal top-to-bottom multiline layout.
+			 */
+			for (int l = 0;
+				 l < lines.size();
+				 l++){
 
-				ArrayList<RenderedText> line = lines.get(l);
-				ArrayList<RenderedText> items = lineWords.get(l);
-				ArrayList<String> logical = lineLogicalTexts.get(l);
+				ArrayList<RenderedText> line =
+						lines.get(l);
 
-				if (items.isEmpty()) {
+				ArrayList<RenderedText> items =
+						lineWords.get(l);
+
+				ArrayList<String> logical =
+						lineLogicalTexts.get(l);
+
+				if (items.isEmpty()){
+
 					rtlLineWidths.add(0f);
+
 					continue;
 				}
 
-				/*
-				 * Rebuild the visual placement for this line only.
-				 */
 				layoutRTLLine(
 						line,
 						items,
@@ -740,68 +956,92 @@ public class RenderedTextBlock extends Component {
 			}
 
 			/*
-			 * Replace the line widths with the actual visual widths.
+			 * Use the actual visual widths for alignment.
 			 */
 			lineWidths = rtlLineWidths;
 
-			for (Float lineWidth : lineWidths) {
-				if (lineWidth != null && lineWidth > width) {
+			for (Float lineWidth : lineWidths){
+
+				if (
+						lineWidth != null
+								&& lineWidth > width
+				){
+
 					width = lineWidth;
 				}
 			}
 		}
 
 		/*
-		 * Alignment is applied after RTL/LTR placement has been finalized.
+		 * Apply requested alignment only after visual RTL/LTR positioning
+		 * has been completed.
 		 */
 		int effectiveAlign = align();
 
 		if (effectiveAlign != LEFT_ALIGN){
 
-			for (int l = 0; l < lines.size(); l++) {
+			for (int l = 0;
+				 l < lines.size();
+				 l++){
 
-				ArrayList<RenderedText> line = lines.get(l);
+				ArrayList<RenderedText> line =
+						lines.get(l);
 
-				if (line.isEmpty()) {
+				if (line.isEmpty()){
+
 					continue;
 				}
 
 				float lineWidth;
 
-				if (l < lineWidths.size()) {
-					lineWidth = lineWidths.get(l);
-				} else {
-					/*
-					 * Defensive fallback. This should only be reachable for
-					 * unusual empty/newline edge cases.
-					 */
-					lineWidth = 0f;
+				if (l < lineWidths.size()){
 
-					for (RenderedText word : line) {
-						if (word != null) {
-							lineWidth = Math.max(
-									lineWidth,
-									word.x + word.width() - this.x
-							);
+					lineWidth = lineWidths.get(l);
+
+				} else {
+
+					/*
+					 * Defensive fallback for unusual empty/newline cases.
+					 */
+					lineWidth = 0;
+
+					for (RenderedText word : line){
+
+						if (word != null){
+
+							lineWidth =
+									Math.max(
+											lineWidth,
+											word.x
+													+ word.width()
+													- this.x
+									);
 						}
 					}
 				}
 
 				if (effectiveAlign == CENTER_ALIGN){
 
-					float offset = (width() - lineWidth) / 2f;
+					float offset =
+							(width() - lineWidth)
+									/ 2f;
 
 					for (RenderedText word : line){
+
 						word.x += offset;
+
 						PixelScene.align(word);
 					}
 
-				} else if (effectiveAlign == RIGHT_ALIGN) {
+				} else if (effectiveAlign == RIGHT_ALIGN){
 
-					float offset = width() - lineWidth;
+					float offset =
+							width() - lineWidth;
 
 					for (RenderedText word : line){
+
 						word.x += offset;
+
 						PixelScene.align(word);
 					}
 				}
