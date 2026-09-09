@@ -116,6 +116,14 @@ public class ArabicHandlerTest {
 	}
 
 	@Test
+	public void testMixedArabicAndNumbers() {
+		String text = "المستوى 5";
+		String processed = ArabicHandler.process(text);
+		Assert.assertNotNull(processed);
+		Assert.assertTrue(processed.contains("5"));
+	}
+
+	@Test
 	public void testReorderBidiLineDirectly() {
 		String line1 = "السطر الأول من النص";
 		String line2 = "السطر الثاني من النص";

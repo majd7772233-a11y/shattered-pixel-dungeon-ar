@@ -83,8 +83,13 @@ public class ArabicHandler {
 	private static boolean isNonConnectingRight(char ch) {
 		// Letters that only connect to the right (previous letter) and do NOT connect to the left (following letter)
 		return ch == '\u0621' || ch == '\u0622' || ch == '\u0623' || ch == '\u0624' || ch == '\u0625' ||
-				ch == '\u0627' || ch == '\u062F' || ch == '\u0630' || ch == '\u0631' || ch == '\u0632' ||
-				ch == '\u0648' || ch == '\u0649' || ch == '\uFE8D' || ch == '\uFE8E';
+				ch == '\u0627' || ch == '\u0629' || ch == '\u062F' || ch == '\u0630' || ch == '\u0631' ||
+				ch == '\u0632' || ch == '\u0648' || ch == '\u0649' || ch == '\uFE80' || ch == '\uFE81' ||
+				ch == '\uFE82' || ch == '\uFE83' || ch == '\uFE84' || ch == '\uFE85' || ch == '\uFE86' ||
+				ch == '\uFE87' || ch == '\uFE88' || ch == '\uFE8D' || ch == '\uFE8E' || ch == '\uFE93' ||
+				ch == '\uFE94' || ch == '\uFEA9' || ch == '\uFEAA' || ch == '\uFEAB' || ch == '\uFEAC' ||
+				ch == '\uFEAD' || ch == '\uFEAE' || ch == '\uFEAF' || ch == '\uFEB0' || ch == '\uFEED' ||
+				ch == '\uFEEE' || ch == '\uFEEF' || ch == '\uFEF0';
 	}
 
 	private static boolean isArabicLetter(char ch) {
