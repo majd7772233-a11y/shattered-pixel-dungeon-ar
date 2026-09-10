@@ -109,7 +109,6 @@ public class TitleScene extends PixelScene {
 						? BannerSprites.Type.TITLE_LAND
 						: BannerSprites.Type.TITLE_PORT
 		);
-
 		add(title);
 
 		float topRegion = Math.max(
@@ -199,6 +198,25 @@ public class TitleScene extends PixelScene {
 		final Chrome.Type GREY_TR =
 				Chrome.Type.GREY_BUTTON_TR;
 
+		/*
+		 * ================================================================
+		 * MAIN BUTTONS
+		 * ================================================================
+		 *
+		 * Layout:
+		 *
+		 *             [ PLAY / ENTER ]
+		 *
+		 *       [ RANKINGS ] [ JOURNAL ]
+		 *
+		 *       [ CHANGES  ] [ SETTINGS]
+		 *
+		 *             [ ABOUT ]
+		 *
+		 * Support and News are intentionally not added to this scene.
+		 * Their classes and destination scenes remain untouched below.
+		 */
+
 		btnPlay = new StyledButton(
 				GREY_TR,
 				Messages.get(this, "enter")
@@ -206,7 +224,7 @@ public class TitleScene extends PixelScene {
 			@Override
 			protected void onClick() {
 
-				if (GamesInProgress.checkAll().size() == 0) {
+				if (GamesInProgress.checkAll().size() == 0){
 
 					GamesInProgress.selectedClass = null;
 					GamesInProgress.curSlot = 1;
@@ -250,19 +268,16 @@ public class TitleScene extends PixelScene {
 		add(btnPlay);
 
 		/*
-		 * Support button:
+		 * Support is intentionally hidden from the title screen.
 		 *
-		 * Kept intact so SupporterScene remains available elsewhere.
-		 * It is deliberately NOT added to TitleScene.
+		 * The object itself is still created so that the SupportButton class
+		 * and SupporterScene remain available for future use.
 		 */
 		btnSupport = new SupportButton(
 				GREY_TR,
 				Messages.get(this, "support")
 		);
 
-		/*
-		 * Rankings
-		 */
 		btnRankings = new StyledButton(
 				GREY_TR,
 				Messages.get(this, "rankings")
@@ -284,9 +299,6 @@ public class TitleScene extends PixelScene {
 
 		Dungeon.daily = Dungeon.dailyReplay = false;
 
-		/*
-		 * Journal
-		 */
 		btnJournal = new StyledButton(
 				GREY_TR,
 				Messages.get(this, "journal")
@@ -307,10 +319,9 @@ public class TitleScene extends PixelScene {
 		add(btnJournal);
 
 		/*
-		 * News button:
+		 * News is intentionally hidden from the title screen.
 		 *
-		 * Kept intact so NewsScene remains available.
-		 * It is deliberately NOT added to TitleScene.
+		 * The NewsButton class and NewsScene remain available.
 		 */
 		btnNews = new NewsButton(
 				GREY_TR,
@@ -321,9 +332,6 @@ public class TitleScene extends PixelScene {
 				Icons.get(Icons.NEWS)
 		);
 
-		/*
-		 * Changes
-		 */
 		btnChanges = new ChangesButton(
 				GREY_TR,
 				Messages.get(this, "changes")
@@ -335,9 +343,6 @@ public class TitleScene extends PixelScene {
 
 		add(btnChanges);
 
-		/*
-		 * Settings
-		 */
 		btnSettings = new SettingsButton(
 				GREY_TR,
 				Messages.get(this, "settings")
@@ -345,9 +350,6 @@ public class TitleScene extends PixelScene {
 
 		add(btnSettings);
 
-		/*
-		 * About
-		 */
 		btnAbout = new StyledButton(
 				GREY_TR,
 				Messages.get(this, "about")
@@ -367,17 +369,22 @@ public class TitleScene extends PixelScene {
 
 		add(btnAbout);
 
+		/*
+		 * ================================================================
+		 * CLEAN BUTTON LAYOUT
+		 * ================================================================
+		 *
+		 * Exactly four rows:
+		 *
+		 * 1. Full-width ENTER button
+		 * 2. Two normal buttons
+		 * 3. Two normal buttons
+		 * 4. Full-width ABOUT button
+		 *
+		 * Support and News are NOT part of the layout.
+		 */
+
 		final int BTN_HEIGHT = 20;
-
-		int GAP = (int)(
-				h
-						- topRegion
-						- (landscape() ? 3 : 4) * BTN_HEIGHT
-		) / 3;
-
-		GAP /= landscape() ? 3 : 5;
-
-		GAP = Math.max(GAP, 2);
 
 		float buttonAreaWidth =
 				landscape()
@@ -388,123 +395,132 @@ public class TitleScene extends PixelScene {
 				insets.left
 						+ (w - buttonAreaWidth) / 2f;
 
-		if (landscape()) {
+		/*
+		 * Use four actual rows instead of calculating the gap from the
+		 * number of hidden buttons.
+		 *
+		 * This prevents the old empty space / off-screen button problem.
+		 */
+		float availableButtonHeight =
+				h - topRegion - 6;
 
-			btnPlay.setRect(
-					btnAreaLeft,
-					insets.top + topRegion + GAP,
-					(buttonAreaWidth / 2) - 1,
-					BTN_HEIGHT
-			);
+		float GAP = Math.max(
+				2f,
+				Math.min(
+						8f,
+						(
+								availableButtonHeight
+										- (4 * BTN_HEIGHT)
+						) / 3f
+				)
+		);
 
-			align(btnPlay);
+		/*
+		 * Top row: ENTER
+		 */
+		float playY =
+				insets.top
+						+ topRegion
+						+ GAP;
 
-			/*
-			 * Support is intentionally not positioned because it is
-			 * not part of this scene.
-			 */
+		btnPlay.setRect(
+				btnAreaLeft,
+				playY,
+				buttonAreaWidth,
+				BTN_HEIGHT
+		);
 
-			btnRankings.setRect(
-					btnPlay.left(),
-					btnPlay.bottom() + GAP,
-					(float)(
-							Math.floor(
-									buttonAreaWidth / 3f
-							) - 1
-					),
-					BTN_HEIGHT
-			);
+		align(btnPlay);
 
-			btnJournal.setRect(
-					btnRankings.right() + 2,
-					btnRankings.top(),
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		/*
+		 * Middle rows use two equal-width buttons.
+		 */
+		float halfWidth =
+				(buttonAreaWidth - 2) / 2f;
 
-			/*
-			 * News is intentionally not positioned because it is
-			 * not part of this scene.
-			 *
-			 * Changes remains in its original third-column position.
-			 */
-			btnChanges.setRect(
-					btnRankings.left(),
-					btnRankings.bottom() + GAP,
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		float row2Y =
+				btnPlay.bottom() + GAP;
 
-			btnSettings.setRect(
-					btnChanges.right() + 2,
-					btnChanges.top(),
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		/*
+		 * Rankings / Journal
+		 */
+		btnRankings.setRect(
+				btnAreaLeft,
+				row2Y,
+				halfWidth,
+				BTN_HEIGHT
+		);
 
-			btnAbout.setRect(
-					btnSettings.right() + 2,
-					btnSettings.top(),
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		align(btnRankings);
 
-		} else {
+		btnJournal.setRect(
+				btnRankings.right() + 2,
+				row2Y,
+				halfWidth,
+				BTN_HEIGHT
+		);
 
-			btnPlay.setRect(
-					btnAreaLeft,
-					insets.top + topRegion + GAP,
-					buttonAreaWidth,
-					BTN_HEIGHT
-			);
+		align(btnJournal);
 
-			align(btnPlay);
+		/*
+		 * Changes / Settings
+		 */
+		float row3Y =
+				btnRankings.bottom() + GAP;
 
-			/*
-			 * Support is intentionally not positioned because it is
-			 * not part of this scene.
-			 */
+		btnChanges.setRect(
+				btnAreaLeft,
+				row3Y,
+				halfWidth,
+				BTN_HEIGHT
+		);
 
-			btnRankings.setRect(
-					btnPlay.left(),
-					btnPlay.bottom() + GAP,
-					(btnPlay.width() / 2) - 1,
-					BTN_HEIGHT
-			);
+		align(btnChanges);
 
-			btnJournal.setRect(
-					btnRankings.right() + 2,
-					btnRankings.top(),
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		btnSettings.setRect(
+				btnChanges.right() + 2,
+				row3Y,
+				halfWidth,
+				BTN_HEIGHT
+		);
 
-			/*
-			 * News is intentionally not positioned because it is
-			 * not part of this scene.
-			 */
-			btnChanges.setRect(
-					btnRankings.left(),
-					btnRankings.bottom() + GAP,
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		align(btnSettings);
 
-			btnSettings.setRect(
-					btnChanges.right() + 2,
-					btnChanges.bottom() + GAP,
-					btnRankings.width(),
-					BTN_HEIGHT
-			);
+		/*
+		 * Bottom row: ABOUT
+		 */
+		float aboutY =
+				btnChanges.bottom() + GAP;
 
-			btnAbout.setRect(
-					btnSettings.right() + 2,
-					btnSettings.top(),
-					btnSettings.width(),
-					BTN_HEIGHT
-			);
+		/*
+		 * Keep the About button inside the available screen area.
+		 *
+		 * If the calculated position would be too low, move it upward by
+		 * the required amount instead of allowing it to leave the screen.
+		 */
+		float maxAboutY =
+				insets.top
+						+ h
+						- BTN_HEIGHT
+						- (DeviceCompat.isDesktop() ? 2 : 4)
+						- (DeviceCompat.isDesktop() ? 0 : 2);
+
+		if (aboutY > maxAboutY) {
+			aboutY = maxAboutY;
 		}
 
+		btnAbout.setRect(
+				btnAreaLeft,
+				aboutY,
+				buttonAreaWidth,
+				BTN_HEIGHT
+		);
+
+		align(btnAbout);
+
+		/*
+		 * Version label.
+		 */
 		version = new BitmapText(
 				"v" + Game.version,
 				pixelFont
@@ -512,7 +528,9 @@ public class TitleScene extends PixelScene {
 
 		version.measure();
 
-		version.hardlight(0x888888);
+		version.hardlight(
+				0x888888
+		);
 
 		version.x =
 				insets.left
@@ -528,6 +546,9 @@ public class TitleScene extends PixelScene {
 
 		add(version);
 
+		/*
+		 * Fade button.
+		 */
 		btnFade = new IconButton(
 				Icons.CHEVRON.get()
 		){
@@ -537,14 +558,17 @@ public class TitleScene extends PixelScene {
 				enable(false);
 
 				parent.add(
-						new Tweener(parent, 0.5f) {
+						new Tweener(
+								parent,
+								0.5f
+						){
 
 							@Override
 							protected void updateValues(
 									float progress
-							) {
+							){
 
-								if (!btnFade.active) {
+								if (!btnFade.active){
 
 									uiAlpha =
 											1 - progress;
@@ -603,11 +627,13 @@ public class TitleScene extends PixelScene {
 												float progress
 										){
 
-											uiAlpha = progress;
+											uiAlpha =
+													progress;
 
 											updateFade();
 
 											if (progress >= 1){
+
 												btnFade.enable(true);
 											}
 										}
@@ -664,18 +690,17 @@ public class TitleScene extends PixelScene {
 				);
 
 		title.am = alpha;
+
 		leftFB.am = alpha;
 		rightFB.am = alpha;
 
 		// signs.am = alpha; handles this itself
 
-		btnPlay.enable(alpha != 0);
-
 		/*
-		 * Support and News are intentionally not part of TitleScene,
-		 * so they are not included in scene fade handling.
+		 * Only buttons actually displayed by TitleScene participate in
+		 * the fade animation.
 		 */
-
+		btnPlay.enable(alpha != 0);
 		btnRankings.enable(alpha != 0);
 		btnJournal.enable(alpha != 0);
 		btnChanges.enable(alpha != 0);
@@ -683,7 +708,6 @@ public class TitleScene extends PixelScene {
 		btnAbout.enable(alpha != 0);
 
 		btnPlay.alpha(alpha);
-
 		btnRankings.alpha(alpha);
 		btnJournal.alpha(alpha);
 		btnChanges.alpha(alpha);
@@ -691,6 +715,7 @@ public class TitleScene extends PixelScene {
 		btnAbout.alpha(alpha);
 
 		version.alpha(alpha);
+
 		btnFade.icon().alpha(alpha);
 
 		if (btnExit != null){
@@ -1023,6 +1048,9 @@ public class TitleScene extends PixelScene {
 		}
 	}
 
+	/*
+	 * Kept intact for future access.
+	 */
 	private static class SupportButton
 			extends StyledButton {
 
