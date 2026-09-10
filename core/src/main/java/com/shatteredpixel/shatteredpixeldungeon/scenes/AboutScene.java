@@ -1,22 +1,22 @@
 /*
  * Pixel Dungeon
- * Copyright (C) 2012-2015 Oleg Dolya
+ * حقوق الطبع والنشر (C) 2012-2015 Oleg Dolya
  *
  * Shattered Pixel Dungeon
- * Copyright (C) 2014-2026 Evan Debenham
+ * حقوق الطبع والنشر (C) 2014-2026 Evan Debenham
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * هذا البرنامج عبارة عن برنامج حر: يمكنك إعادة توزيعه و/أو تعديله
+ * بموجب شروط رخصة جينو العمومية (GNU General Public License) كما تم نشرها بواسطة
+ * مؤسسة البرمجيات الحرة (Free Software Foundation)، سواء الإصدار 3 من الرخصة، أو
+ * (حسب اختيارك) أي إصدار لاحق.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * يتم توزيع هذا البرنامج على أمل أن يكون مفيداً،
+ * ولكن دون أي ضمان؛ حتى بدون الضمان الضمني لـ
+ * القابلية للتسويق أو الملاءمة لغرض معين. انظر
+ * رخصة جينو العمومية لمزيد من التفاصيل.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ * المفروض أنك قد استلمت نسخة من رخصة جينو العمومية
+ * مع هذا البرنامج. إذا لم يكن الأمر كذلك، انظر <http://www.gnu.org/licenses/>
  */
 
 package com.shatteredpixel.shatteredpixeldungeon.scenes;
@@ -55,7 +55,7 @@ public class AboutScene extends PixelScene {
 		TitleBackground BG = new TitleBackground( w, h );
 		add( BG );
 
-		//darkens the arches
+		// تعتيم الأقواس
 		add(new ColorBlock(w, h, 0x44000000));
 
 		ScrollPane list = new ScrollPane( new Component() );
@@ -64,12 +64,12 @@ public class AboutScene extends PixelScene {
 		Component content = list.content();
 		content.clear();
 
-		//*** Shattered Pixel Dungeon Credits ***
+		//*** شكر وتقدير Shattered Pixel Dungeon ***
 
 		CreditsBlock shpx = new CreditsBlock(true, Window.SHPX_COLOR,
 				"Shattered Pixel Dungeon",
 				Icons.SHPX.get(),
-				"Developed by: _Magd Anwer_\nBased on Pixel Dungeon's open source",
+				"تطوير: _Magd Anwer_\nمبني على المصدر المفتوح للعبة Pixel Dungeon",
 				"ShatteredPixel.com",
 				"https://ShatteredPixel.com");
 		if (landscape()){
@@ -80,7 +80,7 @@ public class AboutScene extends PixelScene {
 		content.add(shpx);
 
 		CreditsBlock alex = new CreditsBlock(false, Window.SHPX_COLOR,
-				"Splash Art & Design:",
+				"الرسومات والتصميم:",
 				Icons.ALEKS.get(),
 				"Aleksandar Komitov",
 				"alekskomitov.com",
@@ -94,7 +94,7 @@ public class AboutScene extends PixelScene {
 		content.add(alex);
 
 		CreditsBlock celesti = new CreditsBlock(false, Window.SHPX_COLOR,
-				"Sound Effects:",
+				"المؤثرات الصوتية:",
 				Icons.CELESTI.get(),
 				"Celesti",
 				"celesti-whispers.itch.io",
@@ -103,7 +103,7 @@ public class AboutScene extends PixelScene {
 		content.add(celesti);
 
 		CreditsBlock lumine = new CreditsBlock(false, Window.SHPX_COLOR,
-				"Music:",
+				"الموسيقى:",
 				Icons.LUMINE.get(),
 				"Lumine Haaristo",
 				"youtube.com/@Lumine...",
@@ -111,13 +111,13 @@ public class AboutScene extends PixelScene {
 		lumine.setRect(alex.right() - colWidth/4f, alex.bottom() + 5, colWidth/2f, 0);
 		content.add(lumine);
 
-		//*** Pixel Dungeon Credits ***
+		//*** شكر وتقدير Pixel Dungeon ***
 
 		final int WATA_COLOR = 0x55AAFF;
 		CreditsBlock wata = new CreditsBlock(true, WATA_COLOR,
 				"Pixel Dungeon",
 				Icons.WATA.get(),
-				"Developed by: _Magd Anwer_\nمقتبسة من  Brian Walker's Brogue",
+				"تطوير: _Magd Anwer_\nمقتبسة من  Brian Walker's Brogue",
 				"magd.github.io",
 				"https://magd.github.io/");
 		if (landscape()){
@@ -130,7 +130,7 @@ public class AboutScene extends PixelScene {
 		addLine(wata.top() - 4, content);
 
 		CreditsBlock cube = new CreditsBlock(false, WATA_COLOR,
-				"Music:",
+				"الموسيقى:",
 				Icons.CUBE_CODE.get(),
 				"Cube Code",
 				null,
@@ -143,14 +143,14 @@ public class AboutScene extends PixelScene {
 		}
 		content.add(cube);
 
-		//*** libGDX Credits ***
+		//*** شكر وتقدير libGDX ***
 
 		final int GDX_COLOR = 0xE44D3C;
 		CreditsBlock gdx = new CreditsBlock(true,
 				GDX_COLOR,
 				"libGDX",
 				Icons.LIBGDX.get(),
-				"ShatteredPD is powered by _libGDX_!",
+				"تعمل ShatteredPD بواسطة محرك _libGDX_!",
 				"libgdx.com",
 				"https://libgdx.com/");
 		if (landscape()){
@@ -177,7 +177,7 @@ public class AboutScene extends PixelScene {
 		content.add(arcnor);
 
 		CreditsBlock purigro = new CreditsBlock(false, GDX_COLOR,
-				"Shattered GDX Help:",
+				"مساعدة Shattered GDX:",
 				Icons.PURIGRO.get(),
 				"Kevin MacMartin",
 				"github.com/prurigro",
@@ -185,13 +185,13 @@ public class AboutScene extends PixelScene {
 		purigro.setRect(arcnor.right()+2, arcnor.top(), colWidth/2f, 0);
 		content.add(purigro);
 
-		//*** Transifex Credits ***
+		//*** شكر وتقدير Transifex ***
 
 		CreditsBlock transifex = new CreditsBlock(true,
 				Window.TITLE_COLOR,
 				null,
 				null,
-				"ShatteredPD is community-translated via _Transifex_! Thank you so much to all of Shattered's volunteer translators!",
+				"تمت ترجمة ShatteredPD بواسطة المجتمع عبر منظومة _Transifex_! شكراً جزيلاً لجميع المترجمين المتطوعين في Shattered!",
 				"transifex.com/shattered-pixel/...",
 				"https://explore.transifex.com/shattered-pixel/shattered-pixel-dungeon/");
 		transifex.setRect((Camera.main.width - colWidth)/2f, purigro.bottom() + 12, colWidth, 0);
@@ -201,34 +201,34 @@ public class AboutScene extends PixelScene {
 
 		addLine(transifex.bottom() + 4, content);
 
-		//*** Freesound Credits ***
+		//*** شكر وتقدير Freesound ***
 
 		CreditsBlock freesound = new CreditsBlock(true,
 				Window.TITLE_COLOR,
 				null,
 				null,
-				"Shattered Pixel Dungeon uses the following sound samples from _freesound.org_:\n\n" +
+				"تستخدم Shattered Pixel Dungeon العينات الصوتية التالية من موقع _freesound.org_:\n\n" +
 
-				"Creative Commons Attribution License:\n" +
-				"_SFX ATTACK SWORD 001.wav_ by _JoelAudio_\n" +
-				"_Pack: Slingshots and Longbows_ by _saturdaysoundguy_\n" +
-				"_Cracking/Crunching, A.wav_ by _InspectorJ_\n" +
-				"_Extracting a sword.mp3_ by _Taira Komori_\n" +
-				"_Pack: Uni Sound Library_ by _timmy h123_\n\n" +
+				"رخصة المشاع الإبداعي نسب المصنف (Creative Commons Attribution License):\n" +
+				"_SFX ATTACK SWORD 001.wav_ بواسطة _JoelAudio_\n" +
+				"_Pack: Slingshots and Longbows_ بواسطة _saturdaysoundguy_\n" +
+				"_Cracking/Crunching, A.wav_ بواسطة _InspectorJ_\n" +
+				"_Extracting a sword.mp3_ بواسطة _Taira Komori_\n" +
+				"_Pack: Uni Sound Library_ بواسطة _timmy h123_\n\n" +
 
-				"Creative Commons Zero License:\n" +
-				"_Pack: Movie Foley: Swords_ by _Black Snow_\n" +
-				"_machine gun shot 2.flac_ by _qubodup_\n" +
-				"_m240h machine gun burst 4.flac_ by _qubodup_\n" +
-				"_Pack: Onomatopoeia_ by _Adam N_\n" +
-				"_Pack: Watermelon_ by _lolamadeus_\n" +
-				"_metal chain_ by _Mediapaja2009_\n" +
-				"_Pack: Sword Clashes Pack_ by _JohnBuhr_\n" +
-				"_Pack: Metal Clangs and Pings_ by _wilhellboy_\n" +
-				"_Pack: Stabbing Stomachs & Crushing Skulls_ by _TheFilmLook_\n" +
-				"_Sheep bleating_ by _zachrau_\n" +
-				"_Lemon,Juicy,Squeeze,Fruit.wav_ by _Filipe Chagas_\n" +
-				"_Lemon,Squeeze,Squishy,Fruit.wav_ by _Filipe Chagas_",
+				"رخصة المشاع الإبداعي للملكية العامة (Creative Commons Zero License):\n" +
+				"_Pack: Movie Foley: Swords_ بواسطة _Black Snow_\n" +
+				"_machine gun shot 2.flac_ بواسطة _qubodup_\n" +
+				"_m240h machine gun burst 4.flac_ بواسطة _qubodup_\n" +
+				"_Pack: Onomatopoeia_ بواسطة _Adam N_\n" +
+				"_Pack: Watermelon_ بواسطة _lolamadeus_\n" +
+				"_metal chain_ بواسطة _Mediapaja2009_\n" +
+				"_Pack: Sword Clashes Pack_ بواسطة _JohnBuhr_\n" +
+				"_Pack: Metal Clangs and Pings_ بواسطة _wilhellboy_\n" +
+				"_Pack: Stabbing Stomachs & Crushing Skulls_ بواسطة _TheFilmLook_\n" +
+				"_Sheep bleating_ بواسطة _zachrau_\n" +
+				"_Lemon,Juicy,Squeeze,Fruit.wav_ بواسطة _Filipe Chagas_\n" +
+				"_Lemon,Squeeze,Squishy,Fruit.wav_ بواسطة _Filipe Chagas_",
 				"freesound.org",
 				"https://www.freesound.org");
 		freesound.setRect(transifex.left()-10, transifex.bottom() + 8, colWidth+20, 0);
@@ -270,7 +270,7 @@ public class AboutScene extends PixelScene {
 		ColorBlock linkUnderline;
 		PointerArea linkButton;
 
-		//many elements can be null, but body is assumed to have content.
+		// العديد من العناصر يمكن أن تكون null، ولكن يُفترض أن يحتوي body على محتوى.
 		private CreditsBlock(boolean large, int highlight, String title, Image avatar, String body, String linkText, String linkUrl){
 			super();
 
