@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { NetworkMessage } from './index';
 
-describe('Server Network Message Parsing', () => {
+describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
     const msg: NetworkMessage = {
       protocolVersion: "1.0.0",
@@ -16,5 +16,15 @@ describe('Server Network Message Parsing', () => {
     expect(parsed.protocolVersion).toBe("1.0.0");
     expect(parsed.messageType).toBe("ACTION");
     expect(parsed.requestId).toBe("req-1");
+  });
+
+  it('validates protocol version compatibility', () => {
+    const msg: NetworkMessage = {
+      protocolVersion: "1.0.0",
+      messageType: "PING",
+      payloadJson: "{}"
+    };
+
+    expect(msg.protocolVersion).toBe("1.0.0");
   });
 });

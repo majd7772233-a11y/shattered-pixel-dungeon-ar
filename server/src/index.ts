@@ -11,10 +11,14 @@ export interface NetworkMessage {
   payloadJson: string;
 }
 
+export interface SessionData {
+  playerId: string;
+  sessionToken: string;
+}
+
 export class MatchRoom {
   state: DurableObjectState;
   sql: SqlStorage;
-  sessions: Map<WebSocket, { playerId: string; sessionToken: string }> = new Map();
   currentSequence: number = 0;
 
   constructor(state: DurableObjectState, env: Env) {
@@ -53,7 +57,7 @@ export class MatchRoom {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === "/websocket") {
+    if (url.pathname.endsWith("/websocket")) {
       if (request.headers.get("Upgrade") !== "websocket") {
         return new Response("Expected WebSocket", { status: 426 });
       }
@@ -61,11 +65,13 @@ export class MatchRoom {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
 
-      this.state.acceptWebSocket(server);
       const playerId = url.searchParams.get("playerId") || crypto.randomUUID();
       const sessionToken = crypto.randomUUID();
+      const sessionData: SessionData = { playerId, sessionToken };
 
-      this.sessions.set(server, { playerId, sessionToken });
+      this.state.acceptWebSocket(server);
+      server.serializeAttachment(sessionData);
+
       this.sql.exec(
         `INSERT INTO players (player_id, session_token, connected) VALUES (?, ?, 1)
          ON CONFLICT(player_id) DO UPDATE SET session_token=excluded.session_token, connected=1`,
@@ -100,7 +106,7 @@ export class MatchRoom {
 
     try {
       const msg: NetworkMessage = JSON.parse(message);
-      const session = this.sessions.get(ws);
+      const session = ws.deserializeAttachment() as SessionData | null;
       if (!session) return;
 
       msg.senderId = session.playerId;
@@ -155,7 +161,7 @@ export class MatchRoom {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
-    const session = this.sessions.get(ws);
+    const session = ws.deserializeAttachment() as SessionData | null;
     if (session) {
       this.sql.exec(`UPDATE players SET connected = 0 WHERE player_id = ?`, session.playerId);
       this.broadcast({
@@ -164,13 +170,12 @@ export class MatchRoom {
         senderId: session.playerId,
         payloadJson: JSON.stringify({ playerId: session.playerId, code, reason })
       });
-      this.sessions.delete(ws);
     }
   }
 
   private broadcast(msg: NetworkMessage, excludeWs?: WebSocket) {
     const str = JSON.stringify(msg);
-    for (const [ws] of this.sessions) {
+    for (const ws of this.state.getWebSockets()) {
       if (ws !== excludeWs) {
         try {
           ws.send(str);
@@ -184,7 +189,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/room/")) {
-      const roomCode = url.pathname.split("/")[2] || "DEFAULT_ROOM";
+      const parts = url.pathname.split("/");
+      const roomCode = parts[2] || "DEFAULT_ROOM";
       const id = env.MATCH_ROOM.idFromName(roomCode);
       const stub = env.MATCH_ROOM.get(id);
       return stub.fetch(request);

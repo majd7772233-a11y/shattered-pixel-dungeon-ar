@@ -58,8 +58,7 @@ public class LANTransport implements NetworkTransport {
             String inputLine;
             while (isConnected && (inputLine = in.readLine()) != null) {
                 if (callback != null) {
-                    NetworkMessage msg = new NetworkMessage();
-                    msg.payloadJson = inputLine;
+                    NetworkMessage msg = parseMessage(inputLine);
                     callback.onMessageReceived(msg);
                 }
             }
@@ -73,8 +72,27 @@ public class LANTransport implements NetworkTransport {
     @Override
     public void send(NetworkMessage message) {
         if (out != null && isConnected) {
-            out.println(message.payloadJson);
+            out.println(serializeMessage(message));
         }
+    }
+
+    private String serializeMessage(NetworkMessage msg) {
+        return "{\"messageType\":\"" + (msg.messageType != null ? msg.messageType.name() : "ACTION") + "\",\"senderId\":\"" + (msg.senderId != null ? msg.senderId : "") + "\",\"payloadJson\":" + (msg.payloadJson != null ? msg.payloadJson : "{}") + "}";
+    }
+
+    private NetworkMessage parseMessage(String jsonStr) {
+        NetworkMessage msg = new NetworkMessage();
+        msg.payloadJson = jsonStr;
+
+        if (jsonStr.contains("\"messageType\":\"HELLO\"")) msg.messageType = MessageType.HELLO;
+        else if (jsonStr.contains("\"messageType\":\"SESSION\"")) msg.messageType = MessageType.SESSION;
+        else if (jsonStr.contains("\"messageType\":\"ACTION\"")) msg.messageType = MessageType.ACTION;
+        else if (jsonStr.contains("\"messageType\":\"ACTION_ACCEPTED\"")) msg.messageType = MessageType.ACTION_ACCEPTED;
+        else if (jsonStr.contains("\"messageType\":\"EVENT_BATCH\"")) msg.messageType = MessageType.EVENT_BATCH;
+        else if (jsonStr.contains("\"messageType\":\"PING\"")) msg.messageType = MessageType.PING;
+        else msg.messageType = MessageType.ACTION;
+
+        return msg;
     }
 
     @Override
