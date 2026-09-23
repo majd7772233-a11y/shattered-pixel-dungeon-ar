@@ -1,0 +1,16 @@
+{
+  "name": "spd-multiplayer-backend",
+  "version": "1.0.0",
+  "description": "Cloudflare Workers & Durable Objects WebSocket backend for SPD AR Multiplayer",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240320.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
