@@ -23,7 +23,11 @@ public class MultiplayerManager {
         return instance;
     }
 
-    public void startSession(String roomCode, String localPlayerId, NetworkTransport transport) {
+    public void startSession(String roomCode, String localPlayerId, NetworkTransport transport) throws IllegalArgumentException {
+        if ("BLUETOOTH".equalsIgnoreCase(transport.getTransportType()) && remotePlayers.size() >= BluetoothTransport.MAX_BLUETOOTH_PLAYERS) {
+            throw new IllegalArgumentException("Bluetooth supports a maximum of 2 players.");
+        }
+
         this.roomCode = roomCode;
         this.localPlayerId = localPlayerId;
         this.activeTransport = transport;
@@ -57,6 +61,10 @@ public class MultiplayerManager {
     }
 
     public void addRemotePlayer(RemotePlayer player) {
+        if (activeTransport != null && "BLUETOOTH".equalsIgnoreCase(activeTransport.getTransportType())
+                && remotePlayers.size() >= (BluetoothTransport.MAX_BLUETOOTH_PLAYERS - 1)) {
+            throw new IllegalStateException("Bluetooth multiplayer allows only 2 players max.");
+        }
         remotePlayers.put(player.playerId, player);
     }
 
