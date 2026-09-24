@@ -23,7 +23,7 @@ public class NetworkActionBridge {
             return NetworkActionType.LVL_TRANSITION;
         } else if (action instanceof HeroAction.Mine) {
             return NetworkActionType.MINE;
-        } else if (action instanceof HeroAction.Cook) {
+        } else if (action instanceof HeroAction.Alchemy) {
             return NetworkActionType.ALCHEMY;
         }
         return NetworkActionType.WAIT;
