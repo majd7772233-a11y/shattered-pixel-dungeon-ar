@@ -332,13 +332,20 @@ public class TitleScene extends PixelScene {
 				Icons.get(Icons.NEWS)
 		);
 
-		btnChanges = new ChangesButton(
+		btnChanges = new StyledButton(
 				GREY_TR,
-				Messages.get(this, "changes")
-		);
+				Messages.get("ui.multiplayer", "multiplayer_button")
+		){
+			@Override
+			protected void onClick() {
+				ShatteredPixelDungeon.switchScene(
+						MultiplayerTransportScene.class
+				);
+			}
+		};
 
 		btnChanges.icon(
-				Icons.get(Icons.CHANGES)
+				Icons.get(Icons.ENTER)
 		);
 
 		add(btnChanges);
