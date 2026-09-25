@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-public class MultiplayerManager {
+public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
 
     private boolean isMultiplayerActive = false;
@@ -33,6 +33,10 @@ public class MultiplayerManager {
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
+
+        try {
+            this.activeTransport.connect(roomCode, this);
+        } catch (Exception ignored) {}
     }
 
     public void endSession() {
@@ -86,4 +90,18 @@ public class MultiplayerManager {
 
         activeTransport.send(msg);
     }
+
+    @Override
+    public void onConnected() {}
+
+    @Override
+    public void onDisconnected(String reason) {}
+
+    @Override
+    public void onMessageReceived(NetworkMessage message) {
+        RemotePlayerActionReceiver.handleNetworkMessage(message);
+    }
+
+    @Override
+    public void onError(Throwable error) {}
 }

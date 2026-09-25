@@ -16,10 +16,21 @@ export interface SessionData {
   sessionToken: string;
 }
 
+export interface PlayerState {
+  playerId: string;
+  heroClass: string;
+  pos: number;
+  hp: number;
+  ht: number;
+  ready: boolean;
+}
+
 export class MatchRoom {
   state: DurableObjectState;
   sql: SqlStorage;
   currentSequence: number = 0;
+  matchSeed: number = 123456789;
+  gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -36,7 +47,10 @@ export class MatchRoom {
       CREATE TABLE IF NOT EXISTS players (
         player_id TEXT PRIMARY KEY,
         session_token TEXT,
-        class_name TEXT,
+        class_name TEXT DEFAULT 'WARRIOR',
+        pos INTEGER DEFAULT 0,
+        hp INTEGER DEFAULT 20,
+        ht INTEGER DEFAULT 20,
         ready INTEGER DEFAULT 0,
         connected INTEGER DEFAULT 1
       );
@@ -52,6 +66,14 @@ export class MatchRoom {
     const seqRow = this.sql.exec(`SELECT MAX(sequence) as max_seq FROM events`).toArray();
     if (seqRow.length > 0 && seqRow[0].max_seq !== null) {
       this.currentSequence = Number(seqRow[0].max_seq);
+    }
+
+    const metaRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'seed'`).toArray();
+    if (metaRow.length > 0) {
+      this.matchSeed = Number(metaRow[0].value);
+    } else {
+      this.matchSeed = Math.floor(Math.random() * 1000000000);
+      this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('seed', ?)`, this.matchSeed.toString());
     }
   }
 
@@ -79,15 +101,16 @@ export class MatchRoom {
         sessionToken
       );
 
-      // Welcome message
+      // Send Session Welcome
       const welcome: NetworkMessage = {
         protocolVersion: "1.0.0",
         messageType: "SESSION",
         sequence: this.currentSequence,
-        payloadJson: JSON.stringify({ playerId, sessionToken, sequence: this.currentSequence })
+        payloadJson: JSON.stringify({ playerId, sessionToken, sequence: this.currentSequence, seed: this.matchSeed })
       };
       server.send(JSON.stringify(welcome));
 
+      // Broadcast Player Joined
       this.broadcast({
         protocolVersion: "1.0.0",
         messageType: "PLAYER_JOINED",
@@ -114,6 +137,18 @@ export class MatchRoom {
       if (msg.messageType === "ACTION") {
         this.currentSequence++;
         msg.sequence = this.currentSequence;
+
+        // Parse Action details for state validation
+        try {
+          const payload = JSON.parse(msg.payloadJson);
+          if (payload.data && typeof payload.data.pos === "number") {
+            this.sql.exec(
+              `UPDATE players SET pos = ? WHERE player_id = ?`,
+              payload.data.pos,
+              session.playerId
+            );
+          }
+        } catch (_) {}
 
         this.sql.exec(
           `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, ?, ?, ?)`,
@@ -142,6 +177,27 @@ export class MatchRoom {
           payloadJson: JSON.stringify([{ sequence: this.currentSequence, action: msg.payloadJson }])
         }, ws);
 
+      } else if (msg.messageType === "READY") {
+        this.sql.exec(`UPDATE players SET ready = 1 WHERE player_id = ?`, session.playerId);
+        this.broadcast({
+          protocolVersion: "1.0.0",
+          messageType: "READY",
+          senderId: session.playerId,
+          payloadJson: JSON.stringify({ playerId: session.playerId, ready: true })
+        });
+      } else if (msg.messageType === "RESYNC") {
+        const events = this.sql.exec(`SELECT sequence, sender_id, payload FROM events ORDER BY sequence ASC`).toArray();
+        const snapshotMsg: NetworkMessage = {
+          protocolVersion: "1.0.0",
+          messageType: "SNAPSHOT",
+          sequence: this.currentSequence,
+          payloadJson: JSON.stringify({
+            sequence: this.currentSequence,
+            seed: this.matchSeed,
+            events
+          })
+        };
+        ws.send(JSON.stringify(snapshotMsg));
       } else if (msg.messageType === "PING") {
         ws.send(JSON.stringify({
           protocolVersion: "1.0.0",
