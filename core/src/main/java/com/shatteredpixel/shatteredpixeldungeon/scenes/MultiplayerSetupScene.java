@@ -7,9 +7,7 @@ import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.InternetTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.LANTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
-import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkMessage;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkTransport;
-import com.shatteredpixel.shatteredpixeldungeon.multiplayer.TransportCallback;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Icons;
 import com.shatteredpixel.shatteredpixeldungeon.ui.StyledButton;
 import com.watabou.noosa.BitmapText;
@@ -72,23 +70,7 @@ public class MultiplayerSetupScene extends PixelScene {
         }
 
         String playerId = UUID.randomUUID().toString();
-        MultiplayerManager.getInstance().startSession(roomName, playerId, transport);
-
-        try {
-            transport.connect(endpoint, new TransportCallback() {
-                @Override
-                public void onConnected() {}
-
-                @Override
-                public void onDisconnected(String reason) {}
-
-                @Override
-                public void onMessageReceived(NetworkMessage message) {}
-
-                @Override
-                public void onError(Throwable error) {}
-            });
-        } catch (Exception ignored) {}
+        MultiplayerManager.getInstance().startSession(endpoint, playerId, transport);
 
         ShatteredPixelDungeon.switchNoFade(HeroSelectScene.class);
     }
