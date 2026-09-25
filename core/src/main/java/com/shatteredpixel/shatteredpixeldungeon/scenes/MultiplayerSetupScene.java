@@ -59,14 +59,22 @@ public class MultiplayerSetupScene extends PixelScene {
         String endpoint;
 
         if ("LAN".equalsIgnoreCase(selectedTransportType)) {
-            transport = new LANTransport();
+            LANTransport lan = new LANTransport();
+            try {
+                lan.startServer(8080, null);
+            } catch (Exception ignored) {}
+            transport = lan;
             endpoint = "127.0.0.1:8080";
         } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
-            transport = new BluetoothTransport();
+            BluetoothTransport bt = new BluetoothTransport();
+            try {
+                bt.startBluetoothServer(8990, null);
+            } catch (Exception ignored) {}
+            transport = bt;
             endpoint = "127.0.0.1:8990";
         } else {
             transport = new InternetTransport();
-            endpoint = "http://spd-multiplayer.majd7772233.workers.dev/room/" + roomName + "/websocket";
+            endpoint = "https://spd-multiplayer.majd7772233.workers.dev/room/" + roomName + "/websocket";
         }
 
         String playerId = UUID.randomUUID().toString();

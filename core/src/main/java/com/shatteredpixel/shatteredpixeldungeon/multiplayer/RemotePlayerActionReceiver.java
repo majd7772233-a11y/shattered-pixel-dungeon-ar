@@ -15,15 +15,18 @@ public class RemotePlayerActionReceiver {
             RemotePlayer remote = manager.getRemotePlayer(message.senderId);
             if (remote == null) {
                 remote = new RemotePlayer(message.senderId, "Player", "WARRIOR");
+                remote.heroInstance = new Hero();
+                remote.heroInstance.pos = remote.pos;
                 manager.addRemotePlayer(remote);
             }
 
             int newPos = parsePositionKey(message.payloadJson);
             if (newPos != -1) {
                 remote.pos = newPos;
-                if (remote.heroInstance != null) {
-                    remote.heroInstance.pos = newPos;
+                if (remote.heroInstance == null) {
+                    remote.heroInstance = new Hero();
                 }
+                remote.heroInstance.pos = newPos;
             }
         }
     }

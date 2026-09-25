@@ -19,7 +19,7 @@ public class InternetTransport implements NetworkTransport {
         this.callback = callback;
         URI uri = new URI(endpoint != null ? endpoint : "https://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket");
         String host = uri.getHost() != null ? uri.getHost() : "spd-multiplayer.majd7772233.workers.dev";
-        boolean isSsl = uri.getScheme() != null && (uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("wss"));
+        boolean isSsl = uri.getScheme() == null || uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("wss");
         int port = uri.getPort() != -1 ? uri.getPort() : (isSsl ? 443 : 80);
         String path = uri.getPath() != null && !uri.getPath().isEmpty() ? uri.getPath() : "/room/DEFAULT_ROOM/websocket";
 
@@ -153,9 +153,10 @@ public class InternetTransport implements NetworkTransport {
     public void send(NetworkMessage message) {
         if (!isConnected || out == null) return;
         try {
+            String escapedPayload = message.payloadJson != null ? message.payloadJson.replace("\"", "\\\"") : "{}";
             String json = "{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
                     "\",\"senderId\":\"" + (message.senderId != null ? message.senderId : "") +
-                    "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}";
+                    "\",\"payloadJson\":\"" + escapedPayload + "\"}";
 
             byte[] payload = json.getBytes("UTF-8");
             byte[] mask = new byte[4];
