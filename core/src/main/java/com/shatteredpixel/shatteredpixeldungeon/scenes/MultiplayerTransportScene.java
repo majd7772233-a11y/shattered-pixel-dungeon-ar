@@ -1,13 +1,10 @@
 package com.shatteredpixel.shatteredpixeldungeon.scenes;
 
 import com.shatteredpixel.shatteredpixeldungeon.Chrome;
+import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
-import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothTransport;
-import com.shatteredpixel.shatteredpixeldungeon.multiplayer.InternetTransport;
-import com.shatteredpixel.shatteredpixeldungeon.multiplayer.LANTransport;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Icons;
 import com.shatteredpixel.shatteredpixeldungeon.ui.StyledButton;
-import com.shatteredpixel.shatteredpixeldungeon.ui.Window;
 import com.watabou.noosa.Camera;
 
 public class MultiplayerTransportScene extends PixelScene {
@@ -22,7 +19,8 @@ public class MultiplayerTransportScene extends PixelScene {
         StyledButton btnInternet = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "internet_mode")) {
             @Override
             protected void onClick() {
-                // Navigate to Hero Select then Room Setup with Internet Transport
+                MultiplayerSetupScene.selectedTransportType = "INTERNET";
+                ShatteredPixelDungeon.switchScene(MultiplayerSetupScene.class);
             }
         };
         btnInternet.icon(Icons.get(Icons.ENTER));
@@ -32,7 +30,8 @@ public class MultiplayerTransportScene extends PixelScene {
         StyledButton btnLAN = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "lan_mode")) {
             @Override
             protected void onClick() {
-                // Navigate to Hero Select then Room Setup with LAN Transport
+                MultiplayerSetupScene.selectedTransportType = "LAN";
+                ShatteredPixelDungeon.switchScene(MultiplayerSetupScene.class);
             }
         };
         btnLAN.icon(Icons.get(Icons.RESUME));
@@ -42,7 +41,8 @@ public class MultiplayerTransportScene extends PixelScene {
         StyledButton btnBluetooth = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "bluetooth_mode")) {
             @Override
             protected void onClick() {
-                // Navigate to Hero Select then Room Setup with Bluetooth Transport (2 players max)
+                MultiplayerSetupScene.selectedTransportType = "BLUETOOTH";
+                ShatteredPixelDungeon.switchScene(MultiplayerSetupScene.class);
             }
         };
         btnBluetooth.icon(Icons.get(Icons.PREFS));
