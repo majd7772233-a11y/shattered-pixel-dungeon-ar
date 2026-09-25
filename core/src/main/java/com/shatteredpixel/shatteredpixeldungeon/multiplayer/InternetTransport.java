@@ -1,5 +1,6 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
+import javax.net.ssl.SSLSocketFactory;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -16,14 +17,20 @@ public class InternetTransport implements NetworkTransport {
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
         this.callback = callback;
-        URI uri = new URI(endpoint != null ? endpoint : "http://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket");
+        URI uri = new URI(endpoint != null ? endpoint : "https://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket");
         String host = uri.getHost() != null ? uri.getHost() : "spd-multiplayer.majd7772233.workers.dev";
-        int port = uri.getPort() != -1 ? uri.getPort() : 80;
-        String path = uri.getPath() != null ? uri.getPath() : "/room/DEFAULT_ROOM/websocket";
+        boolean isSsl = uri.getScheme() != null && (uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("wss"));
+        int port = uri.getPort() != -1 ? uri.getPort() : (isSsl ? 443 : 80);
+        String path = uri.getPath() != null && !uri.getPath().isEmpty() ? uri.getPath() : "/room/DEFAULT_ROOM/websocket";
 
         new Thread(() -> {
             try {
-                socket = new Socket(host, port);
+                if (isSsl) {
+                    socket = SSLSocketFactory.getDefault().createSocket(host, port);
+                } else {
+                    socket = new Socket(host, port);
+                }
+
                 in = socket.getInputStream();
                 out = socket.getOutputStream();
 
@@ -161,6 +168,11 @@ public class InternetTransport implements NetworkTransport {
                 out.write(0x80 | 126);
                 out.write((payload.length >> 8) & 0xFF);
                 out.write(payload.length & 0xFF);
+            } else {
+                out.write(0x80 | 127);
+                for (int i = 7; i >= 0; i--) {
+                    out.write((payload.length >> (i * 8)) & 0xFF);
+                }
             }
 
             out.write(mask);

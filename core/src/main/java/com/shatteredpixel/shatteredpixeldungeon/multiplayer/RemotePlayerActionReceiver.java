@@ -18,22 +18,31 @@ public class RemotePlayerActionReceiver {
                 manager.addRemotePlayer(remote);
             }
 
-            if (message.payloadJson.contains("\"pos\":")) {
-                try {
-                    int posIdx = message.payloadJson.indexOf("\"pos\":") + 6;
-                    int endIdx = message.payloadJson.indexOf("}", posIdx);
-                    if (endIdx == -1) endIdx = message.payloadJson.indexOf(",", posIdx);
-                    if (endIdx != -1) {
-                        String posStr = message.payloadJson.substring(posIdx, endIdx).trim();
-                        int newPos = Integer.parseInt(posStr);
-                        remote.pos = newPos;
+            int newPos = parsePositionKey(message.payloadJson);
+            if (newPos != -1) {
+                remote.pos = newPos;
+                if (remote.heroInstance != null) {
+                    remote.heroInstance.pos = newPos;
+                }
+            }
+        }
+    }
 
-                        if (remote.heroInstance != null) {
-                            remote.heroInstance.pos = newPos;
-                        }
+    private static int parsePositionKey(String json) {
+        String[] keys = {"\"to\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
+        for (String key : keys) {
+            if (json.contains(key)) {
+                try {
+                    int posIdx = json.indexOf(key) + key.length();
+                    int endIdx = json.indexOf("}", posIdx);
+                    if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
+                    if (endIdx != -1) {
+                        String posStr = json.substring(posIdx, endIdx).trim();
+                        return Integer.parseInt(posStr);
                     }
                 } catch (Exception ignored) {}
             }
         }
+        return -1;
     }
 }
