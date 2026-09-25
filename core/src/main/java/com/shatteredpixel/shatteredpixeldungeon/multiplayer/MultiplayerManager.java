@@ -10,6 +10,8 @@ public class MultiplayerManager implements TransportCallback {
     private boolean isMultiplayerActive = false;
     private String roomCode;
     private String localPlayerId;
+    private String sessionToken;
+    private long lastSequence = 0;
     private NetworkTransport activeTransport;
 
     private final Map<String, RemotePlayer> remotePlayers = new HashMap<>();
@@ -23,13 +25,13 @@ public class MultiplayerManager implements TransportCallback {
         return instance;
     }
 
-    public void startSession(String roomCode, String localPlayerId, NetworkTransport transport) throws IllegalArgumentException {
+    public void startSession(String roomCode, String initialPlayerId, NetworkTransport transport) throws IllegalArgumentException {
         if ("BLUETOOTH".equalsIgnoreCase(transport.getTransportType()) && remotePlayers.size() >= BluetoothTransport.MAX_BLUETOOTH_PLAYERS) {
             throw new IllegalArgumentException("Bluetooth supports a maximum of 2 players.");
         }
 
         this.roomCode = roomCode;
-        this.localPlayerId = localPlayerId;
+        this.localPlayerId = initialPlayerId;
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
@@ -58,6 +60,14 @@ public class MultiplayerManager implements TransportCallback {
 
     public String getLocalPlayerId() {
         return localPlayerId;
+    }
+
+    public String getSessionToken() {
+        return sessionToken;
+    }
+
+    public long getLastSequence() {
+        return lastSequence;
     }
 
     public Map<String, RemotePlayer> getRemotePlayers() {
@@ -99,6 +109,32 @@ public class MultiplayerManager implements TransportCallback {
 
     @Override
     public void onMessageReceived(NetworkMessage message) {
+        if (message == null) return;
+
+        if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
+            // Process authoritative SESSION handshake response
+            try {
+                if (message.payloadJson.contains("\"playerId\":")) {
+                    int pIdx = message.payloadJson.indexOf("\"playerId\":") + 12;
+                    int endP = message.payloadJson.indexOf("\"", pIdx);
+                    if (endP != -1) {
+                        this.localPlayerId = message.payloadJson.substring(pIdx, endP);
+                    }
+                }
+                if (message.payloadJson.contains("\"sessionToken\":")) {
+                    int tIdx = message.payloadJson.indexOf("\"sessionToken\":") + 16;
+                    int endT = message.payloadJson.indexOf("\"", tIdx);
+                    if (endT != -1) {
+                        this.sessionToken = message.payloadJson.substring(tIdx, endT);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (message.sequence > this.lastSequence) {
+            this.lastSequence = message.sequence;
+        }
+
         RemotePlayerActionReceiver.handleNetworkMessage(message);
     }
 
