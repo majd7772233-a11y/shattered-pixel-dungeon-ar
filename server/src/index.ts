@@ -142,9 +142,15 @@ export class MatchRoom {
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
           let targetPos = -1;
-          if (payload.to !== undefined) targetPos = payload.to;
-          else if (payload.targetPos !== undefined) targetPos = payload.targetPos;
-          else if (payload.data && payload.data.pos !== undefined) targetPos = payload.data.pos;
+          if (payload.data) {
+            if (payload.data.to !== undefined) targetPos = Number(payload.data.to);
+            else if (payload.data.targetPos !== undefined) targetPos = Number(payload.data.targetPos);
+            else if (payload.data.pos !== undefined) targetPos = Number(payload.data.pos);
+          } else {
+            if (payload.to !== undefined) targetPos = Number(payload.to);
+            else if (payload.targetPos !== undefined) targetPos = Number(payload.targetPos);
+            else if (payload.pos !== undefined) targetPos = Number(payload.pos);
+          }
 
           if (targetPos >= 0 && targetPos < 4096) {
             this.sql.exec(

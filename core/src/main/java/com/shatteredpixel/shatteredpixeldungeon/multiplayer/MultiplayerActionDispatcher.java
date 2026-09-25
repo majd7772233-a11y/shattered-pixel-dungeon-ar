@@ -15,7 +15,16 @@ public class MultiplayerActionDispatcher {
         int currentPos = Dungeon.hero != null ? Dungeon.hero.pos : 0;
         int targetPos = action.dst;
 
-        String actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"targetPos\":" + targetPos + "}";
+        String actionDetailsJson;
+        if (action instanceof HeroAction.Attack) {
+            HeroAction.Attack attackAction = (HeroAction.Attack) action;
+            int targetId = attackAction.target != null ? attackAction.target.id() : 0;
+            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"targetPos\":" + targetPos + ",\"targetId\":" + targetId + "}";
+        } else if (action instanceof HeroAction.PickUp || action instanceof HeroAction.OpenChest) {
+            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"itemPos\":" + targetPos + "}";
+        } else {
+            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"targetPos\":" + targetPos + "}";
+        }
 
         manager.sendAction(actionType, actionDetailsJson);
     }
