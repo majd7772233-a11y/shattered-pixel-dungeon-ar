@@ -31,6 +31,7 @@ export class MatchRoom {
   currentSequence: number = 0;
   matchSeed: number = 123456789;
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
+  processedRequestIds: Set<string> = new Set();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -135,10 +136,27 @@ export class MatchRoom {
       msg.senderId = session.playerId;
 
       if (msg.messageType === "ACTION") {
+        // Request deduplication
+        if (msg.requestId && this.processedRequestIds.has(msg.requestId)) {
+          const dupAck: NetworkMessage = {
+            protocolVersion: "1.0.0",
+            messageType: "ACTION_ACCEPTED",
+            requestId: msg.requestId,
+            sequence: this.currentSequence,
+            payloadJson: JSON.stringify({ status: "DUPLICATE", sequence: this.currentSequence })
+          };
+          ws.send(JSON.stringify(dupAck));
+          return;
+        }
+
+        if (msg.requestId) {
+          this.processedRequestIds.add(msg.requestId);
+        }
+
         this.currentSequence++;
         msg.sequence = this.currentSequence;
 
-        // Parse Action details for authoritative move validation
+        let eventType = "PLAYER_MOVED";
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
           let targetPos = -1;
@@ -151,6 +169,10 @@ export class MatchRoom {
             else if (payload.targetPos !== undefined) targetPos = Number(payload.targetPos);
             else if (payload.pos !== undefined) targetPos = Number(payload.pos);
           }
+
+          if (payload.action === "ATTACK") eventType = "PLAYER_ATTACKED";
+          else if (payload.action === "PICKUP") eventType = "ITEM_PICKED_UP";
+          else if (payload.action === "OPEN_CHEST") eventType = "CHEST_OPENED";
 
           if (targetPos >= 0 && targetPos < 4096) {
             this.sql.exec(
@@ -165,7 +187,7 @@ export class MatchRoom {
           `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, ?, ?, ?)`,
           this.currentSequence,
           session.playerId,
-          "ACTION",
+          eventType,
           typeof msg.payloadJson === "string" ? msg.payloadJson : JSON.stringify(msg.payloadJson)
         );
 
@@ -185,7 +207,7 @@ export class MatchRoom {
           messageType: "EVENT_BATCH",
           senderId: session.playerId,
           sequence: this.currentSequence,
-          payloadJson: JSON.stringify([{ sequence: this.currentSequence, action: msg.payloadJson }])
+          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType, action: msg.payloadJson }])
         }, ws);
 
       } else if (msg.messageType === "READY") {
@@ -197,7 +219,7 @@ export class MatchRoom {
           payloadJson: JSON.stringify({ playerId: session.playerId, ready: true })
         });
       } else if (msg.messageType === "RESYNC") {
-        const events = this.sql.exec(`SELECT sequence, sender_id, payload FROM events ORDER BY sequence ASC`).toArray();
+        const events = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC`).toArray();
         const snapshotMsg: NetworkMessage = {
           protocolVersion: "1.0.0",
           messageType: "SNAPSHOT",
