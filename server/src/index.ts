@@ -55,6 +55,11 @@ export class MatchRoom {
         ready INTEGER DEFAULT 0,
         connected INTEGER DEFAULT 1
       );
+      CREATE TABLE IF NOT EXISTS claimed_items (
+        item_pos INTEGER PRIMARY KEY,
+        claimed_by TEXT,
+        claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
       CREATE TABLE IF NOT EXISTS events (
         sequence INTEGER PRIMARY KEY,
         sender_id TEXT,
@@ -170,9 +175,30 @@ export class MatchRoom {
             else if (payload.pos !== undefined) targetPos = Number(payload.pos);
           }
 
-          if (payload.action === "ATTACK") eventType = "PLAYER_ATTACKED";
-          else if (payload.action === "PICKUP") eventType = "ITEM_PICKED_UP";
-          else if (payload.action === "OPEN_CHEST") eventType = "CHEST_OPENED";
+          const actionStr = payload.action || payload.data?.action;
+          if (actionStr === "ATTACK") eventType = "PLAYER_ATTACKED";
+          else if (actionStr === "PICKUP") eventType = "ITEM_PICKED_UP";
+          else if (actionStr === "OPEN_CHEST") eventType = "CHEST_OPENED";
+          else if (actionStr === "REVIVE") eventType = "PLAYER_REVIVED";
+
+          // Atomic Loot Claim Logic
+          if (actionStr === "PICKUP" || actionStr === "OPEN_CHEST") {
+            const itemPos = payload.data?.itemPos ?? targetPos;
+            const existingClaim = this.sql.exec(`SELECT claimed_by FROM claimed_items WHERE item_pos = ?`, itemPos).toArray();
+            if (existingClaim.length > 0) {
+              const rejectAck: NetworkMessage = {
+                protocolVersion: "1.0.0",
+                messageType: "ERROR",
+                requestId: msg.requestId,
+                sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos })
+              };
+              ws.send(JSON.stringify(rejectAck));
+              return;
+            } else {
+              this.sql.exec(`INSERT INTO claimed_items (item_pos, claimed_by) VALUES (?, ?)`, itemPos, session.playerId);
+            }
+          }
 
           if (targetPos >= 0 && targetPos < 4096) {
             this.sql.exec(
@@ -220,6 +246,8 @@ export class MatchRoom {
         });
       } else if (msg.messageType === "RESYNC") {
         const events = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC`).toArray();
+        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready FROM players`).toArray();
+        const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items`).toArray();
         const snapshotMsg: NetworkMessage = {
           protocolVersion: "1.0.0",
           messageType: "SNAPSHOT",
@@ -227,6 +255,8 @@ export class MatchRoom {
           payloadJson: JSON.stringify({
             sequence: this.currentSequence,
             seed: this.matchSeed,
+            players,
+            claims,
             events
           })
         };
