@@ -1,14 +1,14 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.URI;
+import java.security.SecureRandom;
 
 public class InternetTransport implements NetworkTransport {
     private Socket socket;
-    private BufferedReader reader;
+    private InputStream in;
     private OutputStream out;
     private boolean isConnected = false;
     private TransportCallback callback;
@@ -24,8 +24,8 @@ public class InternetTransport implements NetworkTransport {
         new Thread(() -> {
             try {
                 socket = new Socket(host, port);
+                in = socket.getInputStream();
                 out = socket.getOutputStream();
-                reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
 
                 // Perform WebSocket Upgrade Handshake
                 String handshake = "GET " + path + " HTTP/1.1\r\n" +
@@ -37,12 +37,13 @@ public class InternetTransport implements NetworkTransport {
                 out.write(handshake.getBytes("UTF-8"));
                 out.flush();
 
-                // Read HTTP response headers
-                String statusLine = reader.readLine();
+                // Read HTTP response status line
+                StringTextBuilder sb = new StringTextBuilder();
+                String statusLine = readLine(in, sb);
                 if (statusLine != null && (statusLine.contains("101") || statusLine.contains("200"))) {
-                    String line;
-                    while ((line = reader.readLine()) != null && !line.isEmpty()) {
-                        // Consume remaining response headers
+                    while (true) {
+                        String header = readLine(in, sb);
+                        if (header == null || header.isEmpty()) break;
                     }
 
                     isConnected = true;
@@ -50,7 +51,6 @@ public class InternetTransport implements NetworkTransport {
                         callback.onConnected();
                     }
 
-                    // Start background receive loop
                     listen();
                 } else {
                     if (callback != null) callback.onError(new Exception("WebSocket Handshake Failed: " + statusLine));
@@ -61,12 +61,62 @@ public class InternetTransport implements NetworkTransport {
         }).start();
     }
 
+    private String readLine(InputStream is, StringTextBuilder sb) throws Exception {
+        sb.clear();
+        int b;
+        while ((b = is.read()) != -1) {
+            if (b == '\r') {
+                int next = is.read();
+                if (next == '\n' || next == -1) break;
+                sb.append((char) b);
+                sb.append((char) next);
+            } else if (b == '\n') {
+                break;
+            } else {
+                sb.append((char) b);
+            }
+        }
+        return sb.toString();
+    }
+
     private void listen() {
         try {
-            String line;
-            while (isConnected && (line = reader.readLine()) != null) {
+            while (isConnected) {
+                int b1 = in.read();
+                if (b1 == -1) break;
+                int b2 = in.read();
+                if (b2 == -1) break;
+
+                int payloadLen = b2 & 0x7F;
+                if (payloadLen == 126) {
+                    payloadLen = (in.read() << 8) | in.read();
+                } else if (payloadLen == 127) {
+                    for (int i = 0; i < 8; i++) in.read();
+                }
+
+                boolean masked = (b2 & 0x80) != 0;
+                byte[] maskingKey = new byte[4];
+                if (masked) {
+                    in.read(maskingKey);
+                }
+
+                byte[] payload = new byte[payloadLen];
+                int bytesRead = 0;
+                while (bytesRead < payloadLen) {
+                    int r = in.read(payload, bytesRead, payloadLen - bytesRead);
+                    if (r == -1) break;
+                    bytesRead += r;
+                }
+
+                if (masked) {
+                    for (int i = 0; i < payloadLen; i++) {
+                        payload[i] ^= maskingKey[i % 4];
+                    }
+                }
+
+                String jsonStr = new String(payload, "UTF-8");
                 if (callback != null) {
-                    NetworkMessage msg = parseMessage(line);
+                    NetworkMessage msg = parseMessage(jsonStr);
                     callback.onMessageReceived(msg);
                 }
             }
@@ -98,8 +148,25 @@ public class InternetTransport implements NetworkTransport {
         try {
             String json = "{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
                     "\",\"senderId\":\"" + (message.senderId != null ? message.senderId : "") +
-                    "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}\n";
-            out.write(json.getBytes("UTF-8"));
+                    "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}";
+
+            byte[] payload = json.getBytes("UTF-8");
+            byte[] mask = new byte[4];
+            new SecureRandom().nextBytes(mask);
+
+            out.write(0x81); // Text frame
+            if (payload.length <= 125) {
+                out.write(0x80 | payload.length);
+            } else if (payload.length <= 65535) {
+                out.write(0x80 | 126);
+                out.write((payload.length >> 8) & 0xFF);
+                out.write(payload.length & 0xFF);
+            }
+
+            out.write(mask);
+            for (int i = 0; i < payload.length; i++) {
+                out.write(payload[i] ^ mask[i % 4]);
+            }
             out.flush();
         } catch (Exception e) {
             if (callback != null) callback.onError(e);
@@ -110,7 +177,7 @@ public class InternetTransport implements NetworkTransport {
     public void disconnect() {
         this.isConnected = false;
         try {
-            if (reader != null) reader.close();
+            if (in != null) in.close();
             if (out != null) out.close();
             if (socket != null) socket.close();
         } catch (Exception ignored) {}
@@ -127,5 +194,12 @@ public class InternetTransport implements NetworkTransport {
     @Override
     public String getTransportType() {
         return "INTERNET";
+    }
+
+    private static class StringTextBuilder {
+        private final StringBuilder sb = new StringBuilder();
+        public void append(char c) { sb.append(c); }
+        public void clear() { sb.setLength(0); }
+        public String toString() { return sb.toString(); }
     }
 }
