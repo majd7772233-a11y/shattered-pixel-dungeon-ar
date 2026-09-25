@@ -20,7 +20,8 @@ public class RemotePlayerActionReceiver {
                 manager.addRemotePlayer(remote);
             }
 
-            int newPos = parsePositionKey(message.payloadJson);
+            String unescaped = unescapeJson(message.payloadJson);
+            int newPos = parsePositionKey(unescaped);
             if (newPos != -1) {
                 remote.pos = newPos;
                 if (remote.heroInstance == null) {
@@ -29,6 +30,11 @@ public class RemotePlayerActionReceiver {
                 remote.heroInstance.pos = newPos;
             }
         }
+    }
+
+    private static String unescapeJson(String input) {
+        if (input == null) return "";
+        return input.replace("\\\"", "\"").replace("\\\\", "\\");
     }
 
     private static int parsePositionKey(String json) {
@@ -40,7 +46,7 @@ public class RemotePlayerActionReceiver {
                     int endIdx = json.indexOf("}", posIdx);
                     if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
                     if (endIdx != -1) {
-                        String posStr = json.substring(posIdx, endIdx).trim();
+                        String posStr = json.substring(posIdx, endIdx).replace("\"", "").trim();
                         return Integer.parseInt(posStr);
                     }
                 } catch (Exception ignored) {}

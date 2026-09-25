@@ -138,13 +138,18 @@ export class MatchRoom {
         this.currentSequence++;
         msg.sequence = this.currentSequence;
 
-        // Parse Action details for state validation
+        // Parse Action details for authoritative move validation
         try {
-          const payload = JSON.parse(msg.payloadJson);
-          if (payload.data && typeof payload.data.pos === "number") {
+          const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
+          let targetPos = -1;
+          if (payload.to !== undefined) targetPos = payload.to;
+          else if (payload.targetPos !== undefined) targetPos = payload.targetPos;
+          else if (payload.data && payload.data.pos !== undefined) targetPos = payload.data.pos;
+
+          if (targetPos >= 0 && targetPos < 4096) {
             this.sql.exec(
               `UPDATE players SET pos = ? WHERE player_id = ?`,
-              payload.data.pos,
+              targetPos,
               session.playerId
             );
           }
@@ -155,7 +160,7 @@ export class MatchRoom {
           this.currentSequence,
           session.playerId,
           "ACTION",
-          msg.payloadJson
+          typeof msg.payloadJson === "string" ? msg.payloadJson : JSON.stringify(msg.payloadJson)
         );
 
         // Send ACK back to sender
