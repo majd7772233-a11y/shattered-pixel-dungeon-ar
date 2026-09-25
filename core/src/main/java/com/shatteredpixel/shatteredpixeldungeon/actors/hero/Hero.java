@@ -886,6 +886,8 @@ public class Hero extends Char {
 			
 			ready = false;
 			
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerActionDispatcher.onHeroPerformAction(curAction);
+
 			if (curAction instanceof HeroAction.Move) {
 				actResult = actMove( (HeroAction.Move)curAction );
 				
