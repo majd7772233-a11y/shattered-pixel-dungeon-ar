@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
@@ -16,6 +17,7 @@ public class MultiplayerManager implements TransportCallback {
     private NetworkTransport activeTransport;
 
     private final Map<String, RemotePlayer> remotePlayers = new HashMap<>();
+    private final Map<String, NetworkMessage> pendingActions = new ConcurrentHashMap<>();
 
     private MultiplayerManager() {}
 
@@ -36,6 +38,7 @@ public class MultiplayerManager implements TransportCallback {
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
+        this.pendingActions.clear();
 
         try {
             this.activeTransport.connect(roomCode, this);
@@ -49,6 +52,7 @@ public class MultiplayerManager implements TransportCallback {
             activeTransport = null;
         }
         this.remotePlayers.clear();
+        this.pendingActions.clear();
     }
 
     public boolean isMultiplayerActive() {
@@ -100,6 +104,10 @@ public class MultiplayerManager implements TransportCallback {
         msg.requestId = UUID.randomUUID().toString();
         msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson + "}";
 
+        if (msg.requestId != null) {
+            pendingActions.put(msg.requestId, msg);
+        }
+
         activeTransport.send(msg);
     }
 
@@ -128,6 +136,10 @@ public class MultiplayerManager implements TransportCallback {
     @Override
     public void onMessageReceived(NetworkMessage message) {
         if (message == null) return;
+
+        if (message.messageType == MessageType.ACTION_ACCEPTED && message.requestId != null) {
+            pendingActions.remove(message.requestId);
+        }
 
         if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
             try {

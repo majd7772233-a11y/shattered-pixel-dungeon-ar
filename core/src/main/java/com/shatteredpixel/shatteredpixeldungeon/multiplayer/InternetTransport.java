@@ -103,6 +103,9 @@ public class InternetTransport implements NetworkTransport {
                 if (opcode == 0x8) { // Close frame
                     disconnect();
                     break;
+                } else if (opcode == 0x9) { // Ping frame - respond with Pong
+                    sendPong();
+                    continue;
                 }
 
                 int payloadLen = b2 & 0x7F;
@@ -136,7 +139,7 @@ public class InternetTransport implements NetworkTransport {
                     }
                 }
 
-                if (opcode == 0x1) { // Text frame
+                if (opcode == 0x1 || opcode == 0x0) { // Text or Continuation frame
                     String jsonStr = new String(payload, "UTF-8");
                     if (callback != null) {
                         NetworkMessage msg = parseMessage(jsonStr);
@@ -149,6 +152,18 @@ public class InternetTransport implements NetworkTransport {
         } finally {
             disconnect();
         }
+    }
+
+    private void sendPong() {
+        if (!isConnected || out == null) return;
+        try {
+            byte[] mask = new byte[4];
+            new SecureRandom().nextBytes(mask);
+            out.write(0x8A); // Pong opcode
+            out.write(0x80); // 0 length masked
+            out.write(mask);
+            out.flush();
+        } catch (Exception ignored) {}
     }
 
     private NetworkMessage parseMessage(String jsonStr) {
