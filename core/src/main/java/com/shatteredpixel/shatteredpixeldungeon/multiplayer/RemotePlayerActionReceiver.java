@@ -2,6 +2,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 
 public class RemotePlayerActionReceiver {
 
@@ -21,13 +22,49 @@ public class RemotePlayerActionReceiver {
             }
 
             String unescaped = unescapeJson(message.payloadJson);
-            int newPos = parsePositionKey(unescaped);
-            if (newPos != -1) {
-                remote.pos = newPos;
-                if (remote.heroInstance == null) {
-                    remote.heroInstance = new Hero();
+
+            // Handle PLAYER_MOVED
+            if (message.messageType == MessageType.EVENT_BATCH || unescaped.contains("PLAYER_MOVED") || unescaped.contains("\"action\":\"MOVE\"")) {
+                int newPos = parsePositionKey(unescaped);
+                if (newPos != -1) {
+                    remote.pos = newPos;
+                    if (remote.heroInstance == null) {
+                        remote.heroInstance = new Hero();
+                    }
+                    remote.heroInstance.pos = newPos;
                 }
-                remote.heroInstance.pos = newPos;
+            }
+
+            // Handle ITEM_PICKED_UP / CHEST_OPENED
+            if (unescaped.contains("ITEM_PICKED_UP") || unescaped.contains("CHEST_OPENED") || unescaped.contains("\"action\":\"PICKUP\"")) {
+                int itemPos = parsePositionKey(unescaped);
+                if (itemPos != -1 && Dungeon.level != null) {
+                    Heap heap = Dungeon.level.heaps.get(itemPos);
+                    if (heap != null) {
+                        Dungeon.level.heaps.remove(itemPos);
+                        if (heap.sprite != null) {
+                            heap.sprite.remove();
+                        }
+                    }
+                }
+            }
+
+            // Handle CHAR_DAMAGED / CHAR_DIED
+            if (unescaped.contains("CHAR_DAMAGED") || unescaped.contains("\"hp\":")) {
+                int hp = parseHpKey(unescaped);
+                if (hp != -1) {
+                    remote.hp = hp;
+                    if (remote.heroInstance != null) {
+                        remote.heroInstance.HP = hp;
+                    }
+                }
+            }
+
+            if (unescaped.contains("CHAR_DIED")) {
+                remote.isAlive = false;
+                if (remote.heroInstance != null) {
+                    remote.heroInstance.HP = 0;
+                }
             }
         }
     }
@@ -38,7 +75,7 @@ public class RemotePlayerActionReceiver {
     }
 
     private static int parsePositionKey(String json) {
-        String[] keys = {"\"to\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
+        String[] keys = {"\"to\":", "\"itemPos\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
         for (String key : keys) {
             if (json.contains(key)) {
                 try {
@@ -51,6 +88,21 @@ public class RemotePlayerActionReceiver {
                     }
                 } catch (Exception ignored) {}
             }
+        }
+        return -1;
+    }
+
+    private static int parseHpKey(String json) {
+        if (json.contains("\"hp\":")) {
+            try {
+                int posIdx = json.indexOf("\"hp\":") + 5;
+                int endIdx = json.indexOf("}", posIdx);
+                if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
+                if (endIdx != -1) {
+                    String hpStr = json.substring(posIdx, endIdx).replace("\"", "").trim();
+                    return Integer.parseInt(hpStr);
+                }
+            } catch (Exception ignored) {}
         }
         return -1;
     }

@@ -165,14 +165,20 @@ export class MatchRoom {
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
           let targetPos = -1;
+          let fromPos = -1;
+
           if (payload.data) {
             if (payload.data.to !== undefined) targetPos = Number(payload.data.to);
             else if (payload.data.targetPos !== undefined) targetPos = Number(payload.data.targetPos);
             else if (payload.data.pos !== undefined) targetPos = Number(payload.data.pos);
+
+            if (payload.data.from !== undefined) fromPos = Number(payload.data.from);
           } else {
             if (payload.to !== undefined) targetPos = Number(payload.to);
             else if (payload.targetPos !== undefined) targetPos = Number(payload.targetPos);
             else if (payload.pos !== undefined) targetPos = Number(payload.pos);
+
+            if (payload.from !== undefined) fromPos = Number(payload.from);
           }
 
           const actionStr = payload.action || payload.data?.action;
@@ -180,6 +186,33 @@ export class MatchRoom {
           else if (actionStr === "PICKUP") eventType = "ITEM_PICKED_UP";
           else if (actionStr === "OPEN_CHEST") eventType = "CHEST_OPENED";
           else if (actionStr === "REVIVE") eventType = "PLAYER_REVIVED";
+
+          // Authoritative MOVE step distance validation (max 1 step on 64-wide map)
+          if (targetPos >= 0 && targetPos < 4096) {
+            if (fromPos >= 0) {
+              const fromX = fromPos % 64;
+              const fromY = Math.floor(fromPos / 64);
+              const toX = targetPos % 64;
+              const toY = Math.floor(targetPos / 64);
+
+              const dx = Math.abs(fromX - toX);
+              const dy = Math.abs(fromY - toY);
+
+              if (dx <= 1 && dy <= 1) {
+                this.sql.exec(
+                  `UPDATE players SET pos = ? WHERE player_id = ?`,
+                  targetPos,
+                  session.playerId
+                );
+              }
+            } else {
+              this.sql.exec(
+                `UPDATE players SET pos = ? WHERE player_id = ?`,
+                targetPos,
+                session.playerId
+              );
+            }
+          }
 
           // Atomic Loot Claim Logic
           if (actionStr === "PICKUP" || actionStr === "OPEN_CHEST") {
@@ -198,14 +231,6 @@ export class MatchRoom {
             } else {
               this.sql.exec(`INSERT INTO claimed_items (item_pos, claimed_by) VALUES (?, ?)`, itemPos, session.playerId);
             }
-          }
-
-          if (targetPos >= 0 && targetPos < 4096) {
-            this.sql.exec(
-              `UPDATE players SET pos = ? WHERE player_id = ?`,
-              targetPos,
-              session.playerId
-            );
           }
         } catch (_) {}
 
