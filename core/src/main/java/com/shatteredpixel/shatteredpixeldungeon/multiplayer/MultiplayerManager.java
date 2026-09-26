@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
@@ -96,13 +97,30 @@ public class MultiplayerManager implements TransportCallback {
         NetworkMessage msg = new NetworkMessage();
         msg.messageType = MessageType.ACTION;
         msg.senderId = localPlayerId;
+        msg.requestId = UUID.randomUUID().toString();
         msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson + "}";
 
         activeTransport.send(msg);
     }
 
+    public void sendReconnect() {
+        if (!isMultiplayerActive || activeTransport == null || sessionToken == null) return;
+
+        NetworkMessage msg = new NetworkMessage();
+        msg.messageType = MessageType.RECONNECT;
+        msg.senderId = localPlayerId;
+        msg.requestId = UUID.randomUUID().toString();
+        msg.payloadJson = "{\"sessionToken\":\"" + sessionToken + "\", \"lastSequence\":" + lastSequence + "}";
+
+        activeTransport.send(msg);
+    }
+
     @Override
-    public void onConnected() {}
+    public void onConnected() {
+        if (sessionToken != null) {
+            sendReconnect();
+        }
+    }
 
     @Override
     public void onDisconnected(String reason) {}
@@ -112,7 +130,6 @@ public class MultiplayerManager implements TransportCallback {
         if (message == null) return;
 
         if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
-            // Process authoritative SESSION handshake response
             try {
                 if (message.payloadJson.contains("\"playerId\":")) {
                     int pIdx = message.payloadJson.indexOf("\"playerId\":") + 12;

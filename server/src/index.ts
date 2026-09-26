@@ -140,6 +140,39 @@ export class MatchRoom {
 
       msg.senderId = session.playerId;
 
+      if (msg.messageType === "RECONNECT") {
+        try {
+          const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
+          const token = payload.sessionToken;
+          const lastSeq = payload.lastSequence !== undefined ? Number(payload.lastSequence) : 0;
+
+          const playerRow = this.sql.exec(`SELECT player_id FROM players WHERE session_token = ?`, token).toArray();
+          if (playerRow.length > 0) {
+            const reconnectedPlayerId = String(playerRow[0].player_id);
+            this.sql.exec(`UPDATE players SET connected = 1 WHERE player_id = ?`, reconnectedPlayerId);
+
+            const missingEvents = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? ORDER BY sequence ASC`, lastSeq).toArray();
+            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready FROM players`).toArray();
+            const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items`).toArray();
+
+            const snapshotMsg: NetworkMessage = {
+              protocolVersion: "1.0.0",
+              messageType: "SNAPSHOT",
+              sequence: this.currentSequence,
+              payloadJson: JSON.stringify({
+                sequence: this.currentSequence,
+                seed: this.matchSeed,
+                players,
+                claims,
+                missingEvents
+              })
+            };
+            ws.send(JSON.stringify(snapshotMsg));
+            return;
+          }
+        } catch (_) {}
+      }
+
       if (msg.messageType === "ACTION") {
         // Request deduplication
         if (msg.requestId && this.processedRequestIds.has(msg.requestId)) {
