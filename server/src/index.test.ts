@@ -27,4 +27,11 @@ describe('Server Network Message Parsing and Validation', () => {
 
     expect(msg.protocolVersion).toBe("1.0.0");
   });
+
+  it('handles MOVE payload parsing correctly', () => {
+    const movePayload = JSON.stringify({ action: "MOVE", data: { from: 10, to: 11 } });
+    const parsed = JSON.parse(movePayload);
+    expect(parsed.data.from).toBe(10);
+    expect(parsed.data.to).toBe(11);
+  });
 });

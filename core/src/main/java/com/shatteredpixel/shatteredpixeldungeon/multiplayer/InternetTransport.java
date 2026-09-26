@@ -6,6 +6,7 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.net.URI;
 import java.security.SecureRandom;
+import java.util.Base64;
 
 public class InternetTransport implements NetworkTransport {
     private Socket socket;
@@ -34,12 +35,16 @@ public class InternetTransport implements NetworkTransport {
                 in = socket.getInputStream();
                 out = socket.getOutputStream();
 
-                // Perform WebSocket Upgrade Handshake
+                byte[] nonce = new byte[16];
+                new SecureRandom().nextBytes(nonce);
+                String wsKey = Base64.getEncoder().encodeToString(nonce);
+
+                // Perform Strict WebSocket Upgrade Handshake
                 String handshake = "GET " + path + " HTTP/1.1\r\n" +
                         "Host: " + host + "\r\n" +
                         "Upgrade: websocket\r\n" +
                         "Connection: Upgrade\r\n" +
-                        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+                        "Sec-WebSocket-Key: " + wsKey + "\r\n" +
                         "Sec-WebSocket-Version: 13\r\n\r\n";
                 out.write(handshake.getBytes("UTF-8"));
                 out.flush();
@@ -47,7 +52,7 @@ public class InternetTransport implements NetworkTransport {
                 // Read HTTP response status line
                 StringTextBuilder sb = new StringTextBuilder();
                 String statusLine = readLine(in, sb);
-                if (statusLine != null && (statusLine.contains("101") || statusLine.contains("200"))) {
+                if (statusLine != null && statusLine.contains("101")) {
                     while (true) {
                         String header = readLine(in, sb);
                         if (header == null || header.isEmpty()) break;
@@ -60,7 +65,7 @@ public class InternetTransport implements NetworkTransport {
 
                     listen();
                 } else {
-                    if (callback != null) callback.onError(new Exception("WebSocket Handshake Failed: " + statusLine));
+                    if (callback != null) callback.onError(new Exception("WebSocket Handshake Failed (Requires HTTP 101): " + statusLine));
                 }
             } catch (Exception e) {
                 if (callback != null) callback.onError(e);
@@ -94,11 +99,21 @@ public class InternetTransport implements NetworkTransport {
                 int b2 = in.read();
                 if (b2 == -1) break;
 
+                int opcode = b1 & 0x0F;
+                if (opcode == 0x8) { // Close frame
+                    disconnect();
+                    break;
+                }
+
                 int payloadLen = b2 & 0x7F;
                 if (payloadLen == 126) {
                     payloadLen = (in.read() << 8) | in.read();
                 } else if (payloadLen == 127) {
-                    for (int i = 0; i < 8; i++) in.read();
+                    long longLen = 0;
+                    for (int i = 0; i < 8; i++) {
+                        longLen = (longLen << 8) | in.read();
+                    }
+                    payloadLen = (int) longLen;
                 }
 
                 boolean masked = (b2 & 0x80) != 0;
@@ -121,10 +136,12 @@ public class InternetTransport implements NetworkTransport {
                     }
                 }
 
-                String jsonStr = new String(payload, "UTF-8");
-                if (callback != null) {
-                    NetworkMessage msg = parseMessage(jsonStr);
-                    callback.onMessageReceived(msg);
+                if (opcode == 0x1) { // Text frame
+                    String jsonStr = new String(payload, "UTF-8");
+                    if (callback != null) {
+                        NetworkMessage msg = parseMessage(jsonStr);
+                        callback.onMessageReceived(msg);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -135,18 +152,7 @@ public class InternetTransport implements NetworkTransport {
     }
 
     private NetworkMessage parseMessage(String jsonStr) {
-        NetworkMessage msg = new NetworkMessage();
-        msg.payloadJson = jsonStr;
-
-        if (jsonStr.contains("\"messageType\":\"SESSION\"")) msg.messageType = MessageType.SESSION;
-        else if (jsonStr.contains("\"messageType\":\"PLAYER_JOINED\"")) msg.messageType = MessageType.PLAYER_JOINED;
-        else if (jsonStr.contains("\"messageType\":\"PLAYER_LEFT\"")) msg.messageType = MessageType.PLAYER_LEFT;
-        else if (jsonStr.contains("\"messageType\":\"ACTION_ACCEPTED\"")) msg.messageType = MessageType.ACTION_ACCEPTED;
-        else if (jsonStr.contains("\"messageType\":\"EVENT_BATCH\"")) msg.messageType = MessageType.EVENT_BATCH;
-        else if (jsonStr.contains("\"messageType\":\"PING\"")) msg.messageType = MessageType.PING;
-        else msg.messageType = MessageType.ACTION;
-
-        return msg;
+        return NetworkMessage.parseJson(jsonStr);
     }
 
     @Override

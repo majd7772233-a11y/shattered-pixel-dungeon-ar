@@ -2,57 +2,51 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SPDMultiplayerProtocol",
   "version": "1.0.0",
-  "description": "Protocol specification for Shattered Pixel Dungeon AR Multiplayer",
-  "messageTypes": [
-    "HELLO",
-    "SESSION",
-    "CREATE_ROOM",
-    "JOIN_ROOM",
-    "ROOM_STATE",
-    "PLAYER_JOINED",
-    "PLAYER_LEFT",
-    "READY",
-    "MATCH_START",
-    "ACTION",
-    "ACTION_ACCEPTED",
-    "EVENT_BATCH",
-    "SNAPSHOT",
-    "ACK",
-    "RESYNC",
-    "RECONNECT",
-    "MATCH_END",
-    "LEAVE",
-    "PING",
-    "CHAT",
-    "ERROR"
-  ],
-  "actionTypes": [
-    "MOVE",
-    "ATTACK",
-    "PICKUP",
-    "OPEN_CHEST",
-    "BUY",
-    "INTERACT",
-    "UNLOCK",
-    "LVL_TRANSITION",
-    "MINE",
-    "ALCHEMY",
-    "USE_ITEM",
-    "USE_ABILITY",
-    "WAIT",
-    "REVIVE"
-  ],
-  "eventTypes": [
-    "PLAYER_MOVED",
-    "PLAYER_ATTACKED",
-    "CHAR_DAMAGED",
-    "CHAR_DIED",
-    "ITEM_PICKED_UP",
-    "ITEM_DROPPED",
-    "CHEST_OPENED",
-    "TRAP_TRIGGERED",
-    "TURN_ADVANCED",
-    "FOV_UPDATED",
-    "PLAYER_REVIVED"
-  ]
+  "type": "object",
+  "required": ["protocolVersion", "messageType", "payloadJson"],
+  "properties": {
+    "protocolVersion": {
+      "type": "string",
+      "default": "1.0.0"
+    },
+    "messageType": {
+      "type": "string",
+      "enum": [
+        "HELLO",
+        "SESSION",
+        "CREATE_ROOM",
+        "JOIN_ROOM",
+        "ROOM_STATE",
+        "PLAYER_JOINED",
+        "PLAYER_LEFT",
+        "READY",
+        "MATCH_START",
+        "ACTION",
+        "ACTION_ACCEPTED",
+        "EVENT_BATCH",
+        "SNAPSHOT",
+        "ACK",
+        "RESYNC",
+        "RECONNECT",
+        "MATCH_END",
+        "LEAVE",
+        "PING",
+        "CHAT",
+        "ERROR"
+      ]
+    },
+    "requestId": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "senderId": {
+      "type": "string"
+    },
+    "payloadJson": {
+      "type": "string"
+    }
+  }
 }

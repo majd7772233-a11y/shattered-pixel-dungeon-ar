@@ -31,6 +31,9 @@ public class NetworkMessage {
         else if (jsonStr.contains("\"messageType\":\"ACTION_ACCEPTED\"")) msg.messageType = MessageType.ACTION_ACCEPTED;
         else if (jsonStr.contains("\"messageType\":\"EVENT_BATCH\"")) msg.messageType = MessageType.EVENT_BATCH;
         else if (jsonStr.contains("\"messageType\":\"SNAPSHOT\"")) msg.messageType = MessageType.SNAPSHOT;
+        else if (jsonStr.contains("\"messageType\":\"READY\"")) msg.messageType = MessageType.READY;
+        else if (jsonStr.contains("\"messageType\":\"CHAT\"")) msg.messageType = MessageType.CHAT;
+        else if (jsonStr.contains("\"messageType\":\"ERROR\"")) msg.messageType = MessageType.ERROR;
         else if (jsonStr.contains("\"messageType\":\"PING\"")) msg.messageType = MessageType.PING;
         else msg.messageType = MessageType.ACTION;
 
