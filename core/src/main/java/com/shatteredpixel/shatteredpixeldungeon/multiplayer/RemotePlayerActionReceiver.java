@@ -49,7 +49,7 @@ public class RemotePlayerActionReceiver {
                 }
             }
 
-            // Handle CHAR_DAMAGED / CHAR_DIED
+            // Handle CHAR_DAMAGED / CHAR_DIED / PLAYER_REVIVED
             if (unescaped.contains("CHAR_DAMAGED") || unescaped.contains("\"hp\":")) {
                 int hp = parseHpKey(unescaped);
                 if (hp != -1) {
@@ -66,6 +66,14 @@ public class RemotePlayerActionReceiver {
                     remote.heroInstance.HP = 0;
                 }
             }
+
+            if (unescaped.contains("PLAYER_REVIVED") || unescaped.contains("\"action\":\"REVIVE\"")) {
+                remote.isAlive = true;
+                remote.hp = remote.ht / 2;
+                if (remote.heroInstance != null) {
+                    remote.heroInstance.HP = remote.heroInstance.HT / 2;
+                }
+            }
         }
     }
 
@@ -75,7 +83,7 @@ public class RemotePlayerActionReceiver {
     }
 
     private static int parsePositionKey(String json) {
-        String[] keys = {"\"to\":", "\"itemPos\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
+        String[] keys = {"\"to\":", "\"itemPos\":", "\"stairsPos\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
         for (String key : keys) {
             if (json.contains(key)) {
                 try {
