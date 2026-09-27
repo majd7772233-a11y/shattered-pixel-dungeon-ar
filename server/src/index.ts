@@ -283,13 +283,14 @@ export class MatchRoom {
             }
           }
 
-          // Authoritative MOVE step distance validation (max 1 step on 64-wide map)
+          // Authoritative MOVE step distance validation (max 1 step on 32-wide map in SPD)
           if (actionStr === "MOVE" && targetPos >= 0 && targetPos < 4096) {
+            const mapWidth = 32;
             if (fromPos >= 0) {
-              const fromX = fromPos % 64;
-              const fromY = Math.floor(fromPos / 64);
-              const toX = targetPos % 64;
-              const toY = Math.floor(targetPos / 64);
+              const fromX = fromPos % mapWidth;
+              const fromY = Math.floor(fromPos / mapWidth);
+              const toX = targetPos % mapWidth;
+              const toY = Math.floor(targetPos / mapWidth);
 
               const dx = Math.abs(fromX - toX);
               const dy = Math.abs(fromY - toY);

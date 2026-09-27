@@ -15,6 +15,7 @@ public class MultiplayerManager implements TransportCallback {
     private String sessionToken;
     private long lastSequence = 0;
     private NetworkTransport activeTransport;
+    private GameMode currentGameMode = new CoopMode();
 
     private final Map<String, RemotePlayer> remotePlayers = new HashMap<>();
     private final Map<String, NetworkMessage> pendingActions = new ConcurrentHashMap<>();
@@ -26,6 +27,16 @@ public class MultiplayerManager implements TransportCallback {
             instance = new MultiplayerManager();
         }
         return instance;
+    }
+
+    public void setGameMode(GameMode mode) {
+        if (mode != null) {
+            this.currentGameMode = mode;
+        }
+    }
+
+    public GameMode getGameMode() {
+        return currentGameMode;
     }
 
     public void startSession(String roomCode, String initialPlayerId, NetworkTransport transport) throws IllegalArgumentException {
