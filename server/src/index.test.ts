@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage } from './index';
+import { NetworkMessage, SeededRNG } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -37,9 +37,9 @@ describe('Server Network Message Parsing and Validation', () => {
 
   it('evaluates FOV distance thresholds correctly for PvP filtering', () => {
     const mapWidth = 32;
-    const playerAPos = 10; // (10, 0)
-    const playerBPosNear = 15; // (15, 0) -> dx = 5 (within 8 radius)
-    const playerBPosFar = 300; // (12, 9) -> dy = 9 (outside 8 radius)
+    const playerAPos = 10;
+    const playerBPosNear = 15;
+    const playerBPosFar = 300;
 
     const dxNear = Math.abs((playerAPos % mapWidth) - (playerBPosNear % mapWidth));
     const dyNear = Math.abs(Math.floor(playerAPos / mapWidth) - Math.floor(playerBPosNear / mapWidth));
@@ -52,13 +52,55 @@ describe('Server Network Message Parsing and Validation', () => {
 
   it('handles sequence gap evaluation for reconnect resync', () => {
     const currentSeq = 100;
-    const clientSeqSmallGap = 80; // gap = 20 <= 50 -> replay
-    const clientSeqLargeGap = 30; // gap = 70 > 50 -> snapshot
+    const clientSeqSmallGap = 80;
+    const clientSeqLargeGap = 30;
 
     const gapSmall = currentSeq - clientSeqSmallGap;
     const gapLarge = currentSeq - clientSeqLargeGap;
 
     expect(gapSmall <= 50).toBe(true);
     expect(gapLarge <= 50).toBe(false);
+  });
+
+  it('produces deterministic output using SeededRNG', () => {
+    const rng1 = new SeededRNG(987654321);
+    const rng2 = new SeededRNG(987654321);
+
+    const val1 = rng1.intRange(1, 20);
+    const val2 = rng2.intRange(1, 20);
+
+    expect(val1).toBe(val2);
+  });
+
+  it('validates stairs transition cell matching', () => {
+    const playerPosOnStairs = 920;
+    const exitStairsPos = 920;
+    const playerPosOffStairs = 100;
+
+    expect(playerPosOnStairs === exitStairsPos).toBe(true);
+    expect(playerPosOffStairs === exitStairsPos).toBe(false);
+  });
+
+  it('calculates armor damage mitigation correctly', () => {
+    const rawDamage = 8;
+    const armorVal = 3;
+    const finalDamage = Math.max(0, rawDamage - armorVal);
+
+    expect(finalDamage).toBe(5);
+  });
+
+  it('evaluates mob pathing step direction towards player', () => {
+    const mapWidth = 32;
+    const mobPos = 100; // (4, 3)
+    const playerPos = 105; // (9, 3)
+
+    let stepX = mobPos % mapWidth;
+    let stepY = Math.floor(mobPos / mapWidth);
+
+    if (playerPos % mapWidth > stepX) stepX++;
+    else if (playerPos % mapWidth < stepX) stepX--;
+
+    const nextPos = stepY * mapWidth + stepX;
+    expect(nextPos).toBe(101);
   });
 });

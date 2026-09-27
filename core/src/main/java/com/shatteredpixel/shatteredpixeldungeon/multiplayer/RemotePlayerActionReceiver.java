@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
@@ -16,6 +17,15 @@ public class RemotePlayerActionReceiver {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (!manager.isMultiplayerActive()) return;
 
+        String unescaped = unescapeJson(message.payloadJson);
+
+        // Handle Server Mob Events
+        if ("SERVER".equalsIgnoreCase(message.senderId) || unescaped.contains("MOB_MOVED") || unescaped.contains("MOB_ATTACKED")) {
+            handleServerMobEvent(unescaped);
+            return;
+        }
+
+        // Handle Remote Hero Events
         if (message.senderId != null && !message.senderId.equals(manager.getLocalPlayerId())) {
             RemotePlayer remote = manager.getRemotePlayer(message.senderId);
             if (remote == null) {
@@ -23,8 +33,6 @@ public class RemotePlayerActionReceiver {
                 setupRemoteHeroInstance(remote);
                 manager.addRemotePlayer(remote);
             }
-
-            String unescaped = unescapeJson(message.payloadJson);
 
             // Handle SNAPSHOT
             if (message.messageType == MessageType.SNAPSHOT || unescaped.contains("\"snapshot\"") || unescaped.contains("\"missingEvents\"")) {
@@ -94,6 +102,32 @@ public class RemotePlayerActionReceiver {
         }
     }
 
+    private static void handleServerMobEvent(String json) {
+        if (Dungeon.level == null) return;
+
+        int mobId = parseKey(json, "\"mobId\":");
+        int toPos = parseKey(json, "\"toPos\":");
+        int damage = parseKey(json, "\"damage\":");
+
+        if (mobId != -1) {
+            for (Mob mob : Dungeon.level.mobs) {
+                if (mob.id() == mobId) {
+                    if (toPos != -1) {
+                        int fromPos = mob.pos;
+                        mob.pos = toPos;
+                        if (mob.sprite != null) {
+                            mob.sprite.move(fromPos, toPos);
+                        }
+                    }
+                    if (damage > 0) {
+                        mob.damage(damage, "SERVER");
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
     private static void setupRemoteHeroInstance(RemotePlayer remote) {
         if (remote.heroInstance == null) {
             remote.heroInstance = new RemoteHero();
@@ -101,10 +135,8 @@ public class RemotePlayerActionReceiver {
             remote.heroInstance.HP = remote.hp;
             remote.heroInstance.HT = remote.ht;
 
-            // Register into Actor scheduler safely
             Actor.add(remote.heroInstance);
 
-            // Attach to GameScene on render thread
             Game.runOnRenderThread(() -> {
                 if (GameScene.scene() != null) {
                     HeroSprite sprite = new HeroSprite();
@@ -138,36 +170,31 @@ public class RemotePlayerActionReceiver {
         return input.replace("\\\"", "\"").replace("\\\\", "\\");
     }
 
+    private static int parseKey(String json, String key) {
+        if (json.contains(key)) {
+            try {
+                int posIdx = json.indexOf(key) + key.length();
+                int endIdx = json.indexOf("}", posIdx);
+                if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
+                if (endIdx != -1) {
+                    String str = json.substring(posIdx, endIdx).replace("\"", "").trim();
+                    return Integer.parseInt(str);
+                }
+            } catch (Exception ignored) {}
+        }
+        return -1;
+    }
+
     private static int parsePositionKey(String json) {
         String[] keys = {"\"to\":", "\"itemPos\":", "\"stairsPos\":", "\"targetPos\":", "\"pos\":", "\"from\":"};
         for (String key : keys) {
-            if (json.contains(key)) {
-                try {
-                    int posIdx = json.indexOf(key) + key.length();
-                    int endIdx = json.indexOf("}", posIdx);
-                    if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
-                    if (endIdx != -1) {
-                        String posStr = json.substring(posIdx, endIdx).replace("\"", "").trim();
-                        return Integer.parseInt(posStr);
-                    }
-                } catch (Exception ignored) {}
-            }
+            int val = parseKey(json, key);
+            if (val != -1) return val;
         }
         return -1;
     }
 
     private static int parseHpKey(String json) {
-        if (json.contains("\"hp\":")) {
-            try {
-                int posIdx = json.indexOf("\"hp\":") + 5;
-                int endIdx = json.indexOf("}", posIdx);
-                if (endIdx == -1) endIdx = json.indexOf(",", posIdx);
-                if (endIdx != -1) {
-                    String hpStr = json.substring(posIdx, endIdx).replace("\"", "").trim();
-                    return Integer.parseInt(hpStr);
-                }
-            } catch (Exception ignored) {}
-        }
-        return -1;
+        return parseKey(json, "\"hp\":");
     }
 }
