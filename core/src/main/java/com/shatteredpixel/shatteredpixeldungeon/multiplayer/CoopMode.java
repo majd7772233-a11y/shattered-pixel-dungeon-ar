@@ -18,8 +18,18 @@ public class CoopMode implements GameMode {
     }
 
     @Override
+    public boolean isAutoRespawnAllowed() {
+        return false;
+    }
+
+    @Override
     public boolean isSharedMapEnabled() {
         return true;
+    }
+
+    @Override
+    public String getDeathBehavior() {
+        return "REVIVE_OR_GAMEOVER";
     }
 
     @Override

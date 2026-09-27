@@ -1,10 +1,10 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-public class PvPMode implements GameMode {
+public class DeathmatchMode implements GameMode {
 
     @Override
     public String getModeName() {
-        return "PVP_ARENA";
+        return "DEATHMATCH";
     }
 
     @Override
@@ -19,7 +19,7 @@ public class PvPMode implements GameMode {
 
     @Override
     public boolean isAutoRespawnAllowed() {
-        return false;
+        return true;
     }
 
     @Override
@@ -29,11 +29,11 @@ public class PvPMode implements GameMode {
 
     @Override
     public String getDeathBehavior() {
-        return "SPECTATOR";
+        return "AUTO_RESPAWN";
     }
 
     @Override
     public int getMaxPlayers() {
-        return 4;
+        return 6;
     }
 }

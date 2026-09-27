@@ -2,7 +2,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
-import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
@@ -96,15 +96,15 @@ public class RemotePlayerActionReceiver {
 
     private static void setupRemoteHeroInstance(RemotePlayer remote) {
         if (remote.heroInstance == null) {
-            remote.heroInstance = new Hero();
+            remote.heroInstance = new RemoteHero();
             remote.heroInstance.pos = remote.pos;
             remote.heroInstance.HP = remote.hp;
             remote.heroInstance.HT = remote.ht;
 
-            // Register into Actor scheduler
+            // Register into Actor scheduler safely
             Actor.add(remote.heroInstance);
 
-            // Create and attach HeroSprite if in GameScene
+            // Attach to GameScene on render thread
             Game.runOnRenderThread(() -> {
                 if (GameScene.scene() != null) {
                     HeroSprite sprite = new HeroSprite();

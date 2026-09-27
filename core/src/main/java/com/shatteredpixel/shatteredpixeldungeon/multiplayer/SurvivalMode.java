@@ -1,15 +1,15 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-public class PvPMode implements GameMode {
+public class SurvivalMode implements GameMode {
 
     @Override
     public String getModeName() {
-        return "PVP_ARENA";
+        return "SURVIVAL";
     }
 
     @Override
     public boolean isFriendlyFireAllowed() {
-        return true;
+        return false;
     }
 
     @Override
@@ -24,7 +24,7 @@ public class PvPMode implements GameMode {
 
     @Override
     public boolean isSharedMapEnabled() {
-        return false;
+        return true;
     }
 
     @Override

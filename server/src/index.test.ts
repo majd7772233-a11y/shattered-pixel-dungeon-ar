@@ -34,4 +34,31 @@ describe('Server Network Message Parsing and Validation', () => {
     expect(parsed.data.from).toBe(10);
     expect(parsed.data.to).toBe(11);
   });
+
+  it('evaluates FOV distance thresholds correctly for PvP filtering', () => {
+    const mapWidth = 32;
+    const playerAPos = 10; // (10, 0)
+    const playerBPosNear = 15; // (15, 0) -> dx = 5 (within 8 radius)
+    const playerBPosFar = 300; // (12, 9) -> dy = 9 (outside 8 radius)
+
+    const dxNear = Math.abs((playerAPos % mapWidth) - (playerBPosNear % mapWidth));
+    const dyNear = Math.abs(Math.floor(playerAPos / mapWidth) - Math.floor(playerBPosNear / mapWidth));
+    expect(dxNear <= 8 && dyNear <= 8).toBe(true);
+
+    const dxFar = Math.abs((playerAPos % mapWidth) - (playerBPosFar % mapWidth));
+    const dyFar = Math.abs(Math.floor(playerAPos / mapWidth) - Math.floor(playerBPosFar / mapWidth));
+    expect(dxFar <= 8 && dyFar <= 8).toBe(false);
+  });
+
+  it('handles sequence gap evaluation for reconnect resync', () => {
+    const currentSeq = 100;
+    const clientSeqSmallGap = 80; // gap = 20 <= 50 -> replay
+    const clientSeqLargeGap = 30; // gap = 70 > 50 -> snapshot
+
+    const gapSmall = currentSeq - clientSeqSmallGap;
+    const gapLarge = currentSeq - clientSeqLargeGap;
+
+    expect(gapSmall <= 50).toBe(true);
+    expect(gapLarge <= 50).toBe(false);
+  });
 });

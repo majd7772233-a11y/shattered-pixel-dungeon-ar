@@ -1,101 +1,86 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.UUID;
 
 public class BluetoothTransport implements NetworkTransport {
+    public static final String SPD_MULTIPLAYER_UUID_STR = "7f3a9d42-6c81-4e55-b7d2-3e9a1f64c820";
+    public static final UUID SPD_MULTIPLAYER_UUID = UUID.fromString(SPD_MULTIPLAYER_UUID_STR);
     public static final int MAX_BLUETOOTH_PLAYERS = 2;
 
-    private ServerSocket bluetoothServerSocket;
-    private Socket bluetoothSocket;
-    private PrintWriter out;
-    private BufferedReader in;
+    public interface NativeBluetoothProvider {
+        void startServer(UUID serviceUuid, TransportCallback callback) throws Exception;
+        void connectDevice(String deviceAddress, UUID serviceUuid, TransportCallback callback) throws Exception;
+        void sendData(byte[] data) throws Exception;
+        void disconnect();
+        boolean isConnected();
+    }
+
+    private static NativeBluetoothProvider nativeProvider;
     private boolean isConnected = false;
     private TransportCallback callback;
 
-    public void startBluetoothServer(int port, TransportCallback callback) throws Exception {
+    public static void setNativeProvider(NativeBluetoothProvider provider) {
+        nativeProvider = provider;
+    }
+
+    public static NativeBluetoothProvider getNativeProvider() {
+        return nativeProvider;
+    }
+
+    public void startBluetoothServer(TransportCallback callback) throws Exception {
         this.callback = callback;
-        new Thread(() -> {
-            try {
-                bluetoothServerSocket = new ServerSocket(port);
-                bluetoothSocket = bluetoothServerSocket.accept();
-                setupStreams();
-                listen();
-            } catch (Exception e) {
-                if (callback != null) callback.onError(e);
+        if (nativeProvider != null) {
+            nativeProvider.startServer(SPD_MULTIPLAYER_UUID, callback);
+            this.isConnected = true;
+        } else {
+            if (callback != null) {
+                callback.onError(new UnsupportedOperationException("Native Bluetooth RFCOMM not supported on this platform"));
             }
-        }).start();
+        }
     }
 
     @Override
-    public void connect(String endpoint, TransportCallback callback) throws Exception {
+    public void connect(String deviceAddress, TransportCallback callback) throws Exception {
         this.callback = callback;
-        String[] parts = endpoint.split(":");
-        String host = parts[0];
-        int port = parts.length > 1 ? Integer.parseInt(parts[1]) : 8990;
-
-        new Thread(() -> {
-            try {
-                bluetoothSocket = new Socket(host, port);
-                setupStreams();
-                listen();
-            } catch (Exception e) {
-                if (callback != null) callback.onError(e);
+        if (nativeProvider != null) {
+            nativeProvider.connectDevice(deviceAddress, SPD_MULTIPLAYER_UUID, callback);
+            this.isConnected = true;
+        } else {
+            if (callback != null) {
+                callback.onError(new UnsupportedOperationException("Native Bluetooth RFCOMM not supported on this platform"));
             }
-        }).start();
-    }
-
-    private void setupStreams() throws Exception {
-        out = new PrintWriter(bluetoothSocket.getOutputStream(), true);
-        in = new BufferedReader(new InputStreamReader(bluetoothSocket.getInputStream()));
-        isConnected = true;
-        if (callback != null) callback.onConnected();
-    }
-
-    private void listen() {
-        try {
-            String inputLine;
-            while (isConnected && (inputLine = in.readLine()) != null) {
-                if (callback != null) {
-                    NetworkMessage msg = new NetworkMessage();
-                    msg.payloadJson = inputLine;
-                    msg.messageType = MessageType.ACTION;
-                    callback.onMessageReceived(msg);
-                }
-            }
-        } catch (Exception e) {
-            if (callback != null) callback.onError(e);
-        } finally {
-            disconnect();
         }
     }
 
     @Override
     public void send(NetworkMessage message) {
-        if (out != null && isConnected) {
-            out.println("{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
-                    "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}");
+        if (nativeProvider != null && nativeProvider.isConnected()) {
+            try {
+                String serialized = "{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
+                        "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}\n";
+                nativeProvider.sendData(serialized.getBytes("UTF-8"));
+            } catch (Exception e) {
+                if (callback != null) callback.onError(e);
+            }
         }
     }
 
     @Override
     public void disconnect() {
         this.isConnected = false;
-        try {
-            if (in != null) in.close();
-            if (out != null) out.close();
-            if (bluetoothSocket != null) bluetoothSocket.close();
-            if (bluetoothServerSocket != null) bluetoothServerSocket.close();
-        } catch (Exception ignored) {}
-        if (callback != null) callback.onDisconnected("Bluetooth disconnected");
+        if (nativeProvider != null) {
+            nativeProvider.disconnect();
+        }
+        if (callback != null) {
+            callback.onDisconnected("Bluetooth disconnected");
+        }
     }
 
     @Override
     public boolean isConnected() {
-        return isConnected;
+        return nativeProvider != null && nativeProvider.isConnected();
     }
 
     @Override

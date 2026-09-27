@@ -19,7 +19,11 @@ public class MultiplayerSetupScene extends PixelScene {
 
     public static String selectedTransportType = "INTERNET";
     public static String roomName = "ROOM123";
+    public static String targetIp = "192.168.1.100";
+    public static boolean isHost = true;
     public static int maxPlayers = 2;
+
+    private BitmapText hostInfoText;
 
     @Override
     public void create() {
@@ -31,10 +35,26 @@ public class MultiplayerSetupScene extends PixelScene {
         BitmapText title = new BitmapText(Messages.get("ui.multiplayer", "multiplayer_title"), pixelFont);
         title.measure();
         title.x = (w - title.width()) / 2f;
-        title.y = h * 0.15f;
+        title.y = h * 0.12f;
         add(title);
 
-        if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
+        if ("LAN".equalsIgnoreCase(selectedTransportType)) {
+            hostInfoText = new BitmapText(Messages.get("ui.multiplayer", "lan_searching"), pixelFont);
+            hostInfoText.measure();
+            hostInfoText.x = (w - hostInfoText.width()) / 2f;
+            hostInfoText.y = h * 0.3f;
+            add(hostInfoText);
+
+            LANTransport.discoverHosts((hostName, hostIp, port) -> {
+                targetIp = hostIp;
+                isHost = false;
+                if (hostInfoText != null) {
+                    hostInfoText.text(Messages.get("ui.multiplayer", "host_found") + ": " + hostName + " (" + hostIp + ")");
+                    hostInfoText.measure();
+                    hostInfoText.x = (w - hostInfoText.width()) / 2f;
+                }
+            });
+        } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
             maxPlayers = 2;
             BitmapText btNote = new BitmapText(Messages.get("ui.multiplayer", "bt_limit_error"), pixelFont);
             btNote.measure();
@@ -60,18 +80,26 @@ public class MultiplayerSetupScene extends PixelScene {
 
         if ("LAN".equalsIgnoreCase(selectedTransportType)) {
             LANTransport lan = new LANTransport();
-            try {
-                lan.startServer(8080, null);
-            } catch (Exception ignored) {}
+            if (isHost) {
+                try {
+                    lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", null);
+                } catch (Exception ignored) {}
+                endpoint = "127.0.0.1:" + LANTransport.DEFAULT_TCP_PORT;
+            } else {
+                endpoint = targetIp + ":" + LANTransport.DEFAULT_TCP_PORT;
+            }
             transport = lan;
-            endpoint = "127.0.0.1:8080";
         } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
             BluetoothTransport bt = new BluetoothTransport();
-            try {
-                bt.startBluetoothServer(8990, null);
-            } catch (Exception ignored) {}
+            if (isHost) {
+                try {
+                    bt.startBluetoothServer(null);
+                } catch (Exception ignored) {}
+                endpoint = "SERVER";
+            } else {
+                endpoint = targetIp;
+            }
             transport = bt;
-            endpoint = "127.0.0.1:8990";
         } else {
             transport = new InternetTransport();
             endpoint = "https://spd-multiplayer.majd7772233.workers.dev/room/" + roomName + "/websocket";
