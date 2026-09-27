@@ -231,20 +231,15 @@ export class MatchRoom {
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
           let targetPos = -1;
-          let fromPos = -1;
 
           if (payload.data) {
             if (payload.data.to !== undefined) targetPos = Number(payload.data.to);
             else if (payload.data.targetPos !== undefined) targetPos = Number(payload.data.targetPos);
             else if (payload.data.pos !== undefined) targetPos = Number(payload.data.pos);
-
-            if (payload.data.from !== undefined) fromPos = Number(payload.data.from);
           } else {
             if (payload.to !== undefined) targetPos = Number(payload.to);
             else if (payload.targetPos !== undefined) targetPos = Number(payload.targetPos);
             else if (payload.pos !== undefined) targetPos = Number(payload.pos);
-
-            if (payload.from !== undefined) fromPos = Number(payload.from);
           }
 
           const actionStr = payload.action || payload.data?.action;
@@ -283,12 +278,18 @@ export class MatchRoom {
             }
           }
 
-          // Authoritative MOVE step distance validation (max 1 step on 32-wide map in SPD)
+          // Authoritative MOVE step distance validation using server-stored player position
           if (actionStr === "MOVE" && targetPos >= 0 && targetPos < 4096) {
+            const playerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
+            let serverFromPos = -1;
+            if (playerRow.length > 0 && playerRow[0].pos !== null) {
+              serverFromPos = Number(playerRow[0].pos);
+            }
+
             const mapWidth = 32;
-            if (fromPos >= 0) {
-              const fromX = fromPos % mapWidth;
-              const fromY = Math.floor(fromPos / mapWidth);
+            if (serverFromPos >= 0) {
+              const fromX = serverFromPos % mapWidth;
+              const fromY = Math.floor(serverFromPos / mapWidth);
               const toX = targetPos % mapWidth;
               const toY = Math.floor(targetPos / mapWidth);
 
