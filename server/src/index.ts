@@ -38,7 +38,7 @@ export class MatchRoom {
   sql: SqlStorage;
   currentSequence: number = 0;
   matchSeed: number = 123456789;
-  worldTime: number = 0;
+  currentDepth: number = 1;
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
   processedRequestIds: Set<string> = new Set();
 
@@ -98,6 +98,13 @@ export class MatchRoom {
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('seed', ?)`, this.matchSeed.toString());
     }
 
+    const depthRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'depth'`).toArray();
+    if (depthRow.length > 0) {
+      this.currentDepth = Number(depthRow[0].value);
+    } else {
+      this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('depth', '1')`);
+    }
+
     // Initialize initial floor mob state if empty
     const mobCount = this.sql.exec(`SELECT COUNT(*) as count FROM mobs`).toArray();
     if (mobCount.length === 0 || Number(mobCount[0].count) === 0) {
@@ -135,7 +142,7 @@ export class MatchRoom {
         protocolVersion: "1.0.0",
         messageType: "SESSION",
         sequence: this.currentSequence,
-        payloadJson: JSON.stringify({ playerId, sessionToken, sequence: this.currentSequence, seed: this.matchSeed })
+        payloadJson: JSON.stringify({ playerId, sessionToken, sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth })
       };
       server.send(JSON.stringify(welcome));
 
@@ -186,6 +193,7 @@ export class MatchRoom {
               payloadJson: JSON.stringify({
                 sequence: this.currentSequence,
                 seed: this.matchSeed,
+                depth: this.currentDepth,
                 players,
                 mobs,
                 claims,
@@ -244,6 +252,16 @@ export class MatchRoom {
           else if (actionStr === "PICKUP") eventType = "ITEM_PICKED_UP";
           else if (actionStr === "OPEN_CHEST") eventType = "CHEST_OPENED";
           else if (actionStr === "REVIVE") eventType = "PLAYER_REVIVED";
+          else if (actionStr === "LVL_TRANSITION") eventType = "LEVEL_TRANSITION";
+
+          // Authoritative LVL_TRANSITION handling
+          if (actionStr === "LVL_TRANSITION") {
+            this.currentDepth++;
+            this.sql.exec(`UPDATE room_meta SET value = ? WHERE key = 'depth'`, this.currentDepth.toString());
+            this.sql.exec(`DELETE FROM claimed_items`);
+            this.sql.exec(`DELETE FROM mobs`);
+            this.sql.exec(`INSERT INTO mobs (mob_id, name, pos, hp, ht) VALUES (1, 'Skeleton', 120, 20, 20)`);
+          }
 
           // Authoritative ATTACK calculation and mob damage execution
           if (actionStr === "ATTACK") {
@@ -336,7 +354,7 @@ export class MatchRoom {
           messageType: "EVENT_BATCH",
           senderId: session.playerId,
           sequence: this.currentSequence,
-          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType, action: msg.payloadJson }])
+          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType, depth: this.currentDepth, action: msg.payloadJson }])
         }, ws);
 
       } else if (msg.messageType === "READY") {
@@ -359,6 +377,7 @@ export class MatchRoom {
           payloadJson: JSON.stringify({
             sequence: this.currentSequence,
             seed: this.matchSeed,
+            depth: this.currentDepth,
             players,
             mobs,
             claims,
