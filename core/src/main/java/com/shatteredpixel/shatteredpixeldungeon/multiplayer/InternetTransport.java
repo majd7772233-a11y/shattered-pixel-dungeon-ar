@@ -1,6 +1,7 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import javax.net.ssl.SSLSocketFactory;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -14,6 +15,7 @@ public class InternetTransport implements NetworkTransport {
     private OutputStream out;
     private boolean isConnected = false;
     private TransportCallback callback;
+    private final ByteArrayOutputStream fragmentationBuffer = new ByteArrayOutputStream();
 
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
@@ -46,8 +48,11 @@ public class InternetTransport implements NetworkTransport {
                         "Connection: Upgrade\r\n" +
                         "Sec-WebSocket-Key: " + wsKey + "\r\n" +
                         "Sec-WebSocket-Version: 13\r\n\r\n";
-                out.write(handshake.getBytes("UTF-8"));
-                out.flush();
+
+                synchronized (this) {
+                    out.write(handshake.getBytes("UTF-8"));
+                    out.flush();
+                }
 
                 // Read HTTP response status line
                 StringTextBuilder sb = new StringTextBuilder();
@@ -99,7 +104,9 @@ public class InternetTransport implements NetworkTransport {
                 int b2 = in.read();
                 if (b2 == -1) break;
 
+                boolean fin = (b1 & 0x80) != 0;
                 int opcode = b1 & 0x0F;
+
                 if (opcode == 0x8) { // Close frame
                     disconnect();
                     break;
@@ -139,11 +146,18 @@ public class InternetTransport implements NetworkTransport {
                     }
                 }
 
-                if (opcode == 0x1 || opcode == 0x0) { // Text or Continuation frame
-                    String jsonStr = new String(payload, "UTF-8");
-                    if (callback != null) {
-                        NetworkMessage msg = parseMessage(jsonStr);
-                        callback.onMessageReceived(msg);
+                // Handle Text (0x1) and Continuation (0x0) frames with Fragmentation Assembly
+                if (opcode == 0x1 || opcode == 0x0) {
+                    synchronized (fragmentationBuffer) {
+                        fragmentationBuffer.write(payload);
+                        if (fin) {
+                            String jsonStr = new String(fragmentationBuffer.toByteArray(), "UTF-8");
+                            fragmentationBuffer.reset();
+                            if (callback != null) {
+                                NetworkMessage msg = parseMessage(jsonStr);
+                                callback.onMessageReceived(msg);
+                            }
+                        }
                     }
                 }
             }
@@ -154,13 +168,13 @@ public class InternetTransport implements NetworkTransport {
         }
     }
 
-    private void sendPong() {
+    private synchronized void sendPong() {
         if (!isConnected || out == null) return;
         try {
             byte[] mask = new byte[4];
             new SecureRandom().nextBytes(mask);
-            out.write(0x8A); // Pong opcode
-            out.write(0x80); // 0 length masked
+            out.write(0x8A); // Pong opcode (FIN = 1, opcode = 0xA)
+            out.write(0x80); // 0 length, masked
             out.write(mask);
             out.flush();
         } catch (Exception ignored) {}
@@ -171,7 +185,7 @@ public class InternetTransport implements NetworkTransport {
     }
 
     @Override
-    public void send(NetworkMessage message) {
+    public synchronized void send(NetworkMessage message) {
         if (!isConnected || out == null) return;
         try {
             String escapedPayload = message.payloadJson != null ? message.payloadJson.replace("\"", "\\\"") : "{}";
@@ -183,7 +197,7 @@ public class InternetTransport implements NetworkTransport {
             byte[] mask = new byte[4];
             new SecureRandom().nextBytes(mask);
 
-            out.write(0x81); // Text frame
+            out.write(0x81); // Text frame (FIN = 1, opcode = 0x1)
             if (payload.length <= 125) {
                 out.write(0x80 | payload.length);
             } else if (payload.length <= 65535) {
@@ -208,9 +222,19 @@ public class InternetTransport implements NetworkTransport {
     }
 
     @Override
-    public void disconnect() {
+    public synchronized void disconnect() {
+        if (!isConnected) return;
         this.isConnected = false;
         try {
+            if (out != null) {
+                // Send WebSocket Close frame (0x88)
+                byte[] mask = new byte[4];
+                new SecureRandom().nextBytes(mask);
+                out.write(0x88);
+                out.write(0x80);
+                out.write(mask);
+                out.flush();
+            }
             if (in != null) in.close();
             if (out != null) out.close();
             if (socket != null) socket.close();
