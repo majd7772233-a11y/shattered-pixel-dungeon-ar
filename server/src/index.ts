@@ -25,11 +25,20 @@ export interface PlayerState {
   ready: boolean;
 }
 
+export interface MobState {
+  mobId: number;
+  name: string;
+  pos: number;
+  hp: number;
+  ht: number;
+}
+
 export class MatchRoom {
   state: DurableObjectState;
   sql: SqlStorage;
   currentSequence: number = 0;
   matchSeed: number = 123456789;
+  worldTime: number = 0;
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
   processedRequestIds: Set<string> = new Set();
 
@@ -54,6 +63,13 @@ export class MatchRoom {
         ht INTEGER DEFAULT 20,
         ready INTEGER DEFAULT 0,
         connected INTEGER DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS mobs (
+        mob_id INTEGER PRIMARY KEY,
+        name TEXT,
+        pos INTEGER DEFAULT 0,
+        hp INTEGER DEFAULT 10,
+        ht INTEGER DEFAULT 10
       );
       CREATE TABLE IF NOT EXISTS claimed_items (
         item_pos INTEGER PRIMARY KEY,
@@ -80,6 +96,13 @@ export class MatchRoom {
     } else {
       this.matchSeed = Math.floor(Math.random() * 1000000000);
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('seed', ?)`, this.matchSeed.toString());
+    }
+
+    // Initialize initial floor mob state if empty
+    const mobCount = this.sql.exec(`SELECT COUNT(*) as count FROM mobs`).toArray();
+    if (mobCount.length === 0 || Number(mobCount[0].count) === 0) {
+      this.sql.exec(`INSERT INTO mobs (mob_id, name, pos, hp, ht) VALUES (1, 'Rat', 100, 10, 10)`);
+      this.sql.exec(`INSERT INTO mobs (mob_id, name, pos, hp, ht) VALUES (2, 'Gnoll', 200, 15, 15)`);
     }
   }
 
@@ -153,6 +176,7 @@ export class MatchRoom {
 
             const missingEvents = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? ORDER BY sequence ASC`, lastSeq).toArray();
             const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready FROM players`).toArray();
+            const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs`).toArray();
             const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items`).toArray();
 
             const snapshotMsg: NetworkMessage = {
@@ -163,6 +187,7 @@ export class MatchRoom {
                 sequence: this.currentSequence,
                 seed: this.matchSeed,
                 players,
+                mobs,
                 claims,
                 missingEvents
               })
@@ -220,8 +245,28 @@ export class MatchRoom {
           else if (actionStr === "OPEN_CHEST") eventType = "CHEST_OPENED";
           else if (actionStr === "REVIVE") eventType = "PLAYER_REVIVED";
 
+          // Authoritative ATTACK calculation and mob damage execution
+          if (actionStr === "ATTACK") {
+            const targetId = payload.data?.targetId || payload.targetId;
+            if (targetId) {
+              const mobRow = this.sql.exec(`SELECT mob_id, hp, pos FROM mobs WHERE mob_id = ?`, targetId).toArray();
+              if (mobRow.length > 0) {
+                const currentHp = Number(mobRow[0].hp);
+                const damage = Math.floor(Math.random() * 5) + 3; // Authoritative damage roll
+                const newHp = Math.max(0, currentHp - damage);
+
+                this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ?`, newHp, targetId);
+                if (newHp === 0) {
+                  eventType = "CHAR_DIED";
+                } else {
+                  eventType = "CHAR_DAMAGED";
+                }
+              }
+            }
+          }
+
           // Authoritative MOVE step distance validation (max 1 step on 64-wide map)
-          if (targetPos >= 0 && targetPos < 4096) {
+          if (actionStr === "MOVE" && targetPos >= 0 && targetPos < 4096) {
             if (fromPos >= 0) {
               const fromX = fromPos % 64;
               const fromY = Math.floor(fromPos / 64);
@@ -305,6 +350,7 @@ export class MatchRoom {
       } else if (msg.messageType === "RESYNC") {
         const events = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC`).toArray();
         const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready FROM players`).toArray();
+        const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs`).toArray();
         const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items`).toArray();
         const snapshotMsg: NetworkMessage = {
           protocolVersion: "1.0.0",
@@ -314,6 +360,7 @@ export class MatchRoom {
             sequence: this.currentSequence,
             seed: this.matchSeed,
             players,
+            mobs,
             claims,
             events
           })
