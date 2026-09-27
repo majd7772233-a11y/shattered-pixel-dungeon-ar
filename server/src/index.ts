@@ -44,6 +44,7 @@ export class MatchRoom {
   currentSequence: number = 0;
   matchSeed: number = 123456789;
   currentDepth: number = 1;
+  worldTime: number = 0.0;
   gameMode: "COOP_DUNGEON" | "PVP_ARENA" | "DEATHMATCH" | "SURVIVAL" = "COOP_DUNGEON";
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
   processedRequestIds: Set<string> = new Set();
@@ -70,6 +71,10 @@ export class MatchRoom {
         str INTEGER DEFAULT 10,
         weapon_dmg_max INTEGER DEFAULT 8,
         armor_val INTEGER DEFAULT 2,
+        kills INTEGER DEFAULT 0,
+        deaths INTEGER DEFAULT 0,
+        score INTEGER DEFAULT 0,
+        next_act_at REAL DEFAULT 0.0,
         ready INTEGER DEFAULT 0,
         state TEXT DEFAULT 'ALIVE',
         connected INTEGER DEFAULT 1
@@ -89,6 +94,7 @@ export class MatchRoom {
         passable INTEGER DEFAULT 1,
         solid INTEGER DEFAULT 0,
         pit INTEGER DEFAULT 0,
+        los_blocking INTEGER DEFAULT 0,
         PRIMARY KEY (depth, pos)
       );
       CREATE TABLE IF NOT EXISTS mobs (
@@ -100,6 +106,7 @@ export class MatchRoom {
         ht INTEGER DEFAULT 10,
         str INTEGER DEFAULT 8,
         dmg_max INTEGER DEFAULT 6,
+        next_act_at REAL DEFAULT 0.0,
         state TEXT DEFAULT 'HUNTING'
       );
       CREATE TABLE IF NOT EXISTS claimed_items (
@@ -151,7 +158,6 @@ export class MatchRoom {
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('depth', '1')`);
     }
 
-    // Ensure initial level 1 is generated
     this.ensureLevelGenerated(this.currentDepth);
   }
 
@@ -159,7 +165,6 @@ export class MatchRoom {
     const existingLevel = this.sql.exec(`SELECT depth FROM levels WHERE depth = ?`, depth).toArray();
     if (existingLevel.length === 0) {
       const levelSeed = this.matchSeed + depth * 10007;
-      const rng = new SeededRNG(levelSeed);
       const width = 32;
       const height = 32;
       const entrancePos = 100;
@@ -170,25 +175,23 @@ export class MatchRoom {
         depth, width, height, entrancePos, exitPos, levelSeed
       );
 
-      // Populate level tiles (32x32 = 1024 cells)
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const pos = y * width + x;
           const isBorder = x === 0 || y === 0 || x === width - 1 || y === height - 1;
-          const isWall = isBorder || (x % 4 === 0 && y % 4 === 0 && pos !== entrancePos && pos !== exitPos);
+          const isWall = isBorder;
           const terrain = isWall ? "WALL" : "EMPTY";
           const passable = isWall ? 0 : 1;
           const solid = isWall ? 1 : 0;
-          const pit = 0;
+          const losBlocking = isWall ? 1 : 0;
 
           this.sql.exec(
-            `INSERT INTO level_tiles (depth, pos, terrain, passable, solid, pit) VALUES (?, ?, ?, ?, ?, ?)`,
-            depth, pos, terrain, passable, solid, pit
+            `INSERT INTO level_tiles (depth, pos, terrain, passable, solid, pit, los_blocking) VALUES (?, ?, ?, ?, ?, 0, ?)`,
+            depth, pos, terrain, passable, solid, losBlocking
           );
         }
       }
 
-      // Add stairs transitions
       this.sql.exec(
         `INSERT INTO level_transitions (transition_id, depth, pos, type, target_depth) VALUES (?, ?, ?, 'ENTRANCE', ?)`,
         `trans_up_${depth}`, depth, entrancePos, depth > 1 ? depth - 1 : 1
@@ -198,19 +201,52 @@ export class MatchRoom {
         `trans_down_${depth}`, depth, exitPos, depth + 1
       );
 
-      // Populate depth mobs
-      const mobNames = depth === 1 ? ['Rat', 'Gnoll'] : (depth < 5 ? ['Skeleton', 'Thief'] : ['Bat', 'Gnoll Brute']);
-      const m1Pos = 105;
-      const m2Pos = 200;
+      const mobNames = depth === 1 ? ['Rat', 'Gnoll'] : ['Skeleton', 'Thief'];
       this.sql.exec(
-        `INSERT INTO mobs (depth, name, pos, hp, ht, str, dmg_max) VALUES (?, ?, ?, 12, 12, 10, 6)`,
-        depth, mobNames[0], m1Pos
+        `INSERT INTO mobs (depth, name, pos, hp, ht, str, dmg_max, next_act_at) VALUES (?, ?, 105, 12, 12, 10, 6, 0.0)`,
+        depth, mobNames[0]
       );
       this.sql.exec(
-        `INSERT INTO mobs (depth, name, pos, hp, ht, str, dmg_max) VALUES (?, ?, ?, 18, 18, 12, 8)`,
-        depth, mobNames[1], m2Pos
+        `INSERT INTO mobs (depth, name, pos, hp, ht, str, dmg_max, next_act_at) VALUES (?, ?, 200, 18, 18, 12, 8, 0.0)`,
+        depth, mobNames[1]
       );
     }
+  }
+
+  public hasLineOfSight(fromPos: number, toPos: number, depth: number): boolean {
+    const width = 32;
+    let x0 = fromPos % width;
+    let y0 = Math.floor(fromPos / width);
+    const x1 = toPos % width;
+    const y1 = Math.floor(toPos / width);
+
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+
+    while (x0 !== x1 || y0 !== y1) {
+      const currentCell = y0 * width + x0;
+      if (currentCell !== fromPos && currentCell !== toPos) {
+        const tile = this.sql.exec(`SELECT solid, los_blocking FROM level_tiles WHERE depth = ? AND pos = ?`, depth, currentCell).toArray();
+        if (tile.length > 0 && (Number(tile[0].solid) === 1 || Number(tile[0].los_blocking) === 1)) {
+          return false;
+        }
+      }
+
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x0 += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y0 += sy;
+      }
+    }
+
+    return true;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -326,6 +362,17 @@ export class MatchRoom {
       }
 
       if (msg.messageType === "ACTION") {
+        if (this.gameStatus === "ENDED") {
+          ws.send(JSON.stringify({
+            protocolVersion: "1.0.0",
+            messageType: "ERROR",
+            requestId: msg.requestId,
+            sequence: this.currentSequence,
+            payloadJson: JSON.stringify({ error: "MATCH_ALREADY_ENDED" })
+          }));
+          return;
+        }
+
         if (msg.requestId && this.processedRequestIds.has(msg.requestId)) {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
@@ -344,6 +391,7 @@ export class MatchRoom {
         let eventType = "PLAYER_MOVED";
         let actionResultPayload: any = {};
         let actionValid = false;
+        let actionCost = 1.0;
 
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
@@ -369,15 +417,14 @@ export class MatchRoom {
               const dx = Math.abs((currentPos % mapWidth) - (targetPos % mapWidth));
               const dy = Math.abs(Math.floor(currentPos / mapWidth) - Math.floor(targetPos / mapWidth));
 
-              // Validate Adjacency
               if (dx <= 1 && dy <= 1) {
-                // Validate Terrain Passability from SQLite level_tiles
                 const tileRow = this.sql.exec(`SELECT passable, solid FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, targetPos).toArray();
                 if (tileRow.length > 0 && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0) {
                   this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
                   eventType = "PLAYER_MOVED";
                   actionResultPayload = { playerId: session.playerId, pos: targetPos };
                   actionValid = true;
+                  actionCost = 1.0;
                 }
               }
             }
@@ -385,7 +432,6 @@ export class MatchRoom {
             const playerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0) {
               const currentPos = Number(playerRow[0].pos);
-              // Verify player is standing on exit transition cell
               const transRow = this.sql.exec(`SELECT target_depth FROM level_transitions WHERE depth = ? AND pos = ? AND type = 'EXIT'`, this.currentDepth, currentPos).toArray();
               if (transRow.length > 0) {
                 const targetDepth = Number(transRow[0].target_depth);
@@ -401,6 +447,7 @@ export class MatchRoom {
                 eventType = "LEVEL_TRANSITION";
                 actionResultPayload = { depth: this.currentDepth, newPos };
                 actionValid = true;
+                actionCost = 1.0;
               }
             }
           } else if (actionStr === "ATTACK") {
@@ -413,7 +460,6 @@ export class MatchRoom {
               const weaponDmgMax = Number(attackerRow[0].weapon_dmg_max);
 
               if (targetType === "PLAYER") {
-                // PvP Attack
                 if (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH") {
                   const defenderRow = this.sql.exec(`SELECT pos, hp, armor_val, state FROM players WHERE player_id = ?`, targetId).toArray();
                   if (defenderRow.length > 0 && String(defenderRow[0].state) === "ALIVE") {
@@ -421,11 +467,7 @@ export class MatchRoom {
                     const defHp = Number(defenderRow[0].hp);
                     const armorVal = Number(defenderRow[0].armor_val);
 
-                    const mapWidth = 32;
-                    const dx = Math.abs((attackerPos % mapWidth) - (defPos % mapWidth));
-                    const dy = Math.abs(Math.floor(attackerPos / mapWidth) - Math.floor(defPos / mapWidth));
-
-                    if (dx <= 2 && dy <= 2) {
+                    if (this.hasLineOfSight(attackerPos, defPos, this.currentDepth)) {
                       const rng = new SeededRNG(this.matchSeed + this.currentSequence);
                       const hit = rng.nextFloat() > 0.15;
                       const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
@@ -434,6 +476,12 @@ export class MatchRoom {
 
                       const newState = newHp === 0 ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR") : "ALIVE";
                       this.sql.exec(`UPDATE players SET hp = ?, state = ? WHERE player_id = ?`, newHp, newState, targetId);
+
+                      if (newHp === 0) {
+                        this.sql.exec(`UPDATE players SET kills = kills + 1 WHERE player_id = ?`, session.playerId);
+                        this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, targetId);
+                        this.checkMatchEndCondition();
+                      }
 
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
@@ -446,21 +494,17 @@ export class MatchRoom {
                         targetState: newState
                       };
                       actionValid = true;
+                      actionCost = 1.0;
                     }
                   }
                 }
               } else {
-                // PvE Mob Attack
                 const mobRow = this.sql.exec(`SELECT mob_id, hp, pos FROM mobs WHERE mob_id = ? AND depth = ?`, targetId, this.currentDepth).toArray();
                 if (mobRow.length > 0) {
                   const mobPos = Number(mobRow[0].pos);
                   const mobHp = Number(mobRow[0].hp);
 
-                  const mapWidth = 32;
-                  const dx = Math.abs((attackerPos % mapWidth) - (mobPos % mapWidth));
-                  const dy = Math.abs(Math.floor(attackerPos / mapWidth) - Math.floor(mobPos / mapWidth));
-
-                  if (dx <= 2 && dy <= 2) {
+                  if (this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)) {
                     const rng = new SeededRNG(this.matchSeed + this.currentSequence);
                     const hit = rng.nextFloat() > 0.15;
                     const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
@@ -477,6 +521,7 @@ export class MatchRoom {
                       targetHp: newHp
                     };
                     actionValid = true;
+                    actionCost = 1.0;
                   }
                 }
               }
@@ -498,11 +543,14 @@ export class MatchRoom {
               eventType = actionStr === "PICKUP" ? "ITEM_PICKED_UP" : "CHEST_OPENED";
               actionResultPayload = { itemPos, claimedBy: session.playerId };
               actionValid = true;
+              actionCost = 1.0;
             }
           }
         } catch (_) {}
 
         if (actionValid) {
+          this.worldTime += actionCost;
+
           this.sql.exec(
             `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, ?, ?, ?)`,
             this.currentSequence, session.playerId, eventType, JSON.stringify(actionResultPayload)
@@ -518,7 +566,6 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
 
-          // Authoritative Turn Engine & Mob AI Loop
           this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
@@ -576,6 +623,61 @@ export class MatchRoom {
     }
   }
 
+  private checkMatchEndCondition() {
+    if (this.gameMode === "DEATHMATCH") {
+      const topKills = this.sql.exec(`SELECT player_id, kills FROM players ORDER BY kills DESC LIMIT 1`).toArray();
+      if (topKills.length > 0 && Number(topKills[0].kills) >= 10) {
+        this.gameStatus = "ENDED";
+        const winnerId = String(topKills[0].player_id);
+
+        this.currentSequence++;
+        const matchEndPayload = {
+          reason: "KILL_LIMIT_REACHED",
+          winnerId,
+          kills: Number(topKills[0].kills)
+        };
+
+        this.sql.exec(
+          `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
+          this.currentSequence, JSON.stringify(matchEndPayload)
+        );
+
+        this.broadcast({
+          protocolVersion: "1.0.0",
+          messageType: "EVENT_BATCH",
+          senderId: "SERVER",
+          sequence: this.currentSequence,
+          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MATCH_END", depth: this.currentDepth, action: matchEndPayload }])
+        });
+      }
+    } else if (this.gameMode === "PVP_ARENA") {
+      const alivePlayers = this.sql.exec(`SELECT player_id FROM players WHERE state = 'ALIVE'`).toArray();
+      if (alivePlayers.length === 1) {
+        this.gameStatus = "ENDED";
+        const winnerId = String(alivePlayers[0].player_id);
+
+        this.currentSequence++;
+        const matchEndPayload = {
+          reason: "LAST_PLAYER_STANDING",
+          winnerId
+        };
+
+        this.sql.exec(
+          `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
+          this.currentSequence, JSON.stringify(matchEndPayload)
+        );
+
+        this.broadcast({
+          protocolVersion: "1.0.0",
+          messageType: "EVENT_BATCH",
+          senderId: "SERVER",
+          sequence: this.currentSequence,
+          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MATCH_END", depth: this.currentDepth, action: matchEndPayload }])
+        });
+      }
+    }
+  }
+
   private processMobTurns() {
     const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max FROM mobs WHERE depth = ? AND hp > 0`, this.currentDepth).toArray();
     const activePlayers = this.sql.exec(`SELECT player_id, pos, hp, armor_val FROM players WHERE state = 'ALIVE'`).toArray();
@@ -589,18 +691,19 @@ export class MatchRoom {
       const mobPos = Number(mob.pos);
       const mobDmgMax = Number(mob.dmg_max);
 
-      // Target closest living player
       let closestPlayer: any = null;
       let minDistance = 999999;
 
       for (const player of activePlayers) {
         const playerPos = Number(player.pos);
-        const dx = Math.abs((mobPos % mapWidth) - (playerPos % mapWidth));
-        const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(playerPos / mapWidth));
-        const dist = dx + dy;
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestPlayer = player;
+        if (this.hasLineOfSight(mobPos, playerPos, this.currentDepth)) {
+          const dx = Math.abs((mobPos % mapWidth) - (playerPos % mapWidth));
+          const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(playerPos / mapWidth));
+          const dist = dx + dy;
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestPlayer = player;
+          }
         }
       }
 
@@ -615,7 +718,6 @@ export class MatchRoom {
       const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(targetPos / mapWidth));
 
       if (dx <= 1 && dy <= 1) {
-        // Mob Attack Roll
         this.currentSequence++;
         const rng = new SeededRNG(this.matchSeed + this.currentSequence + mobId);
         const hit = rng.nextFloat() > 0.20;
@@ -648,7 +750,6 @@ export class MatchRoom {
           payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_ATTACKED", depth: this.currentDepth, action: attackPayload }])
         });
       } else if (minDistance <= 8) {
-        // Mob Pathfinding Step towards Player
         let stepX = mobPos % mapWidth;
         let stepY = Math.floor(mobPos / mapWidth);
 
@@ -660,7 +761,6 @@ export class MatchRoom {
 
         const nextPos = stepY * mapWidth + stepX;
 
-        // Check if nextPos tile is passable
         const tileRow = this.sql.exec(`SELECT passable FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, nextPos).toArray();
         if (tileRow.length > 0 && Number(tileRow[0].passable) === 1) {
           this.sql.exec(`UPDATE mobs SET pos = ? WHERE mob_id = ?`, nextPos, mobId);
@@ -699,7 +799,6 @@ export class MatchRoom {
   }
 
   private broadcastWithFOV(senderId: string, eventType: string, actionPayload: any, excludeWs?: WebSocket) {
-    const mapWidth = 32;
     const senderRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, senderId).toArray();
     const actionPos = actionPayload.pos !== undefined ? Number(actionPayload.pos) : (senderRow.length > 0 ? Number(senderRow[0].pos) : -1);
 
@@ -715,11 +814,7 @@ export class MatchRoom {
         const recipientRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, recipientSession.playerId).toArray();
         if (recipientRow.length > 0 && actionPos >= 0) {
           const recipientPos = Number(recipientRow[0].pos);
-          const dx = Math.abs((recipientPos % mapWidth) - (actionPos % mapWidth));
-          const dy = Math.abs(Math.floor(recipientPos / mapWidth) - Math.floor(actionPos / mapWidth));
-          if (dx > 8 || dy > 8) {
-            sendToClient = false;
-          }
+          sendToClient = this.hasLineOfSight(recipientPos, actionPos, this.currentDepth);
         }
       }
 

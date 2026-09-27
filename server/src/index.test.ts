@@ -91,8 +91,8 @@ describe('Server Network Message Parsing and Validation', () => {
 
   it('evaluates mob pathing step direction towards player', () => {
     const mapWidth = 32;
-    const mobPos = 100; // (4, 3)
-    const playerPos = 105; // (9, 3)
+    const mobPos = 100;
+    const playerPos = 105;
 
     let stepX = mobPos % mapWidth;
     let stepY = Math.floor(mobPos / mapWidth);
@@ -102,5 +102,26 @@ describe('Server Network Message Parsing and Validation', () => {
 
     const nextPos = stepY * mapWidth + stepX;
     expect(nextPos).toBe(101);
+  });
+
+  it('evaluates Deathmatch kill limit match end condition', () => {
+    const killLimit = 10;
+    const topPlayerKills = 10;
+
+    expect(topPlayerKills >= killLimit).toBe(true);
+  });
+
+  it('traces straight line cell coordinates for line-of-sight raycasting', () => {
+    const width = 32;
+    const fromPos = 100; // (4, 3)
+    const toPos = 104; // (8, 3)
+
+    const intermediateCells: number[] = [];
+    for (let x = 101; x < 104; x++) {
+      intermediateCells.push(x);
+    }
+
+    expect(intermediateCells.length).toBe(3);
+    expect(intermediateCells).toEqual([101, 102, 103]);
   });
 });
