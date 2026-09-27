@@ -1,8 +1,12 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
+import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
+import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
+import com.watabou.noosa.Game;
 
 public class RemotePlayerActionReceiver {
 
@@ -16,22 +20,29 @@ public class RemotePlayerActionReceiver {
             RemotePlayer remote = manager.getRemotePlayer(message.senderId);
             if (remote == null) {
                 remote = new RemotePlayer(message.senderId, "Player", "WARRIOR");
-                remote.heroInstance = new Hero();
-                remote.heroInstance.pos = remote.pos;
+                setupRemoteHeroInstance(remote);
                 manager.addRemotePlayer(remote);
             }
 
             String unescaped = unescapeJson(message.payloadJson);
 
+            // Handle SNAPSHOT
+            if (message.messageType == MessageType.SNAPSHOT || unescaped.contains("\"snapshot\"") || unescaped.contains("\"missingEvents\"")) {
+                parseAndApplySnapshot(unescaped, remote);
+            }
+
             // Handle PLAYER_MOVED
             if (message.messageType == MessageType.EVENT_BATCH || unescaped.contains("PLAYER_MOVED") || unescaped.contains("\"action\":\"MOVE\"")) {
                 int newPos = parsePositionKey(unescaped);
                 if (newPos != -1) {
+                    int oldPos = remote.pos;
                     remote.pos = newPos;
-                    if (remote.heroInstance == null) {
-                        remote.heroInstance = new Hero();
+                    if (remote.heroInstance != null) {
+                        remote.heroInstance.pos = newPos;
+                        if (remote.heroInstance.sprite != null) {
+                            remote.heroInstance.sprite.move(oldPos, newPos);
+                        }
                     }
-                    remote.heroInstance.pos = newPos;
                 }
             }
 
@@ -64,6 +75,9 @@ public class RemotePlayerActionReceiver {
                 remote.isAlive = false;
                 if (remote.heroInstance != null) {
                     remote.heroInstance.HP = 0;
+                    if (remote.heroInstance.sprite != null) {
+                        remote.heroInstance.sprite.die();
+                    }
                 }
             }
 
@@ -72,7 +86,49 @@ public class RemotePlayerActionReceiver {
                 remote.hp = remote.ht / 2;
                 if (remote.heroInstance != null) {
                     remote.heroInstance.HP = remote.heroInstance.HT / 2;
+                    if (remote.heroInstance.sprite != null) {
+                        remote.heroInstance.sprite.idle();
+                    }
                 }
+            }
+        }
+    }
+
+    private static void setupRemoteHeroInstance(RemotePlayer remote) {
+        if (remote.heroInstance == null) {
+            remote.heroInstance = new Hero();
+            remote.heroInstance.pos = remote.pos;
+            remote.heroInstance.HP = remote.hp;
+            remote.heroInstance.HT = remote.ht;
+
+            // Register into Actor scheduler
+            Actor.add(remote.heroInstance);
+
+            // Create and attach HeroSprite if in GameScene
+            Game.runOnRenderThread(() -> {
+                if (GameScene.scene() != null) {
+                    HeroSprite sprite = new HeroSprite();
+                    remote.heroInstance.sprite = sprite;
+                    sprite.link(remote.heroInstance);
+                    GameScene.scene().add(sprite);
+                }
+            });
+        }
+    }
+
+    private static void parseAndApplySnapshot(String json, RemotePlayer remote) {
+        int pos = parsePositionKey(json);
+        if (pos != -1) {
+            remote.pos = pos;
+            if (remote.heroInstance != null) {
+                remote.heroInstance.pos = pos;
+            }
+        }
+        int hp = parseHpKey(json);
+        if (hp != -1) {
+            remote.hp = hp;
+            if (remote.heroInstance != null) {
+                remote.heroInstance.HP = hp;
             }
         }
     }
