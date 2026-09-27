@@ -47,7 +47,6 @@ export class MatchRoom {
   worldTime: number = 0.0;
   gameMode: "COOP_DUNGEON" | "PVP_ARENA" | "DEATHMATCH" | "SURVIVAL" = "COOP_DUNGEON";
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
-  processedRequestIds: Set<string> = new Set();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -121,6 +120,13 @@ export class MatchRoom {
         pos INTEGER,
         type TEXT,
         target_depth INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS processed_actions (
+        request_id TEXT PRIMARY KEY,
+        player_id TEXT,
+        sequence INTEGER,
+        result_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS events (
         sequence INTEGER PRIMARY KEY,
@@ -373,20 +379,22 @@ export class MatchRoom {
           return;
         }
 
-        if (msg.requestId && this.processedRequestIds.has(msg.requestId)) {
-          ws.send(JSON.stringify({
-            protocolVersion: "1.0.0",
-            messageType: "ACTION_ACCEPTED",
-            requestId: msg.requestId,
-            sequence: this.currentSequence,
-            payloadJson: JSON.stringify({ status: "DUPLICATE", sequence: this.currentSequence })
-          }));
-          return;
+        // Persistent Deduplication Check
+        if (msg.requestId) {
+          const dupRow = this.sql.exec(`SELECT sequence, result_json FROM processed_actions WHERE request_id = ?`, msg.requestId).toArray();
+          if (dupRow.length > 0) {
+            const origSeq = Number(dupRow[0].sequence);
+            const origResult = String(dupRow[0].result_json);
+            ws.send(JSON.stringify({
+              protocolVersion: "1.0.0",
+              messageType: "ACTION_ACCEPTED",
+              requestId: msg.requestId,
+              sequence: origSeq,
+              payloadJson: origResult
+            }));
+            return;
+          }
         }
-
-        if (msg.requestId) this.processedRequestIds.add(msg.requestId);
-        this.currentSequence++;
-        msg.sequence = this.currentSequence;
 
         let eventType = "PLAYER_MOVED";
         let actionResultPayload: any = {};
@@ -468,7 +476,7 @@ export class MatchRoom {
                     const armorVal = Number(defenderRow[0].armor_val);
 
                     if (this.hasLineOfSight(attackerPos, defPos, this.currentDepth)) {
-                      const rng = new SeededRNG(this.matchSeed + this.currentSequence);
+                      const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
                       const hit = rng.nextFloat() > 0.15;
                       const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
                       const finalDmg = Math.max(0, rawDmg - armorVal);
@@ -505,7 +513,7 @@ export class MatchRoom {
                   const mobHp = Number(mobRow[0].hp);
 
                   if (this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)) {
-                    const rng = new SeededRNG(this.matchSeed + this.currentSequence);
+                    const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
                     const hit = rng.nextFloat() > 0.15;
                     const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
                     const newHp = Math.max(0, mobHp - rawDmg);
@@ -549,7 +557,18 @@ export class MatchRoom {
         } catch (_) {}
 
         if (actionValid) {
+          // Increment sequence ONLY after successful validation and commit
+          this.currentSequence++;
           this.worldTime += actionCost;
+
+          const resultJson = JSON.stringify({ status: "ACCEPTED", sequence: this.currentSequence });
+
+          if (msg.requestId) {
+            this.sql.exec(
+              `INSERT INTO processed_actions (request_id, player_id, sequence, result_json) VALUES (?, ?, ?, ?)`,
+              msg.requestId, session.playerId, this.currentSequence, resultJson
+            );
+          }
 
           this.sql.exec(
             `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, ?, ?, ?)`,
@@ -561,7 +580,7 @@ export class MatchRoom {
             messageType: "ACTION_ACCEPTED",
             requestId: msg.requestId,
             sequence: this.currentSequence,
-            payloadJson: JSON.stringify({ status: "ACCEPTED", sequence: this.currentSequence })
+            payloadJson: resultJson
           }));
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);

@@ -22,8 +22,6 @@ public class NetworkMessage {
         NetworkMessage msg = new NetworkMessage();
         if (jsonStr == null || jsonStr.trim().isEmpty()) return msg;
 
-        msg.payloadJson = jsonStr;
-
         // Parse messageType
         if (jsonStr.contains("\"messageType\":\"SESSION\"")) msg.messageType = MessageType.SESSION;
         else if (jsonStr.contains("\"messageType\":\"PLAYER_JOINED\"")) msg.messageType = MessageType.PLAYER_JOINED;
@@ -51,6 +49,19 @@ public class NetworkMessage {
             } catch (Exception ignored) {}
         }
 
+        // Extract payloadJson value if present
+        if (jsonStr.contains("\"payloadJson\":")) {
+            int pIdx = jsonStr.indexOf("\"payloadJson\":") + 14;
+            while (pIdx < jsonStr.length() && (jsonStr.charAt(pIdx) == ' ' || jsonStr.charAt(pIdx) == ':')) pIdx++;
+            if (pIdx < jsonStr.length()) {
+                msg.payloadJson = jsonStr.substring(pIdx).trim();
+            } else {
+                msg.payloadJson = jsonStr;
+            }
+        } else {
+            msg.payloadJson = jsonStr;
+        }
+
         return msg;
     }
 
@@ -58,7 +69,7 @@ public class NetworkMessage {
         if (!json.contains(key)) return null;
         try {
             int start = json.indexOf(key) + key.length();
-            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"')) start++;
+            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"' || json.charAt(start) == ':')) start++;
             int end = start;
             while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
             if (start < end) {

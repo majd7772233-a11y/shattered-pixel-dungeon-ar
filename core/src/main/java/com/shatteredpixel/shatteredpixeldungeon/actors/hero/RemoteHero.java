@@ -9,7 +9,7 @@ public class RemoteHero extends Hero {
 
     @Override
     public boolean act() {
-        spend(0);
+        spend(TICK);
         return true;
     }
 }

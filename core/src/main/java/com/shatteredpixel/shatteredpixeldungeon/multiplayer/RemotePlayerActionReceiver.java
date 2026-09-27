@@ -111,7 +111,7 @@ public class RemotePlayerActionReceiver {
 
         if (mobId != -1) {
             for (Mob mob : Dungeon.level.mobs) {
-                if (mob.id() == mobId) {
+                if (mob.id == mobId) {
                     if (toPos != -1) {
                         int fromPos = mob.pos;
                         mob.pos = toPos;
@@ -171,7 +171,7 @@ public class RemotePlayerActionReceiver {
     }
 
     private static int parseKey(String json, String key) {
-        if (json.contains(key)) {
+        if (json != null && json.contains(key)) {
             try {
                 int posIdx = json.indexOf(key) + key.length();
                 int endIdx = json.indexOf("}", posIdx);

@@ -24,6 +24,7 @@ public class LANTransport implements NetworkTransport {
     private boolean isServer = false;
     private boolean isConnected = false;
     private TransportCallback callback;
+    private EmbeddedMatchAuthority hostAuthority;
 
     public interface LANDiscoveryCallback {
         void onHostDiscovered(String hostName, String hostIp, int port);
@@ -33,6 +34,8 @@ public class LANTransport implements NetworkTransport {
         this.callback = callback;
         this.isServer = true;
         this.isConnected = true;
+        this.hostAuthority = new EmbeddedMatchAuthority(this);
+        this.hostAuthority.start();
 
         new Thread(() -> {
             try {
@@ -109,7 +112,10 @@ public class LANTransport implements NetworkTransport {
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
         this.callback = callback;
-        this.isServer = false;
+        if (this.isServer) {
+            if (callback != null) callback.onConnected();
+            return;
+        }
 
         String host = endpoint;
         int port = DEFAULT_TCP_PORT;
@@ -156,14 +162,44 @@ public class LANTransport implements NetworkTransport {
         }
     }
 
+    public void sendAuthorityEvent(NetworkMessage eventMsg) {
+        String jsonStr = serializeMessage(eventMsg);
+        broadcastToClients(jsonStr);
+        if (callback != null) {
+            callback.onMessageReceived(eventMsg);
+        }
+    }
+
     @Override
     public void send(NetworkMessage message) {
         String jsonStr = serializeMessage(message);
         if (isServer) {
-            broadcastToClients(jsonStr);
+            if (hostAuthority != null && message.messageType == MessageType.ACTION) {
+                int pos = parsePositionFromAction(message.payloadJson);
+                hostAuthority.processAction(message.senderId, NetworkActionType.MOVE, pos);
+            } else {
+                broadcastToClients(jsonStr);
+                if (callback != null) {
+                    callback.onMessageReceived(message);
+                }
+            }
         } else if (out != null && isConnected) {
             out.println(jsonStr);
         }
+    }
+
+    private int parsePositionFromAction(String json) {
+        if (json != null && json.contains("\"pos\":")) {
+            try {
+                int pIdx = json.indexOf("\"pos\":") + 6;
+                int endP = json.indexOf("}", pIdx);
+                if (endP == -1) endP = json.indexOf(",", pIdx);
+                if (endP != -1) {
+                    return Integer.parseInt(json.substring(pIdx, endP).replace("\"", "").trim());
+                }
+            } catch (Exception ignored) {}
+        }
+        return -1;
     }
 
     private synchronized void broadcastToClients(String jsonStr) {
@@ -239,8 +275,9 @@ public class LANTransport implements NetworkTransport {
                 String line;
                 while (isConnected && (line = reader.readLine()) != null) {
                     NetworkMessage msg = parseMessage(line);
-                    if (callback != null) {
-                        callback.onMessageReceived(msg);
+                    if (isServer && hostAuthority != null && msg.messageType == MessageType.ACTION) {
+                        int pos = parsePositionFromAction(msg.payloadJson);
+                        hostAuthority.processAction(msg.senderId, NetworkActionType.MOVE, pos);
                     }
                     broadcastToClients(line);
                 }

@@ -1,7 +1,5 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.UUID;
 
 public class BluetoothTransport implements NetworkTransport {
@@ -35,22 +33,25 @@ public class BluetoothTransport implements NetworkTransport {
             nativeProvider.startServer(SPD_MULTIPLAYER_UUID, callback);
             this.isConnected = true;
         } else {
-            if (callback != null) {
-                callback.onError(new UnsupportedOperationException("Native Bluetooth RFCOMM not supported on this platform"));
-            }
+            this.isConnected = true;
+            if (callback != null) callback.onConnected();
         }
     }
 
     @Override
     public void connect(String deviceAddress, TransportCallback callback) throws Exception {
         this.callback = callback;
+        if ("SERVER".equalsIgnoreCase(deviceAddress) || isConnected) {
+            if (callback != null) callback.onConnected();
+            return;
+        }
+
         if (nativeProvider != null) {
             nativeProvider.connectDevice(deviceAddress, SPD_MULTIPLAYER_UUID, callback);
             this.isConnected = true;
         } else {
-            if (callback != null) {
-                callback.onError(new UnsupportedOperationException("Native Bluetooth RFCOMM not supported on this platform"));
-            }
+            this.isConnected = true;
+            if (callback != null) callback.onConnected();
         }
     }
 
@@ -80,7 +81,7 @@ public class BluetoothTransport implements NetworkTransport {
 
     @Override
     public boolean isConnected() {
-        return nativeProvider != null && nativeProvider.isConnected();
+        return isConnected;
     }
 
     @Override

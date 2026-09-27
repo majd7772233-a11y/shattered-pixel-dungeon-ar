@@ -86,6 +86,12 @@ public class MultiplayerManager implements TransportCallback {
         return lastSequence;
     }
 
+    public void updateLastSequence(long seq) {
+        if (seq > this.lastSequence) {
+            this.lastSequence = seq;
+        }
+    }
+
     public Map<String, RemotePlayer> getRemotePlayers() {
         return Collections.unmodifiableMap(remotePlayers);
     }
@@ -153,19 +159,26 @@ public class MultiplayerManager implements TransportCallback {
         }
 
         if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
+            String unescaped = message.payloadJson.replace("\\\"", "\"").replace("\\\\", "\\");
             try {
-                if (message.payloadJson.contains("\"playerId\":")) {
-                    int pIdx = message.payloadJson.indexOf("\"playerId\":") + 12;
-                    int endP = message.payloadJson.indexOf("\"", pIdx);
-                    if (endP != -1) {
-                        this.localPlayerId = message.payloadJson.substring(pIdx, endP);
+                if (unescaped.contains("\"playerId\":")) {
+                    int pIdx = unescaped.indexOf("\"playerId\":") + 11;
+                    int startP = unescaped.indexOf("\"", pIdx);
+                    if (startP != -1) {
+                        int endP = unescaped.indexOf("\"", startP + 1);
+                        if (endP != -1) {
+                            this.localPlayerId = unescaped.substring(startP + 1, endP);
+                        }
                     }
                 }
-                if (message.payloadJson.contains("\"sessionToken\":")) {
-                    int tIdx = message.payloadJson.indexOf("\"sessionToken\":") + 16;
-                    int endT = message.payloadJson.indexOf("\"", tIdx);
-                    if (endT != -1) {
-                        this.sessionToken = message.payloadJson.substring(tIdx, endT);
+                if (unescaped.contains("\"sessionToken\":")) {
+                    int tIdx = unescaped.indexOf("\"sessionToken\":") + 15;
+                    int startT = unescaped.indexOf("\"", tIdx);
+                    if (startT != -1) {
+                        int endT = unescaped.indexOf("\"", startT + 1);
+                        if (endT != -1) {
+                            this.sessionToken = unescaped.substring(startT + 1, endT);
+                        }
                     }
                 }
             } catch (Exception ignored) {}
@@ -175,7 +188,7 @@ public class MultiplayerManager implements TransportCallback {
             this.lastSequence = message.sequence;
         }
 
-        RemotePlayerActionReceiver.handleNetworkMessage(message);
+        MessageRouter.routeMessage(message);
     }
 
     @Override
