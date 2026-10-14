@@ -72,6 +72,7 @@ public class Messages {
 			Assets.Messages.PLANTS,
 			Assets.Messages.SCENES,
 			Assets.Messages.UI,
+			Assets.Messages.MULTIPLAYER,
 			Assets.Messages.WINDOWS
 	};
 
