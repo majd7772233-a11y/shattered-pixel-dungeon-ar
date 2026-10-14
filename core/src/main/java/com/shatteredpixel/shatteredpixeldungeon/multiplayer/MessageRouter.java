@@ -283,7 +283,9 @@ public final class MessageRouter {
 
     private static String stringValue(JsonValue value, String fallback) {
         if (value == null || value.isNull()) return fallback;
-        try { return value.asString(); } catch (RuntimeException ignored) { return fallback; }
+        try { return value.asString(); } catch (RuntimeException ignored) {
+            return value.isNumber() ? value.toString() : fallback;
+        }
     }
 
     private static int intValue(JsonValue value, int fallback) {
