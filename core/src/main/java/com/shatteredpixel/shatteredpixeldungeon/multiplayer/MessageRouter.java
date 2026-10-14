@@ -72,7 +72,7 @@ public final class MessageRouter {
                     int mobId;
                     try { mobId = Integer.parseInt(targetId); } catch (NumberFormatException ignored) { return; }
                     for (Mob mob : Dungeon.level.mobs) {
-                        if (mob.id == mobId) {
+                        if (mob.id() == mobId) {
                             mob.HP = hp;
                             if (hp <= 0) mob.die(Dungeon.hero);
                             break;
