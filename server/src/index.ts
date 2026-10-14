@@ -974,6 +974,9 @@ export class MatchRoom {
         } else {
           this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
         }
+      } else {
+        // A mob that cannot currently reach a visible target still consumes its turn.
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
       }
     }
   }
