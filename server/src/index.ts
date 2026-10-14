@@ -286,6 +286,9 @@ export class MatchRoom {
          ON CONFLICT(player_id) DO UPDATE SET session_token=excluded.session_token, connected=1`,
         playerId, sessionToken, spawnPos
       );
+      if (this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray().length === 0) {
+        this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('levelPublisher', ?)`, playerId);
+      }
 
       const welcome: NetworkMessage = {
         protocolVersion: "1.0.0",
@@ -371,6 +374,84 @@ export class MatchRoom {
             return;
           }
         } catch (_) {}
+      }
+
+      if (msg.messageType === "LEVEL_DATA") {
+        const authority = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray();
+        if (!authority.length || String(authority[0].value) !== session.playerId) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "LEVEL_PUBLISHER_ONLY" }) }));
+          return;
+        }
+        const level = JSON.parse(msg.payloadJson || "{}");
+        const width = Number(level.width), height = Number(level.height), depth = Number(level.depth);
+        const tiles = level.tiles, transitions = Array.isArray(level.transitions) ? level.transitions : [];
+        const mobs = Array.isArray(level.mobs) ? level.mobs : [];
+        const size = width * height;
+        const validPos = (p: number) => Number.isInteger(p) && p >= 0 && p < size;
+        if (Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
+          || !Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
+          || width > 100 || height > 100 || !Array.isArray(tiles) || tiles.length !== size
+          || !validPos(Number(level.entrancePos)) || !validPos(Number(level.exitPos))
+          || transitions.length > 128 || mobs.length > 512) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_SNAPSHOT" }) }));
+          return;
+        }
+        const positions = new Set<number>();
+        for (const tile of tiles) {
+          const pos = Number(tile?.pos);
+          if (!validPos(pos) || positions.has(pos) || !Number.isInteger(Number(tile?.terrain))
+            || typeof tile?.passable !== "boolean" || typeof tile?.solid !== "boolean"
+            || typeof tile?.pit !== "boolean" || typeof tile?.losBlocking !== "boolean") {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_TILES" }) }));
+            return;
+          }
+          positions.add(pos);
+        }
+        for (const t of transitions) {
+          if (!validPos(Number(t?.pos)) || !Number.isInteger(Number(t?.targetDepth))
+            || !["SURFACE", "REGULAR_ENTRANCE", "REGULAR_EXIT", "BRANCH_ENTRANCE", "BRANCH_EXIT"].includes(String(t?.type))) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_TRANSITIONS" }) }));
+            return;
+          }
+        }
+        for (const mob of mobs) {
+          if (!validPos(Number(mob?.pos)) || !Number.isInteger(Number(mob?.mobId))
+            || !Number.isFinite(Number(mob?.hp)) || !Number.isFinite(Number(mob?.ht))
+            || typeof mob?.name !== "string") {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_MOBS" }) }));
+            return;
+          }
+        }
+        this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
+        this.sql.exec(`DELETE FROM level_transitions WHERE depth = ?`, depth);
+        this.sql.exec(`DELETE FROM mobs WHERE depth = ?`, depth);
+        this.sql.exec(`INSERT INTO levels (depth,width,height,entrance_pos,exit_pos,seed) VALUES (?,?,?,?,?,?)
+          ON CONFLICT(depth) DO UPDATE SET width=excluded.width,height=excluded.height,
+          entrance_pos=excluded.entrance_pos,exit_pos=excluded.exit_pos,seed=excluded.seed`,
+          depth,width,height,Number(level.entrancePos),Number(level.exitPos),Number(level.seed)||this.matchSeed);
+        for (const t of tiles) {
+          this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
+            depth,Number(t.pos),String(Number(t.terrain)),t.passable?1:0,t.solid?1:0,t.pit?1:0,t.losBlocking?1:0);
+        }
+        for (const t of transitions) {
+          const type = String(t.type).endsWith("EXIT") ? "EXIT" : "ENTRANCE";
+          this.sql.exec(`INSERT INTO level_transitions (transition_id,depth,pos,type,target_depth) VALUES (?,?,?,?,?)`,
+            `spd_${depth}_${Number(t.pos)}_${String(t.type)}`,depth,Number(t.pos),type,Number(t.targetDepth));
+        }
+        for (const m of mobs) {
+          this.sql.exec(`INSERT OR REPLACE INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state)
+            VALUES (?,?,?,?,?,?,8,6,?,'HUNTING')`,
+            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),this.worldTime);
+        }
+        ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
+          sequence: this.currentSequence, payloadJson: JSON.stringify({ accepted: true, source: "SPD_JAVA_GENERATOR",
+            depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length }) }));
+        return;
       }
 
       if (msg.messageType === "ACTION") {
