@@ -223,7 +223,10 @@ export class MatchRoom {
   }
 
   public hasLineOfSight(fromPos: number, toPos: number, depth: number): boolean {
-    const width = 32;
+    const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, depth).toArray();
+    const width = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
+    const height = levelRow.length > 0 ? Number(levelRow[0].height) : 32;
+    if (fromPos < 0 || toPos < 0 || fromPos >= width * height || toPos >= width * height) return false;
     let x0 = fromPos % width;
     let y0 = Math.floor(fromPos / width);
     const x1 = toPos % width;
@@ -840,21 +843,41 @@ export class MatchRoom {
 
   private broadcastWithFOV(senderId: string, eventType: string, actionPayload: any, excludeWs?: WebSocket) {
     const senderRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, senderId).toArray();
-    const actionPos = actionPayload.pos !== undefined ? Number(actionPayload.pos) : (senderRow.length > 0 ? Number(senderRow[0].pos) : -1);
+    const senderPos = senderRow.length > 0 ? Number(senderRow[0].pos) : -1;
+    const actionPos = actionPayload.pos !== undefined ? Number(actionPayload.pos)
+      : actionPayload.toPos !== undefined ? Number(actionPayload.toPos)
+      : actionPayload.targetPos !== undefined ? Number(actionPayload.targetPos)
+      : senderPos;
+
+    let targetPos = -1;
+    const targetId = actionPayload.targetId || actionPayload.targetPlayerId;
+    if (targetId !== undefined && targetId !== null) {
+      const targetPlayer = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, String(targetId)).toArray();
+      if (targetPlayer.length > 0) targetPos = Number(targetPlayer[0].pos);
+      else {
+        const targetMob = this.sql.exec(`SELECT pos FROM mobs WHERE mob_id = ? AND depth = ?`, Number(targetId), this.currentDepth).toArray();
+        if (targetMob.length > 0) targetPos = Number(targetMob[0].pos);
+      }
+    }
 
     for (const ws of this.state.getWebSockets()) {
       if (ws === excludeWs) continue;
-
       const recipientSession = ws.deserializeAttachment() as SessionData | null;
       if (!recipientSession) continue;
 
       let sendToClient = true;
-
       if (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH") {
         const recipientRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, recipientSession.playerId).toArray();
-        if (recipientRow.length > 0 && actionPos >= 0) {
+        if (recipientRow.length > 0) {
           const recipientPos = Number(recipientRow[0].pos);
-          sendToClient = this.hasLineOfSight(recipientPos, actionPos, this.currentDepth);
+          if (actionPos >= 0) sendToClient = this.hasLineOfSight(recipientPos, actionPos, this.currentDepth);
+          // Combat events that identify a target are only disclosed when that target is visible too.
+          if (sendToClient && targetPos >= 0) {
+            sendToClient = this.hasLineOfSight(recipientPos, targetPos, this.currentDepth);
+          }
+          if (sendToClient && senderPos >= 0 && actionPos < 0) {
+            sendToClient = this.hasLineOfSight(recipientPos, senderPos, this.currentDepth);
+          }
         }
       }
 
