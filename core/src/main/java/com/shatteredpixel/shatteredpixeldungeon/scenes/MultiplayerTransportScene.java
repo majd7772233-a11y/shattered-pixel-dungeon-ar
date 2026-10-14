@@ -16,7 +16,7 @@ public class MultiplayerTransportScene extends PixelScene {
         int w = Camera.main.width;
         int h = Camera.main.height;
 
-        StyledButton btnInternet = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "internet_mode")) {
+        StyledButton btnInternet = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("internet_mode")) {
             @Override
             protected void onClick() {
                 MultiplayerSetupScene.selectedTransportType = "INTERNET";
@@ -27,18 +27,18 @@ public class MultiplayerTransportScene extends PixelScene {
         btnInternet.setRect((w - 160) / 2f, h * 0.3f, 160, 24);
         add(btnInternet);
 
-        StyledButton btnLAN = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "lan_mode")) {
+        StyledButton btnLAN = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("lan_mode")) {
             @Override
             protected void onClick() {
                 MultiplayerSetupScene.selectedTransportType = "LAN";
                 ShatteredPixelDungeon.switchScene(MultiplayerSetupScene.class);
             }
         };
-        btnLAN.icon(Icons.get(Icons.RESUME));
+        btnLAN.icon(Icons.get(Icons.ENTER));
         btnLAN.setRect((w - 160) / 2f, h * 0.45f, 160, 24);
         add(btnLAN);
 
-        StyledButton btnBluetooth = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "bluetooth_mode")) {
+        StyledButton btnBluetooth = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("bluetooth_mode")) {
             @Override
             protected void onClick() {
                 MultiplayerSetupScene.selectedTransportType = "BLUETOOTH";
