@@ -159,7 +159,7 @@ public class HeroSelectScene extends PixelScene {
 				Dungeon.daily = Dungeon.dailyReplay = false;
 				Dungeon.initSeed();
 				MultiplayerManager.getInstance().applyAuthoritativeSeed();
-				ActionIndicator.clearAction;
+				ActionIndicator.clearAction();
 				InterlevelScene.mode = InterlevelScene.Mode.DESCEND;
 
 				Game.switchScene( InterlevelScene.class );
