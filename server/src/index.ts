@@ -634,6 +634,14 @@ export class MatchRoom {
                 }
               }
             }
+          } else if (actionStr === "WAIT") {
+            const playerRow = this.sql.exec(`SELECT state FROM players WHERE player_id = ?`, session.playerId).toArray();
+            if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
+              eventType = "PLAYER_WAITED";
+              actionResultPayload = { playerId: session.playerId };
+              actionValid = true;
+              actionCost = 1.0;
+            }
           } else if (actionStr === "PICKUP" || actionStr === "OPEN_CHEST") {
             const itemPos = payload.data?.itemPos ?? targetPos;
             const existingClaim = this.sql.exec(`SELECT claimed_by FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth).toArray();
@@ -852,7 +860,7 @@ export class MatchRoom {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny * width + nx >= count) continue;
         const next = ny * width + nx;
-        if (previous[next] !== -2 || (occupied.has(next) && next !== target)) continue;
+        if (previous[next] !== -2 || occupied.has(next)) continue;
         const tile = tiles.get(next);
         if (!tile || tile.passable !== 1 || tile.solid === 1 || tile.pit === 1) continue;
         if (dx !== 0 && dy !== 0) {
