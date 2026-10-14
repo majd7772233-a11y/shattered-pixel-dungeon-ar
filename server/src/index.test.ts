@@ -77,8 +77,8 @@ describe('Server Network Message Parsing and Validation', () => {
     const exitStairsPos = 920;
     const playerPosOffStairs = 100;
 
-    expect(playerPosOnStairs === exitStairsPos).toBe(true);
-    expect(playerPosOffStairs === exitStairsPos).toBe(false);
+    expect(Number(playerPosOnStairs) === Number(exitStairsPos)).toBe(true);
+    expect(Number(playerPosOffStairs) === Number(exitStairsPos)).toBe(false);
   });
 
   it('calculates armor damage mitigation correctly', () => {
