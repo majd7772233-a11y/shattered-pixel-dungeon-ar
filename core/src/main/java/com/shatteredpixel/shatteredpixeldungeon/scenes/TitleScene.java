@@ -334,7 +334,7 @@ public class TitleScene extends PixelScene {
 
 		btnChanges = new StyledButton(
 				GREY_TR,
-				Messages.get("ui.multiplayer", "multiplayer_button")
+				Messages.get("multiplayer_button")
 		){
 			@Override
 			protected void onClick() {
