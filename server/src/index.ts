@@ -806,6 +806,69 @@ export class MatchRoom {
     }
   }
 
+  /** Finds the shortest legal 8-way SPD-style step without cutting corners or overlapping actors. */
+  private findNextMobStep(start: number, target: number, width: number, depth: number, mobId: number): number {
+    const levelRows = this.sql.exec(
+      `SELECT pos, passable, solid, pit FROM level_tiles WHERE depth = ?`, depth
+    ).toArray();
+    const tiles = new Map<number, { passable: number; solid: number; pit: number }>();
+    for (const row of levelRows) {
+      tiles.set(Number(row.pos), {
+        passable: Number(row.passable), solid: Number(row.solid), pit: Number(row.pit)
+      });
+    }
+    const mobRows = this.sql.exec(`SELECT pos FROM mobs WHERE depth = ? AND hp > 0 AND mob_id != ?`, depth, mobId).toArray();
+    const occupied = new Set<number>(mobRows.map((row: any) => Number(row.pos)));
+    const playerRows = this.sql.exec(`SELECT pos FROM players WHERE state = 'ALIVE'`).toArray();
+    for (const row of playerRows) occupied.add(Number(row.pos));
+
+    const height = levelRows.length / Math.max(1, width);
+    const count = Math.floor(width * height);
+    if (start < 0 || target < 0 || start >= count || target >= count || width < 1) return -1;
+    const queue = new Int32Array(count);
+    const previous = new Int32Array(count);
+    const firstStep = new Int32Array(count);
+    previous.fill(-2);
+    previous[start] = -1;
+    let head = 0, tail = 0;
+    queue[tail++] = start;
+    const targetX = target % width, targetY = Math.floor(target / width);
+    let goal = -1;
+    const dirs = [-1, 0, 1];
+
+    while (head < tail) {
+      const current = queue[head++];
+      if (current !== start) {
+        const cx = current % width, cy = Math.floor(current / width);
+        if (Math.abs(cx - targetX) <= 1 && Math.abs(cy - targetY) <= 1
+          && (cx !== targetX || cy !== targetY)) {
+          goal = current;
+          break;
+        }
+      }
+      const x = current % width, y = Math.floor(current / width);
+      for (const dy of dirs) for (const dx of dirs) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny * width + nx >= count) continue;
+        const next = ny * width + nx;
+        if (previous[next] !== -2 || (occupied.has(next) && next !== target)) continue;
+        const tile = tiles.get(next);
+        if (!tile || tile.passable !== 1 || tile.solid === 1 || tile.pit === 1) continue;
+        if (dx !== 0 && dy !== 0) {
+          const sideA = tiles.get(y * width + nx);
+          const sideB = tiles.get(ny * width + x);
+          if (!sideA || !sideB || sideA.passable !== 1 || sideA.solid === 1 || sideA.pit === 1
+            || sideB.passable !== 1 || sideB.solid === 1 || sideB.pit === 1) continue;
+        }
+        previous[next] = current;
+        firstStep[next] = current === start ? next : firstStep[current];
+        queue[tail++] = next;
+      }
+    }
+    return goal < 0 ? -1 : firstStep[goal];
+  }
+
   private processMobTurns() {
     if (this.gameStatus === "ENDED") return;
     const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max, next_act_at FROM mobs WHERE depth = ? AND hp > 0 AND next_act_at <= ? ORDER BY next_act_at ASC, mob_id ASC`, this.currentDepth, this.worldTime).toArray();
@@ -884,29 +947,15 @@ export class MatchRoom {
           payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_ATTACKED", depth: this.currentDepth, action: attackPayload }])
         });
       } else if (minDistance <= 8) {
-        let stepX = mobPos % mapWidth;
-        let stepY = Math.floor(mobPos / mapWidth);
-
-        if (targetPos % mapWidth > stepX) stepX++;
-        else if (targetPos % mapWidth < stepX) stepX--;
-
-        if (Math.floor(targetPos / mapWidth) > stepY) stepY++;
-        else if (Math.floor(targetPos / mapWidth) < stepY) stepY--;
-
-        const nextPos = stepY * mapWidth + stepX;
-
-        const tileRow = this.sql.exec(`SELECT passable FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, nextPos).toArray();
-        if (tileRow.length > 0 && Number(tileRow[0].passable) === 1) {
+        const nextPos = this.findNextMobStep(mobPos, targetPos, mapWidth, this.currentDepth, mobId);
+        if (nextPos >= 0) {
           this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + 1.0, mobId);
-
           this.currentSequence++;
           const movePayload = { mobId, fromPos: mobPos, toPos: nextPos };
-
           this.sql.exec(
             `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MOB_MOVED', ?)`,
             this.currentSequence, JSON.stringify(movePayload)
           );
-
           this.broadcast({
             protocolVersion: "1.0.0",
             messageType: "EVENT_BATCH",
