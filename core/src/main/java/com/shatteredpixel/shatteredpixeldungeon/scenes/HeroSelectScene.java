@@ -32,6 +32,7 @@ import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Journal;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ActionIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.ui.CheckBox;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ExitButton;
@@ -157,7 +158,8 @@ public class HeroSelectScene extends PixelScene {
 				Dungeon.hero = null;
 				Dungeon.daily = Dungeon.dailyReplay = false;
 				Dungeon.initSeed();
-				ActionIndicator.clearAction();
+				MultiplayerManager.getInstance().applyAuthoritativeSeed();
+				ActionIndicator.clearAction;
 				InterlevelScene.mode = InterlevelScene.Mode.DESCEND;
 
 				Game.switchScene( InterlevelScene.class );
