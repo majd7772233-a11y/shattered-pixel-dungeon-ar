@@ -106,6 +106,40 @@ public final class MessageRouter {
             snapshot.dungeonSeed = longValue(root.get("seed"), 0L);
             snapshot.gameMode = stringValue(root.get("gameMode"), "COOP_DUNGEON");
 
+            JsonValue level = root.get("level");
+            if (level != null && level.isObject()) {
+                snapshot.levelWidth = intValue(level.get("width"), 0);
+                snapshot.levelHeight = intValue(level.get("height"), 0);
+                snapshot.entrancePos = intValue(level.get("entrancePos"), -1);
+                snapshot.exitPos = intValue(level.get("exitPos"), -1);
+                JsonValue tiles = level.get("tiles");
+                if (tiles != null && tiles.isArray()) {
+                    for (JsonValue tile = tiles.child; tile != null; tile = tile.next) {
+                        java.util.Map<String, Object> row = new java.util.HashMap<>();
+                        row.put("pos", intValue(tile.get("pos"), -1));
+                        row.put("terrain", intValue(tile.get("terrain"), -1));
+                        row.put("passable", intValue(tile.get("passable"), 0));
+                        row.put("solid", intValue(tile.get("solid"), 0));
+                        row.put("pit", intValue(tile.get("pit"), 0));
+                        row.put("losBlocking", intValue(tile.get("los_blocking"), intValue(tile.get("losBlocking"), 0)));
+                        snapshot.tiles.add(row);
+                    }
+                }
+                JsonValue levelMobs = level.get("mobs");
+                if (levelMobs != null && levelMobs.isArray()) {
+                    snapshot.mobs.clear();
+                    for (JsonValue mob = levelMobs.child; mob != null; mob = mob.next) {
+                        java.util.Map<String, Object> row = new java.util.HashMap<>();
+                        row.put("mobId", intValue(mob.get("mob_id"), intValue(mob.get("mobId"), -1)));
+                        row.put("name", stringValue(mob.get("name"), "Mob"));
+                        row.put("pos", intValue(mob.get("pos"), -1));
+                        row.put("hp", intValue(mob.get("hp"), 1));
+                        row.put("ht", intValue(mob.get("ht"), 1));
+                        snapshot.mobs.add(row);
+                    }
+                }
+            }
+
             JsonValue players = root.get("players");
             if (players != null && players.isArray()) {
                 for (JsonValue player = players.child; player != null; player = player.next) {
