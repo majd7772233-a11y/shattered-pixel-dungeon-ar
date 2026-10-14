@@ -95,14 +95,25 @@ public class WorldSnapshot {
                 int ht = number(data.get("ht"), 1);
                 if (id < 0 || pos < 0 || pos >= Dungeon.level.length()) continue;
                 seenMobIds.add(id);
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob matched = null;
                 for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
-                    if (mob.id() == id) {
-                        int oldPos = mob.pos;
-                        mob.pos = pos;
-                        mob.HP = Math.max(0, Math.min(hp, Math.max(1, ht)));
-                        mob.HT = Math.max(1, ht);
-                        if (mob.sprite != null && oldPos != pos) mob.sprite.place(pos);
-                        break;
+                    if (mob.id() == id) { matched = mob; break; }
+                }
+                if (matched == null) {
+                    String name = String.valueOf(data.get("name"));
+                    for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
+                        if (mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
+                    }
+                }
+                if (matched != null) {
+                    int oldPos = matched.pos;
+                    matched.HT = Math.max(1, ht);
+                    if (hp <= 0) {
+                        if (matched.isAlive() && Dungeon.hero != null) matched.die(Dungeon.hero);
+                    } else {
+                        matched.HP = Math.min(hp, matched.HT);
+                        matched.pos = pos;
+                        if (matched.sprite != null && oldPos != pos) matched.sprite.place(pos);
                     }
                 }
             }
