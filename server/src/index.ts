@@ -222,6 +222,24 @@ export class MatchRoom {
     }
   }
 
+  private isMeleeAdjacent(fromPos: number, toPos: number, depth: number): boolean {
+    const row = this.sql.exec(`SELECT width,height FROM levels WHERE depth = ?`, depth).toArray()[0];
+    if (!row) return false;
+    const width = Number(row.width), height = Number(row.height);
+    if (!Number.isInteger(fromPos) || !Number.isInteger(toPos) || fromPos < 0 || toPos < 0
+      || fromPos >= width * height || toPos >= width * height || fromPos === toPos) return false;
+    const dx = Math.abs((fromPos % width) - (toPos % width));
+    const dy = Math.abs(Math.floor(fromPos / width) - Math.floor(toPos / width));
+    if (dx > 1 || dy > 1) return false;
+    if (dx === 1 && dy === 1) {
+      const sideA = Math.floor(fromPos / width) * width + (toPos % width);
+      const sideB = Math.floor(toPos / width) * width + (fromPos % width);
+      const sides = this.sql.exec(`SELECT passable,solid FROM level_tiles WHERE depth = ? AND pos IN (?,?)`, depth, sideA, sideB).toArray();
+      if (sides.length !== 2 || sides.some((t: any) => Number(t.passable) !== 1 || Number(t.solid) === 1)) return false;
+    }
+    return true;
+  }
+
   public hasLineOfSight(fromPos: number, toPos: number, depth: number): boolean {
     const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, depth).toArray();
     const width = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
@@ -368,7 +386,9 @@ export class MatchRoom {
                 gameMode: this.gameMode,
                 players,
                 mobs,
-                claims
+                claims,
+                worldTime: this.worldTime,
+                level: this.getCurrentLevelSnapshot()
               })
             }));
             return;
@@ -576,7 +596,7 @@ export class MatchRoom {
                     const defHp = Number(defenderRow[0].hp);
                     const armorVal = Number(defenderRow[0].armor_val);
 
-                    if (this.hasLineOfSight(attackerPos, defPos, this.currentDepth)) {
+                    if (this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth)) {
                       const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
                       const hit = rng.nextFloat() > 0.15;
                       const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
@@ -612,7 +632,7 @@ export class MatchRoom {
                   const mobPos = Number(mobRow[0].pos);
                   const mobHp = Number(mobRow[0].hp);
 
-                  if (this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)) {
+                  if (this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth)) {
                     const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
                     const hit = rng.nextFloat() > 0.15;
                     const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
@@ -736,7 +756,9 @@ export class MatchRoom {
             players,
             mobs,
             claims,
-            events
+            events,
+            worldTime: this.worldTime,
+            level: this.getCurrentLevelSnapshot()
           })
         }));
       } else if (msg.messageType === "PING") {
@@ -755,6 +777,19 @@ export class MatchRoom {
         payloadJson: JSON.stringify({ error: (e as Error).message })
       }));
     }
+  }
+
+  private getCurrentLevelSnapshot() {
+    const level = this.sql.exec(`SELECT depth,width,height,entrance_pos,exit_pos,seed FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
+    if (!level) return null;
+    return {
+      depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
+      entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
+      tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
+      transitions: this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
+      mobs: this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray(),
+      claims: this.sql.exec(`SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray()
+    };
   }
 
   private checkMatchEndCondition() {
@@ -897,10 +932,10 @@ export class MatchRoom {
 
       for (const player of activePlayers) {
         const playerPos = Number(player.pos);
-        if (this.hasLineOfSight(mobPos, playerPos, this.currentDepth)) {
+        {
           const dx = Math.abs((mobPos % mapWidth) - (playerPos % mapWidth));
           const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(playerPos / mapWidth));
-          const dist = dx + dy;
+          const dist = Math.max(dx, dy) + (this.hasLineOfSight(mobPos, playerPos, this.currentDepth) ? 0 : 2);
           if (dist < minDistance) {
             minDistance = dist;
             closestPlayer = player;
@@ -921,7 +956,7 @@ export class MatchRoom {
       const dx = Math.abs((mobPos % mapWidth) - (targetPos % mapWidth));
       const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(targetPos / mapWidth));
 
-      if (dx <= 1 && dy <= 1) {
+      if (this.isMeleeAdjacent(mobPos, targetPos, this.currentDepth)) {
         this.currentSequence++;
         const rng = new SeededRNG(this.matchSeed + this.currentSequence + mobId);
         const hit = rng.nextFloat() > 0.20;
@@ -954,7 +989,7 @@ export class MatchRoom {
           sequence: this.currentSequence,
           payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_ATTACKED", depth: this.currentDepth, action: attackPayload }])
         });
-      } else if (minDistance <= 8) {
+      } else if (Math.max(dx, dy) <= 8) {
         const nextPos = this.findNextMobStep(mobPos, targetPos, mapWidth, this.currentDepth, mobId);
         if (nextPos >= 0) {
           this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + 1.0, mobId);
