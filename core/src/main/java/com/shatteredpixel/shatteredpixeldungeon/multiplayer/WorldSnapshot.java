@@ -18,6 +18,11 @@ public class WorldSnapshot {
     public int depth = 1;
     public long dungeonSeed;
     public String gameMode = "COOP_DUNGEON";
+    public int levelWidth;
+    public int levelHeight;
+    public int entrancePos = -1;
+    public int exitPos = -1;
+    public List<Map<String, Object>> tiles = new ArrayList<>();
 
     public Map<String, Integer> playerPositions = new HashMap<>();
     public Map<String, Integer> playerHp = new HashMap<>();
@@ -36,6 +41,14 @@ public class WorldSnapshot {
         this.dungeonSeed = dungeonSeed;
     }
 
+    private static int number(Object value, int fallback) {
+        if (value instanceof Number) return ((Number) value).intValue();
+        if (value != null) {
+            try { return Integer.parseInt(String.valueOf(value)); } catch (RuntimeException ignored) {}
+        }
+        return fallback;
+    }
+
     public static void restoreWorld(WorldSnapshot snapshot) {
         if (snapshot == null) return;
 
@@ -43,6 +56,51 @@ public class WorldSnapshot {
         if (!manager.isMultiplayerActive()) return;
 
         Dungeon.depth = snapshot.depth;
+
+        // Reconcile the complete authoritative tile geometry before applying actors.
+        // The seeded SPD generator creates the Level instance; the snapshot then replaces
+        // its mutable map/flags so reconnects do not keep stale doors, terrain or collision.
+        if (Dungeon.level != null && snapshot.tiles != null
+                && snapshot.levelWidth == Dungeon.level.width()
+                && snapshot.levelHeight == Dungeon.level.height()
+                && snapshot.tiles.size() == Dungeon.level.length()) {
+            for (Map<String, Object> tile : snapshot.tiles) {
+                int pos = number(tile.get("pos"), -1);
+                int terrain = number(tile.get("terrain"), -1);
+                if (pos < 0 || pos >= Dungeon.level.length() || terrain < 0) continue;
+                Dungeon.level.map[pos] = terrain;
+                Dungeon.level.passable[pos] = number(tile.get("passable"), 0) != 0;
+                Dungeon.level.solid[pos] = number(tile.get("solid"), 0) != 0;
+                Dungeon.level.pit[pos] = number(tile.get("pit"), 0) != 0;
+                Dungeon.level.losBlocking[pos] = number(tile.get("losBlocking"), 0) != 0;
+            }
+            Game.runOnRenderThread(() -> {
+                if (Dungeon.level != null) GameScene.updateMap();
+            });
+        }
+
+        // Reconcile mobs already created by the local SPD level generation.
+        if (Dungeon.level != null && snapshot.mobs != null) {
+            java.util.Set<Integer> seenMobIds = new java.util.HashSet<>();
+            for (Map<String, Object> data : snapshot.mobs) {
+                int id = number(data.get("mobId"), -1);
+                int pos = number(data.get("pos"), -1);
+                int hp = number(data.get("hp"), 1);
+                int ht = number(data.get("ht"), 1);
+                if (id < 0 || pos < 0 || pos >= Dungeon.level.length()) continue;
+                seenMobIds.add(id);
+                for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
+                    if (mob.id() == id) {
+                        int oldPos = mob.pos;
+                        mob.pos = pos;
+                        mob.HP = Math.max(0, Math.min(hp, Math.max(1, ht)));
+                        mob.HT = Math.max(1, ht);
+                        if (mob.sprite != null && oldPos != pos) mob.sprite.place(pos);
+                        break;
+                    }
+                }
+            }
+        }
 
         // Restore Claimed Heaps / Items
         if (Dungeon.level != null && snapshot.claimedItemPositions != null) {
