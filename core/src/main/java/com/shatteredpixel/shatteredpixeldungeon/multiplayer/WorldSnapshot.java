@@ -75,7 +75,12 @@ public class WorldSnapshot {
                 Dungeon.level.losBlocking[pos] = number(tile.get("losBlocking"), 0) != 0;
             }
             Game.runOnRenderThread(() -> {
-                if (Dungeon.level != null) GameScene.updateMap();
+                if (Dungeon.level != null) {
+                    for (Map<String, Object> tile : snapshot.tiles) {
+                        int pos = number(tile.get("pos"), -1);
+                        if (pos >= 0 && pos < Dungeon.level.length()) GameScene.updateMap(pos);
+                    }
+                }
             });
         }
 
