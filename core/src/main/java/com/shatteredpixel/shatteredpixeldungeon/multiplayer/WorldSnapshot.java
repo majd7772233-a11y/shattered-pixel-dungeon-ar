@@ -56,6 +56,7 @@ public class WorldSnapshot {
         if (!manager.isMultiplayerActive()) return;
 
         Dungeon.depth = snapshot.depth;
+        if (snapshot.dungeonSeed != 0L) Dungeon.seed = snapshot.dungeonSeed;
 
         // Reconcile the complete authoritative tile geometry before applying actors.
         // The seeded SPD generator creates the Level instance; the snapshot then replaces
@@ -128,7 +129,16 @@ public class WorldSnapshot {
                 String pId = entry.getKey();
                 int pos = entry.getValue();
 
-                if (pId != null && !pId.equals(manager.getLocalPlayerId()) && entry.getValue() != null && entry.getValue() >= 0) {
+                if (pId != null && entry.getValue() != null && entry.getValue() >= 0) {
+                    if (pId.equals(manager.getLocalPlayerId())) {
+                        if (Dungeon.hero != null && Dungeon.level != null && pos < Dungeon.level.length()) {
+                            Dungeon.hero.pos = pos;
+                            if (snapshot.playerHp.containsKey(pId)) Dungeon.hero.HP = Math.max(0, snapshot.playerHp.get(pId));
+                            if (snapshot.playerHt.containsKey(pId)) Dungeon.hero.HT = Math.max(1, snapshot.playerHt.get(pId));
+                            if (Dungeon.hero.sprite != null) Dungeon.hero.sprite.place(pos);
+                        }
+                        continue;
+                    }
                     RemotePlayer remote = manager.getRemotePlayer(pId);
                     if (remote == null) {
                         String heroClass = snapshot.playerClasses.getOrDefault(pId, "WARRIOR");
