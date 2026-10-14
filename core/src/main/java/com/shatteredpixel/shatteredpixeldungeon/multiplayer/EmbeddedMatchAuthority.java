@@ -68,7 +68,7 @@ public class EmbeddedMatchAuthority {
                 mobMsg.messageType = MessageType.EVENT_BATCH;
                 mobMsg.senderId = "SERVER";
                 mobMsg.sequence = currentSequence;
-                mobMsg.payloadJson = "{\"sequence\":" + currentSequence + ",\"eventType\":\"MOB_MOVED\",\"mobId\":" + mob.id + ",\"toPos\":" + mob.pos + "}";
+                mobMsg.payloadJson = "{\"sequence\":" + currentSequence + ",\"eventType\":\"MOB_MOVED\",\"mobId\":" + mob.id() + ",\"toPos\":" + mob.pos + "}";
 
                 if (transport != null) {
                     transport.sendAuthorityEvent(mobMsg);
