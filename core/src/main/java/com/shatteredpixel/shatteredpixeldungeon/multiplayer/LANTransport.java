@@ -175,8 +175,9 @@ public class LANTransport implements NetworkTransport {
         String jsonStr = serializeMessage(message);
         if (isServer) {
             if (hostAuthority != null && message.messageType == MessageType.ACTION) {
+                NetworkActionType actionType = parseActionType(message.payloadJson);
                 int pos = parsePositionFromAction(message.payloadJson);
-                hostAuthority.processAction(message.senderId, NetworkActionType.MOVE, pos);
+                hostAuthority.processAction(message.senderId, actionType, pos);
             } else {
                 broadcastToClients(jsonStr);
                 if (callback != null) {
@@ -189,17 +190,31 @@ public class LANTransport implements NetworkTransport {
     }
 
     private int parsePositionFromAction(String json) {
-        if (json != null && json.contains("\"pos\":")) {
-            try {
-                int pIdx = json.indexOf("\"pos\":") + 6;
-                int endP = json.indexOf("}", pIdx);
-                if (endP == -1) endP = json.indexOf(",", pIdx);
-                if (endP != -1) {
-                    return Integer.parseInt(json.substring(pIdx, endP).replace("\"", "").trim());
-                }
-            } catch (Exception ignored) {}
+        if (json == null) return -1;
+        try {
+            com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+            com.badlogic.gdx.utils.JsonValue data = root.get("data");
+            if (data == null) data = root;
+            com.badlogic.gdx.utils.JsonValue value = data.get("to");
+            if (value == null) value = data.get("targetPos");
+            if (value == null) value = data.get("itemPos");
+            if (value == null) value = data.get("pos");
+            return value == null ? -1 : value.asInt();
+        } catch (RuntimeException ignored) {
+            return -1;
         }
-        return -1;
+    }
+
+    private NetworkActionType parseActionType(String json) {
+        if (json == null) return NetworkActionType.WAIT;
+        try {
+            com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+            com.badlogic.gdx.utils.JsonValue action = root.get("action");
+            if (action == null && root.get("data") != null) action = root.get("data").get("action");
+            return action == null ? NetworkActionType.WAIT : NetworkActionType.valueOf(action.asString());
+        } catch (RuntimeException ignored) {
+            return NetworkActionType.WAIT;
+        }
     }
 
     private synchronized void broadcastToClients(String jsonStr) {
@@ -211,24 +226,16 @@ public class LANTransport implements NetworkTransport {
     }
 
     private String serializeMessage(NetworkMessage msg) {
-        return "{\"messageType\":\"" + (msg.messageType != null ? msg.messageType.name() : "ACTION") +
-                "\",\"senderId\":\"" + (msg.senderId != null ? msg.senderId : "") +
-                "\",\"payloadJson\":" + (msg.payloadJson != null ? msg.payloadJson : "{}") + "}";
+        String sender = msg.senderId == null ? "" : msg.senderId.replace("\\", "\\\\").replace("\"", "\\\"");
+        String payload = msg.payloadJson == null || msg.payloadJson.trim().isEmpty() ? "{}" : msg.payloadJson;
+        return "{\"protocolVersion\":\"" + NetworkMessage.PROTOCOL_VERSION + "\",\"messageType\":\""
+                + (msg.messageType != null ? msg.messageType.name() : "ERROR") + "\",\"senderId\":\"" + sender
+                + "\",\"requestId\":" + (msg.requestId == null ? "null" : "\"" + msg.requestId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                + ",\"sequence\":" + msg.sequence + ",\"payloadJson\":" + payload + "}";
     }
 
     private NetworkMessage parseMessage(String jsonStr) {
-        NetworkMessage msg = new NetworkMessage();
-        msg.payloadJson = jsonStr;
-
-        if (jsonStr.contains("\"messageType\":\"HELLO\"")) msg.messageType = MessageType.HELLO;
-        else if (jsonStr.contains("\"messageType\":\"SESSION\"")) msg.messageType = MessageType.SESSION;
-        else if (jsonStr.contains("\"messageType\":\"ACTION\"")) msg.messageType = MessageType.ACTION;
-        else if (jsonStr.contains("\"messageType\":\"ACTION_ACCEPTED\"")) msg.messageType = MessageType.ACTION_ACCEPTED;
-        else if (jsonStr.contains("\"messageType\":\"EVENT_BATCH\"")) msg.messageType = MessageType.EVENT_BATCH;
-        else if (jsonStr.contains("\"messageType\":\"PING\"")) msg.messageType = MessageType.PING;
-        else msg.messageType = MessageType.ACTION;
-
-        return msg;
+        return NetworkMessage.parseJson(jsonStr);
     }
 
     @Override
