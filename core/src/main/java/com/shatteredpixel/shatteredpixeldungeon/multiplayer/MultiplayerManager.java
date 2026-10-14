@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 
 public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
@@ -17,7 +19,7 @@ public class MultiplayerManager implements TransportCallback {
     private NetworkTransport activeTransport;
     private GameMode currentGameMode = new CoopMode();
 
-    private final Map<String, RemotePlayer> remotePlayers = new HashMap<>();
+    private final Map<String, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
     private final Map<String, NetworkMessage> pendingActions = new ConcurrentHashMap<>();
 
     private MultiplayerManager() {}
@@ -46,6 +48,8 @@ public class MultiplayerManager implements TransportCallback {
 
         this.roomCode = roomCode;
         this.localPlayerId = initialPlayerId;
+        this.sessionToken = null;
+        this.lastSequence = 0L;
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
@@ -64,6 +68,10 @@ public class MultiplayerManager implements TransportCallback {
         }
         this.remotePlayers.clear();
         this.pendingActions.clear();
+        this.sessionToken = null;
+        this.localPlayerId = null;
+        this.roomCode = null;
+        this.lastSequence = 0L;
     }
 
     public boolean isMultiplayerActive() {
@@ -159,29 +167,23 @@ public class MultiplayerManager implements TransportCallback {
         }
 
         if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
-            String unescaped = message.payloadJson.replace("\\\"", "\"").replace("\\\\", "\\");
             try {
-                if (unescaped.contains("\"playerId\":")) {
-                    int pIdx = unescaped.indexOf("\"playerId\":") + 11;
-                    int startP = unescaped.indexOf("\"", pIdx);
-                    if (startP != -1) {
-                        int endP = unescaped.indexOf("\"", startP + 1);
-                        if (endP != -1) {
-                            this.localPlayerId = unescaped.substring(startP + 1, endP);
-                        }
-                    }
+                JsonValue payload = new JsonReader().parse(message.payloadJson);
+                JsonValue playerIdValue = payload.get("playerId");
+                JsonValue tokenValue = payload.get("sessionToken");
+                if (playerIdValue != null && !playerIdValue.isNull()) {
+                    this.localPlayerId = playerIdValue.asString();
                 }
-                if (unescaped.contains("\"sessionToken\":")) {
-                    int tIdx = unescaped.indexOf("\"sessionToken\":") + 15;
-                    int startT = unescaped.indexOf("\"", tIdx);
-                    if (startT != -1) {
-                        int endT = unescaped.indexOf("\"", startT + 1);
-                        if (endT != -1) {
-                            this.sessionToken = unescaped.substring(startT + 1, endT);
-                        }
-                    }
+                if (tokenValue != null && !tokenValue.isNull()) {
+                    this.sessionToken = tokenValue.asString();
                 }
-            } catch (Exception ignored) {}
+                JsonValue seqValue = payload.get("sequence");
+                if (seqValue != null && !seqValue.isNull()) {
+                    updateLastSequence(seqValue.asLong());
+                }
+            } catch (RuntimeException ignored) {
+                // A malformed SESSION must not overwrite an existing valid token.
+            }
         }
 
         if (message.sequence > this.lastSequence) {
