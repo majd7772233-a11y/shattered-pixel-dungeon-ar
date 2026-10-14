@@ -726,12 +726,14 @@ export class MatchRoom {
   }
 
   private processMobTurns() {
+    if (this.gameStatus === "ENDED") return;
     const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max, next_act_at FROM mobs WHERE depth = ? AND hp > 0 AND next_act_at <= ? ORDER BY next_act_at ASC, mob_id ASC`, this.currentDepth, this.worldTime).toArray();
     const activePlayers = this.sql.exec(`SELECT player_id, pos, hp, armor_val FROM players WHERE state = 'ALIVE'`).toArray();
 
     if (activeMobs.length === 0 || activePlayers.length === 0) return;
 
-    const mapWidth = 32;
+    const levelRow = this.sql.exec(`SELECT width FROM levels WHERE depth = ?`, this.currentDepth).toArray();
+    const mapWidth = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
 
     for (const mob of activeMobs) {
       const mobId = Number(mob.mob_id);
