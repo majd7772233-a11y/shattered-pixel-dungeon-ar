@@ -24,6 +24,10 @@ on:
       - 'gradlew'
       - '.github/workflows/multiplayer-ci.yml'
 
+concurrency:
+  group: multiplayer-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
