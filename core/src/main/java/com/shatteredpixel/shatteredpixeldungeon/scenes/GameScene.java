@@ -1146,6 +1146,13 @@ public class GameScene extends PixelScene {
 		add( mob, 0);
 	}
 
+	/** Adds a remote player's visual without registering it as a local game mob. */
+	public static boolean addRemoteHeroSprite(HeroSprite sprite) {
+		if (scene == null || sprite == null) return false;
+		scene.add(sprite);
+		return true;
+	}
+
 	public static void addSprite( Mob mob ) {
 		scene.addMobSprite( mob );
 	}
