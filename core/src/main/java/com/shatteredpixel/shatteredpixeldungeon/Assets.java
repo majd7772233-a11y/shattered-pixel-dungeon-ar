@@ -108,6 +108,7 @@ public class Assets {
 		public static final String PLANTS   = "messages/plants/plants";
 		public static final String SCENES   = "messages/scenes/scenes";
 		public static final String UI       = "messages/ui/ui";
+		public static final String MULTIPLAYER = "messages/ui/multiplayer";
 		public static final String WINDOWS  = "messages/windows/windows";
 	}
 
