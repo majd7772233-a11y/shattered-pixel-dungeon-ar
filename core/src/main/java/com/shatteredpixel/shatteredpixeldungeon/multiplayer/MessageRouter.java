@@ -25,6 +25,9 @@ public final class MessageRouter {
                 handleEventBatchMessage(message);
                 break;
             case ACTION_ACCEPTED:
+                manager.updateLastSequence(message.sequence);
+                applyAcceptedAction(message);
+                break;
             case ACK:
                 manager.updateLastSequence(message.sequence);
                 break;
@@ -37,6 +40,57 @@ public final class MessageRouter {
             default:
                 RemotePlayerActionReceiver.handleNetworkMessage(message);
                 break;
+        }
+    }
+
+    private static void applyAcceptedAction(NetworkMessage message) {
+        if (message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            String eventType = stringValue(payload.get("eventType"), "");
+            JsonValue action = payload.get("action");
+            if (action == null || !action.isObject()) return;
+
+            if ("PLAYER_MOVED".equals(eventType)) {
+                String playerId = stringValue(action.get("playerId"), null);
+                int pos = intValue(action.get("pos"), -1);
+                if (playerId != null && playerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())
+                        && pos >= 0 && Dungeon.hero != null && Dungeon.level != null && pos < Dungeon.level.length()) {
+                    int oldPos = Dungeon.hero.pos;
+                    Dungeon.hero.pos = pos;
+                    if (Dungeon.hero.sprite != null && oldPos != pos) Dungeon.hero.sprite.move(oldPos, pos);
+                }
+            } else if ("PLAYER_ATTACKED".equals(eventType)) {
+                String targetType = stringValue(action.get("targetType"), "MOB");
+                String targetId = stringValue(action.get("targetId"), null);
+                int hp = intValue(action.get("targetHp"), -1);
+                if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
+                    applyPlayerHp(targetId, hp);
+                    String state = stringValue(action.get("targetState"), "ALIVE");
+                    if ("DEAD".equals(state) || "SPECTATOR".equals(state)) applyPlayerDeath(targetId);
+                } else if ("MOB".equals(targetType) && targetId != null && hp >= 0 && Dungeon.level != null) {
+                    int mobId;
+                    try { mobId = Integer.parseInt(targetId); } catch (NumberFormatException ignored) { return; }
+                    for (Mob mob : Dungeon.level.mobs) {
+                        if (mob.id == mobId) {
+                            mob.HP = hp;
+                            if (hp <= 0) mob.die(Dungeon.hero);
+                            break;
+                        }
+                    }
+                }
+            } else if ("ITEM_PICKED_UP".equals(eventType) || "CHEST_OPENED".equals(eventType)) {
+                int itemPos = intValue(action.get("itemPos"), -1);
+                if (itemPos >= 0 && Dungeon.level != null) {
+                    com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(itemPos);
+                    if (heap != null) {
+                        Dungeon.level.heaps.remove(itemPos);
+                        if (heap.sprite != null) heap.sprite.remove();
+                    }
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Keep local state intact if an acknowledgement payload is malformed.
         }
     }
 
