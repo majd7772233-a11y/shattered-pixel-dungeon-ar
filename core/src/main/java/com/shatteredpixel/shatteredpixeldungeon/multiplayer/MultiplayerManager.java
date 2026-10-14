@@ -195,6 +195,12 @@ public class MultiplayerManager implements TransportCallback {
                 if (seqValue != null && !seqValue.isNull()) {
                     updateLastSequence(seqValue.asLong());
                 }
+                JsonValue seedValue = payload.get("seed");
+                if (seedValue != null && !seedValue.isNull()) {
+                    // SESSION arrives before HeroSelectScene starts the run, so all clients
+                    // initialize Dungeon with the same seed before SPD builds its first floor.
+                    Dungeon.seed = seedValue.asLong();
+                }
             } catch (RuntimeException ignored) {
                 // A malformed SESSION must not overwrite an existing valid token.
             }
