@@ -577,7 +577,13 @@ export class MatchRoom {
           this.worldTime += actionCost;
           this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('worldTime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, String(this.worldTime));
 
-          const resultJson = JSON.stringify({ status: "ACCEPTED", sequence: this.currentSequence });
+          const resultJson = JSON.stringify({
+            status: "ACCEPTED",
+            sequence: this.currentSequence,
+            eventType,
+            action: actionResultPayload,
+            actionCost
+          });
 
           if (msg.requestId) {
             this.sql.exec(
