@@ -43,14 +43,14 @@ public class MultiplayerSetupScene extends PixelScene {
         int w = Camera.main.width;
         int h = Camera.main.height;
 
-        BitmapText title = new BitmapText(Messages.get("ui.multiplayer", "multiplayer_title"), pixelFont);
+        BitmapText title = new BitmapText(Messages.get("multiplayer_title"), pixelFont);
         title.measure();
         title.x = (w - title.width()) / 2f;
         title.y = h * 0.12f;
         add(title);
 
         if ("LAN".equalsIgnoreCase(selectedTransportType)) {
-            hostInfoText = new BitmapText(Messages.get("ui.multiplayer", "lan_searching"), pixelFont);
+            hostInfoText = new BitmapText(Messages.get("lan_searching"), pixelFont);
             hostInfoText.measure();
             hostInfoText.x = (w - hostInfoText.width()) / 2f;
             hostInfoText.y = h * 0.28f;
@@ -81,7 +81,7 @@ public class MultiplayerSetupScene extends PixelScene {
                     targetIp = hostIp;
                     isHost = false;
                     if (hostInfoText != null) {
-                        hostInfoText.text(Messages.get("ui.multiplayer", "host_found") + ": " + hostName + " (" + hostIp + ")");
+                        hostInfoText.text(Messages.get("host_found") + ": " + hostName + " (" + hostIp + ")");
                         hostInfoText.measure();
                         hostInfoText.x = (w - hostInfoText.width()) / 2f;
                     }
@@ -92,14 +92,14 @@ public class MultiplayerSetupScene extends PixelScene {
             });
         } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
             maxPlayers = 2;
-            BitmapText btNote = new BitmapText(Messages.get("ui.multiplayer", "bt_limit_error"), pixelFont);
+            BitmapText btNote = new BitmapText(Messages.get("bt_limit_error"), pixelFont);
             btNote.measure();
             btNote.x = (w - btNote.width()) / 2f;
             btNote.y = h * 0.35f;
             add(btNote);
         }
 
-        StyledButton btnStart = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("ui.multiplayer", "start_game")) {
+        StyledButton btnStart = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("start_game")) {
             @Override
             protected void onClick() {
                 startMultiplayerSession();
