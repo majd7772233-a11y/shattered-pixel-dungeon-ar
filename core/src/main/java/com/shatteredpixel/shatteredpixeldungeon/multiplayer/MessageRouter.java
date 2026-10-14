@@ -119,25 +119,83 @@ public final class MessageRouter {
 
                 if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
                     applyMobEvent(type, action);
-                } else if ("PLAYER_MOVED".equals(type) || "PLAYER_ATTACKED".equals(type)
-                        || "CHAR_DIED".equals(type) || "PLAYER_REVIVED".equals(type)
-                        || "ITEM_PICKED_UP".equals(type) || "CHEST_OPENED".equals(type)
-                        || "LEVEL_TRANSITION".equals(type)) {
-                    // Reuse the established event adapter only after structurally identifying
-                    // the event envelope. Server messages are not gated on senderId being a player.
-                    NetworkMessage eventMessage = new NetworkMessage();
-                    eventMessage.messageType = MessageType.EVENT_BATCH;
-                    eventMessage.senderId = stringValue(action.get("playerId"),
-                            stringValue(action.get("targetPlayerId"), message.senderId));
-                    eventMessage.sequence = seq;
-                    eventMessage.payloadJson = action.toString().replace("\\", "\\\\").replace("\"", "\\\"");
-                    RemotePlayerActionReceiver.handleNetworkMessage(eventMessage);
+                } else if ("PLAYER_MOVED".equals(type)) {
+                    String playerId = stringValue(action.get("playerId"), message.senderId);
+                    int pos = intValue(action.get("pos"), -1);
+                    if (playerId != null && pos >= 0) {
+                        WorldSnapshot delta = new WorldSnapshot(seq, intValue(event.get("depth"), 1), 0L);
+                        delta.playerPositions.put(playerId, pos);
+                        WorldSnapshot.restoreWorld(delta);
+                    }
+                } else if ("PLAYER_ATTACKED".equals(type)) {
+                    String targetType = stringValue(action.get("targetType"), "MOB");
+                    String targetId = stringValue(action.get("targetId"), null);
+                    int hp = intValue(action.get("targetHp"), -1);
+                    if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
+                        applyPlayerHp(targetId, hp);
+                        String state = stringValue(action.get("targetState"), "ALIVE");
+                        if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
+                    }
+                } else if ("CHAR_DIED".equals(type)) {
+                    String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
+                    if (playerId != null) applyPlayerDeath(playerId);
+                } else if ("PLAYER_REVIVED".equals(type)) {
+                    String playerId = stringValue(action.get("playerId"), null);
+                    int hp = intValue(action.get("hp"), -1);
+                    if (playerId != null && hp >= 0) applyPlayerHp(playerId, hp);
+                } else if ("ITEM_PICKED_UP".equals(type) || "CHEST_OPENED".equals(type)) {
+                    int itemPos = intValue(action.get("itemPos"), -1);
+                    if (itemPos >= 0 && Dungeon.level != null) {
+                        com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(itemPos);
+                        if (heap != null) {
+                            Dungeon.level.heaps.remove(itemPos);
+                            if (heap.sprite != null) heap.sprite.remove();
+                        }
+                    }
+                } else if ("LEVEL_TRANSITION".equals(type)) {
+                    // The authoritative level snapshot that follows a transition is required
+                    // before changing local geometry; never synthesize a floor from depth alone.
+                    MultiplayerManager.getInstance().updateLastSequence(seq);
                 } else if ("MATCH_END".equals(type)) {
                     MultiplayerManager.getInstance().updateLastSequence(seq);
                 }
             }
         } catch (RuntimeException ignored) {
             // Keep the last known good world; caller can request a fresh snapshot.
+        }
+    }
+
+    private static void applyPlayerHp(String playerId, int hp) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (playerId.equals(manager.getLocalPlayerId())) {
+            if (Dungeon.hero != null) Dungeon.hero.HP = Math.max(0, hp);
+            return;
+        }
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+            manager.addRemotePlayer(remote);
+        }
+        remote.hp = Math.max(0, hp);
+        if (remote.heroInstance != null) remote.heroInstance.HP = remote.hp;
+    }
+
+    private static void applyPlayerDeath(String playerId) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (playerId.equals(manager.getLocalPlayerId())) {
+            if (Dungeon.hero != null) Dungeon.hero.HP = 0;
+            return;
+        }
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+            manager.addRemotePlayer(remote);
+        }
+        remote.isAlive = false;
+        remote.hp = 0;
+        if (remote.heroInstance != null) {
+            remote.heroInstance.HP = 0;
+            if (remote.heroInstance.sprite != null) remote.heroInstance.sprite.die();
         }
     }
 
