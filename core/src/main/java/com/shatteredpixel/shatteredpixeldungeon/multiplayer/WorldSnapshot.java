@@ -65,7 +65,7 @@ public class WorldSnapshot {
                 String pId = entry.getKey();
                 int pos = entry.getValue();
 
-                if (!pId.equals(manager.getLocalPlayerId())) {
+                if (pId != null && !pId.equals(manager.getLocalPlayerId()) && entry.getValue() != null && entry.getValue() >= 0) {
                     RemotePlayer remote = manager.getRemotePlayer(pId);
                     if (remote == null) {
                         String heroClass = snapshot.playerClasses.getOrDefault(pId, "WARRIOR");
@@ -85,12 +85,15 @@ public class WorldSnapshot {
 
                         Actor.add(remote.heroInstance);
 
+                        final RemotePlayer playerForRender = remote;
                         Game.runOnRenderThread(() -> {
-                            if (GameScene.scene() != null) {
+                            if (GameScene.scene() != null && playerForRender.heroInstance != null
+                                    && playerForRender.heroInstance.sprite == null) {
                                 HeroSprite sprite = new HeroSprite();
-                                remote.heroInstance.sprite = sprite;
-                                sprite.link(remote.heroInstance);
+                                playerForRender.heroInstance.sprite = sprite;
+                                sprite.link(playerForRender.heroInstance);
                                 GameScene.scene().add(sprite);
+                                sprite.place(playerForRender.pos);
                             }
                         });
                     } else {
