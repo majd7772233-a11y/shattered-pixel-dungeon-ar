@@ -1,5 +1,8 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
+
 public class NetworkMessage {
     public static final String PROTOCOL_VERSION = "1.0.0";
 
@@ -8,6 +11,7 @@ public class NetworkMessage {
     public String requestId;
     public long sequence;
     public String senderId;
+    /** The decoded JSON payload. It remains a string for wire compatibility with server 1.0.0. */
     public String payloadJson;
 
     public NetworkMessage() {}
@@ -20,76 +24,73 @@ public class NetworkMessage {
 
     public static NetworkMessage parseJson(String jsonStr) {
         NetworkMessage msg = new NetworkMessage();
-        if (jsonStr == null || jsonStr.trim().isEmpty()) return msg;
-
-        // Parse messageType
-        if (jsonStr.contains("\"messageType\":\"SESSION\"")) msg.messageType = MessageType.SESSION;
-        else if (jsonStr.contains("\"messageType\":\"PLAYER_JOINED\"")) msg.messageType = MessageType.PLAYER_JOINED;
-        else if (jsonStr.contains("\"messageType\":\"PLAYER_LEFT\"")) msg.messageType = MessageType.PLAYER_LEFT;
-        else if (jsonStr.contains("\"messageType\":\"ACTION_ACCEPTED\"")) msg.messageType = MessageType.ACTION_ACCEPTED;
-        else if (jsonStr.contains("\"messageType\":\"EVENT_BATCH\"")) msg.messageType = MessageType.EVENT_BATCH;
-        else if (jsonStr.contains("\"messageType\":\"SNAPSHOT\"")) msg.messageType = MessageType.SNAPSHOT;
-        else if (jsonStr.contains("\"messageType\":\"READY\"")) msg.messageType = MessageType.READY;
-        else if (jsonStr.contains("\"messageType\":\"CHAT\"")) msg.messageType = MessageType.CHAT;
-        else if (jsonStr.contains("\"messageType\":\"ERROR\"")) msg.messageType = MessageType.ERROR;
-        else if (jsonStr.contains("\"messageType\":\"PING\"")) msg.messageType = MessageType.PING;
-        else msg.messageType = MessageType.ACTION;
-
-        // Parse senderId
-        msg.senderId = extractStringField(jsonStr, "\"senderId\":");
-
-        // Parse requestId
-        msg.requestId = extractStringField(jsonStr, "\"requestId\":");
-
-        // Parse sequence
-        String seqStr = extractNumberField(jsonStr, "\"sequence\":");
-        if (seqStr != null) {
-            try {
-                msg.sequence = Long.parseLong(seqStr);
-            } catch (Exception ignored) {}
+        if (jsonStr == null || jsonStr.trim().isEmpty()) {
+            msg.messageType = MessageType.ERROR;
+            msg.payloadJson = "{\"error\":\"EMPTY_MESSAGE\"}";
+            return msg;
         }
 
-        // Extract payloadJson value if present
-        if (jsonStr.contains("\"payloadJson\":")) {
-            int pIdx = jsonStr.indexOf("\"payloadJson\":") + 14;
-            while (pIdx < jsonStr.length() && (jsonStr.charAt(pIdx) == ' ' || jsonStr.charAt(pIdx) == ':')) pIdx++;
-            if (pIdx < jsonStr.length()) {
-                msg.payloadJson = jsonStr.substring(pIdx).trim();
-            } else {
-                msg.payloadJson = jsonStr;
+        try {
+            JsonValue root = new JsonReader().parse(jsonStr);
+            if (root == null || !root.isObject()) {
+                msg.messageType = MessageType.ERROR;
+                msg.payloadJson = "{\"error\":\"INVALID_MESSAGE_OBJECT\"}";
+                return msg;
             }
-        } else {
-            msg.payloadJson = jsonStr;
-        }
 
+            msg.protocolVersion = stringField(root, "protocolVersion", PROTOCOL_VERSION);
+            String type = stringField(root, "messageType", "ERROR");
+            try {
+                msg.messageType = MessageType.valueOf(type);
+            } catch (IllegalArgumentException ignored) {
+                msg.messageType = MessageType.ERROR;
+                msg.payloadJson = "{\"error\":\"UNKNOWN_MESSAGE_TYPE\"}";
+                return msg;
+            }
+
+            msg.senderId = nullableString(root.get("senderId"));
+            msg.requestId = nullableString(root.get("requestId"));
+            JsonValue sequenceValue = root.get("sequence");
+            if (sequenceValue != null && !sequenceValue.isNull()) {
+                try {
+                    msg.sequence = sequenceValue.asLong();
+                } catch (RuntimeException ignored) {
+                    msg.sequence = 0L;
+                }
+            }
+
+            JsonValue payload = root.get("payloadJson");
+            if (payload == null || payload.isNull()) {
+                msg.payloadJson = "{}";
+            } else if (payload.isString()) {
+                msg.payloadJson = payload.asString();
+            } else {
+                // Accept object/array payloads from newer peers without double-encoding them.
+                msg.payloadJson = payload.toString();
+            }
+        } catch (RuntimeException ex) {
+            msg.messageType = MessageType.ERROR;
+            msg.payloadJson = "{\"error\":\"MALFORMED_JSON\"}";
+        }
         return msg;
     }
 
-    private static String extractStringField(String json, String key) {
-        if (!json.contains(key)) return null;
+    private static String stringField(JsonValue root, String key, String fallback) {
+        JsonValue value = root.get(key);
+        if (value == null || value.isNull()) return fallback;
         try {
-            int start = json.indexOf(key) + key.length();
-            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"' || json.charAt(start) == ':')) start++;
-            int end = start;
-            while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
-            if (start < end) {
-                return json.substring(start, end).replace("\"", "").trim();
-            }
-        } catch (Exception ignored) {}
-        return null;
+            return value.asString();
+        } catch (RuntimeException ignored) {
+            return fallback;
+        }
     }
 
-    private static String extractNumberField(String json, String key) {
-        if (!json.contains(key)) return null;
+    private static String nullableString(JsonValue value) {
+        if (value == null || value.isNull()) return null;
         try {
-            int start = json.indexOf(key) + key.length();
-            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == ':')) start++;
-            int end = start;
-            while (end < json.length() && Character.isDigit(json.charAt(end))) end++;
-            if (start < end) {
-                return json.substring(start, end);
-            }
-        } catch (Exception ignored) {}
-        return null;
+            return value.asString();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 }
