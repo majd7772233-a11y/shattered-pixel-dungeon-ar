@@ -466,7 +466,11 @@ export class MatchRoom {
 
                 const newEntranceRow = this.sql.exec(`SELECT entrance_pos FROM levels WHERE depth = ?`, this.currentDepth).toArray();
                 const newPos = newEntranceRow.length > 0 ? Number(newEntranceRow[0].entrance_pos) : 100;
-                this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, newPos, session.playerId);
+                if (this.gameMode === "COOP_DUNGEON" || this.gameMode === "SURVIVAL") {
+                  this.sql.exec(`UPDATE players SET pos = ? WHERE state = 'ALIVE'`, newPos);
+                } else {
+                  this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, newPos, session.playerId);
+                }
 
                 eventType = "LEVEL_TRANSITION";
                 actionResultPayload = { depth: this.currentDepth, newPos };
