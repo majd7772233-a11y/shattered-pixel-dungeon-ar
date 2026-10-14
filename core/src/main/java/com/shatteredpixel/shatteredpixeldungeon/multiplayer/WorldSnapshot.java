@@ -87,13 +87,13 @@ public class WorldSnapshot {
 
                         final RemotePlayer playerForRender = remote;
                         Game.runOnRenderThread(() -> {
-                            if (GameScene.scene() != null && playerForRender.heroInstance != null
-                                    && playerForRender.heroInstance.sprite == null) {
+                            if (playerForRender.heroInstance != null && playerForRender.heroInstance.sprite == null) {
                                 HeroSprite sprite = new HeroSprite();
-                                playerForRender.heroInstance.sprite = sprite;
                                 sprite.link(playerForRender.heroInstance);
-                                GameScene.scene().add(sprite);
-                                sprite.place(playerForRender.pos);
+                                if (GameScene.addRemoteHeroSprite(sprite)) {
+                                    playerForRender.heroInstance.sprite = sprite;
+                                    sprite.place(playerForRender.pos);
+                                }
                             }
                         });
                     } else {
