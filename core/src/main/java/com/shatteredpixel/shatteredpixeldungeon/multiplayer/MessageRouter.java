@@ -259,7 +259,7 @@ public final class MessageRouter {
         if (mobId < 0) return;
 
         for (Mob mob : Dungeon.level.mobs) {
-            if (mob.id != mobId) continue;
+            if (mob.id() != mobId) continue;
             int toPos = intValue(action.get("toPos"), -1);
             if (toPos >= 0 && toPos < Dungeon.level.length()) {
                 int fromPos = mob.pos;
