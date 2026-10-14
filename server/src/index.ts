@@ -137,6 +137,9 @@ export class MatchRoom {
       );
     `);
 
+    const timeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'worldTime'`).toArray();
+    this.worldTime = timeRow.length > 0 ? Number(timeRow[0].value) || 0 : 0;
+
     const seqRow = this.sql.exec(`SELECT MAX(sequence) as max_seq FROM events`).toArray();
     if (seqRow.length > 0 && seqRow[0].max_seq !== null) {
       this.currentSequence = Number(seqRow[0].max_seq);
@@ -425,9 +428,20 @@ export class MatchRoom {
               const dx = Math.abs((currentPos % mapWidth) - (targetPos % mapWidth));
               const dy = Math.abs(Math.floor(currentPos / mapWidth) - Math.floor(targetPos / mapWidth));
 
-              if (dx <= 1 && dy <= 1) {
-                const tileRow = this.sql.exec(`SELECT passable, solid FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, targetPos).toArray();
-                if (tileRow.length > 0 && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0) {
+              const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray();
+              const mapWidth = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
+              const mapHeight = levelRow.length > 0 ? Number(levelRow[0].height) : 32;
+              const inBounds = targetPos >= 0 && targetPos < mapWidth * mapHeight;
+              const adjacent = dx <= 1 && dy <= 1 && (dx !== 0 || dy !== 0);
+              let cornerBlocked = false;
+              if (dx === 1 && dy === 1) {
+                const sideA = currentPos + (targetPos % mapWidth > currentPos % mapWidth ? 1 : -1);
+                const sideB = currentPos + (Math.floor(targetPos / mapWidth) > Math.floor(currentPos / mapWidth) ? mapWidth : -mapWidth);
+                const sideRows = this.sql.exec(`SELECT passable, solid FROM level_tiles WHERE depth = ? AND pos IN (?, ?)`, this.currentDepth, sideA, sideB).toArray();
+                cornerBlocked = sideRows.length !== 2 || sideRows.some((tile: any) => Number(tile.passable) !== 1 || Number(tile.solid) === 1);
+              }
+              const tileRow = inBounds ? this.sql.exec(`SELECT passable, solid, pit FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, targetPos).toArray() : [];
+              if (adjacent && inBounds && !cornerBlocked && tileRow.length > 0 && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0 && Number(tileRow[0].pit) === 0) {
                   this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
                   eventType = "PLAYER_MOVED";
                   actionResultPayload = { playerId: session.playerId, pos: targetPos };
@@ -486,9 +500,8 @@ export class MatchRoom {
                       this.sql.exec(`UPDATE players SET hp = ?, state = ? WHERE player_id = ?`, newHp, newState, targetId);
 
                       if (newHp === 0) {
-                        this.sql.exec(`UPDATE players SET kills = kills + 1 WHERE player_id = ?`, session.playerId);
+                        this.sql.exec(`UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?`, session.playerId);
                         this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, targetId);
-                        this.checkMatchEndCondition();
                       }
 
                       eventType = "PLAYER_ATTACKED";
@@ -560,6 +573,7 @@ export class MatchRoom {
           // Increment sequence ONLY after successful validation and commit
           this.currentSequence++;
           this.worldTime += actionCost;
+          this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('worldTime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, String(this.worldTime));
 
           const resultJson = JSON.stringify({ status: "ACCEPTED", sequence: this.currentSequence });
 
@@ -584,7 +598,7 @@ export class MatchRoom {
           }));
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
-
+          this.checkMatchEndCondition();
           this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
@@ -643,6 +657,7 @@ export class MatchRoom {
   }
 
   private checkMatchEndCondition() {
+    if (this.gameStatus === "ENDED") return;
     if (this.gameMode === "DEATHMATCH") {
       const topKills = this.sql.exec(`SELECT player_id, kills FROM players ORDER BY kills DESC LIMIT 1`).toArray();
       if (topKills.length > 0 && Number(topKills[0].kills) >= 10) {
@@ -670,8 +685,9 @@ export class MatchRoom {
         });
       }
     } else if (this.gameMode === "PVP_ARENA") {
+      const playerCount = this.sql.exec(`SELECT COUNT(*) AS total FROM players`).toArray();
       const alivePlayers = this.sql.exec(`SELECT player_id FROM players WHERE state = 'ALIVE'`).toArray();
-      if (alivePlayers.length === 1) {
+      if (Number(playerCount[0]?.total || 0) >= 2 && alivePlayers.length === 1) {
         this.gameStatus = "ENDED";
         const winnerId = String(alivePlayers[0].player_id);
 
@@ -698,7 +714,7 @@ export class MatchRoom {
   }
 
   private processMobTurns() {
-    const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max FROM mobs WHERE depth = ? AND hp > 0`, this.currentDepth).toArray();
+    const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max, next_act_at FROM mobs WHERE depth = ? AND hp > 0 AND next_act_at <= ? ORDER BY next_act_at ASC, mob_id ASC`, this.currentDepth, this.worldTime).toArray();
     const activePlayers = this.sql.exec(`SELECT player_id, pos, hp, armor_val FROM players WHERE state = 'ALIVE'`).toArray();
 
     if (activeMobs.length === 0 || activePlayers.length === 0) return;
@@ -726,7 +742,10 @@ export class MatchRoom {
         }
       }
 
-      if (!closestPlayer) continue;
+      if (!closestPlayer) {
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
+        continue;
+      }
 
       const targetPos = Number(closestPlayer.pos);
       const targetPlayerId = String(closestPlayer.player_id);
@@ -745,7 +764,8 @@ export class MatchRoom {
         const newPlayerHp = Math.max(0, targetHp - finalDmg);
 
         const newState = newPlayerHp === 0 ? "DEAD" : "ALIVE";
-        this.sql.exec(`UPDATE players SET hp = ?, state = ? WHERE player_id = ?`, newPlayerHp, newState, targetPlayerId);
+        this.sql.exec(`UPDATE players SET hp = ?, state = ?, deaths = deaths + CASE WHEN ? = 'DEAD' THEN 1 ELSE 0 END WHERE player_id = ?`, newPlayerHp, newState, newState, targetPlayerId);
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
 
         const attackPayload = {
           mobId,
@@ -782,7 +802,7 @@ export class MatchRoom {
 
         const tileRow = this.sql.exec(`SELECT passable FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, nextPos).toArray();
         if (tileRow.length > 0 && Number(tileRow[0].passable) === 1) {
-          this.sql.exec(`UPDATE mobs SET pos = ? WHERE mob_id = ?`, nextPos, mobId);
+          this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + 1.0, mobId);
 
           this.currentSequence++;
           const movePayload = { mobId, fromPos: mobPos, toPos: nextPos };
@@ -799,6 +819,8 @@ export class MatchRoom {
             sequence: this.currentSequence,
             payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_MOVED", depth: this.currentDepth, action: movePayload }])
           });
+        } else {
+          this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
         }
       }
     }
