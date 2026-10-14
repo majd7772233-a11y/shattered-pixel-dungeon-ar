@@ -111,7 +111,7 @@ public class RemotePlayerActionReceiver {
 
         if (mobId != -1) {
             for (Mob mob : Dungeon.level.mobs) {
-                if (mob.id == mobId) {
+                if (mob.id() == mobId) {
                     if (toPos != -1) {
                         int fromPos = mob.pos;
                         mob.pos = toPos;
@@ -138,11 +138,13 @@ public class RemotePlayerActionReceiver {
             Actor.add(remote.heroInstance);
 
             Game.runOnRenderThread(() -> {
-                if (GameScene.scene() != null) {
+                if (remote.heroInstance != null && remote.heroInstance.sprite == null) {
                     HeroSprite sprite = new HeroSprite();
-                    remote.heroInstance.sprite = sprite;
                     sprite.link(remote.heroInstance);
-                    GameScene.scene().add(sprite);
+                    if (GameScene.addRemoteHeroSprite(sprite)) {
+                        remote.heroInstance.sprite = sprite;
+                        sprite.place(remote.pos);
+                    }
                 }
             });
         }
