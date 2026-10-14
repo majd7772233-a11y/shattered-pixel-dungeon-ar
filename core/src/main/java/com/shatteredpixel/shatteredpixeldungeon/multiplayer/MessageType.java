@@ -11,6 +11,7 @@ public enum MessageType {
     READY,
     MATCH_START,
     ACTION,
+    LEVEL_DATA,
     ACTION_ACCEPTED,
     EVENT_BATCH,
     SNAPSHOT,
