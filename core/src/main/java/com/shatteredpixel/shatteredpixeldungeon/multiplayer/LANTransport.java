@@ -283,10 +283,13 @@ public class LANTransport implements NetworkTransport {
                 while (isConnected && (line = reader.readLine()) != null) {
                     NetworkMessage msg = parseMessage(line);
                     if (isServer && hostAuthority != null && msg.messageType == MessageType.ACTION) {
+                        NetworkActionType actionType = parseActionType(msg.payloadJson);
                         int pos = parsePositionFromAction(msg.payloadJson);
-                        hostAuthority.processAction(msg.senderId, NetworkActionType.MOVE, pos);
+                        hostAuthority.processAction(msg.senderId, actionType, pos);
+                        // Never relay an unvalidated client intent as if it were an authoritative event.
+                    } else {
+                        broadcastToClients(line);
                     }
-                    broadcastToClients(line);
                 }
             } catch (Exception ignored) {
             } finally {
