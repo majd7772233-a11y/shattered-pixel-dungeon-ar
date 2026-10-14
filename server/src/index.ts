@@ -420,18 +420,16 @@ export class MatchRoom {
 
           const actionStr = payload.action || payload.data?.action;
 
-          if (actionStr === "MOVE" && targetPos >= 0 && targetPos < 1024) {
+          if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
               const currentPos = Number(playerRow[0].pos);
-              const mapWidth = 32;
-              const dx = Math.abs((currentPos % mapWidth) - (targetPos % mapWidth));
-              const dy = Math.abs(Math.floor(currentPos / mapWidth) - Math.floor(targetPos / mapWidth));
-
               const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray();
               const mapWidth = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
               const mapHeight = levelRow.length > 0 ? Number(levelRow[0].height) : 32;
-              const inBounds = targetPos >= 0 && targetPos < mapWidth * mapHeight;
+              const dx = Math.abs((currentPos % mapWidth) - (targetPos % mapWidth));
+              const dy = Math.abs(Math.floor(currentPos / mapWidth) - Math.floor(targetPos / mapWidth));
+              const inBounds = targetPos < mapWidth * mapHeight;
               const adjacent = dx <= 1 && dy <= 1 && (dx !== 0 || dy !== 0);
               let cornerBlocked = false;
               if (dx === 1 && dy === 1) {
@@ -441,13 +439,14 @@ export class MatchRoom {
                 cornerBlocked = sideRows.length !== 2 || sideRows.some((tile: any) => Number(tile.passable) !== 1 || Number(tile.solid) === 1);
               }
               const tileRow = inBounds ? this.sql.exec(`SELECT passable, solid, pit FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, targetPos).toArray() : [];
-              if (adjacent && inBounds && !cornerBlocked && tileRow.length > 0 && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0 && Number(tileRow[0].pit) === 0) {
-                  this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
-                  eventType = "PLAYER_MOVED";
-                  actionResultPayload = { playerId: session.playerId, pos: targetPos };
-                  actionValid = true;
-                  actionCost = 1.0;
-                }
+              if (adjacent && inBounds && !cornerBlocked && tileRow.length > 0
+                  && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0
+                  && Number(tileRow[0].pit) === 0) {
+                this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
+                eventType = "PLAYER_MOVED";
+                actionResultPayload = { playerId: session.playerId, pos: targetPos };
+                actionValid = true;
+                actionCost = 1.0;
               }
             }
           } else if (actionStr === "LVL_TRANSITION") {
