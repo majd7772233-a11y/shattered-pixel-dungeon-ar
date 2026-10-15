@@ -230,7 +230,7 @@ public class WorldSnapshot {
                         } else {
                             GLog.w("Snapshot mob bundle did not contain a native Mob for entity " + id);
                         }
-                    } catch (ReflectiveOperationException | LinkageError | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+                    } catch (LinkageError | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
                 }
                 if (matched != null) {
                     int oldPos = matched.pos;
@@ -294,7 +294,7 @@ public class WorldSnapshot {
                                 continue;
                             }
                             heap.drop(item);
-                        } catch (ReflectiveOperationException | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+                        } catch (RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
                     }
                 }
                 Dungeon.level.heaps.put(pos, heap);
@@ -334,7 +334,7 @@ public class WorldSnapshot {
                     trap.shape = number(data.get("shape"), trap.shape);
                     Dungeon.level.traps.put(pos, trap);
                     GameScene.updateMap(pos);
-                } catch (ReflectiveOperationException | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+                } catch (RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
             }
         }
 
@@ -355,7 +355,7 @@ public class WorldSnapshot {
                     plant.pos = pos;
                     Dungeon.level.plants.put(pos, plant);
                     GameScene.updateMap(pos);
-                } catch (ReflectiveOperationException | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+                } catch (RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
             }
         }
 
@@ -375,7 +375,7 @@ public class WorldSnapshot {
                     blob.restoreMultiplayerCooldown(floatNumber(data.get("cooldown"), 0f));
                     Dungeon.level.blobs.put(blob.getClass(), blob);
                     Actor.add(blob);
-                } catch (ReflectiveOperationException | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+                } catch (RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
             }
         }
 
