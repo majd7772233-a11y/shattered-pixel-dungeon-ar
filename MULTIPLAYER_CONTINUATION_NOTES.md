@@ -98,3 +98,10 @@ The following code is present by the gameplay-code commit `657ce010edb03b55707d2
 - Native attack validation now rejects HP increases and damage values inconsistent with the reported HP delta; focused unit tests were added for hit, miss, impossible healing, mismatched damage and invalid numbers.
 - These changes are a partial safety improvement, not completion of snapshot reconstruction or native combat parity. The live-world restore still needs all-or-nothing preflight and resync behavior, stable entity/item identities, full level metadata, correct scheduler/effect restoration and durable item/inventory transactions. The server's generic mob turn simulation remains non-native.
 - Phases 1–3 remain open. No real two-device verification has been performed.
+
+
+## Verification correction — 2026-10-16
+
+- A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
+- The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
+- The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
