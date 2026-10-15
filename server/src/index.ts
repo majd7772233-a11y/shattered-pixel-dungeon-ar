@@ -654,12 +654,16 @@ export class MatchRoom {
                   if (nativeResult) {
                     const distance = Number(payload.data?.engineDistance);
                     const nativeCost = Number(payload.data?.engineActionCost);
+                    const ranged = payload.data?.engineRanged === true;
+                    const targetHp = Number(payload.data?.targetHp);
+                    const reportedDamage = Number(payload.data?.damage);
                     const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
-                      && distance >= 0 && distance <= 8;
+                      && distance >= 0 && distance <= (ranged ? 8 : 1)
+                      && Number.isFinite(targetHp) && Number.isFinite(reportedDamage);
                     if (validNativeTarget) {
                       const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
-                      const newHp = Math.max(0, Math.min(targetHt, Number(payload.data?.targetHp)));
-                      const rawDmg = Math.max(0, Math.min(targetHt, Number(payload.data?.damage) || 0));
+                      const newHp = Math.max(0, Math.min(targetHt, targetHp));
+                      const rawDmg = Math.max(0, Math.min(targetHt, reportedDamage));
                       this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ? AND depth = ?`, newHp, targetId, this.currentDepth);
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
