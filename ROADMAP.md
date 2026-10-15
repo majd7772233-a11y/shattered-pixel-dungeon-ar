@@ -310,3 +310,15 @@ These pieces are the starting point, not evidence of complete behavior. The most
 
 - This is a code-based gap assessment of the current multiplayer implementation and its key integration points, protocol, backend, tests and CI. It is not a claim that all 2,174 repository tree entries were manually read line-by-line in a single pass; phase execution must continue the file-by-file review for every affected subsystem.
 - The current automated workflow passing is a useful baseline, but the current backend tests do not exercise a real Durable Object match or physical two-device play.
+
+
+---
+
+## 2026-10-16 Continuation checkpoint — NOT a phase completion
+
+- The current user request continues **Phase 1 (complete snapshot/world reconstruction), Phase 2 (native combat replication), and Phase 3 (native mob AI/Actor scheduler)**. Existing scaffolding is not sufficient to mark these phases complete.
+- See `MULTIPLAYER_CONTINUATION_NOTES.md` for the precise resume prompt, current branch/commit, implementation already present, code paths to inspect, outstanding defects and required verification.
+- Current branch head before this documentation update: `ba97f1b71605bec2e5642355fe0fcbc1add08f68`; latest gameplay-code commit: `657ce010edb03b55707d2b6d496abbb07b36fa7a`.
+- Last known green CI: run `38759441278` for the exact gameplay-code commit `657ce010edb03b55707d2b6d496abbb07b36fa7a`. Recheck Actions for newer runs and verify the exact head SHA before reporting status. This is not evidence of real two-device play.
+- Current known implementation includes native snapshot export/restore scaffolding for mobs/buffs, heaps/items, traps/plants/blobs, hero inventory/combat state, and native hero combat/damage replication. Remaining P0 gaps include stable entity/item IDs, idempotent full-snapshot semantics, safe exact bundle restoration, depth-aware durable item ownership, complete inventory/drop/effect lifecycle, replay/forgery validation, and native effective timing/AI rather than generic TypeScript approximations.
+- **Do not check off Phase 1, 2, or 3** until each phase's listed work items, acceptance criteria and automated tests have been verified. Continue on `multiplayer-framework-core-14118577486727081892`; do not merge into the default branch.
