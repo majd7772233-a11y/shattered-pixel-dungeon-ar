@@ -301,6 +301,22 @@ public class Hero extends Char {
 	private static final String HTBOOST     = "htboost";
 	
 	@Override
+	/** Restores native combat stats/talents without replacing this actor's local scheduler identity. */
+	public void restoreMultiplayerCombatState(Bundle bundle) {
+		if (bundle == null) return;
+		heroClass = bundle.getEnum(CLASS, HeroClass.class);
+		subClass = bundle.getEnum(SUBCLASS, HeroSubClass.class);
+		armorAbility = (ArmorAbility) bundle.get(ABILITY);
+		Talent.restoreTalentsFromBundle(bundle, this);
+		attackSkill = bundle.getInt(ATTACK);
+		defenseSkill = bundle.getInt(DEFENSE);
+		STR = bundle.getInt(STRENGTH);
+		lvl = bundle.getInt(LEVEL);
+		exp = bundle.getInt(EXPERIENCE);
+		HTBoost = bundle.getInt(HTBOOST);
+		belongings.restoreFromBundle(bundle);
+	}
+
 	public void storeInBundle( Bundle bundle ) {
 
 		super.storeInBundle( bundle );
