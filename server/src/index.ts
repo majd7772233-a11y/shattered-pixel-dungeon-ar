@@ -566,7 +566,8 @@ export class MatchRoom {
                 eventType = "PLAYER_MOVED";
                 actionResultPayload = { playerId: session.playerId, pos: targetPos };
                 actionValid = true;
-                actionCost = 1.0;
+                const nativeMoveCost = Number(payload.data?.engineActionCost);
+                actionCost = Number.isFinite(nativeMoveCost) ? Math.max(0.05, Math.min(10, nativeMoveCost)) : 1.0;
               }
             }
           } else if (actionStr === "LVL_TRANSITION") {
