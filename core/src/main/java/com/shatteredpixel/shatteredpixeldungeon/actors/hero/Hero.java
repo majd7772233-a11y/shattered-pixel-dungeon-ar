@@ -531,7 +531,8 @@ public class Hero extends Char {
 					+ ",\"engineActionCost\":" + attackDelay()
 					+ extraLoot + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
-		}		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
+		}
+		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
 			if (buff(Talent.PreciseAssaultTracker.class) != null){
 				buff(Talent.PreciseAssaultTracker.class).detach();
 			} else if (buff(Talent.LiquidAgilACCTracker.class) != null
