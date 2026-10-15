@@ -263,6 +263,9 @@ public final class SPDLevelSnapshot {
     public static String currentHeroStateJson() {
         if (Dungeon.hero == null) return "";
         Bundle heroState = new Bundle();
+        Bundle nativeHero = new Bundle();
+        Dungeon.hero.storeInBundle(nativeHero);
+        heroState.put("combatBundle", nativeHero.toString());
         Bundle inventory = new Bundle();
         Dungeon.hero.belongings.storeInBundle(inventory);
         heroState.put("inventoryBundle", inventory.toString());
