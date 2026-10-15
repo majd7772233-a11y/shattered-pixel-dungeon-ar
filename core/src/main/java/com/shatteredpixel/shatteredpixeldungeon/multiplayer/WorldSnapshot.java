@@ -4,6 +4,9 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
+import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
+import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
 import com.watabou.noosa.Game;
@@ -31,6 +34,8 @@ public class WorldSnapshot {
 
     public List<Map<String, Object>> mobs = new ArrayList<>();
     public List<Map<String, Object>> heaps = new ArrayList<>();
+    public List<Map<String, Object>> traps = new ArrayList<>();
+    public List<Map<String, Object>> transitions = new ArrayList<>();
     public List<Integer> claimedItemPositions = new ArrayList<>();
 
     public WorldSnapshot() {}
@@ -85,7 +90,28 @@ public class WorldSnapshot {
             });
         }
 
-        // Reconcile mobs already created by the local SPD level generation.
+
+        if (Dungeon.level != null) {
+            Dungeon.level.entrance = snapshot.entrancePos >= 0 ? snapshot.entrancePos : Dungeon.level.entrance;
+            Dungeon.level.exit = snapshot.exitPos >= 0 ? snapshot.exitPos : Dungeon.level.exit;
+            if (snapshot.transitions != null && !snapshot.transitions.isEmpty()) {
+                Dungeon.level.transitions.clear();
+                for (Map<String, Object> data : snapshot.transitions) {
+                    int pos = number(data.get("pos"), -1);
+                    if (pos < 0 || pos >= Dungeon.level.length()) continue;
+                    try {
+                        LevelTransition.Type type = LevelTransition.Type.valueOf(String.valueOf(data.get("type")));
+                        LevelTransition.Type targetType = null;
+                        String targetName = String.valueOf(data.get("targetType"));
+                        if (!targetName.isEmpty() && !"null".equals(targetName)) targetType = LevelTransition.Type.valueOf(targetName);
+                        Dungeon.level.transitions.add(new LevelTransition(Dungeon.level, pos, type,
+                                number(data.get("targetDepth"), Dungeon.depth), number(data.get("targetBranch"), Dungeon.branch), targetType));
+                    } catch (RuntimeException ignored) { }
+                }
+            }
+        }
+
+        // Reconcile mobs and instantiate authoritative mobs missing locally.
         if (Dungeon.level != null && snapshot.mobs != null) {
             java.util.Set<Integer> seenMobIds = new java.util.HashSet<>();
             for (Map<String, Object> data : snapshot.mobs) {
@@ -105,6 +131,20 @@ public class WorldSnapshot {
                         if (mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
                 }
+                if (matched == null) {
+                    try {
+                        Object instance = Class.forName("com.shatteredpixel.shatteredpixeldungeon.actors.mobs."
+                                + String.valueOf(data.get("name"))).getDeclaredConstructor().newInstance();
+                        if (instance instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) {
+                            matched = (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) instance;
+                            matched.pos = pos;
+                            matched.HT = Math.max(1, ht);
+                            matched.HP = Math.min(Math.max(1, hp), matched.HT);
+                            Dungeon.level.mobs.add(matched);
+                            GameScene.add(matched);
+                        }
+                    } catch (ReflectiveOperationException | LinkageError ignored) { }
+                }
                 if (matched != null) {
                     int oldPos = matched.pos;
                     matched.HT = Math.max(1, ht);
@@ -119,7 +159,71 @@ public class WorldSnapshot {
             }
         }
 
-        // Restore Claimed Heaps / Items
+        // Rebuild authoritative floor heaps and their dropped items with native SPD classes.
+        if (Dungeon.level != null && snapshot.heaps != null) {
+            java.util.Set<Integer> authoritativeHeapPositions = new java.util.HashSet<>();
+            for (Map<String, Object> data : snapshot.heaps) {
+                int pos = number(data.get("pos"), -1);
+                if (pos < 0 || pos >= Dungeon.level.length()) continue;
+                authoritativeHeapPositions.add(pos);
+                Heap heap = new Heap();
+                heap.pos = pos;
+                try { heap.type = Heap.Type.valueOf(String.valueOf(data.get("type"))); }
+                catch (RuntimeException ignored) { heap.type = Heap.Type.HEAP; }
+                heap.seen = Boolean.TRUE.equals(data.get("seen"));
+                heap.haunted = Boolean.TRUE.equals(data.get("haunted"));
+                heap.hidden = Boolean.TRUE.equals(data.get("hidden"));
+                Object itemList = data.get("items");
+                if (itemList instanceof List) {
+                    for (Object itemObject : (List<?>) itemList) {
+                        if (!(itemObject instanceof Map)) continue;
+                        Map<String, Object> itemData = (Map<String, Object>) itemObject;
+                        try {
+                            Item item = (Item) Class.forName(String.valueOf(itemData.get("className"))).getDeclaredConstructor().newInstance();
+                            int itemLevel = number(itemData.get("level"), 0);
+                            if (itemLevel > 0) item.upgrade(itemLevel);
+                            else if (itemLevel < 0) item.degrade(-itemLevel);
+                            item.quantity(Math.max(1, number(itemData.get("quantity"), 1)));
+                            item.cursed = Boolean.TRUE.equals(itemData.get("cursed"));
+                            item.cursedKnown = Boolean.TRUE.equals(itemData.get("cursedKnown"));
+                            heap.drop(item);
+                        } catch (ReflectiveOperationException | ClassCastException ignored) { }
+                    }
+                }
+                Dungeon.level.heaps.put(pos, heap);
+                GameScene.updateMap(pos);
+            }
+            for (int i = Dungeon.level.heaps.size() - 1; i >= 0; i--) {
+                int pos = Dungeon.level.heaps.keyAt(i);
+                if (!authoritativeHeapPositions.contains(pos)) {
+                    Heap stale = Dungeon.level.heaps.get(pos);
+                    if (stale != null && stale.sprite != null) stale.sprite.remove();
+                    Dungeon.level.heaps.remove(pos);
+                }
+            }
+        }
+
+        // Rebuild trap instances and their mutable activation/reveal state.
+        if (Dungeon.level != null && snapshot.traps != null) {
+            Dungeon.level.traps.clear();
+            for (Map<String, Object> data : snapshot.traps) {
+                int pos = number(data.get("pos"), -1);
+                if (pos < 0 || pos >= Dungeon.level.length()) continue;
+                try {
+                    Trap trap = (Trap) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
+                    trap.pos = pos;
+                    trap.active = Boolean.TRUE.equals(data.get("active"));
+                    trap.visible = Boolean.TRUE.equals(data.get("visible"));
+                    trap.reclaimed = Boolean.TRUE.equals(data.get("reclaimed"));
+                    trap.color = number(data.get("color"), trap.color);
+                    trap.shape = number(data.get("shape"), trap.shape);
+                    Dungeon.level.traps.put(pos, trap);
+                    GameScene.updateMap(pos);
+                } catch (ReflectiveOperationException | ClassCastException ignored) { }
+            }
+        }
+
+        // Remove heaps already claimed by the authoritative server.
         if (Dungeon.level != null && snapshot.claimedItemPositions != null) {
             for (Integer itemPos : snapshot.claimedItemPositions) {
                 if (itemPos != null && itemPos >= 0) {
