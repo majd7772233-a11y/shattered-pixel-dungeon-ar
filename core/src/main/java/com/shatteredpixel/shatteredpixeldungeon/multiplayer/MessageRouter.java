@@ -257,6 +257,8 @@ public final class MessageRouter {
                         applyPlayerHp(targetId, hp);
                         String state = stringValue(action.get("targetState"), "ALIVE");
                         if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
+                    } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
+                        applyMobEvent(type, action);
                     }
                 } else if ("CHAR_DIED".equals(type)) {
                     String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
