@@ -116,6 +116,11 @@ public final class MessageRouter {
         }
     }
 
+    private static boolean hasArray(JsonValue object, String name) {
+        JsonValue value = object == null ? null : object.get(name);
+        return value != null && value.isArray();
+    }
+
     private static void handleSnapshotMessage(NetworkMessage message) {
         if (message.payloadJson == null) return;
         try {
@@ -130,6 +135,12 @@ public final class MessageRouter {
 
             JsonValue level = root.get("level");
             if (level != null && level.isObject()) {
+                // Treat this as a full snapshot only when all authoritative collections are
+                // explicitly present. Missing arrays must never be interpreted as empty worlds.
+                snapshot.completeWorldSnapshot = hasArray(level, "tiles")
+                        && hasArray(level, "transitions") && hasArray(level, "heaps")
+                        && hasArray(level, "traps") && hasArray(level, "blobs")
+                        && hasArray(level, "plants") && hasArray(level, "mobs");
                 snapshot.levelWidth = intValue(level.get("width"), 0);
                 snapshot.levelHeight = intValue(level.get("height"), 0);
                 snapshot.entrancePos = intValue(level.get("entrancePos"), -1);
@@ -219,8 +230,9 @@ public final class MessageRouter {
                 }
             }
 
-            MultiplayerManager.getInstance().updateLastSequence(snapshot.sequence);
-            WorldSnapshot.restoreWorld(snapshot);
+            if (WorldSnapshot.restoreWorld(snapshot)) {
+                MultiplayerManager.getInstance().updateLastSequence(snapshot.sequence);
+            }
         } catch (RuntimeException ignored) {
             // Ignore malformed snapshots; the transport can request RESYNC rather than corrupt state.
         }
