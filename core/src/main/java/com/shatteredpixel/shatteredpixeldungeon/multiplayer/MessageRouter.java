@@ -60,7 +60,7 @@ public final class MessageRouter {
                     Dungeon.hero.pos = pos;
                     if (Dungeon.hero.sprite != null && oldPos != pos) Dungeon.hero.sprite.move(oldPos, pos);
                 }
-            } else if ("PLAYER_ATTACKED".equals(eventType)) {
+            } else if ("PLAYER_ATTACKED".equals(eventType) || "PLAYER_DAMAGED".equals(eventType)) {
                 String targetType = stringValue(action.get("targetType"), "MOB");
                 String targetId = stringValue(action.get("targetId"), null);
                 int hp = intValue(action.get("targetHp"), -1);
@@ -255,7 +255,7 @@ public final class MessageRouter {
                         delta.playerPositions.put(playerId, pos);
                         WorldSnapshot.restoreWorld(delta);
                     }
-                } else if ("PLAYER_ATTACKED".equals(type)) {
+                } else if ("PLAYER_ATTACKED".equals(type) || "PLAYER_DAMAGED".equals(type)) {
                     String targetType = stringValue(action.get("targetType"), "MOB");
                     String targetId = stringValue(action.get("targetId"), null);
                     int hp = intValue(action.get("targetHp"), -1);
