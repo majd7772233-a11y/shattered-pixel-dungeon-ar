@@ -1087,38 +1087,11 @@ export class MatchRoom {
       const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(targetPos / mapWidth));
 
       if (this.isMeleeAdjacent(mobPos, targetPos, this.currentDepth)) {
-        this.currentSequence++;
-        const rng = new SeededRNG(this.matchSeed + this.currentSequence + mobId);
-        const hit = rng.nextFloat() > 0.20;
-        const rawDmg = hit ? rng.intRange(1, mobDmgMax) : 0;
-        const finalDmg = Math.max(0, rawDmg - targetArmor);
-        const newPlayerHp = Math.max(0, targetHp - finalDmg);
-
-        const newState = newPlayerHp === 0 ? "DEAD" : "ALIVE";
-        this.sql.exec(`UPDATE players SET hp = ?, state = ?, deaths = deaths + CASE WHEN ? = 'DEAD' THEN 1 ELSE 0 END WHERE player_id = ?`, newPlayerHp, newState, newState, targetPlayerId);
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
-
-        const attackPayload = {
-          mobId,
-          targetPlayerId,
-          hit,
-          damage: finalDmg,
-          playerHp: newPlayerHp,
-          playerState: newState
-        };
-
-        this.sql.exec(
-          `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MOB_ATTACKED', ?)`,
-          this.currentSequence, JSON.stringify(attackPayload)
-        );
-
-        this.broadcast({
-          protocolVersion: "1.0.0",
-          messageType: "EVENT_BATCH",
-          senderId: "SERVER",
-          sequence: this.currentSequence,
-          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_ATTACKED", depth: this.currentDepth, action: attackPayload }])
-        });
+        // Do not approximate SPD hit chance, armor DR, buffs or damage with server-side RNG.
+        // The original Java engine resolves the attack on the owning client and reports the
+        // resulting HP through SYNC_HERO_STATE. The server only advances this mob's native turn.
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`,
+          this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
       } else if (Math.max(dx, dy) <= 8) {
         const nextPos = this.findNextMobStep(mobPos, targetPos, mapWidth, this.currentDepth, mobId);
         if (nextPos >= 0) {
