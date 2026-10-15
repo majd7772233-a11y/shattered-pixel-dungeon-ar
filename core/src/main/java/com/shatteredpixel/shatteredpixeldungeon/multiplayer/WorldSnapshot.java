@@ -12,6 +12,8 @@ import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
 import com.watabou.noosa.Game;
 import com.watabou.utils.Bundle;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
@@ -40,6 +42,8 @@ public class WorldSnapshot {
     public List<Map<String, Object>> mobs = new ArrayList<>();
     public List<Map<String, Object>> heaps = new ArrayList<>();
     public List<Map<String, Object>> traps = new ArrayList<>();
+    public List<Map<String, Object>> blobs = new ArrayList<>();
+    public List<Map<String, Object>> plants = new ArrayList<>();
     public List<Map<String, Object>> transitions = new ArrayList<>();
     public Map<String, String> playerStateJson = new HashMap<>();
     public List<Integer> claimedItemPositions = new ArrayList<>();
@@ -139,7 +143,7 @@ public class WorldSnapshot {
         if (Dungeon.level != null) {
             Dungeon.level.entrance = snapshot.entrancePos >= 0 ? snapshot.entrancePos : Dungeon.level.entrance;
             Dungeon.level.exit = snapshot.exitPos >= 0 ? snapshot.exitPos : Dungeon.level.exit;
-            if (snapshot.transitions != null && !snapshot.transitions.isEmpty()) {
+            if (snapshot.transitions != null) {
                 Dungeon.level.transitions.clear();
                 for (Map<String, Object> data : snapshot.transitions) {
                     int pos = number(data.get("pos"), -1);
@@ -305,6 +309,41 @@ public class WorldSnapshot {
                     trap.shape = number(data.get("shape"), trap.shape);
                     Dungeon.level.traps.put(pos, trap);
                     GameScene.updateMap(pos);
+                } catch (ReflectiveOperationException | RuntimeException ignored) { }
+            }
+        }
+
+        // Restore plants as native SPD objects, not decorative placeholders.
+        if (Dungeon.level != null && snapshot.plants != null) {
+            Dungeon.level.plants.clear();
+            for (Map<String, Object> data : snapshot.plants) {
+                int pos = number(data.get("pos"), -1);
+                if (pos < 0 || pos >= Dungeon.level.length()) continue;
+                try {
+                    Plant plant = null;
+                    Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
+                    if (encoded != null) plant = (Plant) encoded.get("plant");
+                    if (plant == null) plant = (Plant) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
+                    plant.pos = pos;
+                    Dungeon.level.plants.put(pos, plant);
+                    GameScene.updateMap(pos);
+                } catch (ReflectiveOperationException | RuntimeException ignored) { }
+            }
+        }
+
+        // Replace local blobs with the authoritative serialized blob instances and timing.
+        if (Dungeon.level != null && snapshot.blobs != null) {
+            for (Blob old : new java.util.ArrayList<>(Dungeon.level.blobs.values())) Actor.remove(old);
+            Dungeon.level.blobs.clear();
+            for (Map<String, Object> data : snapshot.blobs) {
+                try {
+                    Blob blob = null;
+                    Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
+                    if (encoded != null) blob = (Blob) encoded.get("blob");
+                    if (blob == null) blob = (Blob) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
+                    blob.restoreMultiplayerCooldown(floatNumber(data.get("cooldown"), 0f));
+                    Dungeon.level.blobs.put(blob.getClass(), blob);
+                    Actor.add(blob);
                 } catch (ReflectiveOperationException | RuntimeException ignored) { }
             }
         }
