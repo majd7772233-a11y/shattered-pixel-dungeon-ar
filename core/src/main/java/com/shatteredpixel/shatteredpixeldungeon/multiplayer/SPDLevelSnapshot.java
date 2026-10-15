@@ -256,7 +256,7 @@ public final class SPDLevelSnapshot {
                 h.items.add(d);
             }
             heaps.add(h);
-                }
+        }
         return heaps;
     }
 
