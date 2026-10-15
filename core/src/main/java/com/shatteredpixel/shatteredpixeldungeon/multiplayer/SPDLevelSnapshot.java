@@ -3,6 +3,8 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.watabou.utils.Bundle;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
@@ -33,6 +35,8 @@ public final class SPDLevelSnapshot {
     public List<MobData> mobs = new ArrayList<>();
     public List<HeapData> heaps = new ArrayList<>();
     public List<TrapData> traps = new ArrayList<>();
+    public List<BlobData> blobs = new ArrayList<>();
+    public List<PlantData> plants = new ArrayList<>();
     public String heroStateJson = "";
 
     public static final class Tile {
@@ -87,6 +91,18 @@ public final class SPDLevelSnapshot {
         public boolean haunted;
         public boolean hidden;
         public List<ItemData> items = new ArrayList<>();
+    }
+
+    public static final class BlobData {
+        public String className;
+        public String serializedBundle = "";
+        public float cooldown;
+    }
+
+    public static final class PlantData {
+        public int pos;
+        public String className;
+        public String serializedBundle = "";
     }
 
     public static final class TrapData {
@@ -205,6 +221,30 @@ public final class SPDLevelSnapshot {
                 trapBundle.put("trap", trap);
                 t.serializedBundle = trapBundle.toString();
                 out.traps.add(t);
+            }
+        }
+        if (level.blobs != null) {
+            for (Blob blob : level.blobs.values()) {
+                if (blob == null) continue;
+                BlobData data = new BlobData();
+                data.className = blob.getClass().getName();
+                data.cooldown = Math.max(0f, blob.cooldown());
+                Bundle blobBundle = new Bundle();
+                blobBundle.put("blob", blob);
+                data.serializedBundle = blobBundle.toString();
+                out.blobs.add(data);
+            }
+        }
+        if (level.plants != null) {
+            for (Plant plant : level.plants.valueList()) {
+                if (plant == null) continue;
+                PlantData data = new PlantData();
+                data.pos = plant.pos;
+                data.className = plant.getClass().getName();
+                Bundle plantBundle = new Bundle();
+                plantBundle.put("plant", plant);
+                data.serializedBundle = plantBundle.toString();
+                out.plants.add(data);
             }
         }
         out.heroStateJson = currentHeroStateJson();
