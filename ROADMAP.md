@@ -75,7 +75,7 @@ These pieces are the starting point, not evidence of complete behavior. The most
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status:** Next. The basic exporter and restore code exist; the contract and edge cases are unfinished.
+**Status:** In progress. Snapshot contract/preflight and exploration metadata have been tightened; this phase is not complete until stable server entity identity, fully prepared/rollback-safe restoration, omitted native level metadata, and round-trip/idempotency coverage are implemented and verified.
 
 ### Work items
 
