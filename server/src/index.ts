@@ -690,6 +690,22 @@ export class MatchRoom {
                       const newHp = Math.max(0, Math.min(targetHt, targetHp));
                       const rawDmg = Math.max(0, Math.min(targetHt, reportedDamage));
                       this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ? AND depth = ?`, newHp, targetId, this.currentDepth);
+                      if (newHp <= 0 && Array.isArray(payload.data?.heaps) && payload.data.heaps.length <= 1024) {
+                        const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+                        try {
+                          const levelSnapshot = saved && typeof saved.value === "string" ? JSON.parse(String(saved.value)) : {};
+                          levelSnapshot.heaps = payload.data.heaps.filter((heap: any) =>
+                            Number.isInteger(Number(heap?.pos)) && Number(heap.pos) >= 0
+                            && Number(heap.pos) < Number(levelSnapshot.width) * Number(levelSnapshot.height)
+                            && Array.isArray(heap.items) && heap.items.length <= 64);
+                          this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                            ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                            `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
+                          for (const heap of levelSnapshot.heaps) {
+                            this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+                          }
+                        } catch (_) {}
+                      }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, targetId, targetType: "MOB",
