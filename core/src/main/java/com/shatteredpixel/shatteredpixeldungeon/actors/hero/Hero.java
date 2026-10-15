@@ -496,26 +496,42 @@ public class Hero extends Char {
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
-		if (this == Dungeon.hero && enemy instanceof Mob
-				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
-			Mob mob = (Mob) enemy;
-			int targetHp = Math.max(0, mob.HP);
+		if (this == Dungeon.hero && MultiplayerManager.getInstance().isMultiplayerActive()
+				&& (enemy instanceof Mob || enemy instanceof RemoteHero)) {
+			String targetType;
+			String targetIdJson;
+			boolean ranged = belongings.attackingWeapon() instanceof MissileWeapon;
+			String extraLoot = "";
+			if (enemy instanceof Mob) {
+				Mob mob = (Mob) enemy;
+				targetType = "MOB";
+				targetIdJson = String.valueOf(mob.id());
+				if (mob.HP <= 0) extraLoot = ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson();
+			} else {
+				RemotePlayer remote = null;
+				for (RemotePlayer candidate : MultiplayerManager.getInstance().getRemotePlayers().values()) {
+					if (candidate.heroInstance == enemy) { remote = candidate; break; }
+				}
+				if (remote == null) return result;
+				targetType = "PLAYER";
+				targetIdJson = "\"" + remote.playerId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+			int targetHp = Math.max(0, enemy.HP);
 			int dealt = Math.max(0, targetHpBefore - targetHp);
-			String action = "{\"targetId\":" + mob.id()
-					+ ",\"targetType\":\"MOB\""
-					+ ",\"targetPos\":" + mob.pos
+			String action = "{\"targetId\":" + targetIdJson
+					+ ",\"targetType\":\"" + targetType + "\""
+					+ ",\"targetPos\":" + enemy.pos
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
-					+ ",\"engineRanged\":" + (belongings.attackingWeapon() instanceof MissileWeapon)
+					+ ",\"engineRanged\":" + ranged
 					+ ",\"damage\":" + dealt
 					+ ",\"targetHp\":" + targetHp
-					+ ",\"targetHt\":" + Math.max(1, mob.HT)
-					+ ",\"engineDistance\":" + Dungeon.level.distance(pos, mob.pos)
+					+ ",\"targetHt\":" + Math.max(1, enemy.HT)
+					+ ",\"engineDistance\":" + Dungeon.level.distance(pos, enemy.pos)
 					+ ",\"engineActionCost\":" + attackDelay()
-					+ (targetHp <= 0 ? ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson() : "") + "}";
+					+ extraLoot + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
-		}
-		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
+		}		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
 			if (buff(Talent.PreciseAssaultTracker.class) != null){
 				buff(Talent.PreciseAssaultTracker.class).detach();
 			} else if (buff(Talent.LiquidAgilACCTracker.class) != null
