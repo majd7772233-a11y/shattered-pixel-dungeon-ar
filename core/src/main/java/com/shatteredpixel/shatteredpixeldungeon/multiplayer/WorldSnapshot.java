@@ -167,12 +167,12 @@ public class WorldSnapshot {
                 if (id < 0 || pos < 0 || pos >= Dungeon.level.length()) continue;
                 com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob matched = null;
                 for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
-                    if (mob.id() == id) { matched = mob; break; }
+                    if (!authoritativeMobs.contains(mob) && mob.id() == id) { matched = mob; break; }
                 }
                 if (matched == null) {
                     String name = String.valueOf(data.get("name"));
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
-                        if (mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
+                        if (!authoritativeMobs.contains(mob) && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
                 }
                 if (matched == null) {
