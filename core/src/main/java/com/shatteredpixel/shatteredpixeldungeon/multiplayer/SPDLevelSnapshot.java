@@ -58,6 +58,7 @@ public final class SPDLevelSnapshot {
         public String state;
         public int defenseSkill;
         public float baseSpeed;
+        public float cooldown;
     }
 
     public static final class ItemData {
@@ -135,7 +136,8 @@ public final class SPDLevelSnapshot {
                 m.ht = mob.HT;
                 m.state = mob.state == null ? "" : mob.state.getClass().getSimpleName();
                 m.defenseSkill = mob.defenseSkill;
-                m.baseSpeed = mob.speed();
+                m.baseSpeed = mob.multiplayerBaseSpeed();
+                m.cooldown = Math.max(0f, mob.cooldown());
                 out.mobs.add(m);
             }
         }
