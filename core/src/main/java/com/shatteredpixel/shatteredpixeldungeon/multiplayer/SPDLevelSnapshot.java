@@ -135,7 +135,7 @@ public final class SPDLevelSnapshot {
                 m.ht = mob.HT;
                 m.state = mob.state == null ? "" : mob.state.getClass().getSimpleName();
                 m.defenseSkill = mob.defenseSkill;
-                m.baseSpeed = mob.baseSpeed;
+                m.baseSpeed = mob.speed();
                 out.mobs.add(m);
             }
         }
