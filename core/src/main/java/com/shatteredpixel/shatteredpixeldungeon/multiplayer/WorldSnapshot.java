@@ -152,10 +152,46 @@ public class WorldSnapshot {
             tileSeen[pos] = true;
         }
         for (boolean seen : tileSeen) if (!seen) return false;
+        if (snapshot.transitions == null || snapshot.heaps == null || snapshot.traps == null
+                || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
+                || snapshot.playerPositions == null || snapshot.playerHp == null || snapshot.playerHt == null
+                || snapshot.playerClasses == null || snapshot.playerStateJson == null
+                || snapshot.claimedItemPositions == null) return false;
         if (!validPositions(snapshot.transitions, length, "pos", false)
                 || !validPositions(snapshot.heaps, length, "pos", true)
                 || !validPositions(snapshot.traps, length, "pos", true)
                 || !validPositions(snapshot.plants, length, "pos", true)) return false;
+        for (Map<String, Object> transition : snapshot.transitions) {
+            try {
+                com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.valueOf(
+                        String.valueOf(transition.get("type")));
+                String targetType = String.valueOf(transition.get("targetType"));
+                if (!targetType.isEmpty() && !"null".equals(targetType))
+                    com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.valueOf(targetType);
+            } catch (RuntimeException invalidTransition) { return false; }
+            int targetDepth = number(transition.get("targetDepth"), -1);
+            int targetBranch = number(transition.get("targetBranch"), -1);
+            if (targetDepth < 1 || targetDepth > 100 || targetBranch < 0 || targetBranch > 32) return false;
+        }
+        for (Map.Entry<String, Integer> player : snapshot.playerPositions.entrySet()) {
+            if (player.getKey() == null || player.getKey().isEmpty() || player.getValue() == null
+                    || player.getValue() < 0 || player.getValue() >= length) return false;
+            int hp = snapshot.playerHp.containsKey(player.getKey()) ? snapshot.playerHp.get(player.getKey()) : 0;
+            int ht = snapshot.playerHt.containsKey(player.getKey()) ? snapshot.playerHt.get(player.getKey()) : 1;
+            if (hp < 0 || ht < 1 || hp > ht) return false;
+            String heroState = snapshot.playerStateJson.get(player.getKey());
+            if (heroState != null && !heroState.isEmpty()) {
+                Bundle state = readBundle(heroState);
+                if (state == null) return false;
+                String combat = state.getString("combatBundle");
+                String inventory = state.getString("inventoryBundle");
+                if (combat == null || combat.isEmpty() || readBundle(combat) == null
+                        || inventory == null || inventory.isEmpty() || readBundle(inventory) == null) return false;
+            }
+        }
+        java.util.Set<Integer> claimed = new java.util.HashSet<>();
+        for (Integer pos : snapshot.claimedItemPositions)
+            if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return false;
         java.util.Set<Integer> mobIds = new java.util.HashSet<>();
         for (Map<String, Object> mob : snapshot.mobs) {
             if (mob == null) return false;
@@ -166,23 +202,44 @@ public class WorldSnapshot {
             if (id < 0 || !mobIds.add(id) || pos < 0 || pos >= length || hp < 0 || ht < 1 || hp > ht) return false;
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
             Object buffs = mob.get("buffs");
-            if (buffs instanceof List) for (Object raw : (List<?>) buffs) {
+            if (!(buffs instanceof List)) return false;
+            if (((List<?>) buffs).size() > 256) return false;
+            for (Object raw : (List<?>) buffs) {
                 if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "buff", Buff.class)) return false;
+                float cooldown = floatNumber(((Map<?, ?>) raw).get("cooldown"), Float.NaN);
+                if (!Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return false;
             }
+            float speed = floatNumber(mob.get("baseSpeed"), Float.NaN);
+            float cooldown = floatNumber(mob.get("cooldown"), Float.NaN);
+            if (!Float.isFinite(speed) || speed <= 0f || speed > 100f
+                    || !Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return false;
         }
         for (Map<String, Object> heap : snapshot.heaps) {
+            try { Heap.Type.valueOf(String.valueOf(heap.get("type"))); }
+            catch (RuntimeException invalidHeapType) { return false; }
             Object items = heap.get("items");
-            if (!(items instanceof List)) return false;
+            if (!(items instanceof List) || ((List<?>) items).size() > 512) return false;
             for (Object raw : (List<?>) items) {
-                if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "item", Item.class)) return false;
+                if (!(raw instanceof Map)) return false;
+                Map<?, ?> item = (Map<?, ?>) raw;
+                if (!bundleContains(item.get("serializedBundle"), "item", Item.class)) return false;
+                int quantity = number(item.get("quantity"), -1);
+                int itemLevel = number(item.get("level"), 0);
+                if (quantity < 1 || quantity > 100000 || itemLevel < -100 || itemLevel > 10000) return false;
             }
         }
         for (Map<String, Object> trap : snapshot.traps)
             if (!bundleContains(trap.get("serializedBundle"), "trap", Trap.class)) return false;
         for (Map<String, Object> plant : snapshot.plants)
             if (!bundleContains(plant.get("serializedBundle"), "plant", Plant.class)) return false;
-        for (Map<String, Object> blob : snapshot.blobs)
+        java.util.Set<String> blobTypes = new java.util.HashSet<>();
+        for (Map<String, Object> blob : snapshot.blobs) {
             if (!bundleContains(blob.get("serializedBundle"), "blob", Blob.class)) return false;
+            String type = String.valueOf(blob.get("className"));
+            float cooldown = floatNumber(blob.get("cooldown"), Float.NaN);
+            if (type.isEmpty() || !blobTypes.add(type) || !Float.isFinite(cooldown)
+                    || cooldown < 0f || cooldown > 100000f) return false;
+        }
         return true;
     }
 
@@ -198,7 +255,7 @@ public class WorldSnapshot {
     }
 
     private static boolean bundleContains(Object raw, String key, Class<?> expectedType) {
-        if (!(raw instanceof String) || ((String) raw).isEmpty()) return false;
+        if (!(raw instanceof String) || ((String) raw).isEmpty() || ((String) raw).length() > 200000) return false;
         Bundle bundle = readBundle((String) raw);
         if (bundle == null) return false;
         try { return expectedType.isInstance(bundle.get(key)); }
