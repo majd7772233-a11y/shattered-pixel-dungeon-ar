@@ -1668,6 +1668,18 @@ public class Hero extends Char {
 
 		if (effectiveDamage <= 0) return;
 
+		if (this == Dungeon.hero && src instanceof Char
+				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
+			String state = HP <= 0 ? "DEAD" : "ALIVE";
+			String damageState = "{\"targetType\":\"PLAYER\","
+					+ "\"targetHp\":" + Math.max(0, HP)
+					+ ",\"targetHt\":" + Math.max(1, HT)
+					+ ",\"targetState\":\"" + state + "\""
+					+ ",\"damage\":" + Math.max(0, effectiveDamage)
+					+ ",\"engineDamageResult\":true}";
+			MultiplayerManager.getInstance().sendAction(NetworkActionType.SYNC_HERO_STATE, damageState);
+		}
+
 		if (buff(Challenge.DuelParticipant.class) != null){
 			buff(Challenge.DuelParticipant.class).addDamage(effectiveDamage);
 		}
