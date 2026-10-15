@@ -3,6 +3,9 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
+import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
 
@@ -26,6 +29,8 @@ public final class SPDLevelSnapshot {
     public List<Tile> tiles = new ArrayList<>();
     public List<Transition> transitions = new ArrayList<>();
     public List<MobData> mobs = new ArrayList<>();
+    public List<HeapData> heaps = new ArrayList<>();
+    public List<TrapData> traps = new ArrayList<>();
 
     public static final class Tile {
         public int pos;
@@ -50,6 +55,36 @@ public final class SPDLevelSnapshot {
         public int pos;
         public int hp;
         public int ht;
+        public String state;
+        public int defenseSkill;
+        public float baseSpeed;
+    }
+
+    public static final class ItemData {
+        public String className;
+        public int quantity;
+        public int level;
+        public boolean cursed;
+        public boolean cursedKnown;
+    }
+
+    public static final class HeapData {
+        public int pos;
+        public String type;
+        public boolean seen;
+        public boolean haunted;
+        public boolean hidden;
+        public List<ItemData> items = new ArrayList<>();
+    }
+
+    public static final class TrapData {
+        public int pos;
+        public String className;
+        public boolean active;
+        public boolean visible;
+        public boolean reclaimed;
+        public int color;
+        public int shape;
     }
 
     private SPDLevelSnapshot() {}
@@ -98,10 +133,51 @@ public final class SPDLevelSnapshot {
                 m.pos = mob.pos;
                 m.hp = mob.HP;
                 m.ht = mob.HT;
+                m.state = mob.state == null ? "" : mob.state.getClass().getSimpleName();
+                m.defenseSkill = mob.defenseSkill;
+                m.baseSpeed = mob.baseSpeed;
                 out.mobs.add(m);
             }
         }
 
+        if (level.heaps != null) {
+            for (int i = 0; i < level.heaps.size(); i++) {
+                Heap heap = level.heaps.valueAt(i);
+                if (heap == null) continue;
+                HeapData h = new HeapData();
+                h.pos = heap.pos;
+                h.type = heap.type == null ? "HEAP" : heap.type.name();
+                h.seen = heap.seen;
+                h.haunted = heap.haunted;
+                h.hidden = heap.hidden;
+                for (Item item : heap.items) {
+                    if (item == null) continue;
+                    ItemData d = new ItemData();
+                    d.className = item.getClass().getName();
+                    d.quantity = item.quantity();
+                    d.level = item.level();
+                    d.cursed = item.cursed;
+                    d.cursedKnown = item.cursedKnown;
+                    h.items.add(d);
+                }
+                out.heaps.add(h);
+            }
+        }
+        if (level.traps != null) {
+            for (int i = 0; i < level.traps.size(); i++) {
+                Trap trap = level.traps.valueAt(i);
+                if (trap == null) continue;
+                TrapData t = new TrapData();
+                t.pos = trap.pos;
+                t.className = trap.getClass().getName();
+                t.active = trap.active;
+                t.visible = trap.visible;
+                t.reclaimed = trap.reclaimed;
+                t.color = trap.color;
+                t.shape = trap.shape;
+                out.traps.add(t);
+            }
+        }
         return new Json().toJson(out);
     }
 }
