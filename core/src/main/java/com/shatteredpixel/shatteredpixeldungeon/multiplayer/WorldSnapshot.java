@@ -41,7 +41,7 @@ public class WorldSnapshot {
     public List<Map<String, Object>> heaps = new ArrayList<>();
     public List<Map<String, Object>> traps = new ArrayList<>();
     public List<Map<String, Object>> transitions = new ArrayList<>();
-    public String heroStateJson = "";
+    public Map<String, String> playerStateJson = new HashMap<>();
     public List<Integer> claimedItemPositions = new ArrayList<>();
 
     public WorldSnapshot() {}
@@ -280,8 +280,10 @@ public class WorldSnapshot {
         }
 
         // Restore Remote Players
-        if (Dungeon.hero != null && snapshot.heroStateJson != null && !snapshot.heroStateJson.isEmpty()) {
-            Bundle heroState = readBundle(snapshot.heroStateJson);
+        String localPlayerId = manager.getLocalPlayerId();
+        String localHeroState = localPlayerId == null ? null : snapshot.playerStateJson.get(localPlayerId);
+        if (Dungeon.hero != null && localHeroState != null && !localHeroState.isEmpty()) {
+            Bundle heroState = readBundle(localHeroState);
             if (heroState != null) {
                 Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
                 if (inventory != null) Dungeon.hero.belongings.restoreFromBundle(inventory);
