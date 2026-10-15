@@ -481,6 +481,21 @@ public abstract class Level implements Bundlable {
 		return feeling == Feeling.CHASM ? Terrain.EMPTY_SP : Terrain.EMPTY;
 	}
 
+	/** Stable string bridge for multiplayer metadata without exposing the internal enum. */
+	public String multiplayerFeelingName() {
+		return feeling == null ? "NONE" : feeling.name();
+	}
+
+	/** Applies a validated multiplayer level feeling using the native enum. */
+	public boolean restoreMultiplayerFeeling(String name) {
+		try {
+			feeling = Feeling.valueOf(name);
+			return true;
+		} catch (RuntimeException invalidFeeling) {
+			return false;
+		}
+	}
+
 	public int width() {
 		return width;
 	}
