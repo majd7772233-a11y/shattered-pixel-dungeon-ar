@@ -212,7 +212,25 @@ public abstract class Mob extends Char {
 		firstAdded = false;
 	}
 
-	//mobs need to remember their targets after every actor is added
+	    /** Multiplayer snapshot bridge: preserve the original SPD AI state and actor turn timing. */
+    public float multiplayerBaseSpeed() {
+        return baseSpeed;
+    }
+
+    public void restoreMultiplayerState(String stateName, float savedBaseSpeed, int savedDefenseSkill, float cooldown) {
+        if (savedBaseSpeed > 0f) baseSpeed = savedBaseSpeed;
+        defenseSkill = savedDefenseSkill;
+        if ("Sleeping".equals(stateName)) state = SLEEPING;
+        else if ("Wandering".equals(stateName)) state = WANDERING;
+        else if ("Investigating".equals(stateName)) state = INVESTIGATING;
+        else if ("Hunting".equals(stateName)) state = HUNTING;
+        else if ("Fleeing".equals(stateName)) state = FLEEING;
+        else if ("Passive".equals(stateName)) state = PASSIVE;
+        timeToNow();
+        spend(Math.max(0f, cooldown));
+    }
+
+//mobs need to remember their targets after every actor is added
 	public void restoreEnemy(){
 		if (enemyID != -1 && enemy == null) enemy = (Char)Actor.findById(enemyID);
 	}
