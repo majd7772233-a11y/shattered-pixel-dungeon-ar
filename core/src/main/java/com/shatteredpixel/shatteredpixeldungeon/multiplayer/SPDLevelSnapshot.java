@@ -189,23 +189,26 @@ public final class SPDLevelSnapshot {
                 out.traps.add(t);
             }
         }
-        if (Dungeon.hero != null) {
-            Bundle heroState = new Bundle();
-            Bundle inventory = new Bundle();
-            Dungeon.hero.belongings.storeInBundle(inventory);
-            heroState.put("inventoryBundle", inventory.toString());
-            heroState.put("hp", Dungeon.hero.HP);
-            heroState.put("ht", Dungeon.hero.HT);
-            heroState.put("pos", Dungeon.hero.pos);
-            heroState.put("buffCount", Dungeon.hero.buffs().size());
-            int buffIndex = 0;
-            for (Buff buff : Dungeon.hero.buffs()) {
-                Bundle buffBundle = new Bundle();
-                buffBundle.put("buff", buff);
-                heroState.put("buff_" + buffIndex++, buffBundle.toString());
-            }
-            out.heroStateJson = heroState.toString();
-        }
+        out.heroStateJson = currentHeroStateJson();
         return new Json().toJson(out);
+    }
+
+    public static String currentHeroStateJson() {
+        if (Dungeon.hero == null) return "";
+        Bundle heroState = new Bundle();
+        Bundle inventory = new Bundle();
+        Dungeon.hero.belongings.storeInBundle(inventory);
+        heroState.put("inventoryBundle", inventory.toString());
+        heroState.put("hp", Dungeon.hero.HP);
+        heroState.put("ht", Dungeon.hero.HT);
+        heroState.put("pos", Dungeon.hero.pos);
+        heroState.put("buffCount", Dungeon.hero.buffs().size());
+        int buffIndex = 0;
+        for (Buff buff : Dungeon.hero.buffs()) {
+            Bundle buffBundle = new Bundle();
+            buffBundle.put("buff", buff);
+            heroState.put("buff_" + buffIndex++, buffBundle.toString());
+        }
+        return heroState.toString();
     }
 }
