@@ -625,46 +625,52 @@ export class MatchRoom {
             const targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
 
-            const attackerRow = this.sql.exec(`SELECT pos, str, weapon_dmg_max FROM players WHERE player_id = ?`, session.playerId).toArray();
+            const attackerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (attackerRow.length > 0) {
               const attackerPos = Number(attackerRow[0].pos);
-              const weaponDmgMax = Number(attackerRow[0].weapon_dmg_max);
 
               if (targetType === "PLAYER") {
                 if (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH") {
-                  const defenderRow = this.sql.exec(`SELECT pos, hp, armor_val, state FROM players WHERE player_id = ?`, targetId).toArray();
-                  if (defenderRow.length > 0 && String(defenderRow[0].state) === "ALIVE") {
+                  const defenderRow = this.sql.exec(`SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, String(targetId)).toArray();
+                  const nativeResult = payload.data?.engineResult === true;
+                  if (defenderRow.length > 0 && String(defenderRow[0].state) === "ALIVE" && nativeResult) {
                     const defPos = Number(defenderRow[0].pos);
-                    const defHp = Number(defenderRow[0].hp);
-                    const armorVal = Number(defenderRow[0].armor_val);
-
-                    if (this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth)) {
-                      const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
-                      const hit = rng.nextFloat() > 0.15;
-                      const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
-                      const finalDmg = Math.max(0, rawDmg - armorVal);
-                      const newHp = Math.max(0, defHp - finalDmg);
-
-                      const newState = newHp === 0 ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR") : "ALIVE";
-                      this.sql.exec(`UPDATE players SET hp = ?, state = ? WHERE player_id = ?`, newHp, newState, targetId);
-
+                    const requestedPos = Number(payload.data?.targetPos ?? -1);
+                    const distance = Number(payload.data?.engineDistance);
+                    const nativeCost = Number(payload.data?.engineActionCost);
+                    const ranged = payload.data?.engineRanged === true;
+                    const targetHp = Number(payload.data?.targetHp);
+                    const targetHt = Number(payload.data?.targetHt);
+                    const reportedDamage = Number(payload.data?.damage);
+                    const widthRow = this.sql.exec(`SELECT width FROM levels WHERE depth = ?`, this.currentDepth).toArray();
+                    const width = Number(widthRow[0]?.width || 1);
+                    const dx = Math.abs((attackerPos % width) - (defPos % width));
+                    const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(defPos / width));
+                    const authoritativeDistance = Math.max(dx, dy);
+                    const validNativeTarget = requestedPos === defPos && Number.isFinite(distance)
+                      && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
+                      && Number.isInteger(targetHp) && targetHp >= 0
+                      && Number.isInteger(targetHt) && targetHt > 0
+                      && Number.isFinite(reportedDamage) && reportedDamage >= 0;
+                    if (validNativeTarget) {
+                      const newHp = Math.min(targetHp, targetHt);
+                      const newState = newHp === 0
+                        ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR")
+                        : "ALIVE";
+                      this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ? WHERE player_id = ?`,
+                        newHp, targetHt, newState, String(targetId));
                       if (newHp === 0) {
                         this.sql.exec(`UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?`, session.playerId);
-                        this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, targetId);
+                        this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, String(targetId));
                       }
-
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
-                        attackerId: session.playerId,
-                        targetId,
-                        targetType: "PLAYER",
-                        hit,
-                        damage: finalDmg,
-                        targetHp: newHp,
-                        targetState: newState
+                        attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
+                        hit: payload.data?.engineHit === true, damage: Math.min(targetHt, reportedDamage),
+                        targetHp: newHp, targetHt, targetState: newState, engineResolved: true
                       };
                       actionValid = true;
-                      actionCost = 1.0;
+                      actionCost = Number.isFinite(nativeCost) ? Math.max(0.05, Math.min(10, nativeCost)) : 1.0;
                     }
                   }
                 }
@@ -672,7 +678,6 @@ export class MatchRoom {
                 const mobRow = this.sql.exec(`SELECT mob_id, hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?`, targetId, this.currentDepth).toArray();
                 if (mobRow.length > 0) {
                   const mobPos = Number(mobRow[0].pos);
-                  const mobHp = Number(mobRow[0].hp);
                   const nativeResult = payload.data?.engineResult === true;
                   const requestedPos = Number(payload.data?.targetPos ?? -1);
 
@@ -682,9 +687,15 @@ export class MatchRoom {
                     const ranged = payload.data?.engineRanged === true;
                     const targetHp = Number(payload.data?.targetHp);
                     const reportedDamage = Number(payload.data?.damage);
+                    const widthRow = this.sql.exec(`SELECT width FROM levels WHERE depth = ?`, this.currentDepth).toArray();
+                    const width = Number(widthRow[0]?.width || 1);
+                    const dx = Math.abs((attackerPos % width) - (mobPos % width));
+                    const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(mobPos / width));
+                    const authoritativeDistance = Math.max(dx, dy);
                     const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
-                      && distance >= 0 && distance <= (ranged ? 8 : 1)
-                      && Number.isFinite(targetHp) && Number.isFinite(reportedDamage);
+                      && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
+                      && Number.isInteger(targetHp) && targetHp >= 0
+                      && Number.isFinite(reportedDamage) && reportedDamage >= 0;
                     if (validNativeTarget) {
                       const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
                       const newHp = Math.max(0, Math.min(targetHt, targetHp));
@@ -715,17 +726,6 @@ export class MatchRoom {
                       actionValid = true;
                       actionCost = Number.isFinite(nativeCost) ? Math.max(0.05, Math.min(10, nativeCost)) : 1.0;
                     }
-                  } else if (this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth)) {
-                    // Compatibility path for clients that do not yet submit native SPD outcomes.
-                    const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
-                    const hit = rng.nextFloat() > 0.15;
-                    const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
-                    const newHp = Math.max(0, mobHp - rawDmg);
-                    this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ?`, newHp, targetId);
-                    eventType = "PLAYER_ATTACKED";
-                    actionResultPayload = { attackerId: session.playerId, targetId, targetType: "MOB", hit, damage: rawDmg, targetHp: newHp };
-                    actionValid = true;
-                    actionCost = 1.0;
                   }
                 }
               }
