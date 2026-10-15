@@ -31,7 +31,7 @@ public class MultiplayerActionDispatcher {
 
         if (actionType == NetworkActionType.MOVE && Dungeon.hero != null && Dungeon.hero.speed() > 0f) {
             actionDetailsJson = actionDetailsJson.substring(0, actionDetailsJson.length() - 1)
-                    + ",\\"engineActionCost\\":" + (1f / Dungeon.hero.speed()) + "}";
+                    + ",\"engineActionCost\":" + (1f / Dungeon.hero.speed()) + "}";
         }
         manager.sendAction(actionType, actionDetailsJson);
     }
