@@ -119,7 +119,18 @@ public class RemotePlayerActionReceiver {
                             mob.sprite.move(fromPos, toPos);
                         }
                     }
-                    if (damage > 0) {
+                    if (json.contains("\\\"engineResolved\\\":true")) {
+                        int hp = parseKey(json, "\\\"targetHp\\\":");
+                        int ht = parseKey(json, "\\\"targetHt\\\":");
+                        if (ht > 0) mob.HT = ht;
+                        if (hp >= 0) {
+                            if (hp == 0) {
+                                if (mob.isAlive()) mob.die(Dungeon.hero);
+                            } else {
+                                mob.HP = Math.min(hp, mob.HT);
+                            }
+                        }
+                    } else if (damage > 0) {
                         mob.damage(damage, "SERVER");
                     }
                     break;
