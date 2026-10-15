@@ -106,6 +106,7 @@ public class RemotePlayerActionReceiver {
         if (Dungeon.level == null) return;
 
         int mobId = parseKey(json, "\"mobId\":");
+        if (mobId == -1 && json.contains("\"targetType\":\"MOB\"")) mobId = parseKey(json, "\"targetId\":");
         int toPos = parseKey(json, "\"toPos\":");
         int damage = parseKey(json, "\"damage\":");
 
@@ -119,9 +120,9 @@ public class RemotePlayerActionReceiver {
                             mob.sprite.move(fromPos, toPos);
                         }
                     }
-                    if (json.contains("\\\"engineResolved\\\":true")) {
-                        int hp = parseKey(json, "\\\"targetHp\\\":");
-                        int ht = parseKey(json, "\\\"targetHt\\\":");
+                    if (json.contains("\"engineResolved\":true")) {
+                        int hp = parseKey(json, "\"targetHp\":");
+                        int ht = parseKey(json, "\"targetHt\":");
                         if (ht > 0) mob.HT = ht;
                         if (hp >= 0) {
                             if (hp == 0) {
