@@ -83,6 +83,8 @@ public class WorldSnapshot {
         if (hero == null || encodedState == null || encodedState.isEmpty()) return;
         Bundle heroState = readBundle(encodedState);
         if (heroState == null) return;
+        Bundle nativeHero = readBundle(heroState.getString("combatBundle"));
+        if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
         Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
         if (inventory != null) hero.belongings.restoreFromBundle(inventory);
         for (Buff oldBuff : new java.util.ArrayList<>(hero.buffs())) oldBuff.detach();
