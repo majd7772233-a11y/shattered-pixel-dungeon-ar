@@ -94,6 +94,26 @@ public final class MessageRouter {
         }
     }
 
+    private static void readObjectArray(JsonValue array, java.util.List<java.util.Map<String, Object>> target) {
+        if (array == null || !array.isArray()) return;
+        for (JsonValue value = array.child; value != null; value = value.next) {
+            if (!value.isObject()) continue;
+            java.util.Map<String, Object> row = new java.util.HashMap<>();
+            for (JsonValue field = value.child; field != null; field = field.next) {
+                if (field.isNumber()) row.put(field.name, field.asDouble());
+                else if (field.isBoolean()) row.put(field.name, field.asBoolean());
+                else if (field.isString()) row.put(field.name, field.asString());
+                else if (field.isNull()) row.put(field.name, null);
+                else if (field.isArray()) {
+                    java.util.List<java.util.Map<String, Object>> nested = new java.util.ArrayList<>();
+                    readObjectArray(field, nested);
+                    row.put(field.name, nested);
+                }
+            }
+            target.add(row);
+        }
+    }
+
     private static void handleSnapshotMessage(NetworkMessage message) {
         if (message.payloadJson == null) return;
         try {
@@ -125,6 +145,9 @@ public final class MessageRouter {
                         snapshot.tiles.add(row);
                     }
                 }
+                readObjectArray(level.get("transitions"), snapshot.transitions);
+                readObjectArray(level.get("heaps"), snapshot.heaps);
+                readObjectArray(level.get("traps"), snapshot.traps);
                 JsonValue levelMobs = level.get("mobs");
                 if (levelMobs != null && levelMobs.isArray()) {
                     snapshot.mobs.clear();
