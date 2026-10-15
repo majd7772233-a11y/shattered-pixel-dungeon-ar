@@ -540,7 +540,31 @@ export class MatchRoom {
 
           const actionStr = payload.action || payload.data?.action;
 
-          if (actionStr === "MOVE" && targetPos >= 0) {
+          if (actionStr === "SYNC_HERO_STATE") {
+            const hp = Number(payload.data?.targetHp);
+            const ht = Number(payload.data?.targetHt);
+            if (Number.isInteger(hp) && hp >= 0 && Number.isInteger(ht) && ht > 0) {
+              const previous = this.sql.exec(`SELECT hp, state FROM players WHERE player_id = ?`, session.playerId).toArray();
+              if (previous.length > 0) {
+                const oldState = String(previous[0].state);
+                const newState = hp === 0 && this.gameMode !== "DEATHMATCH" ? "DEAD" : "ALIVE";
+                this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ? WHERE player_id = ?`,
+                  Math.min(hp, ht), ht, newState, session.playerId);
+                if (oldState !== "DEAD" && newState === "DEAD") {
+                  this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
+                }
+                eventType = "PLAYER_DAMAGED";
+                actionResultPayload = {
+                  targetId: session.playerId, targetType: "PLAYER",
+                  targetHp: Math.min(hp, ht), targetHt: ht,
+                  targetState: newState, damage: Math.max(0, Number(payload.data?.damage) || 0),
+                  engineResolved: true
+                };
+                actionValid = true;
+                actionCost = 0;
+              }
+            }
+          } else if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
               const currentPos = Number(playerRow[0].pos);
@@ -755,7 +779,7 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
           this.checkMatchEndCondition();
-          this.processMobTurns();
+          if (actionStr !== "SYNC_HERO_STATE") this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
