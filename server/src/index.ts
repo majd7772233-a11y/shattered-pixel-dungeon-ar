@@ -722,8 +722,38 @@ export class MatchRoom {
               actionValid = true;
               actionCost = 1.0;
             }
-          } else if (actionStr === "PICKUP" || actionStr === "OPEN_CHEST") {
-            const itemPos = payload.data?.itemPos ?? targetPos;
+          } else if (actionStr === "PICKUP") {
+            const itemPos = Number(payload.data?.itemPos ?? targetPos);
+            const savedRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const heaps = levelSnapshot && Array.isArray(levelSnapshot.heaps) ? levelSnapshot.heaps : [];
+            const heapIndex = heaps.findIndex((heap: any) => Number(heap.pos) === itemPos);
+            const heap = heapIndex >= 0 ? heaps[heapIndex] : null;
+            const items = heap && Array.isArray(heap.items) ? heap.items : [];
+            const itemClass = String(payload.data?.itemClass || "");
+            const itemIndex = items.findIndex((item: any) => String(item.className || "") === itemClass);
+            if (heap && items.length > 0 && itemPos >= 0) {
+              items.splice(itemIndex >= 0 ? itemIndex : 0, 1);
+              const remainingItemCount = items.length;
+              if (remainingItemCount === 0) {
+                heaps.splice(heapIndex, 1);
+                this.sql.exec(`INSERT OR REPLACE INTO claimed_items (item_pos, depth, claimed_by) VALUES (?, ?, ?)`,
+                  itemPos, this.currentDepth, session.playerId);
+              } else {
+                this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth);
+              }
+              levelSnapshot.heaps = heaps;
+              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
+              eventType = "ITEM_PICKED_UP";
+              actionResultPayload = { itemPos, itemClass, remainingItemCount, claimedBy: session.playerId };
+              actionValid = true;
+              actionCost = 1.0;
+            }
+          } else if (actionStr === "OPEN_CHEST") {
+            const itemPos = Number(payload.data?.itemPos ?? targetPos);
             const existingClaim = this.sql.exec(`SELECT claimed_by FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth).toArray();
             if (existingClaim.length > 0) {
               ws.send(JSON.stringify({
@@ -734,13 +764,12 @@ export class MatchRoom {
                 payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos })
               }));
               return;
-            } else {
-              this.sql.exec(`INSERT INTO claimed_items (item_pos, depth, claimed_by) VALUES (?, ?, ?)`, itemPos, this.currentDepth, session.playerId);
-              eventType = actionStr === "PICKUP" ? "ITEM_PICKED_UP" : "CHEST_OPENED";
-              actionResultPayload = { itemPos, claimedBy: session.playerId };
-              actionValid = true;
-              actionCost = 1.0;
             }
+            this.sql.exec(`INSERT INTO claimed_items (item_pos, depth, claimed_by) VALUES (?, ?, ?)`, itemPos, this.currentDepth, session.playerId);
+            eventType = "CHEST_OPENED";
+            actionResultPayload = { itemPos, claimedBy: session.playerId };
+            actionValid = true;
+            actionCost = 1.0;
           }
         } catch (_) {}
 
