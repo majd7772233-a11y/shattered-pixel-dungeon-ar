@@ -231,7 +231,7 @@ public final class MessageRouter {
                     int id = intValue(mob.get("mob_id"), intValue(mob.get("mobId"), -1));
                     java.util.Map<String, Object> matched = null;
                     for (java.util.Map<String, Object> candidate : snapshot.mobs) {
-                        if (intValue(candidate.get("mobId"), -1) == id) {
+                        if (((Number) candidate.get("mobId")).intValue() == id) {
                             matched = candidate;
                             break;
                         }
@@ -244,9 +244,9 @@ public final class MessageRouter {
                         continue;
                     }
                     matched.put("name", stringValue(mob.get("name"), String.valueOf(matched.get("name"))));
-                    matched.put("pos", intValue(mob.get("pos"), intValue(matched.get("pos"), -1)));
-                    matched.put("hp", intValue(mob.get("hp"), intValue(matched.get("hp"), 1)));
-                    matched.put("ht", intValue(mob.get("ht"), intValue(matched.get("ht"), 1)));
+                    matched.put("pos", intValue(mob.get("pos"), ((Number) matched.get("pos")).intValue()));
+                    matched.put("hp", intValue(mob.get("hp"), ((Number) matched.get("hp")).intValue()));
+                    matched.put("ht", intValue(mob.get("ht"), ((Number) matched.get("ht")).intValue()));
                 }
             }
 
