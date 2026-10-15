@@ -215,10 +215,6 @@ public class WorldSnapshot {
                             Bundle mobBundle = readBundle(encodedMob);
                             if (mobBundle != null) instance = mobBundle.get("mob");
                         }
-                        if (!(instance instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob)) {
-                            instance = Class.forName("com.shatteredpixel.shatteredpixeldungeon.actors.mobs."
-                                    + String.valueOf(data.get("name"))).getDeclaredConstructor().newInstance();
-                        }
                         if (instance instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) {
                             matched = (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) instance;
                             matched.pos = pos;
@@ -290,15 +286,6 @@ public class WorldSnapshot {
                                 Bundle itemBundle = readBundle(encoded);
                                 if (itemBundle != null) item = (Item) itemBundle.get("item");
                             }
-                            if (item == null) {
-                                item = (Item) Class.forName(String.valueOf(itemData.get("className"))).getDeclaredConstructor().newInstance();
-                                int itemLevel = number(itemData.get("level"), 0);
-                                if (itemLevel > 0) item.upgrade(itemLevel);
-                                else if (itemLevel < 0) item.degrade(-itemLevel);
-                                item.quantity(Math.max(1, number(itemData.get("quantity"), 1)));
-                                item.cursed = Boolean.TRUE.equals(itemData.get("cursed"));
-                                item.cursedKnown = Boolean.TRUE.equals(itemData.get("cursedKnown"));
-                            }
                             heap.drop(item);
                         } catch (ReflectiveOperationException | RuntimeException ignored) { }
                     }
@@ -328,7 +315,6 @@ public class WorldSnapshot {
                         Bundle trapBundle = readBundle(encoded);
                         if (trapBundle != null) trap = (Trap) trapBundle.get("trap");
                     }
-                    if (trap == null) trap = (Trap) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
                     trap.pos = pos;
                     trap.active = Boolean.TRUE.equals(data.get("active"));
                     trap.visible = Boolean.TRUE.equals(data.get("visible"));
@@ -351,7 +337,6 @@ public class WorldSnapshot {
                     Plant plant = null;
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) plant = (Plant) encoded.get("plant");
-                    if (plant == null) plant = (Plant) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
                     plant.pos = pos;
                     Dungeon.level.plants.put(pos, plant);
                     GameScene.updateMap(pos);
@@ -368,7 +353,6 @@ public class WorldSnapshot {
                     Blob blob = null;
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) blob = (Blob) encoded.get("blob");
-                    if (blob == null) blob = (Blob) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
                     blob.restoreMultiplayerCooldown(floatNumber(data.get("cooldown"), 0f));
                     Dungeon.level.blobs.put(blob.getClass(), blob);
                     Actor.add(blob);
