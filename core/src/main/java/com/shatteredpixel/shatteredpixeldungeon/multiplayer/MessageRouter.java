@@ -143,7 +143,8 @@ public final class MessageRouter {
             if (level != null && level.isObject()) {
                 // Treat this as a full snapshot only when all authoritative collections are
                 // explicitly present. Missing arrays must never be interpreted as empty worlds.
-                snapshot.completeWorldSnapshot = hasArray(level, "tiles")
+                snapshot.completeWorldSnapshot = intValue(level.get("schemaVersion"), -1) == 1
+                        && hasArray(level, "tiles")
                         && hasArray(level, "transitions") && hasArray(level, "heaps")
                         && hasArray(level, "traps") && hasArray(level, "blobs")
                         && hasArray(level, "plants") && hasArray(level, "mobs");
