@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
@@ -76,6 +77,28 @@ public class WorldSnapshot {
                 }
             } catch (RuntimeException ignored) { }
         }
+    }
+
+    private static void restoreHeroState(Hero hero, String encodedState) {
+        if (hero == null || encodedState == null || encodedState.isEmpty()) return;
+        Bundle heroState = readBundle(encodedState);
+        if (heroState == null) return;
+        Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
+        if (inventory != null) hero.belongings.restoreFromBundle(inventory);
+        for (Buff oldBuff : new java.util.ArrayList<>(hero.buffs())) oldBuff.detach();
+        int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount")));
+        for (int i = 0; i < buffCount; i++) {
+            Bundle encodedBuff = readBundle(heroState.getString("buff_" + i));
+            if (encodedBuff == null) continue;
+            try {
+                Buff buff = (Buff) encodedBuff.get("buff");
+                if (buff != null) {
+                    buff.attachTo(hero);
+                    buff.restoreMultiplayerCooldown(heroState.getFloat("buffCooldown_" + i));
+                }
+            } catch (RuntimeException ignored) { }
+        }
+        hero.restoreMultiplayerCooldown(heroState.getFloat("cooldown"));
     }
 
     private static Bundle readBundle(String json) {
@@ -369,25 +392,7 @@ public class WorldSnapshot {
         // Restore Remote Players
         String localPlayerId = manager.getLocalPlayerId();
         String localHeroState = localPlayerId == null ? null : snapshot.playerStateJson.get(localPlayerId);
-        if (Dungeon.hero != null && localHeroState != null && !localHeroState.isEmpty()) {
-            Bundle heroState = readBundle(localHeroState);
-            if (heroState != null) {
-                Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
-                if (inventory != null) Dungeon.hero.belongings.restoreFromBundle(inventory);
-                java.util.ArrayList<Buff> oldBuffs = new java.util.ArrayList<>(Dungeon.hero.buffs());
-                for (Buff oldBuff : oldBuffs) oldBuff.detach();
-                int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount")));
-                for (int i = 0; i < buffCount; i++) {
-                    Bundle encodedBuff = readBundle(heroState.getString("buff_" + i));
-                    if (encodedBuff == null) continue;
-                    Buff buff = (Buff) encodedBuff.get("buff");
-                    if (buff == null) continue;
-                    buff.attachTo(Dungeon.hero);
-                    buff.restoreMultiplayerCooldown(heroState.getFloat("buffCooldown_" + i));
-                }
-                Dungeon.hero.restoreMultiplayerCooldown(heroState.getFloat("cooldown"));
-            }
-        }
+        if (Dungeon.hero != null) restoreHeroState(Dungeon.hero, localHeroState);
 
         if (snapshot.playerPositions != null) {
             for (Map.Entry<String, Integer> entry : snapshot.playerPositions.entrySet()) {
@@ -441,6 +446,7 @@ public class WorldSnapshot {
                             remote.heroInstance.sprite.place(remote.pos);
                         }
                     }
+                    restoreHeroState(remote.heroInstance, snapshot.playerStateJson.get(pId));
                 }
             }
         }
