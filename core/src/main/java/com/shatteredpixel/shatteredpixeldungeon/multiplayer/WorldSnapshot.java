@@ -257,7 +257,13 @@ public class WorldSnapshot {
         return true;
     }
 
-    private static boolean validCellList(List<Integer> values, int length) {\n        java.util.Set<Integer> cells = new java.util.HashSet<>();\n        for (Integer pos : values) if (pos == null || pos < 0 || pos >= length || !cells.add(pos)) return false;\n        return true;\n    }\n\n    private static boolean validPositions(List<Map<String, Object>> values, int length, String key, boolean unique) {
+    private static boolean validCellList(List<Integer> values, int length) {
+        java.util.Set<Integer> cells = new java.util.HashSet<>();
+        for (Integer pos : values) if (pos == null || pos < 0 || pos >= length || !cells.add(pos)) return false;
+        return true;
+    }
+
+    private static boolean validPositions(List<Map<String, Object>> values, int length, String key, boolean unique) {
         if (values == null) return false;
         java.util.Set<Integer> positions = new java.util.HashSet<>();
         for (Map<String, Object> value : values) {
@@ -436,7 +442,8 @@ public class WorldSnapshot {
                 catch (RuntimeException ignored) { heap.type = Heap.Type.HEAP; }
                 heap.seen = Boolean.TRUE.equals(data.get("seen"));
                 heap.haunted = Boolean.TRUE.equals(data.get("haunted"));
-                heap.hidden = Boolean.TRUE.equals(data.get("hidden"));\n                heap.autoExplored = Boolean.TRUE.equals(data.get("autoExplored"));
+                heap.hidden = Boolean.TRUE.equals(data.get("hidden"));
+                heap.autoExplored = Boolean.TRUE.equals(data.get("autoExplored"));
                 Object itemList = data.get("items");
                 if (itemList instanceof List) {
                     for (Object itemObject : (List<?>) itemList) {
