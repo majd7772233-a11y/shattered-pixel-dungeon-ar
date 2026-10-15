@@ -16,6 +16,14 @@ export interface SessionData {
   sessionToken: string;
 }
 
+/** Validates the client-reported HP delta without reimplementing SPD combat formulas. */
+export function isValidNativeHpTransition(previousHp: number, targetHp: number, reportedDamage: number): boolean {
+  return Number.isInteger(previousHp) && previousHp >= 0
+    && Number.isInteger(targetHp) && targetHp >= 0 && targetHp <= previousHp
+    && Number.isFinite(reportedDamage) && reportedDamage >= 0
+    && reportedDamage === previousHp - targetHp;
+}
+
 export class SeededRNG {
   private state: number;
 
@@ -651,9 +659,7 @@ export class MatchRoom {
                       && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
                       && Number.isInteger(targetHp) && targetHp >= 0
                       && Number.isInteger(targetHt) && targetHt > 0
-                      && targetHp <= Number(defenderRow[0].hp)
-                      && reportedDamage === Math.max(0, Number(defenderRow[0].hp) - targetHp)
-                      && Number.isFinite(reportedDamage) && reportedDamage >= 0;
+                      && isValidNativeHpTransition(Number(defenderRow[0].hp), targetHp, reportedDamage);
                     if (validNativeTarget) {
                       const newHp = Math.min(targetHp, targetHt);
                       const newState = newHp === 0
@@ -697,9 +703,7 @@ export class MatchRoom {
                     const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
                       && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
                       && Number.isInteger(targetHp) && targetHp >= 0
-                      && targetHp <= Number(mobRow[0].hp)
-                      && reportedDamage === Math.max(0, Number(mobRow[0].hp) - targetHp)
-                      && Number.isFinite(reportedDamage) && reportedDamage >= 0;
+                      && isValidNativeHpTransition(Number(mobRow[0].hp), targetHp, reportedDamage);
                     if (validNativeTarget) {
                       const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
                       const newHp = Math.max(0, Math.min(targetHt, targetHp));
