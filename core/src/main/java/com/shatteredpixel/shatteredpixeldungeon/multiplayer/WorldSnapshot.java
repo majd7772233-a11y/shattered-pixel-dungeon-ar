@@ -260,7 +260,7 @@ public class WorldSnapshot {
                     trap.shape = number(data.get("shape"), trap.shape);
                     Dungeon.level.traps.put(pos, trap);
                     GameScene.updateMap(pos);
-                } catch (ReflectiveOperationException | ClassCastException | RuntimeException ignored) { }
+                } catch (ReflectiveOperationException | RuntimeException ignored) { }
             }
         }
 
