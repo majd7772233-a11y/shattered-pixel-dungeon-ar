@@ -16,6 +16,34 @@ export interface SessionData {
   sessionToken: string;
 }
 
+/** Rejects partial/legacy level payloads before any room state is replaced. */
+export function hasCompleteNativeLevelSnapshot(level: any): boolean {
+  if (!level || typeof level !== "object" || Number(level.schemaVersion) !== 1
+    || Number(level.branch) !== 0 || !Number.isInteger(Number(level.depth))
+    || Number(level.depth) < 1 || Number(level.depth) > 100
+    || !Number.isInteger(Number(level.width)) || !Number.isInteger(Number(level.height))
+    || Number(level.width) < 8 || Number(level.height) < 8
+    || Number(level.width) > 100 || Number(level.height) > 100) return false;
+  const size = Number(level.width) * Number(level.height);
+  const arrays = ["tiles", "transitions", "heaps", "traps", "blobs", "plants", "mobs", "visitedPositions", "mappedPositions"];
+  if (arrays.some((key) => !Array.isArray(level[key]))) return false;
+  if (level.tiles.length !== size || level.transitions.length > 128 || level.heaps.length > size
+    || level.traps.length > size || level.plants.length > size || level.blobs.length > 128
+    || level.mobs.length > 512 || level.visitedPositions.length > size || level.mappedPositions.length > size
+    || typeof level.locked !== "boolean"
+    || !["NONE", "CHASM", "WATER", "GRASS", "DARK", "LARGE", "TRAPS", "SECRETS"].includes(String(level.feeling))
+    || typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000) return false;
+  const bundle = (value: any) => typeof value === "string" && value.length > 0 && value.length <= 200000;
+  if (!level.mobs.every((mob: any) => bundle(mob?.serializedBundle) && Array.isArray(mob?.buffs)
+    && mob.buffs.length <= 256 && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
+  if (!level.heaps.every((heap: any) => Array.isArray(heap?.items) && heap.items.length <= 512
+    && heap.items.every((item: any) => bundle(item?.serializedBundle)))) return false;
+  if (!level.traps.every((trap: any) => bundle(trap?.serializedBundle))
+    || !level.plants.every((plant: any) => bundle(plant?.serializedBundle))
+    || !level.blobs.every((blob: any) => bundle(blob?.serializedBundle))) return false;
+  return true;
+}
+
 /** Validates the client-reported HP delta without reimplementing SPD combat formulas. */
 export function isValidNativeHpTransition(previousHp: number, targetHp: number, reportedDamage: number): boolean {
   return Number.isInteger(previousHp) && previousHp >= 0
@@ -424,7 +452,7 @@ export class MatchRoom {
         const validBundle = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 200000;
         const boundedArray = (value: unknown, max: number) => Array.isArray(value) && value.length <= max;
         const validPos = (p: number) => Number.isInteger(p) && p >= 0 && p < size;
-        if (Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
+        if (!hasCompleteNativeLevelSnapshot(level) || Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
           || !Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
           || width > 100 || height > 100 || !Array.isArray(tiles) || tiles.length !== size
           || !boundedArray(transitions, 128) || !boundedArray(heaps, size)
