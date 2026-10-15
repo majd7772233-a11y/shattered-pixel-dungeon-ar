@@ -472,7 +472,7 @@ export class MatchRoom {
           mobIds.add(id);
         }
         const invalidObjects =
-          heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","TOMB","SKELETON","CRYSTAL_CHEST","MIMIC"].includes(String(heap?.type))
+          heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","LOCKED_CHEST","CRYSTAL_CHEST","TOMB","SKELETON","REMAINS"].includes(String(heap?.type))
             || !Array.isArray(heap?.items) || heap.items.length > 512
             || heap.items.some((item: any) => !validBundle(item?.serializedBundle) || !Number.isInteger(Number(item?.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 100000))
           || traps.some((trap: any) => !validPos(Number(trap?.pos)) || !validBundle(trap?.serializedBundle))
