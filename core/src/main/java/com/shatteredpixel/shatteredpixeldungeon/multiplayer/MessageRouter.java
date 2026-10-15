@@ -324,6 +324,10 @@ public final class MessageRouter {
     private static void applyMobEvent(String type, JsonValue action) {
         if (Dungeon.level == null) return;
         int mobId = intValue(action.get("mobId"), -1);
+        if (mobId < 0 && "PLAYER_ATTACKED".equals(type)
+                && "MOB".equals(stringValue(action.get("targetType"), ""))) {
+            mobId = intValue(action.get("targetId"), -1);
+        }
         if (mobId < 0) return;
 
         for (Mob mob : Dungeon.level.mobs) {
