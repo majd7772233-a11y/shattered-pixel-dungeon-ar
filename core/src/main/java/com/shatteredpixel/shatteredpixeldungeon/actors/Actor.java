@@ -103,6 +103,11 @@ public abstract class Actor implements Bundlable {
 	public void timeToNow() {
 		time = now;
 	}
+
+	/** Rebase an authoritative remaining turn delay onto this device's local actor clock. */
+	public void restoreMultiplayerCooldown(float remaining) {
+		time = now + Math.max(0f, remaining);
+	}
 	
 	protected void diactivate() {
 		time = Float.MAX_VALUE;
