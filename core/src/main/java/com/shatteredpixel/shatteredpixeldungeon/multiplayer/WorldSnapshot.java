@@ -156,17 +156,29 @@ public class WorldSnapshot {
                 }
                 if (matched == null) {
                     try {
-                        Object instance = Class.forName("com.shatteredpixel.shatteredpixeldungeon.actors.mobs."
-                                + String.valueOf(data.get("name"))).getDeclaredConstructor().newInstance();
+                        Object instance = null;
+                        String encodedMob = String.valueOf(data.get("serializedBundle"));
+                        if (!encodedMob.isEmpty() && !"null".equals(encodedMob)) {
+                            Bundle mobBundle = readBundle(encodedMob);
+                            if (mobBundle != null) instance = mobBundle.get("mob");
+                        }
+                        if (!(instance instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob)) {
+                            instance = Class.forName("com.shatteredpixel.shatteredpixeldungeon.actors.mobs."
+                                    + String.valueOf(data.get("name"))).getDeclaredConstructor().newInstance();
+                        }
                         if (instance instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) {
                             matched = (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) instance;
                             matched.pos = pos;
                             matched.HT = Math.max(1, ht);
                             matched.HP = Math.min(Math.max(1, hp), matched.HT);
+                            matched.restoreMultiplayerState(String.valueOf(data.get("state")),
+                                    floatNumber(data.get("baseSpeed"), matched.multiplayerBaseSpeed()),
+                                    number(data.get("defenseSkill"), matched.defenseSkill),
+                                    floatNumber(data.get("cooldown"), 0f));
                             Dungeon.level.mobs.add(matched);
                             GameScene.add(matched);
                         }
-                    } catch (ReflectiveOperationException | LinkageError ignored) { }
+                    } catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) { }
                 }
                 if (matched != null) {
                     int oldPos = matched.pos;
@@ -287,16 +299,18 @@ public class WorldSnapshot {
             if (heroState != null) {
                 Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
                 if (inventory != null) Dungeon.hero.belongings.restoreFromBundle(inventory);
+                java.util.ArrayList<Buff> oldBuffs = new java.util.ArrayList<>(Dungeon.hero.buffs());
+                for (Buff oldBuff : oldBuffs) oldBuff.detach();
                 int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount")));
                 for (int i = 0; i < buffCount; i++) {
                     Bundle encodedBuff = readBundle(heroState.getString("buff_" + i));
                     if (encodedBuff == null) continue;
                     Buff buff = (Buff) encodedBuff.get("buff");
                     if (buff == null) continue;
-                    boolean present = false;
-                    for (Buff current : Dungeon.hero.buffs()) if (current.getClass() == buff.getClass()) { present = true; break; }
-                    if (!present) buff.attachTo(Dungeon.hero);
+                    buff.attachTo(Dungeon.hero);
+                    buff.restoreMultiplayerCooldown(heroState.getFloat("buffCooldown_" + i));
                 }
+                Dungeon.hero.restoreMultiplayerCooldown(heroState.getFloat("cooldown"));
             }
         }
 
