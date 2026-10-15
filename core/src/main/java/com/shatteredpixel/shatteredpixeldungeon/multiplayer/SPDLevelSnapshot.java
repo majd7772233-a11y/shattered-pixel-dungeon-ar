@@ -143,8 +143,7 @@ public final class SPDLevelSnapshot {
         }
 
         if (level.heaps != null) {
-            for (int i = 0; i < level.heaps.size(); i++) {
-                Heap heap = level.heaps.valueAt(i);
+            for (Heap heap : level.heaps.valueList()) {
                 if (heap == null) continue;
                 HeapData h = new HeapData();
                 h.pos = heap.pos;
@@ -166,8 +165,7 @@ public final class SPDLevelSnapshot {
             }
         }
         if (level.traps != null) {
-            for (int i = 0; i < level.traps.size(); i++) {
-                Trap trap = level.traps.valueAt(i);
+            for (Trap trap : level.traps.valueList()) {
                 if (trap == null) continue;
                 TrapData t = new TrapData();
                 t.pos = trap.pos;
