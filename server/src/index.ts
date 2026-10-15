@@ -790,6 +790,10 @@ export class MatchRoom {
     if (saved && typeof saved.value === "string") {
       try { original = JSON.parse(String(saved.value)); } catch (_) { original = {}; }
     }
+    const originalMobs = new Map<number, any>(
+      (Array.isArray(original.mobs) ? original.mobs : []).map((mob: any) => [Number(mob.mobId), mob])
+    );
+    const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
     return {
       ...original,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
@@ -797,7 +801,16 @@ export class MatchRoom {
       tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
       transitions: Array.isArray(original.transitions) ? original.transitions :
         this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
-      mobs: this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray(),
+      mobs: liveMobs.map((mob: any) => {
+        const savedMob = originalMobs.get(Number(mob.mob_id)) || {};
+        return {
+          ...savedMob, ...mob,
+          state: typeof savedMob.state === "string" ? savedMob.state : mob.state,
+          defenseSkill: Number(savedMob.defenseSkill) || 0,
+          baseSpeed: Number(savedMob.baseSpeed) || 1,
+          cooldown: Number(savedMob.cooldown) || 0
+        };
+      }),
       heaps: Array.isArray(original.heaps) ? original.heaps : [],
       traps: Array.isArray(original.traps) ? original.traps : [],
       claims: this.sql.exec(`SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray()
