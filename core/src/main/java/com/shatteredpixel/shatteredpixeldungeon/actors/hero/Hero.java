@@ -25,6 +25,8 @@ import com.shatteredpixel.shatteredpixeldungeon.Assets;
 import com.shatteredpixel.shatteredpixeldungeon.Badges;
 import com.shatteredpixel.shatteredpixeldungeon.Bones;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType;
 import com.shatteredpixel.shatteredpixeldungeon.GamesInProgress;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
@@ -489,7 +491,27 @@ public class Hero extends Char {
 	
 	@Override
 	public boolean attack(Char enemy, float dmgMulti, float dmgBonus, float accMulti) {
+		int targetHpBefore = enemy == null ? 0 : enemy.HP;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
+		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
+		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
+		if (result && this == Dungeon.hero && enemy instanceof Mob
+				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
+			Mob mob = (Mob) enemy;
+			int targetHp = Math.max(0, mob.HP);
+			int dealt = Math.max(0, targetHpBefore - targetHp);
+			String action = "{\\\"targetId\\\":" + mob.id()
+					+ ",\\\"targetType\\\":\\\"MOB\\\""
+					+ ",\\\"targetPos\\\":" + mob.pos
+					+ ",\\\"engineResult\\\":true"
+					+ ",\\\"engineHit\\\":" + (dealt > 0)
+					+ ",\\\"damage\\\":" + dealt
+					+ ",\\\"targetHp\\\":" + targetHp
+					+ ",\\\"targetHt\\\":" + Math.max(1, mob.HT)
+					+ ",\\\"engineDistance\\\":" + Dungeon.level.distance(pos, mob.pos)
+					+ ",\\\"engineActionCost\\\":" + attackDelay() + "}";
+			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
+		}
 		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
 			if (buff(Talent.PreciseAssaultTracker.class) != null){
 				buff(Talent.PreciseAssaultTracker.class).detach();
