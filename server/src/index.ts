@@ -416,15 +416,22 @@ export class MatchRoom {
         }
         const level = JSON.parse(msg.payloadJson || "{}");
         const width = Number(level.width), height = Number(level.height), depth = Number(level.depth);
-        const tiles = level.tiles, transitions = Array.isArray(level.transitions) ? level.transitions : [];
-        const mobs = Array.isArray(level.mobs) ? level.mobs : [];
+        const tiles = level.tiles, transitions = level.transitions;
+        const heaps = level.heaps, traps = level.traps, blobs = level.blobs, plants = level.plants;
+        const mobs = level.mobs;
         const size = width * height;
+        const validBundle = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 200000;
+        const boundedArray = (value: unknown, max: number) => Array.isArray(value) && value.length <= max;
         const validPos = (p: number) => Number.isInteger(p) && p >= 0 && p < size;
         if (Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
           || !Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
           || width > 100 || height > 100 || !Array.isArray(tiles) || tiles.length !== size
+          || !boundedArray(transitions, 128) || !boundedArray(heaps, size)
+          || !boundedArray(traps, size) || !boundedArray(blobs, 128)
+          || !boundedArray(plants, size) || !boundedArray(mobs, 512)
           || !validPos(Number(level.entrancePos)) || !validPos(Number(level.exitPos))
-          || transitions.length > 128 || mobs.length > 512) {
+          || !Number.isFinite(Number(level.seed))
+          || (typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000)) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_SNAPSHOT" }) }));
           return;
@@ -449,14 +456,33 @@ export class MatchRoom {
             return;
           }
         }
+        const mobIds = new Set<number>();
         for (const mob of mobs) {
-          if (!validPos(Number(mob?.pos)) || !Number.isInteger(Number(mob?.mobId))
-            || !Number.isFinite(Number(mob?.hp)) || !Number.isFinite(Number(mob?.ht))
-            || typeof mob?.name !== "string") {
+          const id = Number(mob?.mobId), hp = Number(mob?.hp), ht = Number(mob?.ht);
+          if (!validPos(Number(mob?.pos)) || !Number.isInteger(id) || id < 0 || mobIds.has(id)
+            || !Number.isInteger(hp) || !Number.isInteger(ht) || hp < 0 || ht < 1 || hp > ht
+            || typeof mob?.name !== "string" || !validBundle(mob?.serializedBundle)
+            || !Array.isArray(mob?.buffs) || mob.buffs.length > 256
+            || mob.buffs.some((buff: any) => !validBundle(buff?.serializedBundle)
+              || !Number.isFinite(Number(buff?.cooldown)) || Number(buff.cooldown) < 0 || Number(buff.cooldown) > 100000)) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_MOBS" }) }));
             return;
           }
+          mobIds.add(id);
+        }
+        const invalidObjects =
+          heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","TOMB","SKELETON","CRYSTAL_CHEST","MIMIC"].includes(String(heap?.type))
+            || !Array.isArray(heap?.items) || heap.items.length > 512
+            || heap.items.some((item: any) => !validBundle(item?.serializedBundle) || !Number.isInteger(Number(item?.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 100000))
+          || traps.some((trap: any) => !validPos(Number(trap?.pos)) || !validBundle(trap?.serializedBundle))
+          || plants.some((plant: any) => !validPos(Number(plant?.pos)) || !validBundle(plant?.serializedBundle))
+          || blobs.some((blob: any) => typeof blob?.className !== "string" || !validBundle(blob?.serializedBundle)
+            || !Number.isFinite(Number(blob?.cooldown)) || Number(blob.cooldown) < 0 || Number(blob.cooldown) > 100000);
+        if (invalidObjects) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_ENTITIES" }) }));
+          return;
         }
         this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
         this.sql.exec(`DELETE FROM level_transitions WHERE depth = ?`, depth);
