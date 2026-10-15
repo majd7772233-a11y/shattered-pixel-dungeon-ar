@@ -11,7 +11,6 @@ import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
-import com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
 
 import java.util.ArrayList;
@@ -137,7 +136,7 @@ public final class SPDLevelSnapshot {
         out.exitPos = level.exit();
         out.seed = Dungeon.seedCurDepth();
         out.locked = level.locked;
-        out.feeling = level.feeling == null ? Feeling.NONE.name() : level.feeling.name();
+        out.feeling = level.multiplayerFeelingName();
         for (int i = 0; i < level.length(); i++) {
             if (level.visited != null && level.visited[i]) out.visitedPositions.add(i);
             if (level.mapped != null && level.mapped[i]) out.mappedPositions.add(i);
