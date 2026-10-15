@@ -300,7 +300,6 @@ public class Hero extends Char {
 	private static final String EXPERIENCE	= "exp";
 	private static final String HTBOOST     = "htboost";
 	
-	@Override
 	/** Restores native combat stats/talents without replacing this actor's local scheduler identity. */
 	public void restoreMultiplayerCombatState(Bundle bundle) {
 		if (bundle == null) return;
@@ -317,6 +316,7 @@ public class Hero extends Char {
 		belongings.restoreFromBundle(bundle);
 	}
 
+	@Override
 	public void storeInBundle( Bundle bundle ) {
 
 		super.storeInBundle( bundle );
