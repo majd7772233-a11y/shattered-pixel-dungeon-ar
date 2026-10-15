@@ -167,6 +167,9 @@ public final class MessageRouter {
                         row.put("defenseSkill", intValue(mob.get("defenseSkill"), 0));
                         row.put("baseSpeed", floatValue(mob.get("baseSpeed"), 1f));
                         row.put("cooldown", floatValue(mob.get("cooldown"), 0f));
+                        row.put("serializedBundle", stringValue(mob.get("serializedBundle"), ""));
+                        row.put("buffs", new java.util.ArrayList<java.util.Map<String, Object>>());
+                        readObjectArray(mob.get("buffs"), (java.util.List<java.util.Map<String, Object>>) row.get("buffs"));
                         snapshot.mobs.add(row);
                     }
                 }
