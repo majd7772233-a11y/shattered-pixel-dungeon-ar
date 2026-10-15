@@ -161,8 +161,8 @@ public class WorldSnapshot {
         for (boolean seen : tileSeen) if (!seen) return false;
         if (snapshot.visitedPositions == null || snapshot.mappedPositions == null
                 || snapshot.levelFeeling == null) return false;
-        try { com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling.valueOf(snapshot.levelFeeling); }
-        catch (RuntimeException invalidFeeling) { return false; }
+        if (!java.util.Arrays.asList("NONE", "CHASM", "WATER", "GRASS", "DARK", "LARGE", "TRAPS", "SECRETS")
+                .contains(snapshot.levelFeeling)) return false;
         if (!validCellList(snapshot.visitedPositions, length) || !validCellList(snapshot.mappedPositions, length)) return false;
         if (snapshot.transitions == null || snapshot.heaps == null || snapshot.traps == null
                 || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
@@ -297,7 +297,7 @@ public class WorldSnapshot {
 
         if (Dungeon.level != null) {
             Dungeon.level.locked = snapshot.levelLocked;
-            Dungeon.level.feeling = com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling.valueOf(snapshot.levelFeeling);
+            if (!Dungeon.level.restoreMultiplayerFeeling(snapshot.levelFeeling)) return false;
             java.util.Arrays.fill(Dungeon.level.visited, false);
             java.util.Arrays.fill(Dungeon.level.mapped, false);
             for (Integer pos : snapshot.visitedPositions) Dungeon.level.visited[pos] = true;
