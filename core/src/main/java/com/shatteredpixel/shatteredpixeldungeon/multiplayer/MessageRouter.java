@@ -150,6 +150,7 @@ public final class MessageRouter {
                         && hasArray(level, "plants") && hasArray(level, "mobs");
                 snapshot.levelWidth = intValue(level.get("width"), 0);
                 snapshot.levelHeight = intValue(level.get("height"), 0);
+                snapshot.branch = intValue(level.get("branch"), -1);
                 snapshot.entrancePos = intValue(level.get("entrancePos"), -1);
                 snapshot.exitPos = intValue(level.get("exitPos"), -1);
                 JsonValue tiles = level.get("tiles");
