@@ -169,6 +169,9 @@ public class WorldSnapshot {
                 int hp = number(data.get("hp"), 1);
                 int ht = number(data.get("ht"), 1);
                 if (id < 0 || pos < 0 || pos >= Dungeon.level.length()) continue;
+                // Dead mobs are authoritative tombstones: never deserialize and kill them again,
+                // because Mob.die() may create loot and award rewards a second time.
+                if (hp <= 0) continue;
                 com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob matched = null;
                 for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
                     if (!authoritativeMobs.contains(mob) && mob.id() == id) { matched = mob; break; }
