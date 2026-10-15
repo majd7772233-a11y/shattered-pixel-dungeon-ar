@@ -500,16 +500,16 @@ public class Hero extends Char {
 			Mob mob = (Mob) enemy;
 			int targetHp = Math.max(0, mob.HP);
 			int dealt = Math.max(0, targetHpBefore - targetHp);
-			String action = "{\\\"targetId\\\":" + mob.id()
-					+ ",\\\"targetType\\\":\\\"MOB\\\""
-					+ ",\\\"targetPos\\\":" + mob.pos
-					+ ",\\\"engineResult\\\":true"
-					+ ",\\\"engineHit\\\":" + (dealt > 0)
-					+ ",\\\"damage\\\":" + dealt
-					+ ",\\\"targetHp\\\":" + targetHp
-					+ ",\\\"targetHt\\\":" + Math.max(1, mob.HT)
-					+ ",\\\"engineDistance\\\":" + Dungeon.level.distance(pos, mob.pos)
-					+ ",\\\"engineActionCost\\\":" + attackDelay() + "}";
+			String action = "{\"targetId\":" + mob.id()
+					+ ",\"targetType\":\"MOB\""
+					+ ",\"targetPos\":" + mob.pos
+					+ ",\"engineResult\":true"
+					+ ",\"engineHit\":" + (dealt > 0)
+					+ ",\"damage\":" + dealt
+					+ ",\"targetHp\":" + targetHp
+					+ ",\"targetHt\":" + Math.max(1, mob.HT)
+					+ ",\"engineDistance\":" + Dungeon.level.distance(pos, mob.pos)
+					+ ",\"engineActionCost\":" + attackDelay() + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
 		}
 		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
