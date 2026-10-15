@@ -371,7 +371,10 @@ export class MatchRoom {
               }
             }
 
-            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray();
+            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray().map((player: any) => {
+              const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
+              return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+            });
             const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
             const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray();
 
@@ -457,6 +460,11 @@ export class MatchRoom {
         this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
           ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
           `levelSnapshot:${depth}`, JSON.stringify(level));
+        if (typeof level.heroStateJson === "string" && level.heroStateJson.length <= 200000) {
+          this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+            `heroState:${session.playerId}`, level.heroStateJson);
+        }
         for (const t of tiles) {
           this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
             depth,Number(t.pos),String(Number(t.terrain)),t.passable?1:0,t.solid?1:0,t.pit?1:0,t.losBlocking?1:0);
@@ -743,7 +751,10 @@ export class MatchRoom {
         });
       } else if (msg.messageType === "RESYNC") {
         const events = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC`).toArray();
-        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray();
+        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray().map((player: any) => {
+              const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
+              return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+            });
         const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
         const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray();
 
@@ -790,12 +801,14 @@ export class MatchRoom {
     if (saved && typeof saved.value === "string") {
       try { original = JSON.parse(String(saved.value)); } catch (_) { original = {}; }
     }
+    // Hero inventory/buffs belong to an individual player, never to the shared level snapshot.
+    const { heroStateJson: _sharedHeroState, ...originalWorld } = original;
     const originalMobs = new Map<number, any>(
       (Array.isArray(original.mobs) ? original.mobs : []).map((mob: any) => [Number(mob.mobId), mob])
     );
     const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
     return {
-      ...original,
+      ...originalWorld,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
       tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
