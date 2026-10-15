@@ -28,6 +28,7 @@ import java.util.Map;
 public class WorldSnapshot {
     public long sequence;
     public int depth = 1;
+    public int branch;
     public long dungeonSeed;
     public String gameMode = "COOP_DUNGEON";
     /** True only when the payload explicitly contains the complete level snapshot contract. */
@@ -137,7 +138,7 @@ public class WorldSnapshot {
      */
     public static boolean validateForRestore(WorldSnapshot snapshot) {
         if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
-        if (snapshot.depth < 1 || snapshot.levelWidth != Dungeon.level.width()
+        if (snapshot.depth < 1 || snapshot.branch != 0 || snapshot.levelWidth != Dungeon.level.width()
                 || snapshot.levelHeight != Dungeon.level.height()
                 || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
                 || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return false;
@@ -214,6 +215,7 @@ public class WorldSnapshot {
         if (!manager.isMultiplayerActive()) return false;
 
         Dungeon.depth = snapshot.depth;
+        Dungeon.branch = snapshot.branch;
         if (snapshot.dungeonSeed != 0L) Dungeon.seed = snapshot.dungeonSeed;
 
         // Reconcile the complete authoritative tile geometry before applying actors.
