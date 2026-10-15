@@ -279,6 +279,7 @@ public final class MessageRouter {
                             for (Item item : new java.util.ArrayList<>(heap.items)) {
                                 if (itemClass.isEmpty() || item.getClass().getName().equals(itemClass)) { picked = item; break; }
                             }
+                            if (picked == null) picked = heap.peek();
                             if (picked != null) heap.items.remove(picked);
                             int remaining = intValue(action.get("remainingItemCount"), heap.items.size());
                             if (remaining <= 0 || heap.items.isEmpty()) {
