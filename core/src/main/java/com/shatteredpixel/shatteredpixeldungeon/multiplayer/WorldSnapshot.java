@@ -30,6 +30,8 @@ public class WorldSnapshot {
     public int depth = 1;
     public long dungeonSeed;
     public String gameMode = "COOP_DUNGEON";
+    /** True only when the payload explicitly contains the complete level snapshot contract. */
+    public boolean completeWorldSnapshot;
     public int levelWidth;
     public int levelHeight;
     public int entrancePos = -1;
@@ -129,11 +131,87 @@ public class WorldSnapshot {
         return fallback;
     }
 
-    public static void restoreWorld(WorldSnapshot snapshot) {
-        if (snapshot == null) return;
+    /**
+     * Validate the complete world before mutating the live dungeon. Invalid snapshots must
+     * not partially clear actors or advance the client's acknowledged sequence.
+     */
+    public static boolean validateForRestore(WorldSnapshot snapshot) {
+        if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
+        if (snapshot.depth < 1 || snapshot.levelWidth != Dungeon.level.width()
+                || snapshot.levelHeight != Dungeon.level.height()
+                || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
+                || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return false;
+        int length = snapshot.levelWidth * snapshot.levelHeight;
+        boolean[] tileSeen = new boolean[length];
+        for (Map<String, Object> tile : snapshot.tiles) {
+            if (tile == null) return false;
+            int pos = number(tile.get("pos"), -1);
+            int terrain = number(tile.get("terrain"), -1);
+            if (pos < 0 || pos >= length || terrain < 0 || tileSeen[pos]) return false;
+            tileSeen[pos] = true;
+        }
+        for (boolean seen : tileSeen) if (!seen) return false;
+        if (!validPositions(snapshot.transitions, length, "pos", false)
+                || !validPositions(snapshot.heaps, length, "pos", true)
+                || !validPositions(snapshot.traps, length, "pos", true)
+                || !validPositions(snapshot.plants, length, "pos", true)) return false;
+        java.util.Set<Integer> mobIds = new java.util.HashSet<>();
+        for (Map<String, Object> mob : snapshot.mobs) {
+            if (mob == null) return false;
+            int id = number(mob.get("mobId"), -1);
+            int pos = number(mob.get("pos"), -1);
+            int hp = number(mob.get("hp"), -1);
+            int ht = number(mob.get("ht"), -1);
+            if (id < 0 || !mobIds.add(id) || pos < 0 || pos >= length || ht < 1 || hp > ht) return false;
+            if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
+            Object buffs = mob.get("buffs");
+            if (buffs instanceof List) for (Object raw : (List<?>) buffs) {
+                if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "buff", Buff.class)) return false;
+            }
+        }
+        for (Map<String, Object> heap : snapshot.heaps) {
+            Object items = heap.get("items");
+            if (!(items instanceof List)) return false;
+            for (Object raw : (List<?>) items) {
+                if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "item", Item.class)) return false;
+            }
+        }
+        for (Map<String, Object> trap : snapshot.traps)
+            if (!bundleContains(trap.get("serializedBundle"), "trap", Trap.class)) return false;
+        for (Map<String, Object> plant : snapshot.plants)
+            if (!bundleContains(plant.get("serializedBundle"), "plant", Plant.class)) return false;
+        for (Map<String, Object> blob : snapshot.blobs)
+            if (!bundleContains(blob.get("serializedBundle"), "blob", Blob.class)) return false;
+        return true;
+    }
+
+    private static boolean validPositions(List<Map<String, Object>> values, int length, String key, boolean unique) {
+        if (values == null) return false;
+        java.util.Set<Integer> positions = new java.util.HashSet<>();
+        for (Map<String, Object> value : values) {
+            if (value == null) return false;
+            int pos = number(value.get(key), -1);
+            if (pos < 0 || pos >= length || (unique && !positions.add(pos))) return false;
+        }
+        return true;
+    }
+
+    private static boolean bundleContains(Object raw, String key, Class<?> expectedType) {
+        if (!(raw instanceof String) || ((String) raw).isEmpty()) return false;
+        Bundle bundle = readBundle((String) raw);
+        if (bundle == null) return false;
+        try { return expectedType.isInstance(bundle.get(key)); }
+        catch (RuntimeException restoreError) { return false; }
+    }
+
+    public static boolean restoreWorld(WorldSnapshot snapshot) {
+        if (!validateForRestore(snapshot)) {
+            GLog.w("Rejected incomplete or invalid multiplayer world snapshot; requesting resynchronization.");
+            return false;
+        }
 
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        if (!manager.isMultiplayerActive()) return;
+        if (!manager.isMultiplayerActive()) return false;
 
         Dungeon.depth = snapshot.depth;
         if (snapshot.dungeonSeed != 0L) Dungeon.seed = snapshot.dungeonSeed;
@@ -455,5 +533,6 @@ public class WorldSnapshot {
                 }
             }
         }
+        return true;
     }
 }
