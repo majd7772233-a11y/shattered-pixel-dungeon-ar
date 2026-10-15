@@ -11,6 +11,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
+import com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
 
 import java.util.ArrayList;
@@ -30,6 +31,10 @@ public final class SPDLevelSnapshot {
     public int entrancePos;
     public int exitPos;
     public long seed;
+    public boolean locked;
+    public String feeling;
+    public List<Integer> visitedPositions = new ArrayList<>();
+    public List<Integer> mappedPositions = new ArrayList<>();
     public List<Tile> tiles = new ArrayList<>();
     public List<Transition> transitions = new ArrayList<>();
     public List<MobData> mobs = new ArrayList<>();
@@ -90,6 +95,7 @@ public final class SPDLevelSnapshot {
         public boolean seen;
         public boolean haunted;
         public boolean hidden;
+        public boolean autoExplored;
         public List<ItemData> items = new ArrayList<>();
     }
 
@@ -130,6 +136,12 @@ public final class SPDLevelSnapshot {
         out.entrancePos = level.entrance();
         out.exitPos = level.exit();
         out.seed = Dungeon.seedCurDepth();
+        out.locked = level.locked;
+        out.feeling = level.feeling == null ? Feeling.NONE.name() : level.feeling.name();
+        for (int i = 0; i < level.length(); i++) {
+            if (level.visited != null && level.visited[i]) out.visitedPositions.add(i);
+            if (level.mapped != null && level.mapped[i]) out.mappedPositions.add(i);
+        }
 
         for (int pos = 0; pos < level.length(); pos++) {
             Tile tile = new Tile();
@@ -242,6 +254,7 @@ public final class SPDLevelSnapshot {
             h.seen = heap.seen;
             h.haunted = heap.haunted;
             h.hidden = heap.hidden;
+            h.autoExplored = heap.autoExplored;
             for (Item item : heap.items) {
                 if (item == null) continue;
                 ItemData d = new ItemData();
