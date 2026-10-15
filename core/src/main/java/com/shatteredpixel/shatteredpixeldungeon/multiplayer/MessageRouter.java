@@ -153,6 +153,8 @@ public final class MessageRouter {
                 readObjectArray(level.get("transitions"), snapshot.transitions);
                 readObjectArray(level.get("heaps"), snapshot.heaps);
                 readObjectArray(level.get("traps"), snapshot.traps);
+                readObjectArray(level.get("blobs"), snapshot.blobs);
+                readObjectArray(level.get("plants"), snapshot.plants);
                 JsonValue levelMobs = level.get("mobs");
                 if (levelMobs != null && levelMobs.isArray()) {
                     snapshot.mobs.clear();
@@ -168,8 +170,9 @@ public final class MessageRouter {
                         row.put("baseSpeed", floatValue(mob.get("baseSpeed"), 1f));
                         row.put("cooldown", floatValue(mob.get("cooldown"), 0f));
                         row.put("serializedBundle", stringValue(mob.get("serializedBundle"), ""));
-                        row.put("buffs", new java.util.ArrayList<java.util.Map<String, Object>>());
-                        readObjectArray(mob.get("buffs"), (java.util.List<java.util.Map<String, Object>>) row.get("buffs"));
+                        java.util.List<java.util.Map<String, Object>> mobBuffs = new java.util.ArrayList<>();
+                        readObjectArray(mob.get("buffs"), mobBuffs);
+                        row.put("buffs", mobBuffs);
                         snapshot.mobs.add(row);
                     }
                 }
