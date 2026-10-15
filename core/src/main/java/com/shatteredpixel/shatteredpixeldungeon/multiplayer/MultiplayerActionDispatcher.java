@@ -22,7 +22,14 @@ public class MultiplayerActionDispatcher {
             // Sending the target intent here would cause the server to resolve a second, generic attack.
             return;
         } else if (action instanceof HeroAction.PickUp || action instanceof HeroAction.OpenChest) {
-            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"itemPos\":" + targetPos + ",\"depth\":" + currentDepth + "}";
+            String itemClass = "";
+            if (action instanceof HeroAction.PickUp && Dungeon.level != null) {
+                com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(targetPos);
+                if (heap != null && heap.peek() != null) itemClass = heap.peek().getClass().getName();
+            }
+            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos
+                    + ",\"itemPos\":" + targetPos + ",\"depth\":" + currentDepth
+                    + ",\"itemClass\":\"" + itemClass + "\"}";
         } else if (action instanceof HeroAction.LvlTransition) {
             actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"stairsPos\":" + targetPos + ",\"depth\":" + currentDepth + "}";
         } else {
