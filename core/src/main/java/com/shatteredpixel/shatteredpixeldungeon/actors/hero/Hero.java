@@ -27,6 +27,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Bones;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot;
 import com.shatteredpixel.shatteredpixeldungeon.GamesInProgress;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
@@ -510,7 +511,8 @@ public class Hero extends Char {
 					+ ",\"targetHp\":" + targetHp
 					+ ",\"targetHt\":" + Math.max(1, mob.HT)
 					+ ",\"engineDistance\":" + Dungeon.level.distance(pos, mob.pos)
-					+ ",\"engineActionCost\":" + attackDelay() + "}";
+					+ ",\"engineActionCost\":" + attackDelay()
+					+ (targetHp <= 0 ? ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson() : "") + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
 		}
 		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
