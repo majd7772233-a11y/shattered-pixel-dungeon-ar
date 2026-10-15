@@ -181,31 +181,7 @@ public final class SPDLevelSnapshot {
             }
         }
 
-        if (level.heaps != null) {
-            for (Heap heap : level.heaps.valueList()) {
-                if (heap == null) continue;
-                HeapData h = new HeapData();
-                h.pos = heap.pos;
-                h.type = heap.type == null ? "HEAP" : heap.type.name();
-                h.seen = heap.seen;
-                h.haunted = heap.haunted;
-                h.hidden = heap.hidden;
-                for (Item item : heap.items) {
-                    if (item == null) continue;
-                    ItemData d = new ItemData();
-                    d.className = item.getClass().getName();
-                    d.quantity = item.quantity();
-                    d.level = item.level();
-                    d.cursed = item.cursed;
-                    d.cursedKnown = item.cursedKnown;
-                    Bundle itemBundle = new Bundle();
-                    itemBundle.put("item", item);
-                    d.serializedBundle = itemBundle.toString();
-                    h.items.add(d);
-                }
-                out.heaps.add(h);
-            }
-        }
+        out.heaps = currentHeaps(level);
         if (level.traps != null) {
             for (Trap trap : level.traps.valueList()) {
                 if (trap == null) continue;
@@ -249,6 +225,38 @@ public final class SPDLevelSnapshot {
         }
         out.heroStateJson = currentHeroStateJson();
         return new Json().toJson(out);
+    }
+
+    public static String currentHeapsJson() {
+        return new Json().toJson(currentHeaps(Dungeon.level));
+    }
+
+    private static List<HeapData> currentHeaps(Level level) {
+        List<HeapData> heaps = new ArrayList<>();
+                for (Heap heap : level.heaps.valueList()) {
+                    if (heap == null) continue;
+                    HeapData h = new HeapData();
+                    h.pos = heap.pos;
+                    h.type = heap.type == null ? "HEAP" : heap.type.name();
+                    h.seen = heap.seen;
+                    h.haunted = heap.haunted;
+                    h.hidden = heap.hidden;
+                    for (Item item : heap.items) {
+                        if (item == null) continue;
+                        ItemData d = new ItemData();
+                        d.className = item.getClass().getName();
+                        d.quantity = item.quantity();
+                        d.level = item.level();
+                        d.cursed = item.cursed;
+                        d.cursedKnown = item.cursedKnown;
+                        Bundle itemBundle = new Bundle();
+                        itemBundle.put("item", item);
+                        d.serializedBundle = itemBundle.toString();
+                        h.items.add(d);
+                    }
+                    out.heaps.add(h);
+                }
+        return heaps;
     }
 
     public static String currentHeroStateJson() {
