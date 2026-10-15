@@ -88,3 +88,13 @@ The following code is present by the gameplay-code commit `657ce010edb03b55707d2
 ## Copy-paste prompt for the next conversation
 
 “@GitHub اقرأ `GPT.md` و`ROADMAP.md` و`MULTIPLAYER_CONTINUATION_NOTES.md` من فرع `multiplayer-framework-core-14118577486727081892`، وافحص آخر commit وActions أولًا، ثم أكمل مباشرة من نقطة التوقف: استكمال إعادة بناء العالم من snapshot، الكائنات المفقودة، heaps/items/inventory، traps/plants/blobs والبفات والحالات المؤقتة، ثم مطابقة القتال والتوقيت مع محرك SPD Java الأصلي. لا تعِد تنفيذ الموجود ولا تعتبر Phase 1/2/3 مكتملة بلا تحقق. نفّذ التعديلات والاختبارات وأصلح الفشل، ثم حدّث ملفات التوثيق وسجّل commit ونتيجة CI الدقيقة. لا تدمج إلى main، لا تقترح Wrangler CLI، ولا تطل الكلام أو تدّعِ اختبار جهازين لم يحدث.”
+
+
+## 2026-10-16 implementation progress — incomplete
+
+- Code commit: `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`.
+- Verification run: [38809893294](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38809893294), **pending when this note was written**. Recheck this run and verify its `head_sha` before reporting tests.
+- Snapshot restore no longer creates constructor-default fallback objects for missing/invalid native bundles for mobs, items, traps, plants and blobs. Previously empty catch blocks now log restore diagnostics.
+- Native attack validation now rejects HP increases and damage values inconsistent with the reported HP delta; focused unit tests were added for hit, miss, impossible healing, mismatched damage and invalid numbers.
+- These changes are a partial safety improvement, not completion of snapshot reconstruction or native combat parity. The live-world restore still needs all-or-nothing preflight and resync behavior, stable entity/item identities, full level metadata, correct scheduler/effect restoration and durable item/inventory transactions. The server's generic mob turn simulation remains non-native.
+- Phases 1–3 remain open. No real two-device verification has been performed.
