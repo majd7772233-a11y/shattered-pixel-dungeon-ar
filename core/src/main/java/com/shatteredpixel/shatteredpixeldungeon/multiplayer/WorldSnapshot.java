@@ -171,7 +171,9 @@ public class WorldSnapshot {
             } catch (RuntimeException invalidTransition) { return false; }
             int targetDepth = number(transition.get("targetDepth"), -1);
             int targetBranch = number(transition.get("targetBranch"), -1);
-            if (targetDepth < 1 || targetDepth > 100 || targetBranch < 0 || targetBranch > 32) return false;
+            String transitionType = String.valueOf(transition.get("type"));
+            if (targetDepth < ("SURFACE".equals(transitionType) ? 0 : 1)
+                    || targetDepth > 100 || targetBranch < 0 || targetBranch > 32) return false;
         }
         for (Map.Entry<String, Integer> player : snapshot.playerPositions.entrySet()) {
             if (player.getKey() == null || player.getKey().isEmpty() || player.getValue() == null
