@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, isValidNativeHpTransition } from './index';
+import { NetworkMessage, SeededRNG, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -147,5 +147,43 @@ describe('Native combat HP transition validation', () => {
     expect(isValidNativeHpTransition(-1, 0, 1)).toBe(false);
     expect(isValidNativeHpTransition(12, 11.5, 0.5)).toBe(false);
     expect(isValidNativeHpTransition(12, 7, Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+
+describe('Native level snapshot contract', () => {
+  const completeSnapshot = () => ({
+    schemaVersion: 1, branch: 0, depth: 1, width: 8, height: 8,
+    entrancePos: 1, exitPos: 62, seed: 1234, locked: false, feeling: "NONE",
+    heroStateJson: "", tiles: Array.from({ length: 64 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false
+    })),
+    transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
+    visitedPositions: [], mappedPositions: []
+  });
+
+  it('accepts an explicit full snapshot with empty authoritative collections', () => {
+    expect(hasCompleteNativeLevelSnapshot(completeSnapshot())).toBe(true);
+  });
+
+  it('rejects missing collections rather than treating them as empty', () => {
+    const snapshot: any = completeSnapshot();
+    delete snapshot.heaps;
+    expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
+  });
+
+  it('rejects entities without native serialized bundles', () => {
+    const snapshot: any = completeSnapshot();
+    snapshot.mobs.push({ serializedBundle: "", buffs: [] });
+    expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
+  });
+
+  it('rejects unsupported schema versions and oversized bundle payloads', () => {
+    const unsupported: any = completeSnapshot();
+    unsupported.schemaVersion = 2;
+    expect(hasCompleteNativeLevelSnapshot(unsupported)).toBe(false);
+    const oversized: any = completeSnapshot();
+    oversized.traps.push({ serializedBundle: "x".repeat(200001) });
+    expect(hasCompleteNativeLevelSnapshot(oversized)).toBe(false);
   });
 });
