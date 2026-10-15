@@ -643,27 +643,41 @@ export class MatchRoom {
                   }
                 }
               } else {
-                const mobRow = this.sql.exec(`SELECT mob_id, hp, pos FROM mobs WHERE mob_id = ? AND depth = ?`, targetId, this.currentDepth).toArray();
+                const mobRow = this.sql.exec(`SELECT mob_id, hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?`, targetId, this.currentDepth).toArray();
                 if (mobRow.length > 0) {
                   const mobPos = Number(mobRow[0].pos);
                   const mobHp = Number(mobRow[0].hp);
+                  const nativeResult = payload.data?.engineResult === true;
+                  const requestedPos = Number(payload.data?.targetPos ?? -1);
 
-                  if (this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth)) {
+                  if (nativeResult) {
+                    const distance = Number(payload.data?.engineDistance);
+                    const nativeCost = Number(payload.data?.engineActionCost);
+                    const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
+                      && distance >= 0 && distance <= 8;
+                    if (validNativeTarget) {
+                      const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
+                      const newHp = Math.max(0, Math.min(targetHt, Number(payload.data?.targetHp)));
+                      const rawDmg = Math.max(0, Math.min(targetHt, Number(payload.data?.damage) || 0));
+                      this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ? AND depth = ?`, newHp, targetId, this.currentDepth);
+                      eventType = "PLAYER_ATTACKED";
+                      actionResultPayload = {
+                        attackerId: session.playerId, targetId, targetType: "MOB",
+                        hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
+                        targetHt, engineResolved: true
+                      };
+                      actionValid = true;
+                      actionCost = Number.isFinite(nativeCost) ? Math.max(0.05, Math.min(10, nativeCost)) : 1.0;
+                    }
+                  } else if (this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth)) {
+                    // Compatibility path for clients that do not yet submit native SPD outcomes.
                     const rng = new SeededRNG(this.matchSeed + this.currentSequence + 1);
                     const hit = rng.nextFloat() > 0.15;
                     const rawDmg = hit ? rng.intRange(2, weaponDmgMax) : 0;
                     const newHp = Math.max(0, mobHp - rawDmg);
-
                     this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ?`, newHp, targetId);
                     eventType = "PLAYER_ATTACKED";
-                    actionResultPayload = {
-                      attackerId: session.playerId,
-                      targetId,
-                      targetType: "MOB",
-                      hit,
-                      damage: rawDmg,
-                      targetHp: newHp
-                    };
+                    actionResultPayload = { attackerId: session.playerId, targetId, targetType: "MOB", hit, damage: rawDmg, targetHp: newHp };
                     actionValid = true;
                     actionCost = 1.0;
                   }
