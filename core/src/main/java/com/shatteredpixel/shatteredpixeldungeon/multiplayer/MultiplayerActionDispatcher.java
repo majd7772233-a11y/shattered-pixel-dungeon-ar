@@ -18,9 +18,9 @@ public class MultiplayerActionDispatcher {
 
         String actionDetailsJson;
         if (action instanceof HeroAction.Attack) {
-            HeroAction.Attack attackAction = (HeroAction.Attack) action;
-            int targetId = attackAction.target != null ? attackAction.target.id() : 0;
-            actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"targetPos\":" + targetPos + ",\"targetId\":" + targetId + ",\"depth\":" + currentDepth + "}";
+            // Combat is sent after Hero.attack resolves it through the native SPD engine.
+            // Sending the target intent here would cause the server to resolve a second, generic attack.
+            return;
         } else if (action instanceof HeroAction.PickUp || action instanceof HeroAction.OpenChest) {
             actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"itemPos\":" + targetPos + ",\"depth\":" + currentDepth + "}";
         } else if (action instanceof HeroAction.LvlTransition) {
