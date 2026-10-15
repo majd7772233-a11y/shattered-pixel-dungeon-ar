@@ -63,6 +63,12 @@ public final class SPDLevelSnapshot {
         public int defenseSkill;
         public float baseSpeed;
         public float cooldown;
+        public List<BuffData> buffs = new ArrayList<>();
+    }
+
+    public static final class BuffData {
+        public String serializedBundle = "";
+        public float cooldown;
     }
 
     public static final class ItemData {
@@ -147,6 +153,14 @@ public final class SPDLevelSnapshot {
                 Bundle mobBundle = new Bundle();
                 mobBundle.put("mob", mob);
                 m.serializedBundle = mobBundle.toString();
+                for (Buff buff : mob.buffs()) {
+                    BuffData buffData = new BuffData();
+                    Bundle buffBundle = new Bundle();
+                    buffBundle.put("buff", buff);
+                    buffData.serializedBundle = buffBundle.toString();
+                    buffData.cooldown = Math.max(0f, buff.cooldown());
+                    m.buffs.add(buffData);
+                }
                 out.mobs.add(m);
             }
         }
