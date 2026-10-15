@@ -918,8 +918,12 @@ export class MatchRoom {
           cooldown: Number(savedMob.cooldown) || 0
         };
       }),
+      // Keep every serialized dynamic-world collection in the authoritative resync payload.
+      // Omitting these fields made plants and timed blobs disappear after a reconnect.
       heaps: Array.isArray(original.heaps) ? original.heaps : [],
       traps: Array.isArray(original.traps) ? original.traps : [],
+      blobs: Array.isArray(original.blobs) ? original.blobs : [],
+      plants: Array.isArray(original.plants) ? original.plants : [],
       claims: this.sql.exec(`SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray()
     };
   }
