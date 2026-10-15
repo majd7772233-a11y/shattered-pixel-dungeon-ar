@@ -105,3 +105,13 @@ The following code is present by the gameplay-code commit `657ce010edb03b55707d2
 - A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
 - The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
 - The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
+
+
+### 2026-10-16 — Phase 1 snapshot-contract hardening (not complete)
+
+- Code checkpoint: `906199d90ce28dbf878a32786930d409dd338df8`.
+- Added strict native snapshot completeness checks on the Worker side and focused tests for missing collections, missing native bundles, unsupported schema versions and oversized bundles.
+- Tightened Android preflight validation for tile geometry, transition enums/targets, player state, mob/buff cooldowns, heap types/items, traps, plants, blobs, claimed cells and bundle-size bounds before restoration.
+- Extended the native level snapshot with visited/mapped cell state, level locked/feeling metadata and heap `autoExplored`; added the `LEVEL_DATA` message type to `protocol/schema.json`. Recorded the user's permanent rule in `GPT.md`: a requested phase must be implemented end-to-end, not treated as done from scaffolding or status reporting.
+- GitHub Actions run [38815013651](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38815013651) passed for the exact code SHA above: backend TypeScript build/tests and Android `assembleDebug` both succeeded.
+- **Phase 1 remains incomplete.** This commit does not yet implement server-assigned entity IDs end-to-end, prepared native-object staging/rollback, custom tile/wall and respawner metadata, or Java round-trip/idempotency tests. Do not mark Phase 1 complete or start Phase 2 until those criteria are actually implemented and tested. No physical two-device test was performed.
