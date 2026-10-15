@@ -54,6 +54,14 @@ public class WorldSnapshot {
         return fallback;
     }
 
+    private static float floatNumber(Object value, float fallback) {
+        if (value instanceof Number) return ((Number) value).floatValue();
+        if (value != null) {
+            try { return Float.parseFloat(String.valueOf(value)); } catch (RuntimeException ignored) { }
+        }
+        return fallback;
+    }
+
     public static void restoreWorld(WorldSnapshot snapshot) {
         if (snapshot == null) return;
 
@@ -153,6 +161,11 @@ public class WorldSnapshot {
                     } else {
                         matched.HP = Math.min(hp, matched.HT);
                         matched.pos = pos;
+                        matched.restoreMultiplayerState(
+                                String.valueOf(data.get("state")),
+                                floatNumber(data.get("baseSpeed"), matched.multiplayerBaseSpeed()),
+                                number(data.get("defenseSkill"), matched.defenseSkill),
+                                floatNumber(data.get("cooldown"), 0f));
                         if (matched.sprite != null && oldPos != pos) matched.sprite.place(pos);
                     }
                 }
