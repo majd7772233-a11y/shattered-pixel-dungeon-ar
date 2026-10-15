@@ -809,7 +809,7 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
           this.checkMatchEndCondition();
-          if (actionStr !== "SYNC_HERO_STATE") this.processMobTurns();
+          if (eventType !== "PLAYER_DAMAGED") this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
