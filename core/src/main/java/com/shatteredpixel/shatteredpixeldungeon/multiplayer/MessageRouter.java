@@ -96,6 +96,12 @@ public final class MessageRouter {
         return value.asFloat();
     }
 
+    private static int intFlag(JsonValue value) {
+        if (value == null) return 0;
+        if (value.isBoolean()) return value.asBoolean() ? 1 : 0;
+        return value.isNumber() ? value.asInt() : 0;
+    }
+
     private static void readObjectArray(JsonValue array, java.util.List<java.util.Map<String, Object>> target) {
         if (array == null || !array.isArray()) return;
         for (JsonValue value = array.child; value != null; value = value.next) {
@@ -151,10 +157,10 @@ public final class MessageRouter {
                         java.util.Map<String, Object> row = new java.util.HashMap<>();
                         row.put("pos", intValue(tile.get("pos"), -1));
                         row.put("terrain", intValue(tile.get("terrain"), -1));
-                        row.put("passable", intValue(tile.get("passable"), 0));
-                        row.put("solid", intValue(tile.get("solid"), 0));
-                        row.put("pit", intValue(tile.get("pit"), 0));
-                        row.put("losBlocking", intValue(tile.get("los_blocking"), intValue(tile.get("losBlocking"), 0)));
+                        row.put("passable", intFlag(tile.get("passable")));
+                        row.put("solid", intFlag(tile.get("solid")));
+                        row.put("pit", intFlag(tile.get("pit")));
+                        row.put("losBlocking", intFlag(tile.get("los_blocking") == null ? tile.get("losBlocking") : tile.get("los_blocking")));
                         snapshot.tiles.add(row);
                     }
                 }
