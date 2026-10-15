@@ -224,3 +224,10 @@ Changes made:
 - `server/src/index.test.ts`: added focused tests for hit/miss transitions, reported healing, mismatched damage and invalid numbers.
 
 Do not mark Phase 1/2/3 complete. Still required: validate the entire snapshot before mutating the live level, trigger resync on failed restore, stable cross-device mob/item IDs, exact idempotent inventory/heap ownership, full native trap/plant/blob/buff/scheduler restoration, combat replay/authority hardening, native mob AI/timing authority, and end-to-end tests. The generic TypeScript mob simulation is not original SPD AI. No physical two-device test was performed.
+
+
+## Verification correction — 2026-10-16
+
+- A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
+- The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
+- The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
