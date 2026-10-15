@@ -162,7 +162,7 @@ public class WorldSnapshot {
             int pos = number(mob.get("pos"), -1);
             int hp = number(mob.get("hp"), -1);
             int ht = number(mob.get("ht"), -1);
-            if (id < 0 || !mobIds.add(id) || pos < 0 || pos >= length || ht < 1 || hp > ht) return false;
+            if (id < 0 || !mobIds.add(id) || pos < 0 || pos >= length || hp < 0 || ht < 1 || hp > ht) return false;
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
             Object buffs = mob.get("buffs");
             if (buffs instanceof List) for (Object raw : (List<?>) buffs) {
@@ -206,7 +206,7 @@ public class WorldSnapshot {
 
     public static boolean restoreWorld(WorldSnapshot snapshot) {
         if (!validateForRestore(snapshot)) {
-            GLog.w("Rejected incomplete or invalid multiplayer world snapshot; requesting resynchronization.");
+            GLog.w("Rejected incomplete or invalid multiplayer world snapshot; live dungeon was left unchanged.");
             return false;
         }
 
