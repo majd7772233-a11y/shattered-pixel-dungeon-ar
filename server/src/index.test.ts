@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG } from './index';
+import { NetworkMessage, SeededRNG, isValidNativeHpTransition } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -123,5 +123,29 @@ describe('Server Network Message Parsing and Validation', () => {
 
     expect(intermediateCells.length).toBe(3);
     expect(intermediateCells).toEqual([101, 102, 103]);
+  });
+});
+
+describe('Native combat HP transition validation', () => {
+  it('accepts a native hit with a matching HP delta', () => {
+    expect(isValidNativeHpTransition(12, 7, 5)).toBe(true);
+  });
+
+  it('accepts a native miss with no HP change and zero damage', () => {
+    expect(isValidNativeHpTransition(12, 12, 0)).toBe(true);
+  });
+
+  it('rejects client-reported healing during an attack', () => {
+    expect(isValidNativeHpTransition(12, 13, 0)).toBe(false);
+  });
+
+  it('rejects damage that does not match the reported HP delta', () => {
+    expect(isValidNativeHpTransition(12, 7, 4)).toBe(false);
+  });
+
+  it('rejects negative, fractional, or non-finite combat values', () => {
+    expect(isValidNativeHpTransition(-1, 0, 1)).toBe(false);
+    expect(isValidNativeHpTransition(12, 11.5, 0.5)).toBe(false);
+    expect(isValidNativeHpTransition(12, 7, Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
