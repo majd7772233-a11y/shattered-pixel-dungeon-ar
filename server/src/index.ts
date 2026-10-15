@@ -651,6 +651,8 @@ export class MatchRoom {
                       && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
                       && Number.isInteger(targetHp) && targetHp >= 0
                       && Number.isInteger(targetHt) && targetHt > 0
+                      && targetHp <= Number(defenderRow[0].hp)
+                      && reportedDamage === Math.max(0, Number(defenderRow[0].hp) - targetHp)
                       && Number.isFinite(reportedDamage) && reportedDamage >= 0;
                     if (validNativeTarget) {
                       const newHp = Math.min(targetHp, targetHt);
@@ -695,6 +697,8 @@ export class MatchRoom {
                     const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
                       && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
                       && Number.isInteger(targetHp) && targetHp >= 0
+                      && targetHp <= Number(mobRow[0].hp)
+                      && reportedDamage === Math.max(0, Number(mobRow[0].hp) - targetHp)
                       && Number.isFinite(reportedDamage) && reportedDamage >= 0;
                     if (validNativeTarget) {
                       const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
