@@ -4,6 +4,7 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 
 public final class MessageRouter {
 
@@ -79,15 +80,10 @@ public final class MessageRouter {
                         }
                     }
                 }
-            } else if ("ITEM_PICKED_UP".equals(eventType) || "CHEST_OPENED".equals(eventType)) {
-                int itemPos = intValue(action.get("itemPos"), -1);
-                if (itemPos >= 0 && Dungeon.level != null) {
-                    com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(itemPos);
-                    if (heap != null) {
-                        Dungeon.level.heaps.remove(itemPos);
-                        if (heap.sprite != null) heap.sprite.remove();
-                    }
-                }
+            } else if ("ITEM_PICKED_UP".equals(eventType)) {
+                // The local SPD engine already removed the picked item from this player's heap.
+            } else if ("CHEST_OPENED".equals(eventType)) {
+                // The local SPD engine has already opened the chest.
             }
         } catch (RuntimeException ignored) {
             // Keep local state intact if an acknowledgement payload is malformed.
@@ -273,15 +269,29 @@ public final class MessageRouter {
                     String playerId = stringValue(action.get("playerId"), null);
                     int hp = intValue(action.get("hp"), -1);
                     if (playerId != null && hp >= 0) applyPlayerHp(playerId, hp);
-                } else if ("ITEM_PICKED_UP".equals(type) || "CHEST_OPENED".equals(type)) {
+                } else if ("ITEM_PICKED_UP".equals(type)) {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) {
                         com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(itemPos);
                         if (heap != null) {
-                            Dungeon.level.heaps.remove(itemPos);
-                            if (heap.sprite != null) heap.sprite.remove();
+                            String itemClass = stringValue(action.get("itemClass"), "");
+                            Item picked = null;
+                            for (Item item : new java.util.ArrayList<>(heap.items)) {
+                                if (itemClass.isEmpty() || item.getClass().getName().equals(itemClass)) { picked = item; break; }
+                            }
+                            if (picked != null) heap.items.remove(picked);
+                            int remaining = intValue(action.get("remainingItemCount"), heap.items.size());
+                            if (remaining <= 0 || heap.items.isEmpty()) {
+                                Dungeon.level.heaps.remove(itemPos);
+                                if (heap.sprite != null) heap.sprite.remove();
+                            } else {
+                                GameScene.updateMap(itemPos);
+                            }
                         }
                     }
+                } else if ("CHEST_OPENED".equals(type)) {
+                    int itemPos = intValue(action.get("itemPos"), -1);
+                    if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
                 } else if ("LEVEL_TRANSITION".equals(type)) {
                     // The authoritative level snapshot that follows a transition is required
                     // before changing local geometry; never synthesize a floor from depth alone.
