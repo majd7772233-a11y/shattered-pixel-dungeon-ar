@@ -10,6 +10,11 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.HeroSprite;
 import com.watabou.noosa.Game;
+import com.watabou.utils.Bundle;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +41,7 @@ public class WorldSnapshot {
     public List<Map<String, Object>> heaps = new ArrayList<>();
     public List<Map<String, Object>> traps = new ArrayList<>();
     public List<Map<String, Object>> transitions = new ArrayList<>();
+    public String heroStateJson = "";
     public List<Integer> claimedItemPositions = new ArrayList<>();
 
     public WorldSnapshot() {}
@@ -44,6 +50,15 @@ public class WorldSnapshot {
         this.sequence = sequence;
         this.depth = depth;
         this.dungeonSeed = dungeonSeed;
+    }
+
+    private static Bundle readBundle(String json) {
+        if (json == null || json.isEmpty() || "null".equals(json)) return null;
+        try {
+            return Bundle.read(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
+        } catch (IOException | RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static int number(Object value, int fallback) {
@@ -192,15 +207,23 @@ public class WorldSnapshot {
                         if (!(itemObject instanceof Map)) continue;
                         Map<String, Object> itemData = (Map<String, Object>) itemObject;
                         try {
-                            Item item = (Item) Class.forName(String.valueOf(itemData.get("className"))).getDeclaredConstructor().newInstance();
-                            int itemLevel = number(itemData.get("level"), 0);
-                            if (itemLevel > 0) item.upgrade(itemLevel);
-                            else if (itemLevel < 0) item.degrade(-itemLevel);
-                            item.quantity(Math.max(1, number(itemData.get("quantity"), 1)));
-                            item.cursed = Boolean.TRUE.equals(itemData.get("cursed"));
-                            item.cursedKnown = Boolean.TRUE.equals(itemData.get("cursedKnown"));
+                            Item item = null;
+                            String encoded = String.valueOf(itemData.get("serializedBundle"));
+                            if (!encoded.isEmpty() && !"null".equals(encoded)) {
+                                Bundle itemBundle = readBundle(encoded);
+                                if (itemBundle != null) item = (Item) itemBundle.get("item");
+                            }
+                            if (item == null) {
+                                item = (Item) Class.forName(String.valueOf(itemData.get("className"))).getDeclaredConstructor().newInstance();
+                                int itemLevel = number(itemData.get("level"), 0);
+                                if (itemLevel > 0) item.upgrade(itemLevel);
+                                else if (itemLevel < 0) item.degrade(-itemLevel);
+                                item.quantity(Math.max(1, number(itemData.get("quantity"), 1)));
+                                item.cursed = Boolean.TRUE.equals(itemData.get("cursed"));
+                                item.cursedKnown = Boolean.TRUE.equals(itemData.get("cursedKnown"));
+                            }
                             heap.drop(item);
-                        } catch (ReflectiveOperationException | ClassCastException ignored) { }
+                        } catch (ReflectiveOperationException | ClassCastException | RuntimeException ignored) { }
                     }
                 }
                 Dungeon.level.heaps.put(pos, heap);
@@ -222,7 +245,13 @@ public class WorldSnapshot {
                 int pos = number(data.get("pos"), -1);
                 if (pos < 0 || pos >= Dungeon.level.length()) continue;
                 try {
-                    Trap trap = (Trap) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
+                    Trap trap = null;
+                    String encoded = String.valueOf(data.get("serializedBundle"));
+                    if (!encoded.isEmpty() && !"null".equals(encoded)) {
+                        Bundle trapBundle = readBundle(encoded);
+                        if (trapBundle != null) trap = (Trap) trapBundle.get("trap");
+                    }
+                    if (trap == null) trap = (Trap) Class.forName(String.valueOf(data.get("className"))).getDeclaredConstructor().newInstance();
                     trap.pos = pos;
                     trap.active = Boolean.TRUE.equals(data.get("active"));
                     trap.visible = Boolean.TRUE.equals(data.get("visible"));
@@ -231,7 +260,7 @@ public class WorldSnapshot {
                     trap.shape = number(data.get("shape"), trap.shape);
                     Dungeon.level.traps.put(pos, trap);
                     GameScene.updateMap(pos);
-                } catch (ReflectiveOperationException | ClassCastException ignored) { }
+                } catch (ReflectiveOperationException | ClassCastException | RuntimeException ignored) { }
             }
         }
 
@@ -251,6 +280,24 @@ public class WorldSnapshot {
         }
 
         // Restore Remote Players
+        if (Dungeon.hero != null && snapshot.heroStateJson != null && !snapshot.heroStateJson.isEmpty()) {
+            Bundle heroState = readBundle(snapshot.heroStateJson);
+            if (heroState != null) {
+                Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
+                if (inventory != null) Dungeon.hero.belongings.restoreFromBundle(inventory);
+                int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount")));
+                for (int i = 0; i < buffCount; i++) {
+                    Bundle encodedBuff = readBundle(heroState.getString("buff_" + i));
+                    if (encodedBuff == null) continue;
+                    Buff buff = (Buff) encodedBuff.get("buff");
+                    if (buff == null) continue;
+                    boolean present = false;
+                    for (Buff current : Dungeon.hero.buffs()) if (current.getClass() == buff.getClass()) { present = true; break; }
+                    if (!present) buff.attachTo(Dungeon.hero);
+                }
+            }
+        }
+
         if (snapshot.playerPositions != null) {
             for (Map.Entry<String, Integer> entry : snapshot.playerPositions.entrySet()) {
                 String pId = entry.getKey();
