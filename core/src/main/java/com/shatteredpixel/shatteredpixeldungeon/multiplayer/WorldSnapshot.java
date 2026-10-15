@@ -227,6 +227,8 @@ public class WorldSnapshot {
                                     floatNumber(data.get("cooldown"), 0f));
                             Dungeon.level.mobs.add(matched);
                             GameScene.add(matched);
+                        } else {
+                            GLog.w("Snapshot mob bundle did not contain a native Mob for entity " + id);
                         }
                     } catch (ReflectiveOperationException | LinkageError | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
                 }
@@ -287,6 +289,10 @@ public class WorldSnapshot {
                                 Bundle itemBundle = readBundle(encoded);
                                 if (itemBundle != null) item = (Item) itemBundle.get("item");
                             }
+                            if (item == null) {
+                                GLog.w("Snapshot item bundle did not contain a native Item at cell " + pos);
+                                continue;
+                            }
                             heap.drop(item);
                         } catch (ReflectiveOperationException | RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
                     }
@@ -316,6 +322,10 @@ public class WorldSnapshot {
                         Bundle trapBundle = readBundle(encoded);
                         if (trapBundle != null) trap = (Trap) trapBundle.get("trap");
                     }
+                    if (trap == null) {
+                        GLog.w("Snapshot trap bundle did not contain a native Trap at cell " + pos);
+                        continue;
+                    }
                     trap.pos = pos;
                     trap.active = Boolean.TRUE.equals(data.get("active"));
                     trap.visible = Boolean.TRUE.equals(data.get("visible"));
@@ -338,6 +348,10 @@ public class WorldSnapshot {
                     Plant plant = null;
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) plant = (Plant) encoded.get("plant");
+                    if (plant == null) {
+                        GLog.w("Snapshot plant bundle did not contain a native Plant at cell " + pos);
+                        continue;
+                    }
                     plant.pos = pos;
                     Dungeon.level.plants.put(pos, plant);
                     GameScene.updateMap(pos);
@@ -354,6 +368,10 @@ public class WorldSnapshot {
                     Blob blob = null;
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) blob = (Blob) encoded.get("blob");
+                    if (blob == null) {
+                        GLog.w("Snapshot blob bundle did not contain a native Blob");
+                        continue;
+                    }
                     blob.restoreMultiplayerCooldown(floatNumber(data.get("cooldown"), 0f));
                     Dungeon.level.blobs.put(blob.getClass(), blob);
                     Actor.add(blob);
