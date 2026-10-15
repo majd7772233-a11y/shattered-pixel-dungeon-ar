@@ -176,7 +176,7 @@ public final class SPDLevelSnapshot {
                     buffData.serializedBundle = buffBundle.toString();
                     buffData.cooldown = Math.max(0f, buff.cooldown());
                     m.buffs.add(buffData);
-                }
+        }
                 out.mobs.add(m);
             }
         }
@@ -233,28 +233,29 @@ public final class SPDLevelSnapshot {
 
     private static List<HeapData> currentHeaps(Level level) {
         List<HeapData> heaps = new ArrayList<>();
-                for (Heap heap : level.heaps.valueList()) {
-                    if (heap == null) continue;
-                    HeapData h = new HeapData();
-                    h.pos = heap.pos;
-                    h.type = heap.type == null ? "HEAP" : heap.type.name();
-                    h.seen = heap.seen;
-                    h.haunted = heap.haunted;
-                    h.hidden = heap.hidden;
-                    for (Item item : heap.items) {
-                        if (item == null) continue;
-                        ItemData d = new ItemData();
-                        d.className = item.getClass().getName();
-                        d.quantity = item.quantity();
-                        d.level = item.level();
-                        d.cursed = item.cursed;
-                        d.cursedKnown = item.cursedKnown;
-                        Bundle itemBundle = new Bundle();
-                        itemBundle.put("item", item);
-                        d.serializedBundle = itemBundle.toString();
-                        h.items.add(d);
-                    }
-                    out.heaps.add(h);
+        if (level == null || level.heaps == null) return heaps;
+        for (Heap heap : level.heaps.valueList()) {
+            if (heap == null) continue;
+            HeapData h = new HeapData();
+            h.pos = heap.pos;
+            h.type = heap.type == null ? "HEAP" : heap.type.name();
+            h.seen = heap.seen;
+            h.haunted = heap.haunted;
+            h.hidden = heap.hidden;
+            for (Item item : heap.items) {
+                if (item == null) continue;
+                ItemData d = new ItemData();
+                d.className = item.getClass().getName();
+                d.quantity = item.quantity();
+                d.level = item.level();
+                d.cursed = item.cursed;
+                d.cursedKnown = item.cursedKnown;
+                Bundle itemBundle = new Bundle();
+                itemBundle.put("item", item);
+                d.serializedBundle = itemBundle.toString();
+                h.items.add(d);
+            }
+            heaps.add(h);
                 }
         return heaps;
     }
