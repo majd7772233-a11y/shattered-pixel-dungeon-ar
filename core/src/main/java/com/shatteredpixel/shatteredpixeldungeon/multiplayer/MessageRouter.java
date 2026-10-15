@@ -155,12 +155,17 @@ public final class MessageRouter {
                         && hasArray(level, "tiles")
                         && hasArray(level, "transitions") && hasArray(level, "heaps")
                         && hasArray(level, "traps") && hasArray(level, "blobs")
-                        && hasArray(level, "plants") && hasArray(level, "mobs")\n                        && hasArray(level, "visitedPositions") && hasArray(level, "mappedPositions");
+                        && hasArray(level, "plants") && hasArray(level, "mobs")
+                        && hasArray(level, "visitedPositions") && hasArray(level, "mappedPositions");
                 snapshot.levelWidth = intValue(level.get("width"), 0);
                 snapshot.levelHeight = intValue(level.get("height"), 0);
                 snapshot.branch = intValue(level.get("branch"), -1);
                 snapshot.entrancePos = intValue(level.get("entrancePos"), -1);
-                snapshot.exitPos = intValue(level.get("exitPos"), -1);\n                snapshot.levelLocked = level.get("locked") != null && level.get("locked").asBoolean();\n                snapshot.levelFeeling = stringValue(level.get("feeling"), "");\n                readIntegerArray(level.get("visitedPositions"), snapshot.visitedPositions);\n                readIntegerArray(level.get("mappedPositions"), snapshot.mappedPositions);
+                snapshot.exitPos = intValue(level.get("exitPos"), -1);
+                snapshot.levelLocked = level.get("locked") != null && level.get("locked").asBoolean();
+                snapshot.levelFeeling = stringValue(level.get("feeling"), "");
+                readIntegerArray(level.get("visitedPositions"), snapshot.visitedPositions);
+                readIntegerArray(level.get("mappedPositions"), snapshot.mappedPositions);
                 JsonValue tiles = level.get("tiles");
                 if (tiles != null && tiles.isArray()) {
                     for (JsonValue tile = tiles.child; tile != null; tile = tile.next) {
