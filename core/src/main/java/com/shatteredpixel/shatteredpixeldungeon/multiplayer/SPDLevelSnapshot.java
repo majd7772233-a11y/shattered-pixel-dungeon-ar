@@ -2,6 +2,8 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.watabou.utils.Bundle;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
@@ -31,6 +33,7 @@ public final class SPDLevelSnapshot {
     public List<MobData> mobs = new ArrayList<>();
     public List<HeapData> heaps = new ArrayList<>();
     public List<TrapData> traps = new ArrayList<>();
+    public String heroStateJson = "";
 
     public static final class Tile {
         public int pos;
@@ -67,6 +70,7 @@ public final class SPDLevelSnapshot {
         public int level;
         public boolean cursed;
         public boolean cursedKnown;
+        public String serializedBundle = "";
     }
 
     public static final class HeapData {
@@ -86,6 +90,7 @@ public final class SPDLevelSnapshot {
         public boolean reclaimed;
         public int color;
         public int shape;
+        public String serializedBundle = "";
     }
 
     private SPDLevelSnapshot() {}
@@ -159,6 +164,9 @@ public final class SPDLevelSnapshot {
                     d.level = item.level();
                     d.cursed = item.cursed;
                     d.cursedKnown = item.cursedKnown;
+                    Bundle itemBundle = new Bundle();
+                    itemBundle.put("item", item);
+                    d.serializedBundle = itemBundle.toString();
                     h.items.add(d);
                 }
                 out.heaps.add(h);
@@ -175,8 +183,28 @@ public final class SPDLevelSnapshot {
                 t.reclaimed = trap.reclaimed;
                 t.color = trap.color;
                 t.shape = trap.shape;
+                Bundle trapBundle = new Bundle();
+                trapBundle.put("trap", trap);
+                t.serializedBundle = trapBundle.toString();
                 out.traps.add(t);
             }
+        }
+        if (Dungeon.hero != null) {
+            Bundle heroState = new Bundle();
+            Bundle inventory = new Bundle();
+            Dungeon.hero.belongings.storeInBundle(inventory);
+            heroState.put("inventoryBundle", inventory.toString());
+            heroState.put("hp", Dungeon.hero.HP);
+            heroState.put("ht", Dungeon.hero.HT);
+            heroState.put("pos", Dungeon.hero.pos);
+            heroState.put("buffCount", Dungeon.hero.buffs().size());
+            int buffIndex = 0;
+            for (Buff buff : Dungeon.hero.buffs()) {
+                Bundle buffBundle = new Bundle();
+                buffBundle.put("buff", buff);
+                heroState.put("buff_" + buffIndex++, buffBundle.toString());
+            }
+            out.heroStateJson = heroState.toString();
         }
         return new Json().toJson(out);
     }
