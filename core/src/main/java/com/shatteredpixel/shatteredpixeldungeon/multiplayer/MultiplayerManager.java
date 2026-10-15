@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 
@@ -134,7 +135,9 @@ public class MultiplayerManager implements TransportCallback {
         msg.messageType = MessageType.ACTION;
         msg.senderId = localPlayerId;
         msg.requestId = UUID.randomUUID().toString();
-        msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson + "}";
+        String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson
+                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
 
         if (msg.requestId != null) {
             pendingActions.put(msg.requestId, msg);
