@@ -332,3 +332,10 @@ These pieces are the starting point, not evidence of complete behavior. The most
 - `server/src/index.ts`: native combat reports are now rejected if target HP increases or reported damage does not equal the HP delta. The SPD combat formula remains in Java; this validation does not prove the client result itself is authentic.
 - `server/src/index.test.ts`: added tests for accepted hit/miss HP transitions, impossible healing, mismatched damage and invalid numeric values. These tests require the pending workflow to confirm execution.
 - Phase 1, Phase 2 and Phase 3 remain **in progress**. Native mob AI/scheduler parity, full snapshot reconstruction, stable entity/item identity, durable inventory/loot ownership, replay-resistant authority and real-device verification are not complete.
+
+
+## Verification correction — 2026-10-16
+
+- A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
+- The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
+- The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
