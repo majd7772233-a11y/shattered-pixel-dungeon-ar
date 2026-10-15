@@ -198,6 +198,17 @@ The project is not done when it compiles or when two clients merely connect. Don
 - Key confirmed risks: generic server mob AI does not equal native SPD AI; overlapping legacy/typed event handlers; shallow backend tests; stale protocol schema (`LEVEL_DATA` missing); LAN host flow and Bluetooth provider wiring need correction/verification; item claim key is not depth-safe; server trusts client-reported native combat fields too much; setup launches before a confirmed ready state.
 - Next work starts at **ROADMAP Phase 1**. Do not restart previously implemented exporter/restore/combat scaffolding without checking the latest code and acceptance criteria.
 
+### 2026-10-16 — Continuation checkpoint for native world restoration/combat
+
+- User's active request: continue implementation of missing-world-entity reconstruction, dropped items/heaps, inventory, traps and timed effects, then match combat hit/miss, defense, damage and actor/action timing to original SPD Java engine. The user is moving to a new conversation because this one is lagging; use `MULTIPLAYER_CONTINUATION_NOTES.md` as the handoff document and do not ask the user to repeat context.
+- Current branch head at checkpoint: `ba97f1b71605bec2e5642355fe0fcbc1add08f68` (documentation checkpoint); latest gameplay code commit before docs: `657ce010edb03b55707d2b6d496abbb07b36fa7a`.
+- Last known green workflow run: `38759441278`, success for exact gameplay SHA `657ce010edb03b55707d2b6d496abbb07b36fa7a`. Recheck Actions for later runs before relying on this status. It does not prove two-device play.
+- Added `MULTIPLAYER_CONTINUATION_NOTES.md` containing the exact resume branch, commit/workflow state, known code already present, specific unresolved gaps, next execution sequence and a copy-paste prompt for the next conversation.
+- Current code already contains native snapshot export/restore scaffolding for mobs and buffs, heaps/items, traps, plants, blobs, hero combat/inventory/buffs, and native hero attack/damage outcome replication. Extend and test these paths; do not recreate parallel implementations.
+- Critical gaps remain: stable network entity/item IDs; full and idempotent restoration contract; safe exact native bundle restoration without swallowed errors; durable depth-aware item claims; inventory and item lifecycle completeness; client-reported combat trust/replay validation; native effective speed and Actor scheduler/action costs; generic TypeScript mob AI is not native SPD AI. Phases 1, 2 and 3 in `ROADMAP.md` are NOT complete until their acceptance criteria and tests pass.
+- Immediate continuation: inspect latest head and Actions; read `ROADMAP.md` and `MULTIPLAYER_CONTINUATION_NOTES.md`; audit current `WorldSnapshot.java`, `SPDLevelSnapshot.java`, `MessageRouter.java`, `RemotePlayerActionReceiver.java`, `Hero.java`, `Char.java`, `Mob.java`, `Actor.java`, `Level.java`, and `server/src/index.ts`; implement/fix tests; run backend typecheck/tests and Android `assembleDebug` on the exact code SHA; update the roadmap and report exact results.
+- Durable execution rules reinforced: no unnecessary discussion, no false claims, no merge to main, no Wrangler CLI suggestions for Android, and no claim of physical two-device testing unless it occurred.
+
 ### Future notes
 
 Append new dated sections here whenever a phase starts/completes, architecture changes, the user gives a durable rule, or verification reveals a new issue. Keep this file open-ended; do not replace this log with a closed summary.
