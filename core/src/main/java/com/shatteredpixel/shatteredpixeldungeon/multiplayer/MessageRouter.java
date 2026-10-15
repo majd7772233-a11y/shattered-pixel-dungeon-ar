@@ -153,7 +153,6 @@ public final class MessageRouter {
                 readObjectArray(level.get("transitions"), snapshot.transitions);
                 readObjectArray(level.get("heaps"), snapshot.heaps);
                 readObjectArray(level.get("traps"), snapshot.traps);
-                snapshot.heroStateJson = stringValue(level.get("heroStateJson"), "");
                 JsonValue levelMobs = level.get("mobs");
                 if (levelMobs != null && levelMobs.isArray()) {
                     snapshot.mobs.clear();
