@@ -475,9 +475,10 @@ export class MatchRoom {
             `spd_${depth}_${Number(t.pos)}_${String(t.type)}`,depth,Number(t.pos),type,Number(t.targetDepth));
         }
         for (const m of mobs) {
+          const initialCooldown = Math.max(0, Math.min(100, Number(m.cooldown) || 0));
           this.sql.exec(`INSERT OR REPLACE INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state)
             VALUES (?,?,?,?,?,?,8,6,?,'HUNTING')`,
-            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),this.worldTime);
+            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),this.worldTime + initialCooldown);
         }
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
           sequence: this.currentSequence, payloadJson: JSON.stringify({ accepted: true, source: "SPD_JAVA_GENERATOR",
@@ -998,6 +999,20 @@ export class MatchRoom {
     return goal < 0 ? -1 : firstStep[goal];
   }
 
+  private getNativeMobTurnDelay(mobId: number): number {
+    try {
+      const row = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+      if (row && typeof row.value === "string") {
+        const snapshot = JSON.parse(String(row.value));
+        const mobs = Array.isArray(snapshot.mobs) ? snapshot.mobs : [];
+        const mob = mobs.find((entry: any) => Number(entry.mobId) === mobId);
+        const speed = Number(mob?.baseSpeed);
+        if (Number.isFinite(speed) && speed > 0) return Math.max(0.05, Math.min(10, 1 / speed));
+      }
+    } catch (_) {}
+    return 1.0;
+  }
+
   private processMobTurns() {
     if (this.gameStatus === "ENDED") return;
     const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, dmg_max, next_act_at FROM mobs WHERE depth = ? AND hp > 0 AND next_act_at <= ? ORDER BY next_act_at ASC, mob_id ASC`, this.currentDepth, this.worldTime).toArray();
@@ -1030,7 +1045,7 @@ export class MatchRoom {
       }
 
       if (!closestPlayer) {
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
         continue;
       }
 
@@ -1052,7 +1067,7 @@ export class MatchRoom {
 
         const newState = newPlayerHp === 0 ? "DEAD" : "ALIVE";
         this.sql.exec(`UPDATE players SET hp = ?, state = ?, deaths = deaths + CASE WHEN ? = 'DEAD' THEN 1 ELSE 0 END WHERE player_id = ?`, newPlayerHp, newState, newState, targetPlayerId);
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
 
         const attackPayload = {
           mobId,
@@ -1078,7 +1093,7 @@ export class MatchRoom {
       } else if (Math.max(dx, dy) <= 8) {
         const nextPos = this.findNextMobStep(mobPos, targetPos, mapWidth, this.currentDepth, mobId);
         if (nextPos >= 0) {
-          this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + 1.0, mobId);
+          this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
           this.currentSequence++;
           const movePayload = { mobId, fromPos: mobPos, toPos: nextPos };
           this.sql.exec(
@@ -1093,11 +1108,11 @@ export class MatchRoom {
             payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_MOVED", depth: this.currentDepth, action: movePayload }])
           });
         } else {
-          this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
+          this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
         }
       } else {
         // A mob that cannot currently reach a visible target still consumes its turn.
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + 1.0, mobId);
+        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
       }
     }
   }
