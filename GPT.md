@@ -1,3 +1,7 @@
+## Permanent execution rule from the user
+
+When the user says “yalla phase N” or asks to finish a phase, implement the entire phase and all related acceptance criteria in one continuous effort—not just scaffolding, a status report, or a list of remaining work. Inspect the actual roadmap and code, complete dependent paths and tests, then run the build and tests against the exact final commit. If verification exposes defects, fix them and rerun before reporting. Do not claim completion without evidence; do not stop at “done except ...” for required phase items. Keep the response concise and direct, and never merge to `main` unless explicitly asked.
+
 # GPT.md — Internal Project Operating Notes
 
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
