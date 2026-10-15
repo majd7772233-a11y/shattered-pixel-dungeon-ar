@@ -454,6 +454,9 @@ export class MatchRoom {
           ON CONFLICT(depth) DO UPDATE SET width=excluded.width,height=excluded.height,
           entrance_pos=excluded.entrance_pos,exit_pos=excluded.exit_pos,seed=excluded.seed`,
           depth,width,height,Number(level.entrancePos),Number(level.exitPos),Number(level.seed)||this.matchSeed);
+        this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+          `levelSnapshot:${depth}`, JSON.stringify(level));
         for (const t of tiles) {
           this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
             depth,Number(t.pos),String(Number(t.terrain)),t.passable?1:0,t.solid?1:0,t.pit?1:0,t.losBlocking?1:0);
@@ -782,12 +785,21 @@ export class MatchRoom {
   private getCurrentLevelSnapshot() {
     const level = this.sql.exec(`SELECT depth,width,height,entrance_pos,exit_pos,seed FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
     if (!level) return null;
+    const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+    let original: any = {};
+    if (saved && typeof saved.value === "string") {
+      try { original = JSON.parse(String(saved.value)); } catch (_) { original = {}; }
+    }
     return {
+      ...original,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
       tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
-      transitions: this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
+      transitions: Array.isArray(original.transitions) ? original.transitions :
+        this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
       mobs: this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray(),
+      heaps: Array.isArray(original.heaps) ? original.heaps : [],
+      traps: Array.isArray(original.traps) ? original.traps : [],
       claims: this.sql.exec(`SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray()
     };
   }
