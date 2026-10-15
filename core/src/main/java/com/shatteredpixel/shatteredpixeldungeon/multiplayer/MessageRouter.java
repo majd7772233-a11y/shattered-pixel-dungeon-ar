@@ -182,6 +182,8 @@ public final class MessageRouter {
                     snapshot.playerHp.put(id, intValue(player.get("hp"), 20));
                     snapshot.playerHt.put(id, intValue(player.get("ht"), 20));
                     snapshot.playerClasses.put(id, stringValue(player.get("class_name"), "WARRIOR"));
+                    String heroState = stringValue(player.get("hero_state_json"), "");
+                    if (!heroState.isEmpty()) snapshot.playerStateJson.put(id, heroState);
                 }
             } else {
                 // SESSION-style snapshots from protocol 1.0 may contain one player at the root.
