@@ -223,7 +223,7 @@ public class WorldSnapshot {
                                 item.cursedKnown = Boolean.TRUE.equals(itemData.get("cursedKnown"));
                             }
                             heap.drop(item);
-                        } catch (ReflectiveOperationException | ClassCastException | RuntimeException ignored) { }
+                        } catch (ReflectiveOperationException | RuntimeException ignored) { }
                     }
                 }
                 Dungeon.level.heaps.put(pos, heap);
