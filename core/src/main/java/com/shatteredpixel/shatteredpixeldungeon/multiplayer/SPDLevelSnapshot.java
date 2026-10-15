@@ -176,7 +176,7 @@ public final class SPDLevelSnapshot {
                     buffData.serializedBundle = buffBundle.toString();
                     buffData.cooldown = Math.max(0f, buff.cooldown());
                     m.buffs.add(buffData);
-        }
+                }
                 out.mobs.add(m);
             }
         }
