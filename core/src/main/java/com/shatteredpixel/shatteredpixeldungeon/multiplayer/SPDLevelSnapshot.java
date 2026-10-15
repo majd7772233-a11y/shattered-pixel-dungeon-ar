@@ -59,6 +59,7 @@ public final class SPDLevelSnapshot {
         public int hp;
         public int ht;
         public String state;
+        public String serializedBundle = "";
         public int defenseSkill;
         public float baseSpeed;
         public float cooldown;
@@ -143,6 +144,9 @@ public final class SPDLevelSnapshot {
                 m.defenseSkill = mob.defenseSkill;
                 m.baseSpeed = mob.multiplayerBaseSpeed();
                 m.cooldown = Math.max(0f, mob.cooldown());
+                Bundle mobBundle = new Bundle();
+                mobBundle.put("mob", mob);
+                m.serializedBundle = mobBundle.toString();
                 out.mobs.add(m);
             }
         }
@@ -202,12 +206,15 @@ public final class SPDLevelSnapshot {
         heroState.put("hp", Dungeon.hero.HP);
         heroState.put("ht", Dungeon.hero.HT);
         heroState.put("pos", Dungeon.hero.pos);
+        heroState.put("cooldown", Math.max(0f, Dungeon.hero.cooldown()));
         heroState.put("buffCount", Dungeon.hero.buffs().size());
         int buffIndex = 0;
         for (Buff buff : Dungeon.hero.buffs()) {
             Bundle buffBundle = new Bundle();
             buffBundle.put("buff", buff);
-            heroState.put("buff_" + buffIndex++, buffBundle.toString());
+            heroState.put("buff_" + buffIndex, buffBundle.toString());
+            heroState.put("buffCooldown_" + buffIndex, Math.max(0f, buff.cooldown()));
+            buffIndex++;
         }
         return heroState.toString();
     }
