@@ -419,6 +419,7 @@ export class MatchRoom {
         const tiles = level.tiles, transitions = level.transitions;
         const heaps = level.heaps, traps = level.traps, blobs = level.blobs, plants = level.plants;
         const mobs = level.mobs;
+        const visitedPositions = level.visitedPositions, mappedPositions = level.mappedPositions;
         const size = width * height;
         const validBundle = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 200000;
         const boundedArray = (value: unknown, max: number) => Array.isArray(value) && value.length <= max;
@@ -429,6 +430,8 @@ export class MatchRoom {
           || !boundedArray(transitions, 128) || !boundedArray(heaps, size)
           || !boundedArray(traps, size) || !boundedArray(blobs, 128)
           || !boundedArray(plants, size) || !boundedArray(mobs, 512)
+          || !boundedArray(visitedPositions, size) || !boundedArray(mappedPositions, size)
+          || typeof level.locked !== "boolean" || !["NONE","CHASM","WATER","GRASS","DARK","LARGE","TRAPS","SECRETS"].includes(String(level.feeling))
           || !validPos(Number(level.entrancePos)) || !validPos(Number(level.exitPos))
           || !Number.isFinite(Number(level.seed))
           || (typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000)) {
@@ -436,6 +439,9 @@ export class MatchRoom {
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_SNAPSHOT" }) }));
           return;
         }
+        const visitedSet = new Set<number>(), mappedSet = new Set<number>();
+        for (const pos of visitedPositions) { if (!validPos(Number(pos)) || visitedSet.has(Number(pos))) { ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId, sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_EXPLORATION" }) })); return; } visitedSet.add(Number(pos)); }
+        for (const pos of mappedPositions) { if (!validPos(Number(pos)) || mappedSet.has(Number(pos))) { ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId, sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_EXPLORATION" }) })); return; } mappedSet.add(Number(pos)); }
         const positions = new Set<number>();
         for (const tile of tiles) {
           const pos = Number(tile?.pos);
