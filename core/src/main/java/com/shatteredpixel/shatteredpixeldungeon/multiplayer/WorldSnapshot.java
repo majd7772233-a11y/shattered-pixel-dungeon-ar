@@ -142,11 +142,14 @@ public class WorldSnapshot {
      */
     public static boolean validateForRestore(WorldSnapshot snapshot) {
         if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
-        if (snapshot.depth < 1 || snapshot.branch != 0 || snapshot.levelWidth != Dungeon.level.width()
-                || snapshot.levelHeight != Dungeon.level.height()
+        if (snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
+                || snapshot.levelWidth != Dungeon.level.width() || snapshot.levelHeight != Dungeon.level.height()
                 || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
+                || snapshot.levelWidth > 100 || snapshot.levelHeight > 100
                 || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return false;
         int length = snapshot.levelWidth * snapshot.levelHeight;
+        if (snapshot.entrancePos < 0 || snapshot.entrancePos >= length
+                || snapshot.exitPos < 0 || snapshot.exitPos >= length) return false;
         boolean[] tileSeen = new boolean[length];
         for (Map<String, Object> tile : snapshot.tiles) {
             if (tile == null) return false;
