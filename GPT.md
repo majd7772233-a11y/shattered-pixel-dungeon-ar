@@ -212,3 +212,15 @@ The project is not done when it compiles or when two clients merely connect. Don
 ### Future notes
 
 Append new dated sections here whenever a phase starts/completes, architecture changes, the user gives a durable rule, or verification reveals a new issue. Keep this file open-ended; do not replace this log with a closed summary.
+
+
+## 2026-10-16 execution update — NOT COMPLETE
+
+Code changes on `multiplayer-framework-core-14118577486727081892` are currently at `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c` (the code commit; subsequent documentation-only commits may advance branch HEAD). GitHub Actions run [38809893294](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38809893294) was pending when recorded; do not claim its tests passed until its final conclusion is checked.
+
+Changes made:
+- `WorldSnapshot.java`: removed constructor-default fallback objects when native serialized bundles are missing/invalid for mobs, items, traps, plants and blobs. Previously empty restore catches now log diagnostics instead of silently swallowing failures.
+- `server/src/index.ts`: added `isValidNativeHpTransition` and applied it to player/mob attack reports. It rejects target HP increases and reported damage inconsistent with the HP delta; this is validation, not proof of an honest client-side native result.
+- `server/src/index.test.ts`: added focused tests for hit/miss transitions, reported healing, mismatched damage and invalid numbers.
+
+Do not mark Phase 1/2/3 complete. Still required: validate the entire snapshot before mutating the live level, trigger resync on failed restore, stable cross-device mob/item IDs, exact idempotent inventory/heap ownership, full native trap/plant/blob/buff/scheduler restoration, combat replay/authority hardening, native mob AI/timing authority, and end-to-end tests. The generic TypeScript mob simulation is not original SPD AI. No physical two-device test was performed.
