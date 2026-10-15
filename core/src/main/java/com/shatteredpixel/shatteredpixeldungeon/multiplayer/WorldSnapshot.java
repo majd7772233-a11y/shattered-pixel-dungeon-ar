@@ -52,6 +52,28 @@ public class WorldSnapshot {
         this.dungeonSeed = dungeonSeed;
     }
 
+    @SuppressWarnings("unchecked")
+    private static void restoreMobBuffs(com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob,
+                                        Map<String, Object> data) {
+        Object raw = data.get("buffs");
+        if (!(raw instanceof List)) return;
+        for (Buff old : new java.util.ArrayList<>(mob.buffs())) old.detach();
+        for (Object value : (List<?>) raw) {
+            if (!(value instanceof Map)) continue;
+            Map<String, Object> buffData = (Map<String, Object>) value;
+            String encoded = String.valueOf(buffData.get("serializedBundle"));
+            Bundle bundle = readBundle(encoded);
+            if (bundle == null) continue;
+            try {
+                Buff buff = (Buff) bundle.get("buff");
+                if (buff != null) {
+                    buff.attachTo(mob);
+                    buff.restoreMultiplayerCooldown(floatNumber(buffData.get("cooldown"), 0f));
+                }
+            } catch (RuntimeException ignored) { }
+        }
+    }
+
     private static Bundle readBundle(String json) {
         if (json == null || json.isEmpty() || "null".equals(json)) return null;
         try {
@@ -136,14 +158,13 @@ public class WorldSnapshot {
 
         // Reconcile mobs and instantiate authoritative mobs missing locally.
         if (Dungeon.level != null && snapshot.mobs != null) {
-            java.util.Set<Integer> seenMobIds = new java.util.HashSet<>();
+            java.util.Set<com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob> authoritativeMobs = new java.util.HashSet<>();
             for (Map<String, Object> data : snapshot.mobs) {
                 int id = number(data.get("mobId"), -1);
                 int pos = number(data.get("pos"), -1);
                 int hp = number(data.get("hp"), 1);
                 int ht = number(data.get("ht"), 1);
                 if (id < 0 || pos < 0 || pos >= Dungeon.level.length()) continue;
-                seenMobIds.add(id);
                 com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob matched = null;
                 for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
                     if (mob.id() == id) { matched = mob; break; }
@@ -195,6 +216,18 @@ public class WorldSnapshot {
                                 floatNumber(data.get("cooldown"), 0f));
                         if (matched.sprite != null && oldPos != pos) matched.sprite.place(pos);
                     }
+                }
+                if (matched != null) {
+                    authoritativeMobs.add(matched);
+                    restoreMobBuffs(matched, data);
+                }
+            }
+            for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob stale
+                    : Dungeon.level.mobs.toArray(new com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob[0])) {
+                if (!authoritativeMobs.contains(stale)) {
+                    Dungeon.level.mobs.remove(stale);
+                    stale.destroy();
+                    if (stale.sprite != null) stale.sprite.remove();
                 }
             }
         }
