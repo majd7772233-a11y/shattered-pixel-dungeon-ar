@@ -206,8 +206,7 @@ public class WorldSnapshot {
                 Dungeon.level.heaps.put(pos, heap);
                 GameScene.updateMap(pos);
             }
-            for (int i = Dungeon.level.heaps.size() - 1; i >= 0; i--) {
-                int pos = Dungeon.level.heaps.keyAt(i);
+            for (int pos : Dungeon.level.heaps.keyArray()) {
                 if (!authoritativeHeapPositions.contains(pos)) {
                     Heap stale = Dungeon.level.heaps.get(pos);
                     if (stale != null && stale.sprite != null) stale.sprite.remove();
