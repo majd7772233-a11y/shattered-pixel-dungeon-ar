@@ -29,6 +29,10 @@ public class MultiplayerActionDispatcher {
             actionDetailsJson = "{\"from\":" + currentPos + ",\"to\":" + targetPos + ",\"targetPos\":" + targetPos + ",\"depth\":" + currentDepth + "}";
         }
 
+        if (actionType == NetworkActionType.MOVE && Dungeon.hero != null && Dungeon.hero.speed() > 0f) {
+            actionDetailsJson = actionDetailsJson.substring(0, actionDetailsJson.length() - 1)
+                    + ",\\"engineActionCost\\":" + (1f / Dungeon.hero.speed()) + "}";
+        }
         manager.sendAction(actionType, actionDetailsJson);
     }
 }
