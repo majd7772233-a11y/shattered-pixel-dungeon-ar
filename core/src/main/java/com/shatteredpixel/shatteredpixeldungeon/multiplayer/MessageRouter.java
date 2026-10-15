@@ -220,13 +220,25 @@ public final class MessageRouter {
             JsonValue mobs = root.get("mobs");
             if (mobs != null && mobs.isArray()) {
                 for (JsonValue mob = mobs.child; mob != null; mob = mob.next) {
-                    java.util.Map<String, Object> row = new java.util.HashMap<>();
-                    row.put("mobId", intValue(mob.get("mob_id"), intValue(mob.get("mobId"), -1)));
-                    row.put("name", stringValue(mob.get("name"), "Mob"));
-                    row.put("pos", intValue(mob.get("pos"), -1));
-                    row.put("hp", intValue(mob.get("hp"), 1));
-                    row.put("ht", intValue(mob.get("ht"), 1));
-                    snapshot.mobs.add(row);
+                    int id = intValue(mob.get("mob_id"), intValue(mob.get("mobId"), -1));
+                    java.util.Map<String, Object> matched = null;
+                    for (java.util.Map<String, Object> candidate : snapshot.mobs) {
+                        if (intValue(candidate.get("mobId"), -1) == id) {
+                            matched = candidate;
+                            break;
+                        }
+                    }
+                    // SQL rows carry live HP/position but not the native serialized bundle.
+                    // Merge them into the exported native entity; never append bundle-less
+                    // duplicates that make a complete snapshot ambiguous or unrestorable.
+                    if (matched == null) {
+                        snapshot.completeWorldSnapshot = false;
+                        continue;
+                    }
+                    matched.put("name", stringValue(mob.get("name"), String.valueOf(matched.get("name"))));
+                    matched.put("pos", intValue(mob.get("pos"), intValue(matched.get("pos"), -1)));
+                    matched.put("hp", intValue(mob.get("hp"), intValue(matched.get("hp"), 1)));
+                    matched.put("ht", intValue(mob.get("ht"), intValue(matched.get("ht"), 1)));
                 }
             }
 
