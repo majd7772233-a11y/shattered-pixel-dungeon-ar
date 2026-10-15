@@ -30,6 +30,10 @@ public class WorldSnapshot {
     public int depth = 1;
     public int branch;
     public long dungeonSeed;
+    public boolean levelLocked;
+    public String levelFeeling = "NONE";
+    public List<Integer> visitedPositions = new ArrayList<>();
+    public List<Integer> mappedPositions = new ArrayList<>();
     public String gameMode = "COOP_DUNGEON";
     /** True only when the payload explicitly contains the complete level snapshot contract. */
     public boolean completeWorldSnapshot;
@@ -152,6 +156,11 @@ public class WorldSnapshot {
             tileSeen[pos] = true;
         }
         for (boolean seen : tileSeen) if (!seen) return false;
+        if (snapshot.visitedPositions == null || snapshot.mappedPositions == null
+                || snapshot.levelFeeling == null) return false;
+        try { com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling.valueOf(snapshot.levelFeeling); }
+        catch (RuntimeException invalidFeeling) { return false; }
+        if (!validCellList(snapshot.visitedPositions, length) || !validCellList(snapshot.mappedPositions, length)) return false;
         if (snapshot.transitions == null || snapshot.heaps == null || snapshot.traps == null
                 || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
                 || snapshot.playerPositions == null || snapshot.playerHp == null || snapshot.playerHt == null
@@ -245,7 +254,7 @@ public class WorldSnapshot {
         return true;
     }
 
-    private static boolean validPositions(List<Map<String, Object>> values, int length, String key, boolean unique) {
+    private static boolean validCellList(List<Integer> values, int length) {\n        java.util.Set<Integer> cells = new java.util.HashSet<>();\n        for (Integer pos : values) if (pos == null || pos < 0 || pos >= length || !cells.add(pos)) return false;\n        return true;\n    }\n\n    private static boolean validPositions(List<Map<String, Object>> values, int length, String key, boolean unique) {
         if (values == null) return false;
         java.util.Set<Integer> positions = new java.util.HashSet<>();
         for (Map<String, Object> value : values) {
@@ -276,6 +285,15 @@ public class WorldSnapshot {
         Dungeon.depth = snapshot.depth;
         Dungeon.branch = snapshot.branch;
         if (snapshot.dungeonSeed != 0L) Dungeon.seed = snapshot.dungeonSeed;
+
+        if (Dungeon.level != null) {
+            Dungeon.level.locked = snapshot.levelLocked;
+            Dungeon.level.feeling = com.shatteredpixel.shatteredpixeldungeon.levels.Level.Feeling.valueOf(snapshot.levelFeeling);
+            java.util.Arrays.fill(Dungeon.level.visited, false);
+            java.util.Arrays.fill(Dungeon.level.mapped, false);
+            for (Integer pos : snapshot.visitedPositions) Dungeon.level.visited[pos] = true;
+            for (Integer pos : snapshot.mappedPositions) Dungeon.level.mapped[pos] = true;
+        }
 
         // Reconcile the complete authoritative tile geometry before applying actors.
         // The seeded SPD generator creates the Level instance; the snapshot then replaces
@@ -415,7 +433,7 @@ public class WorldSnapshot {
                 catch (RuntimeException ignored) { heap.type = Heap.Type.HEAP; }
                 heap.seen = Boolean.TRUE.equals(data.get("seen"));
                 heap.haunted = Boolean.TRUE.equals(data.get("haunted"));
-                heap.hidden = Boolean.TRUE.equals(data.get("hidden"));
+                heap.hidden = Boolean.TRUE.equals(data.get("hidden"));\n                heap.autoExplored = Boolean.TRUE.equals(data.get("autoExplored"));
                 Object itemList = data.get("items");
                 if (itemList instanceof List) {
                     for (Object itemObject : (List<?>) itemList) {
