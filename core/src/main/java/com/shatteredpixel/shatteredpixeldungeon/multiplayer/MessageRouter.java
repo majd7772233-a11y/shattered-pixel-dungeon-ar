@@ -334,9 +334,16 @@ public final class MessageRouter {
                 mob.pos = toPos;
                 if (mob.sprite != null && fromPos != toPos) mob.sprite.move(fromPos, toPos);
             }
-            if ("MOB_ATTACKED".equals(type)) {
-                // Player damage is represented in the event; do not damage the mob for a mob attack.
-                // HP reconciliation for players is handled by the player event adapter.
+            if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(stringValue(action.get("targetType"), ""))) {
+                int hp = intValue(action.get("targetHp"), mob.HP);
+                mob.HT = Math.max(1, intValue(action.get("targetHt"), mob.HT));
+                if (hp <= 0) {
+                    if (mob.isAlive()) mob.die(Dungeon.hero);
+                } else {
+                    mob.HP = Math.min(hp, mob.HT);
+                }
+            } else if ("MOB_ATTACKED".equals(type)) {
+                // Player damage is represented in the event; player HP is reconciled separately.
             } else if ("CHAR_DAMAGED".equals(type)) {
                 int damage = intValue(action.get("damage"), 0);
                 if (damage > 0) mob.damage(damage, "SERVER");
