@@ -94,6 +94,11 @@ public final class MessageRouter {
         }
     }
 
+    private static float floatValue(JsonValue value, float fallback) {
+        if (value == null || !value.isNumber()) return fallback;
+        return value.asFloat();
+    }
+
     private static void readObjectArray(JsonValue array, java.util.List<java.util.Map<String, Object>> target) {
         if (array == null || !array.isArray()) return;
         for (JsonValue value = array.child; value != null; value = value.next) {
@@ -158,6 +163,10 @@ public final class MessageRouter {
                         row.put("pos", intValue(mob.get("pos"), -1));
                         row.put("hp", intValue(mob.get("hp"), 1));
                         row.put("ht", intValue(mob.get("ht"), 1));
+                        row.put("state", stringValue(mob.get("state"), ""));
+                        row.put("defenseSkill", intValue(mob.get("defenseSkill"), 0));
+                        row.put("baseSpeed", floatValue(mob.get("baseSpeed"), 1f));
+                        row.put("cooldown", floatValue(mob.get("cooldown"), 0f));
                         snapshot.mobs.add(row);
                     }
                 }
