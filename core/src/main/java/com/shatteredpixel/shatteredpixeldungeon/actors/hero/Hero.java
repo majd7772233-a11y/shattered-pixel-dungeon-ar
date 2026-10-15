@@ -495,7 +495,7 @@ public class Hero extends Char {
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
-		if (result && this == Dungeon.hero && enemy instanceof Mob
+		if (this == Dungeon.hero && enemy instanceof Mob
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
 			Mob mob = (Mob) enemy;
 			int targetHp = Math.max(0, mob.HP);
@@ -504,7 +504,8 @@ public class Hero extends Char {
 					+ ",\"targetType\":\"MOB\""
 					+ ",\"targetPos\":" + mob.pos
 					+ ",\"engineResult\":true"
-					+ ",\"engineHit\":" + (dealt > 0)
+					+ ",\"engineHit\":" + result
+					+ ",\"engineRanged\":" + (belongings.attackingWeapon() instanceof MissileWeapon)
 					+ ",\"damage\":" + dealt
 					+ ",\"targetHp\":" + targetHp
 					+ ",\"targetHt\":" + Math.max(1, mob.HT)
