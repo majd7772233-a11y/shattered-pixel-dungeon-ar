@@ -1079,7 +1079,9 @@ export class MatchRoom {
                     && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)));
               if (validEnvironmentDamage) {
                 const oldState = String(playerRow.state);
-                const newState = hp > 0 ? "ALIVE" : "DEAD";
+                const newState = hp > 0 ? "ALIVE"
+                  : this.gameMode === "DEATHMATCH" ? "ALIVE"
+                    : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
                 const mergedState = JSON.parse(mergedJson as string);
                 const storedHeroState = JSON.stringify(mergedState);
                 this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
