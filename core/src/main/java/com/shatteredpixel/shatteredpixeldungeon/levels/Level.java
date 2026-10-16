@@ -558,8 +558,8 @@ public abstract class Level implements Bundlable {
 				Actor.add(respawner);
 				respawner.restoreMultiplayerCooldown(metadata.getFloat("respawnerCooldown"));
 			}
-			// Preserve collision flags supplied by the authoritative tile snapshot.
-			cleanWalls();
+			// Tile flags are restored from the authoritative snapshot separately; do not
+			// run cleanWalls() here because it mutates discoverability based on local geometry.
 			return true;
 		} catch (RuntimeException invalidMetadata) {
 			return false;
