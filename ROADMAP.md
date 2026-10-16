@@ -75,7 +75,7 @@ These pieces are the starting point, not evidence of complete behavior. The most
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status:** In progress. Stable server identities now flow through snapshot publication, ACK mapping, reconciliation and mob attack targets; native custom-tile/wall and respawner metadata is included; failed/stale restores request resync without acknowledging the snapshot. Fully prepared rollback-safe restoration, full native round-trip coverage and two-device convergence still require verification.
+**Status:** In progress. Stable server identities flow through publication ACKs, snapshot reconciliation and mob attack targets; native custom-tile/wall and respawner metadata is included; failed restores roll back to the last known-good snapshot where possible and request resync without acknowledging the bad snapshot. CI now runs JVM tests plus Android debug compilation. Full native-world idempotency across all entity types, rollback across every level transition, and two-device convergence still require verification.
 
 ### Work items
 
@@ -89,7 +89,7 @@ These pieces are the starting point, not evidence of complete behavior. The most
 - [ ] Restore complete heaps without losing stack order, item properties, special heap state or remaining items. Restore traps/plants/blobs with their real native bundles and scheduler timing.
 - [ ] Rebuild visuals on the render thread; refresh map cells, FOV, pathfinding dimensions and actor sprites after geometry changes.
 - [x] Audit and include gameplay-relevant level metadata omitted by the current snapshot (map exploration state, level lock/feeling, custom tiles/walls, mob spawn classes, respawner bundle and remaining cooldown, and native transitions).
-- [ ] Add round-trip, missing-entity, stale-entity, empty-list, invalid-bundle, duplicate-ID, killed-mob/tombstone, multiple-items-in-one-heap and reconnect snapshot tests.
+- [ ] Complete native-world round-trip/idempotency coverage for missing/stale entities, killed-mob tombstones and reconnect restore. Current coverage includes server stable-ID persistence/target resolution, duplicate-ID rejection, empty authoritative collections, invalid bundles, multi-item heaps, JVM identity-map tests, and a Java custom-tile/wall metadata Bundle round trip.
 
 ### Acceptance criteria
 
