@@ -52,6 +52,12 @@ public final class SPDLevelSnapshot {
         public boolean solid;
         public boolean pit;
         public boolean losBlocking;
+        public boolean flammable;
+        public boolean secret;
+        public boolean avoid;
+        public boolean water;
+        public boolean discoverable;
+        public boolean openSpace;
     }
 
     public static final class Transition {
@@ -155,6 +161,12 @@ public final class SPDLevelSnapshot {
             tile.solid = level.solid[pos];
             tile.pit = level.pit[pos];
             tile.losBlocking = level.losBlocking[pos];
+            tile.flammable = level.flamable[pos];
+            tile.secret = level.secret[pos];
+            tile.avoid = level.avoid[pos];
+            tile.water = level.water[pos];
+            tile.discoverable = level.discoverable[pos];
+            tile.openSpace = level.openSpace[pos];
             out.tiles.add(tile);
         }
 
