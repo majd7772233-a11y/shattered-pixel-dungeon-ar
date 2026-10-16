@@ -666,7 +666,7 @@ describe('Blessed-Ankh revival validation', () => {
 describe('Native environmental and periodic damage validation', () => {
   const buffs = JSON.stringify([{ serializedBundle: 'native-dot-buff', cooldown: 2 }]);
   const authoritative = {
-    state: 'ALIVE', hp: 12, ht: 20, pos: 41, shielding: 3, levelSize: 1000,
+    state: 'ALIVE', hp: 12, ht: 20, pos: 41, shielding: 3, levelSize: 1000, levelWidth: 32,
     heroState: {
       hp: 12, ht: 20, pos: 41, shielding: 3, buffCount: 1,
       buff_0: JSON.parse(buffs)[0].serializedBundle, buffCooldown_0: 2
@@ -689,5 +689,6 @@ describe('Native environmental and periodic damage validation', () => {
   it('rejects environmental healing and forged shield gains', () => {
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetHp: 13, damage: -1 }, authoritative)).toBe(false);
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetShieldAfter: 4 }, authoritative)).toBe(false);
+    expect(isValidNativeEnvironmentDamage({ ...valid(), targetPosAfter: 400 }, authoritative)).toBe(false);
   });
 });
