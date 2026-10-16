@@ -202,6 +202,10 @@ public class Hero extends Char {
 	
 	public static final int MAX_LEVEL = 30;
 
+	private static boolean nativeAttackInProgress = false;
+
+	public static boolean isNativeAttackInProgress() { return nativeAttackInProgress; }
+
 	public static final int STARTING_STR = 10;
 	
 	private static final float TIME_TO_REST		    = 1f;
@@ -529,7 +533,14 @@ public class Hero extends Char {
 				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
 						: java.util.Collections.emptyMap();
 		int attackerPosBefore = pos;
-		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
+		boolean previousNativeAttackInProgress = nativeAttackInProgress;
+		boolean result;
+		nativeAttackInProgress = true;
+		try {
+			result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
+		} finally {
+			nativeAttackInProgress = previousNativeAttackInProgress;
+		}
 		String secondaryMobDeltas = enemy instanceof Mob
 				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(secondaryMobStateBefore, (Mob) enemy)
 				: "{\"complete\":true,\"deltas\":[]}";
