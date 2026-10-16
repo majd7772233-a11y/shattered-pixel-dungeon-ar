@@ -587,14 +587,16 @@ public final class MessageRouter {
             else mobId = intValue(action.get("targetId"), -1);
         }
         if (mobId < 0) {
-            if (sourceMobDamage || "PLAYER_ATTACKED".equals(type)) {
+            if (sourceMobDamage || nativeMobDamage || "PLAYER_ATTACKED".equals(type)) {
                 MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
             }
             return;
         }
 
+        boolean foundMob = false;
         for (Mob mob : Dungeon.level.mobs) {
             if (mob.id() != mobId) continue;
+            foundMob = true;
             int toPos = sourceMobDamage
                     ? intValue(action.get("sourceMobPosAfter"), -1)
                     : intValue(action.get("targetPosAfter"), intValue(action.get("toPos"), -1));
@@ -652,6 +654,9 @@ public final class MessageRouter {
                 }
             }
             return;
+        }
+        if (nativeMobDamage && !foundMob) {
+            MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
         }
     }
 
