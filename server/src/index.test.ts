@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -780,5 +780,44 @@ describe('Authoritative native hero pre-state', () => {
   it('rejects malformed or absent hero snapshots', () => {
     expect(hasMatchingNativeHeroStateSnapshot('{bad-json', heroState())).toBe(false);
     expect(hasMatchingNativeHeroStateSnapshot(heroState(), null)).toBe(false);
+  });
+});
+
+
+describe('Native hero buff snapshot and Ankh merge', () => {
+  it('extracts a bounded, exact native buff list from a hero state bundle', () => {
+    const state = {
+      hp: 10, ht: 20, pos: 5, shielding: 1, cooldown: 2, buffCount: 1,
+      combatBundle: 'trusted-combat', inventoryBundle: 'trusted-inventory',
+      buff_0: 'native-buff-bundle', buffCooldown_0: 3
+    };
+    expect(nativeBuffSnapshotFromHeroState(state)).toBe(JSON.stringify([
+      { serializedBundle: 'native-buff-bundle', cooldown: 3 }
+    ]));
+    expect(nativeBuffSnapshotFromHeroState({ ...state, buffCount: 257 })).toBeNull();
+    expect(nativeBuffSnapshotFromHeroState({ ...state, buffCooldown_0: -1 })).toBeNull();
+  });
+
+  it('persists exactly one validated blessed Ankh consumption and keeps normal merges trusted', () => {
+    const previous = {
+      combatBundle: 'trusted-combat', inventoryBundle: 'before-ankh',
+      hp: 2, ht: 20, pos: 5, shielding: 0, cooldown: 1,
+      buffCount: 0, ankhCount: 1, blessedAnkhCount: 1
+    };
+    const revived = { ...previous, inventoryBundle: 'after-ankh', hp: 5,
+      ankhCount: 0, blessedAnkhCount: 0, cooldown: 2 };
+    const merged = mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(revived),
+      { hp: 5, ht: 20, pos: 5, shielding: 0 }, '[]', true, false);
+    expect(merged).not.toBeNull();
+    const parsed = JSON.parse(String(merged));
+    expect(parsed.inventoryBundle).toBe('after-ankh');
+    expect(parsed.ankhCount).toBe(0);
+    expect(parsed.blessedAnkhCount).toBe(0);
+    expect(parsed.cooldown).toBe(2);
+    const forged = { ...revived, ankhCount: 1 };
+    const rejected = mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(forged),
+      { hp: 5, ht: 20, pos: 5, shielding: 0 }, '[]', true, false);
+    expect(rejected).not.toBeNull();
+    expect(JSON.parse(String(rejected)).inventoryBundle).toBe('before-ankh');
   });
 });

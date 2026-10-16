@@ -1237,7 +1237,7 @@ export class MatchRoom {
 
           if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
-            const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId || "")).toArray()[0];
+            const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId || msg.requestId || "")).toArray()[0];
             let pending: any = null;
             try { pending = pendingRow && typeof pendingRow.value === "string" ? JSON.parse(String(pendingRow.value)) : null; } catch (_) {}
             pendingCombatForCleanup = pending;
@@ -1321,8 +1321,9 @@ export class MatchRoom {
             }
           } else if (actionStr === "SYNC_MOB_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
-            if (typeof data.combatRequestId === "string") {
-              const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + data.combatRequestId).toArray()[0];
+            if (typeof data.combatRequestId === "string" || typeof data.targetEntityId === "string") {
+              const combatRequestKey = String(data.combatRequestId || msg.requestId || "");
+              const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + combatRequestKey).toArray()[0];
               try { authorityPending = pendingRow && typeof pendingRow.value === "string" ? JSON.parse(String(pendingRow.value)) : null; } catch (_) { authorityPending = null; }
               pendingCombatForCleanup = authorityPending;
               if (authorityPending && typeof authorityPending.attackerId === "string") actionOwnerId = authorityPending.attackerId;
@@ -1873,7 +1874,7 @@ export class MatchRoom {
                   && Number(reportedHeroState.ht) === Number(attackerRow.ht)
                   && Number(reportedHeroState.pos) === Number(attackerRow.pos)
                   && Number(reportedHeroState.shielding) === Number(trustedHeroState.shielding)
-                  && hasMatchingNativeHeroEquipmentState(attackerStateBefore, trustedHeroState);
+                  && hasMatchingNativeHeroStateSnapshot(attackerStateBefore, trustedHeroState);
                 const levelSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
                   `levelSnapshot:${this.currentDepth}`).toArray()[0];
                 let savedLevel: any = null;
@@ -2327,7 +2328,7 @@ export class MatchRoom {
             // Movement/WAIT advances native cooldowns and buffs. Refresh only from a well-formed
             // owner state whose HP/HT/position already match the server's accepted player row;
             // preserve the trusted inventory and combat equipment bundles.
-            if (actionStr === "MOVE" || actionStr === "WAIT") {
+            if (actionStr === "MOVE" || actionStr === "WAIT" || actionStr === "ATTACK") {
               const playerRow = this.sql.exec("SELECT hp,ht,pos FROM players WHERE player_id = ?", session.playerId).toArray()[0];
               const previousRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
               let reported: any = null;
