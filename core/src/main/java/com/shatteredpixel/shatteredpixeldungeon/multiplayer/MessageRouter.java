@@ -540,10 +540,7 @@ public final class MessageRouter {
                     // The native attacker already ran SPD's death/proc/loot pipeline. Do not
                     // invoke Mob.die() or Mob.destroy() on remote replicas: they award local
                     // kill rewards and may roll a second copy of the loot.
-                    MultiplayerManager.getInstance().removeServerEntityIdForActor(mob.id());
-                    Dungeon.level.mobs.remove(mob);
-                    Actor.remove(mob);
-                    if (mob.sprite != null) mob.sprite.remove();
+                    WorldSnapshot.removeMobReplicaWithoutRewards(mob);
                 } else {
                     mob.HP = Math.min(hp, mob.HT);
                     String targetBuffs = stringValue(action.get("targetBuffs"), null);
