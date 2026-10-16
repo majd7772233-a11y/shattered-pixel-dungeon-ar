@@ -119,6 +119,8 @@ export function hasStrictNativeDamageFields(data: any): boolean {
     && data.targetType === "PLAYER" && data.sourceType === "MOB"
     && typeof data.sourceEntityId === "string" && data.sourceEntityId.length >= 8 && data.sourceEntityId.length <= 128
     && Number.isInteger(data.sourcePos) && ["MELEE", "RANGED"].includes(data.sourceAttackKind)
+    && typeof data.sourceActionCost === "number" && Number.isFinite(data.sourceActionCost)
+    && data.sourceActionCost > 0 && data.sourceActionCost <= 10
     && Number.isInteger(data.targetHpBefore) && Number.isInteger(data.targetHtBefore)
     && Number.isInteger(data.targetHp) && Number.isInteger(data.targetHt) && Number.isInteger(data.damage)
     && Number.isInteger(data.targetPosBefore) && Number.isInteger(data.targetPosAfter)
@@ -962,8 +964,11 @@ export class MatchRoom {
               }
               eventType = "PLAYER_DAMAGED";
               actionResultPayload = {
+                attackerId: data.sourceEntityId, attackerPos: sourcePos,
                 sourceType: "MOB", sourceEntityId: data.sourceEntityId, sourcePos,
-                sourceAttackKind: data.sourceAttackKind, targetId: session.playerId, targetType: "PLAYER",
+                sourceAttackKind: data.sourceAttackKind, attackKind: data.sourceAttackKind,
+                engineDistance: sourceDistance, engineActionCost: data.sourceActionCost,
+                targetId: session.playerId, targetType: "PLAYER",
                 targetHpBefore: previousHp, targetHtBefore: previousHt, targetHp: hp, targetHt: ht,
                 targetPos: targetPosBefore, targetPosAfter, targetShieldBefore, targetShieldAfter,
                 targetState: newState, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
@@ -1321,7 +1326,7 @@ export class MatchRoom {
         if (actionValid) {
           // Increment sequence ONLY after successful validation and commit.
           this.currentSequence++;
-          if (eventType === "PLAYER_ATTACKED") {
+          if (eventType === "PLAYER_ATTACKED" || eventType === "PLAYER_DAMAGED") {
             actionResultPayload.combatSchemaVersion = 1;
             actionResultPayload.combatDepth = this.currentDepth;
             actionResultPayload.combatSequence = this.currentSequence;
