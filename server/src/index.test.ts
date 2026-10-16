@@ -735,6 +735,14 @@ describe('Native secondary mob combat deltas', () => {
       { complete: true, deltas: [death], heaps: [] }, saved, 1024, 32)?.heaps).toEqual([]);
   });
 
+  it('accepts bounded HP/shield gains only from the authoritative mob owner', () => {
+    const defensiveProc = { ...delta(), hpAfter: 10, shieldAfter: 3 };
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [defensiveProc] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [defensiveProc] }, saved, 1024, 32, true)?.deltas).toHaveLength(1);
+  });
+
   it('accepts an empty complete delta and rejects an oversized/incomplete collection', () => {
     expect(parseAndValidateNativeSecondaryMobDeltas(
       { complete: true, deltas: [] }, saved, 1024, 32)?.deltas).toEqual([]);
