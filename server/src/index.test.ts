@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -748,5 +748,15 @@ describe('Native secondary mob combat deltas', () => {
       { complete: true, deltas: [] }, saved, 1024, 32)?.deltas).toEqual([]);
     expect(parseAndValidateNativeSecondaryMobDeltas(
       { complete: true, deltas: Array(513).fill(delta()) }, saved, 1024, 32)).toBeNull();
+  });
+});
+
+
+describe('Native mob damage owner authorization', () => {
+  it('accepts only the exact authenticated level publisher identity', () => {
+    expect(isAuthorizedNativeMobOwner('player-host', 'player-host')).toBe(true);
+    expect(isAuthorizedNativeMobOwner('player-attacker', 'player-host')).toBe(false);
+    expect(isAuthorizedNativeMobOwner('player-host', null)).toBe(false);
+    expect(isAuthorizedNativeMobOwner('', 'player-host')).toBe(false);
   });
 });
