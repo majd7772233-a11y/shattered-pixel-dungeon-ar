@@ -390,6 +390,11 @@ public final class MessageRouter {
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
                         applyMobEvent(type, action);
                     }
+                    if ("PLAYER_DAMAGED".equals(type)
+                            && "MOB".equals(stringValue(action.get("sourceType"), ""))
+                            && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
+                        applyMobEvent(type, action);
+                    }
                 } else if ("CHAR_DIED".equals(type)) {
                     String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
                     if (playerId != null) applyPlayerDeath(playerId);
@@ -533,10 +538,14 @@ public final class MessageRouter {
 
     private static void applyMobEvent(String type, JsonValue action) {
         if (Dungeon.level == null) return;
+        boolean sourceMobDamage = "PLAYER_DAMAGED".equals(type)
+                && "MOB".equals(stringValue(action.get("sourceType"), ""));
         int mobId = intValue(action.get("mobId"), -1);
-        if (mobId < 0 && "PLAYER_ATTACKED".equals(type)
-                && "MOB".equals(stringValue(action.get("targetType"), ""))) {
-            String stableEntityId = stringValue(action.get("targetId"), null);
+        if (mobId < 0 && (("PLAYER_ATTACKED".equals(type)
+                && "MOB".equals(stringValue(action.get("targetType"), ""))) || sourceMobDamage)) {
+            String stableEntityId = sourceMobDamage
+                    ? stringValue(action.get("sourceEntityId"), null)
+                    : stringValue(action.get("targetId"), null);
             Integer mappedActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(stableEntityId);
             if (mappedActorId != null) mobId = mappedActorId;
             else mobId = intValue(action.get("targetId"), -1);
@@ -545,13 +554,26 @@ public final class MessageRouter {
 
         for (Mob mob : Dungeon.level.mobs) {
             if (mob.id() != mobId) continue;
-            int toPos = intValue(action.get("targetPosAfter"), intValue(action.get("toPos"), -1));
+            int toPos = sourceMobDamage
+                    ? intValue(action.get("sourceMobPosAfter"), -1)
+                    : intValue(action.get("targetPosAfter"), intValue(action.get("toPos"), -1));
             if (toPos >= 0 && toPos < Dungeon.level.length()) {
                 int fromPos = mob.pos;
                 mob.pos = toPos;
                 if (mob.sprite != null && fromPos != toPos) mob.sprite.move(fromPos, toPos);
             }
-            if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(stringValue(action.get("targetType"), ""))) {
+            if (sourceMobDamage) {
+                int hp = intValue(action.get("sourceMobHpAfter"), mob.HP);
+                mob.HT = Math.max(1, intValue(action.get("sourceMobHtAfter"), mob.HT));
+                if (hp <= 0) {
+                    WorldSnapshot.removeMobReplicaWithoutRewards(mob);
+                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
+                } else {
+                    mob.HP = Math.min(hp, mob.HT);
+                    String sourceBuffs = stringValue(action.get("sourceMobBuffs"), null);
+                    if (sourceBuffs != null) WorldSnapshot.restoreNativeCombatBuffs(mob, sourceBuffs);
+                }
+            } else if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(stringValue(action.get("targetType"), ""))) {
                 int hp = intValue(action.get("targetHp"), mob.HP);
                 mob.HT = Math.max(1, intValue(action.get("targetHt"), mob.HT));
                 if (hp <= 0) {
