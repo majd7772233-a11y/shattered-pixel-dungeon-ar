@@ -26,14 +26,18 @@ public final class MessageRouter {
                 handleSnapshotMessage(message);
                 break;
             case EVENT_BATCH:
-                handleEventBatchMessage(message);
+                // Event batches update native actors, hero state, sprites and loot. Transport
+                // callbacks may run off-thread, so serialize their application with game turns.
+                Game.runOnRenderThread(() -> handleEventBatchMessage(message));
                 break;
             case COMBAT_REQUEST:
                 handleCombatRequest(message);
                 break;
             case ACTION_ACCEPTED:
-                manager.updateLastSequence(message.sequence);
-                applyAcceptedAction(message);
+                Game.runOnRenderThread(() -> {
+                    manager.updateLastSequence(message.sequence);
+                    applyAcceptedAction(message);
+                });
                 break;
             case ACK:
                 manager.updateLastSequence(message.sequence);
@@ -46,7 +50,7 @@ public final class MessageRouter {
                 handleErrorMessage(message);
                 break;
             default:
-                RemotePlayerActionReceiver.handleNetworkMessage(message);
+                Game.runOnRenderThread(() -> RemotePlayerActionReceiver.handleNetworkMessage(message));
                 break;
         }
     }
