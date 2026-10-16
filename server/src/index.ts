@@ -1239,6 +1239,8 @@ export class MatchRoom {
                         attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
                         attackerPos, targetPos: mobPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
+                        targetShieldBefore: Number(payload.data?.targetShieldBefore), targetShieldAfter: Number(payload.data?.targetShieldAfter),
+                        targetHeroStateJson: null,
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
                         targetHt, attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
