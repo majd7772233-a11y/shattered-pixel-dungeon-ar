@@ -509,10 +509,13 @@ public class WorldSnapshot {
                                 if (itemBundle != null) item = (Item) itemBundle.get("item");
                             }
                             if (item == null) {
-                                GLog.w("Snapshot item bundle did not contain a native Item at cell " + pos);
-                                continue;
+                                throw new IllegalStateException("Snapshot item bundle did not contain a native Item at cell " + pos);
                             }
-                            heap.drop(item);
+                            // Snapshot order is already native top-to-bottom heap order.
+                            // Heap.drop() inserts most items at the front and can reverse stacks,
+                            // merge items or trigger side effects, so append the prepared native
+                            // instances directly to preserve exact order and quantities.
+                            heap.items.addLast(item);
                         } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
                     }
                 }
