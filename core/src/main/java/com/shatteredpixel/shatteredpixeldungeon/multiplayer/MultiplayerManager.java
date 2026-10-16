@@ -171,6 +171,11 @@ public class MultiplayerManager implements TransportCallback {
         if (oldActor != null && oldActor != localActorId) actorToServerEntityId.remove(oldActor, entityId);
     }
 
+    public void removeServerEntityIdForActor(int localActorId) {
+        String entityId = actorToServerEntityId.remove(localActorId);
+        if (entityId != null) serverEntityIdToActor.remove(entityId, localActorId);
+    }
+
     public void handleServerEntityAck(NetworkMessage message) {
         if (message == null || message.payloadJson == null) return;
         try {
