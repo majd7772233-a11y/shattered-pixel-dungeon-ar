@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -614,5 +614,23 @@ describe('Native hero buff pre-state validation', () => {
     expect(hasMatchingNativeHeroBuffSnapshot('{broken', { buffCount: 0 })).toBe(false);
     expect(hasMatchingNativeHeroBuffSnapshot('[]', { buffCount: 513 })).toBe(false);
     expect(hasMatchingNativeHeroBuffSnapshot('[]', { buffCount: 1, buff_0: '', buffCooldown_0: -1 })).toBe(false);
+  });
+});
+
+
+describe('Native combat miss immutability', () => {
+  const buffs = JSON.stringify([{ serializedBundle: 'native-buff', cooldown: 1 }]);
+
+  it('accepts a miss only when HP, shield, position and buffs remain unchanged', () => {
+    expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 4, buffs, buffs, 22, 22)).toBe(true);
+    expect(isValidNativeMissTransition(true, 12, 8, 4, 4, 4, buffs, buffs, 22, 22)).toBe(true);
+  });
+
+  it('rejects a miss that forges damage, shield loss, movement, or buff changes', () => {
+    expect(isValidNativeMissTransition(false, 12, 11, 1, 4, 4, buffs, buffs, 22, 22)).toBe(false);
+    expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 0, buffs, buffs, 22, 22)).toBe(false);
+    expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 4, buffs, buffs, 22, 23)).toBe(false);
+    expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 4, buffs,
+      JSON.stringify([{ serializedBundle: 'forged', cooldown: 1 }]), 22, 22)).toBe(false);
   });
 });
