@@ -821,6 +821,7 @@ export class MatchRoom {
           seed: this.matchSeed,
           depth: this.currentDepth,
           gameMode: this.gameMode,
+          isLevelPublisher: String(this.sql.exec(\`SELECT value FROM room_meta WHERE key = 'levelPublisher'\`).toArray()[0]?.value || "") === playerId,
           pos: spawnPos
         })
       };
