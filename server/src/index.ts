@@ -862,7 +862,7 @@ export class MatchRoom {
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
-                      && this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
+                      && (targetPosAfter === defPos || this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth))
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
@@ -941,7 +941,7 @@ export class MatchRoom {
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth))
-                      && this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
+                      && (targetPosAfter === mobPos || this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth))
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
