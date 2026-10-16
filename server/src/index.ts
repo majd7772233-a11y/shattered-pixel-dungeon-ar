@@ -223,6 +223,14 @@ function comparableBuffs(value: any): string {
     || a.cooldown - b.cooldown));
 }
 
+export function hasMatchingNativeMobShieldSnapshot(reportedBefore: unknown, reportedAfter: unknown, authoritativeBefore: unknown): boolean {
+  return Number.isInteger(reportedBefore) && Number(reportedBefore) >= 0 && Number(reportedBefore) <= 100000
+    && Number.isInteger(reportedAfter) && Number(reportedAfter) >= 0 && Number(reportedAfter) <= 100000
+    && Number.isInteger(authoritativeBefore) && Number(authoritativeBefore) >= 0
+    && Number(authoritativeBefore) <= 100000
+    && Number(reportedBefore) === Number(authoritativeBefore);
+}
+
 export function hasMatchingNativeBuffSnapshot(reported: unknown, authoritative: unknown): boolean {
   let reportedValue: any = reported;
   let authoritativeValue: any = authoritative;
@@ -1321,11 +1329,8 @@ export class MatchRoom {
                     const targetBuffPreStateMatches = !!savedTargetMob
                       && hasMatchingNativeBuffSnapshot(payload.data?.targetBuffsBefore, savedTargetMob.buffs);
                     const targetShieldPreStateMatches = !!savedTargetMob
-                      && Number.isInteger(savedTargetMob.shielding)
-                      && Number(payload.data?.targetShieldBefore) === Number(savedTargetMob.shielding)
-                      && Number.isInteger(payload.data?.targetShieldAfter)
-                      && Number(payload.data.targetShieldAfter) >= 0
-                      && Number(payload.data.targetShieldAfter) <= 100000;
+                      && hasMatchingNativeMobShieldSnapshot(payload.data?.targetShieldBefore,
+                        payload.data?.targetShieldAfter, savedTargetMob.shielding);
                     const validLootSnapshot = targetHp > 0
                       ? payload.data?.heaps === undefined
                       : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
