@@ -448,6 +448,7 @@ public class WorldSnapshot {
             for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob stale
                     : Dungeon.level.mobs.toArray(new com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob[0])) {
                 if (!authoritativeMobs.contains(stale)) {
+                    manager.removeServerEntityIdForActor(stale.id());
                     Dungeon.level.mobs.remove(stale);
                     stale.destroy();
                     if (stale.sprite != null) stale.sprite.remove();
