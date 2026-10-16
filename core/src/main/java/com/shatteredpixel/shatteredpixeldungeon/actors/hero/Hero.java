@@ -513,6 +513,7 @@ public class Hero extends Char {
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
+		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 		int attackerPosBefore = pos;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		int targetShieldAfter = enemy == null ? 0 : enemy.shielding();
@@ -561,6 +562,7 @@ public class Hero extends Char {
 					+ ",\"targetShieldAfter\":" + targetShieldAfter
 					+ ",\"targetHeroStateJson\":" + (enemy instanceof Hero
 						? new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) enemy)) : "null")
+					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
 					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(enemy))
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
