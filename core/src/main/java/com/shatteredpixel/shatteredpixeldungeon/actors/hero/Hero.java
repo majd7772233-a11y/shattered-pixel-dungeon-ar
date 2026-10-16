@@ -528,6 +528,8 @@ public class Hero extends Char {
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
+		String attackerStateBefore = MultiplayerManager.getInstance().isMultiplayerActive()
+				? SPDLevelSnapshot.currentHeroStateJson(this) : "";
 		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
 				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
@@ -582,6 +584,7 @@ public class Hero extends Char {
 					+ ",\"combatDepth\":" + Dungeon.depth
 					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(MultiplayerManager.getInstance().getLocalPlayerId())
 					+ ",\"attackerPos\":" + attackerPosBefore
+					+ ",\"attackerStateBefore\":" + new com.badlogic.gdx.utils.Json().toJson(attackerStateBefore)
 					+ ",\"targetPos\":" + targetPosBefore
 					+ ",\"targetPosAfter\":" + enemy.pos
 					+ ",\"targetHpBefore\":" + targetHpBefore
