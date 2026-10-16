@@ -610,7 +610,7 @@ public class WorldSnapshot {
                 GLog.w("Rejected native level metadata during restore.");
                 return false;
             }
-            Game.runOnRenderThread(GameScene::refreshMultiplayerCustomVisuals);
+            GameScene.refreshMultiplayerCustomVisuals();
         }
 
         // Remove heaps already claimed by the authoritative server.
