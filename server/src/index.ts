@@ -213,6 +213,15 @@ export function isValidNativeCombatBuffs(value: unknown): boolean {
     && Number(buff.cooldown) <= 100000);
 }
 
+function comparableBuffs(value: any): string {
+  if (!Array.isArray(value)) return "";
+  return JSON.stringify(value.map((buff: any) => ({
+    serializedBundle: String(buff?.serializedBundle || ""),
+    cooldown: Number(buff?.cooldown) || 0
+  })).sort((a: any, b: any) => a.serializedBundle.localeCompare(b.serializedBundle)
+    || a.cooldown - b.cooldown));
+}
+
 function comparableHeap(heap: any): string {
   return JSON.stringify({
     pos: Number(heap?.pos), type: heap?.type, seen: heap?.seen, haunted: heap?.haunted,
@@ -979,8 +988,8 @@ export class MatchRoom {
               sourceMobBuffsAfterParsed = JSON.parse(String(data?.sourceMobBuffs));
             } catch (_) { sourceMobBuffsBeforeParsed = null; sourceMobBuffsAfterParsed = null; }
             const sourceMobBuffsMatch = !!sourceMobSnapshot
-              && JSON.stringify(sourceMobBuffsBeforeParsed) === JSON.stringify(sourceMobSnapshot.buffs);
-            const sourceMobBuffsChanged = JSON.stringify(sourceMobBuffsBeforeParsed) !== JSON.stringify(sourceMobBuffsAfterParsed);
+              && comparableBuffs(sourceMobBuffsBeforeParsed) === comparableBuffs(sourceMobSnapshot.buffs);
+            const sourceMobBuffsChanged = comparableBuffs(sourceMobBuffsBeforeParsed) !== comparableBuffs(sourceMobBuffsAfterParsed);
             const sourceMobLootValid = sourceMobHpAfter > 0
               ? data?.heaps === undefined
               : isValidNativeLootSnapshot(data?.heaps, sourceLevel?.heaps, sourceMobPosAfter, levelSize);
