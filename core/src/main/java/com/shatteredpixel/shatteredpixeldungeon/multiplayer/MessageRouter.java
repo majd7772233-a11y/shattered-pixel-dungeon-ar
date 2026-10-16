@@ -199,6 +199,12 @@ public final class MessageRouter {
                         row.put("solid", intFlag(tile.get("solid")));
                         row.put("pit", intFlag(tile.get("pit")));
                         row.put("losBlocking", intFlag(tile.get("los_blocking") == null ? tile.get("losBlocking") : tile.get("los_blocking")));
+                        row.put("flammable", intFlag(tile.get("flammable")));
+                        row.put("secret", intFlag(tile.get("secret")));
+                        row.put("avoid", intFlag(tile.get("avoid")));
+                        row.put("water", intFlag(tile.get("water")));
+                        row.put("discoverable", intFlag(tile.get("discoverable")));
+                        row.put("openSpace", intFlag(tile.get("openSpace")));
                         snapshot.tiles.add(row);
                     }
                 }
