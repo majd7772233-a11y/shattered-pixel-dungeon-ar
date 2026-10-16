@@ -512,8 +512,10 @@ public class Hero extends Char {
 		int targetHpBefore = enemy == null ? 0 : enemy.HP;
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
+		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
 		int attackerPosBefore = pos;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
+		int targetShieldAfter = enemy == null ? 0 : enemy.shielding();
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
 		if (this == Dungeon.hero && MultiplayerManager.getInstance().isMultiplayerActive()
@@ -554,6 +556,10 @@ public class Hero extends Char {
 					+ ",\"targetPosAfter\":" + enemy.pos
 					+ ",\"targetHpBefore\":" + targetHpBefore
 					+ ",\"targetHtBefore\":" + targetHtBefore
+					+ ",\"targetShieldBefore\":" + targetShieldBefore
+					+ ",\"targetShieldAfter\":" + targetShieldAfter
+					+ ",\"targetHeroStateJson\":" + (enemy instanceof Hero
+						? new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) enemy)) : "null")
 					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(enemy))
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
