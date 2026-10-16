@@ -111,7 +111,7 @@ public class RemotePlayerActionReceiver {
         int damage = parseKey(json, "\"damage\":");
 
         if (mobId != -1) {
-            for (Mob mob : Dungeon.level.mobs) {
+            for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
                 if (mob.id() == mobId) {
                     if (toPos != -1) {
                         int fromPos = mob.pos;
