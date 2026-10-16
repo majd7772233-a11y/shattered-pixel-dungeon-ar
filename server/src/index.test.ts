@@ -259,6 +259,17 @@ describe('Stable native entity identity', () => {
     assignStableEntityIds(next, previous, () => 'server-entity-skeleton');
     expect(next[0].entityId).toBe('server-entity-skeleton');
   });
+
+  it('does not resurrect entities omitted from the next authoritative snapshot', () => {
+    const previous = [
+      { mobId: 17, entityId: 'server-entity-stays', name: 'Rat', pos: 10 },
+      { mobId: 18, entityId: 'server-entity-removed', name: 'Skeleton', pos: 20 }
+    ];
+    const next: any[] = [{ mobId: 17, name: 'Rat', pos: 11 }];
+    assignStableEntityIds(next, previous, () => 'unexpected-new-entity');
+    expect(next.map((mob) => mob.entityId)).toEqual(['server-entity-stays']);
+    expect(next.some((mob) => mob.entityId === 'server-entity-removed')).toBe(false);
+  });
 });
 
 describe('Snapshot identity idempotency', () => {
