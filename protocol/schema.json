@@ -75,9 +75,9 @@
         },
         "entityId": {
           "type": "string",
-          "minLength": 8,
+          "minLength": 0,
           "maxLength": 80,
-          "description": "Stable room-assigned identity preserved across snapshots and reconnects."
+          "description": "Stable server identity; empty is permitted only on the first publisher upload, and the server assigns it before persistence/ACK."
         },
         "name": {
           "type": "string"
