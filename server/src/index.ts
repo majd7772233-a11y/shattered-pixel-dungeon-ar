@@ -1141,6 +1141,8 @@ export class MatchRoom {
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, attackerType: "PLAYER", targetId: String(targetId), targetType: "PLAYER",
+                        sourceType: "PLAYER", sourceEntityId: session.playerId, sourcePos: attackerPos,
+                        sourceAttackKind: payload.data?.attackKind,
                         attackerPos, targetPos: defPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         targetShieldBefore, targetShieldAfter, targetHeroStateJson: mergedTargetHeroStateJson,
@@ -1242,6 +1244,8 @@ export class MatchRoom {
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, attackerType: "PLAYER", targetId: targetEntityId, targetType: "MOB",
+                        sourceType: "PLAYER", sourceEntityId: session.playerId, sourcePos: attackerPos,
+                        sourceAttackKind: payload.data?.attackKind,
                         attackerPos, targetPos: mobPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         targetShieldBefore: Number(payload.data?.targetShieldBefore), targetShieldAfter: Number(payload.data?.targetShieldAfter),
