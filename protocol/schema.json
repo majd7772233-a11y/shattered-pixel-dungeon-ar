@@ -181,7 +181,10 @@
           }
         },
         "tiles": {
-          "type": "array"
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/NativeTile"
+          }
         },
         "transitions": {
           "type": "array",
@@ -269,6 +272,64 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 10
+        }
+      }
+    },
+    "NativeTile": {
+      "type": "object",
+      "required": [
+        "pos",
+        "terrain",
+        "passable",
+        "solid",
+        "pit",
+        "losBlocking",
+        "flammable",
+        "secret",
+        "avoid",
+        "water",
+        "discoverable",
+        "openSpace"
+      ],
+      "properties": {
+        "pos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "terrain": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "passable": {
+          "type": "boolean"
+        },
+        "solid": {
+          "type": "boolean"
+        },
+        "pit": {
+          "type": "boolean"
+        },
+        "losBlocking": {
+          "type": "boolean"
+        },
+        "flammable": {
+          "type": "boolean"
+        },
+        "secret": {
+          "type": "boolean"
+        },
+        "avoid": {
+          "type": "boolean"
+        },
+        "water": {
+          "type": "boolean"
+        },
+        "discoverable": {
+          "type": "boolean"
+        },
+        "openSpace": {
+          "type": "boolean"
         }
       }
     }
