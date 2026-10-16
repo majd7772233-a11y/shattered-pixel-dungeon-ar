@@ -72,10 +72,10 @@ public final class MessageRouter {
                     String state = stringValue(action.get("targetState"), "ALIVE");
                     if ("DEAD".equals(state) || "SPECTATOR".equals(state)) applyPlayerDeath(targetId);
                 } else if ("MOB".equals(targetType) && targetId != null && hp >= 0 && Dungeon.level != null) {
-                    int mobId;
-                    try { mobId = Integer.parseInt(targetId); } catch (NumberFormatException ignored) { return; }
+                    Integer localActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(targetId);
+                    if (localActorId == null) return;
                     for (Mob mob : Dungeon.level.mobs) {
-                        if (mob.id() == mobId) {
+                        if (mob.id() == localActorId) {
                             mob.HP = hp;
                             if (hp <= 0) mob.die(Dungeon.hero);
                             break;
