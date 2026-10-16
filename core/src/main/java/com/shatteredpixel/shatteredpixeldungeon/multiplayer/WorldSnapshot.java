@@ -32,6 +32,7 @@ public class WorldSnapshot {
     public long dungeonSeed;
     public boolean levelLocked;
     public String levelFeeling = "NONE";
+    public String nativeLevelMetadataBundle = "";
     public List<Integer> visitedPositions = new ArrayList<>();
     public List<Integer> mappedPositions = new ArrayList<>();
     public String gameMode = "COOP_DUNGEON";
@@ -160,7 +161,10 @@ public class WorldSnapshot {
         }
         for (boolean seen : tileSeen) if (!seen) return false;
         if (snapshot.visitedPositions == null || snapshot.mappedPositions == null
-                || snapshot.levelFeeling == null) return false;
+                || snapshot.levelFeeling == null || snapshot.nativeLevelMetadataBundle == null
+                || snapshot.nativeLevelMetadataBundle.isEmpty() || snapshot.nativeLevelMetadataBundle.length() > 200000) return false;
+        Bundle nativeMetadata = readBundle(snapshot.nativeLevelMetadataBundle);
+        if (nativeMetadata == null || !Dungeon.level.canRestoreMultiplayerMetadata(nativeMetadata)) return false;
         if (!java.util.Arrays.asList("NONE", "CHASM", "WATER", "GRASS", "DARK", "LARGE", "TRAPS", "SECRETS")
                 .contains(snapshot.levelFeeling)) return false;
         if (!validCellList(snapshot.visitedPositions, length) || !validCellList(snapshot.mappedPositions, length)) return false;
@@ -561,6 +565,16 @@ public class WorldSnapshot {
                     Dungeon.level.blobs.put(blob.getClass(), blob);
                     Actor.add(blob);
                 } catch (RuntimeException restoreError) { GLog.w("Multiplayer snapshot restore failed: " + restoreError.getMessage()); }
+            }
+        }
+
+        // Restore custom tilemaps, custom walls, spawn classes and native respawner timing.
+        // Their bundles are preflighted before any live-world mutation above.
+        if (Dungeon.level != null) {
+            Bundle nativeMetadata = readBundle(snapshot.nativeLevelMetadataBundle);
+            if (nativeMetadata == null || !Dungeon.level.restoreMultiplayerMetadata(nativeMetadata)) {
+                GLog.w("Rejected native level metadata during restore.");
+                return false;
             }
         }
 
