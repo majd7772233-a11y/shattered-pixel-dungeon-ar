@@ -335,7 +335,7 @@ public final class MessageRouter {
                     }
                 }
                 if (action == null || !action.isObject()) {
-                    MultiplayerManager.getInstance().requestResync(seq);
+                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
                     continue;
                 }
 
