@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -659,5 +659,35 @@ describe('Blessed-Ankh revival validation', () => {
     expect(hasValidBlessedAnkhConsumption(previous, { ...reported, blessedAnkhCount: 1 })).toBe(false);
     expect(hasValidBlessedAnkhConsumption(previous, { ...reported, hp: 6 })).toBe(false);
     expect(hasValidBlessedAnkhConsumption(previous, { ...reported, inventoryBundle: previous.inventoryBundle })).toBe(false);
+  });
+});
+
+
+describe('Native environmental and periodic damage validation', () => {
+  const buffs = JSON.stringify([{ serializedBundle: 'native-dot-buff', cooldown: 2 }]);
+  const authoritative = {
+    state: 'ALIVE', hp: 12, ht: 20, pos: 41, shielding: 3, levelSize: 1000,
+    heroState: {
+      hp: 12, ht: 20, pos: 41, shielding: 3, buffCount: 1,
+      buff_0: JSON.parse(buffs)[0].serializedBundle, buffCooldown_0: 2
+    }
+  };
+  const valid = () => ({
+    sourceType: 'ENVIRONMENT', sourceClass: 'com.example.PeriodicDamage',
+    targetHpBefore: 12, targetHtBefore: 20, targetHp: 10, targetHt: 20,
+    targetPosBefore: 41, targetPosAfter: 41, targetShieldBefore: 3, targetShieldAfter: 1,
+    targetBuffsBefore: buffs, targetBuffs: buffs, damage: 2, effectiveDamage: 4,
+    targetState: 'ALIVE', engineDamageResult: true
+  });
+
+  it('accepts native periodic damage only when its pre-state matches server state', () => {
+    expect(isValidNativeEnvironmentDamage(valid(), authoritative)).toBe(true);
+    expect(isValidNativeEnvironmentDamage({ ...valid(), targetHpBefore: 11 }, authoritative)).toBe(false);
+    expect(isValidNativeEnvironmentDamage({ ...valid(), targetShieldBefore: 2 }, authoritative)).toBe(false);
+  });
+
+  it('rejects environmental healing and forged shield gains', () => {
+    expect(isValidNativeEnvironmentDamage({ ...valid(), targetHp: 13, damage: -1 }, authoritative)).toBe(false);
+    expect(isValidNativeEnvironmentDamage({ ...valid(), targetShieldAfter: 4 }, authoritative)).toBe(false);
   });
 });
