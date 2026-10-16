@@ -73,6 +73,25 @@ public final class MessageRouter {
                     applyPlayerHp(targetId, hp);
                     String state = stringValue(action.get("targetState"), "ALIVE");
                     if ("DEAD".equals(state) || "SPECTATOR".equals(state)) applyPlayerDeath(targetId);
+
+                    // Thorns, retaliation and defensive procs may also mutate the source mob.
+                    // Those native side effects are authoritative in the server snapshot; force
+                    // a snapshot reconciliation rather than letting other clients keep stale mobs.
+                    if ("MOB".equals(stringValue(action.get("sourceType"), ""))
+                            && action.get("sourceEntityId") != null) {
+                        int sourceHpBefore = intValue(action.get("sourceMobHpBefore"), -1);
+                        int sourceHpAfter = intValue(action.get("sourceMobHpAfter"), -1);
+                        int sourceShieldBefore = intValue(action.get("sourceMobShieldBefore"), -1);
+                        int sourceShieldAfter = intValue(action.get("sourceMobShieldAfter"), -1);
+                        int sourcePosBefore = intValue(action.get("sourceMobPosBefore"), -1);
+                        int sourcePosAfter = intValue(action.get("sourceMobPosAfter"), -1);
+                        String sourceBuffsBefore = stringValue(action.get("sourceMobBuffsBefore"), "");
+                        String sourceBuffsAfter = stringValue(action.get("sourceMobBuffs"), "");
+                        if (sourceHpBefore != sourceHpAfter || sourceShieldBefore != sourceShieldAfter
+                                || sourcePosBefore != sourcePosAfter || !sourceBuffsBefore.equals(sourceBuffsAfter)) {
+                            MultiplayerManager.getInstance().requestResync(message.sequence);
+                        }
+                    }
                 } else if ("MOB".equals(targetType) && targetId != null && hp >= 0 && Dungeon.level != null) {
                     Integer localActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(targetId);
                     if (localActorId == null) return;
