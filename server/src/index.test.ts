@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -418,5 +418,27 @@ describe('Native kill loot snapshot validation', () => {
   it('rejects duplicate heap positions and out-of-bounds loot', () => {
     expect(isValidNativeLootSnapshot([droppedHeap, droppedHeap], [], 20, 64)).toBe(false);
     expect(isValidNativeLootSnapshot([{ ...droppedHeap, pos: 64 }], [], 20, 64)).toBe(false);
+  });
+});
+
+
+describe('Strict native combat wire fields', () => {
+  const validPayload = () => ({
+    combatSchemaVersion: 1, combatDepth: 2, attackerId: 'player-a',
+    attackerPos: 10, targetPos: 11, targetPosAfter: 11,
+    targetHpBefore: 12, targetHtBefore: 12, targetHp: 7, targetHt: 12, damage: 5,
+    engineResult: true, engineHit: true, engineRanged: false, attackKind: 'MELEE',
+    engineDistance: 1, engineActionCost: 1, targetBuffs: '[]'
+  });
+
+  it('accepts the complete typed native payload', () => {
+    expect(hasStrictNativeCombatFields(validPayload())).toBe(true);
+  });
+
+  it('rejects string-coerced numbers, invalid outcome flags and mismatched attack kind', () => {
+    expect(hasStrictNativeCombatFields({ ...validPayload(), targetHp: '7' })).toBe(false);
+    expect(hasStrictNativeCombatFields({ ...validPayload(), engineHit: 'true' })).toBe(false);
+    expect(hasStrictNativeCombatFields({ ...validPayload(), engineRanged: true })).toBe(false);
+    expect(hasStrictNativeCombatFields({ ...validPayload(), engineActionCost: '1' })).toBe(false);
   });
 });
