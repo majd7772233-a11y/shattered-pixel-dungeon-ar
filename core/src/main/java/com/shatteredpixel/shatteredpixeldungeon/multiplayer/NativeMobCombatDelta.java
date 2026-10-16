@@ -25,6 +25,7 @@ public final class NativeMobCombatDelta {
         public int pos;
         public int shielding;
         public String buffs;
+        public String serializedBundle;
     }
 
     public static final class Delta {
@@ -39,6 +40,7 @@ public final class NativeMobCombatDelta {
         public int posAfter;
         public int shieldAfter;
         public String buffsAfter;
+        public String serializedBundleAfter;
     }
 
     public static final class Payload {
@@ -61,6 +63,7 @@ public final class NativeMobCombatDelta {
             state.pos = mob.pos;
             state.shielding = mob.shielding();
             state.buffs = SPDLevelSnapshot.currentCombatBuffsJson(mob);
+            state.serializedBundle = SPDLevelSnapshot.currentMobBundle(mob);
             states.put(state.actorId, state);
         }
         return states;
@@ -91,6 +94,9 @@ public final class NativeMobCombatDelta {
                 tombstone.posAfter = oldState.pos;
                 tombstone.shieldAfter = 0;
                 tombstone.buffsAfter = "[]";
+                // Dead replicas are removed from authoritative snapshots; keep a bounded,
+                // parseable bundle in the tombstone record for strict protocol validation.
+                tombstone.serializedBundleAfter = oldState.serializedBundle;
                 payload.deltas.add(tombstone);
                 continue;
             }
@@ -112,6 +118,7 @@ public final class NativeMobCombatDelta {
             delta.posAfter = newState.pos;
             delta.shieldAfter = newState.shielding;
             delta.buffsAfter = newState.buffs;
+            delta.serializedBundleAfter = newState.serializedBundle;
             payload.deltas.add(delta);
         }
         // New mobs created by an attack-side proc cannot be safely assigned by an attacker
