@@ -868,7 +868,11 @@ public abstract class Mob extends Char {
 				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this) : "";
 		boolean changed = hpBefore != hpAfter || htBefore != htAfter || posBefore != pos
 				|| shieldBefore != shieldAfter || !buffsBefore.equals(buffsAfter);
-		if (capturePeriodicState && changed && serverEntityId != null && serverEntityId.length() >= 8) {
+		if (capturePeriodicState && changed) {
+			if (serverEntityId == null || serverEntityId.length() < 8) {
+				manager.requestResync(manager.getLastSequence());
+				return;
+			}
 			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
 			String outcome = "{\"combatSchemaVersion\":1"
 					+ ",\"combatDepth\":" + Dungeon.depth
