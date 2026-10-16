@@ -123,7 +123,8 @@ export function hasStrictNativeCombatFields(data: any): boolean {
     && typeof data.engineDistance === "number" && Number.isFinite(data.engineDistance)
     && typeof data.engineActionCost === "number" && Number.isFinite(data.engineActionCost)
     && typeof data.targetBuffs === "string"
-    && typeof data.targetBuffsBefore === "string";
+    && typeof data.targetBuffsBefore === "string"
+    && typeof data.secondaryMobDeltas === "string";
 }
 
 export function hasStrictNativeSourceMobState(data: any): boolean {
@@ -382,6 +383,69 @@ export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown
     if (!before || !after || comparableHeap(before) !== comparableHeap(after)) return false;
   }
   return true;
+}
+
+export interface NativeSecondaryMobDeltaPayload {
+  complete: boolean;
+  deltas: Array<{
+    entityId: string;
+    hpBefore: number; htBefore: number; posBefore: number; shieldBefore: number; buffsBefore: string;
+    hpAfter: number; htAfter: number; posAfter: number; shieldAfter: number; buffsAfter: string;
+  }>;
+  heaps?: unknown;
+}
+
+/** Validates every secondary native mob mutation against the last server-held level snapshot. */
+export function parseAndValidateNativeSecondaryMobDeltas(
+  value: unknown, savedMobs: unknown, levelSize: number, width: number
+): NativeSecondaryMobDeltaPayload | null {
+  let payload: any = value;
+  try { if (typeof payload === "string") payload = JSON.parse(payload); } catch (_) { return null; }
+  if (!payload || payload.complete !== true || !Array.isArray(payload.deltas)
+    || payload.deltas.length > 512 || !Array.isArray(savedMobs)
+    || !Number.isInteger(levelSize) || levelSize < 1 || !Number.isInteger(width) || width < 1) return null;
+  const byId = new Map<string, any>();
+  for (const mob of savedMobs) {
+    if (typeof mob?.entityId !== "string" || mob.entityId.length < 8 || byId.has(mob.entityId)) return null;
+    byId.set(mob.entityId, mob);
+  }
+  const seen = new Set<string>();
+  const deathPositions = new Set<number>();
+  for (const delta of payload.deltas) {
+    if (!delta || typeof delta.entityId !== "string" || delta.entityId.length < 8
+      || delta.entityId.length > 80 || seen.has(delta.entityId)) return null;
+    seen.add(delta.entityId);
+    const saved = byId.get(delta.entityId);
+    if (!saved) return null;
+    const integers = [delta.hpBefore, delta.htBefore, delta.posBefore, delta.shieldBefore,
+      delta.hpAfter, delta.htAfter, delta.posAfter, delta.shieldAfter];
+    if (!integers.every(Number.isInteger) || delta.hpBefore < 0 || delta.htBefore < 1
+      || delta.posBefore < 0 || delta.posBefore >= levelSize
+      || delta.shieldBefore < 0 || delta.shieldBefore > 100000
+      || delta.hpAfter < 0 || delta.hpAfter > delta.hpBefore
+      || delta.htAfter !== delta.htBefore || delta.htBefore !== Number(saved.ht)
+      || delta.hpBefore !== Number(saved.hp) || delta.posBefore !== Number(saved.pos)
+      || delta.shieldBefore !== Number(saved.shielding)
+      || delta.posAfter < 0 || delta.posAfter >= levelSize
+      || delta.shieldAfter < 0 || delta.shieldAfter > delta.shieldBefore
+      || typeof delta.buffsBefore !== "string" || typeof delta.buffsAfter !== "string"
+      || !hasMatchingNativeBuffSnapshot(delta.buffsBefore, saved.buffs)
+      || !isValidNativeCombatBuffs(delta.buffsAfter)) return null;
+    const moveDistance = Math.max(
+      Math.abs((delta.posAfter % width) - (delta.posBefore % width)),
+      Math.abs(Math.floor(delta.posAfter / width) - Math.floor(delta.posBefore / width))
+    );
+    if (moveDistance > 8) return null;
+    const changed = delta.hpAfter !== delta.hpBefore || delta.posAfter !== delta.posBefore
+      || delta.shieldAfter !== delta.shieldBefore
+      || comparableBuffs(JSON.parse(delta.buffsAfter)) !== comparableBuffs(JSON.parse(delta.buffsBefore));
+    if (!changed) return null;
+    if (delta.hpAfter === 0) deathPositions.add(delta.posBefore);
+  }
+  if (deathPositions.size > 0) {
+    if (!Array.isArray(payload.heaps)) return null;
+  } else if (payload.heaps !== undefined) return null;
+  return { complete: true, deltas: payload.deltas, ...(deathPositions.size ? { heaps: payload.heaps } : {}) };
 }
 
 export function isValidNativeCombatEvent(event: any): boolean {
