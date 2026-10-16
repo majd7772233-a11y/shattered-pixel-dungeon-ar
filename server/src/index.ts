@@ -98,6 +98,21 @@ export function isValidNativeHpTransition(previousHp: number, targetHp: number, 
     && reportedDamage === previousHp - targetHp;
 }
 
+export function hasStrictNativeCombatFields(data: any): boolean {
+  return data != null && data.combatSchemaVersion === 1
+    && Number.isInteger(data.combatDepth)
+    && typeof data.attackerId === "string" && data.attackerId.length > 0 && data.attackerId.length <= 80
+    && Number.isInteger(data.attackerPos) && Number.isInteger(data.targetPos) && Number.isInteger(data.targetPosAfter)
+    && Number.isInteger(data.targetHpBefore) && Number.isInteger(data.targetHtBefore)
+    && Number.isInteger(data.targetHp) && Number.isInteger(data.targetHt) && Number.isInteger(data.damage)
+    && typeof data.engineResult === "boolean" && data.engineResult === true
+    && typeof data.engineHit === "boolean" && typeof data.engineRanged === "boolean"
+    && data.attackKind === (data.engineRanged ? "RANGED" : "MELEE")
+    && typeof data.engineDistance === "number" && Number.isFinite(data.engineDistance)
+    && typeof data.engineActionCost === "number" && Number.isFinite(data.engineActionCost)
+    && typeof data.targetBuffs === "string";
+}
+
 export function isValidNativeCombatBuffs(value: unknown): boolean {
   if (typeof value !== "string" || value.length > 200000) return false;
   let buffs: any;
@@ -925,6 +940,7 @@ export class MatchRoom {
                       this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
+                      && hasStrictNativeCombatFields(payload.data)
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && (ranged
@@ -1013,6 +1029,7 @@ export class MatchRoom {
                       ? payload.data?.heaps === undefined
                       : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
+                      && hasStrictNativeCombatFields(payload.data)
                       && validLootSnapshot
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
