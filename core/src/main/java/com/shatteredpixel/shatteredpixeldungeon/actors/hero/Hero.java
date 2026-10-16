@@ -523,7 +523,8 @@ public class Hero extends Char {
 			String targetType;
 			String targetIdJson;
 			String targetEntityIdJson = "null";
-			boolean ranged = belongings.attackingWeapon() instanceof MissileWeapon;
+			boolean ranged = belongings.attackingWeapon() instanceof MissileWeapon
+					|| Dungeon.level.distance(attackerPosBefore, targetPosBefore) > 1;
 			String extraLoot = "";
 			if (enemy instanceof Mob) {
 				Mob mob = (Mob) enemy;
