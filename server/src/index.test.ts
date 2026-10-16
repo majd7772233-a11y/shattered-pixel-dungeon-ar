@@ -199,6 +199,17 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(true);
   });
 
+  it('rejects mob snapshots that omit or corrupt native shield state', () => {
+    const missing: any = completeSnapshot();
+    missing.mobs.push({ mobId: 7, entityId: "server-entity-shield-0001", name: "Rat", pos: 12,
+      hp: 10, ht: 10, serializedBundle: "native-mob-bundle", buffs: [] });
+    expect(hasCompleteNativeLevelSnapshot(missing)).toBe(false);
+    const invalid: any = completeSnapshot();
+    invalid.mobs.push({ mobId: 7, entityId: "server-entity-shield-0001", name: "Rat", pos: 12,
+      hp: 10, ht: 10, shielding: -1, serializedBundle: "native-mob-bundle", buffs: [] });
+    expect(hasCompleteNativeLevelSnapshot(invalid)).toBe(false);
+  });
+
   it('accepts a dead-mob tombstone in a complete native snapshot without dropping its identity', () => {
     const snapshot: any = completeSnapshot();
     snapshot.mobs.push({
