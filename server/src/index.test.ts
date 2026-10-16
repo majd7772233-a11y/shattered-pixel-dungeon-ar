@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -486,6 +486,9 @@ describe('Native mob damage wire contract', () => {
   const validDamage = () => ({
     combatSchemaVersion: 1, combatDepth: 2, targetType: 'PLAYER', sourceType: 'MOB',
     sourceEntityId: 'stable-mob-0001', sourcePos: 10, sourceAttackKind: 'MELEE', sourceActionCost: 1,
+    sourceMobHpBefore: 10, sourceMobHtBefore: 10, sourceMobPosBefore: 10,
+    sourceMobHpAfter: 8, sourceMobHtAfter: 10, sourceMobPosAfter: 10, sourceMobDamage: 2,
+    sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]',
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
     targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
     engineDamageResult: true, targetBuffs: '[]'
@@ -493,6 +496,8 @@ describe('Native mob damage wire contract', () => {
 
   it('accepts well-typed native damage state and rejects spoofed fields', () => {
     expect(hasStrictNativeDamageFields(validDamage())).toBe(true);
+    expect(hasStrictNativeSourceMobState(validDamage())).toBe(true);
+    expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobHpAfter: '0' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), targetHp: '0' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceType: 'PLAYER' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceEntityId: null })).toBe(false);
