@@ -1626,9 +1626,21 @@ export class MatchRoom {
                     const targetShieldPreStateMatches = !!savedTargetMob
                       && hasMatchingNativeMobShieldSnapshot(payload.data?.targetShieldBefore,
                         payload.data?.targetShieldAfter, savedTargetMob.shielding);
-                    const validLootSnapshot = targetHp > 0
-                      ? payload.data?.heaps === undefined
-                      : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
+                    const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(
+                      payload.data?.secondaryMobDeltas, combatLevel?.mobs, levelSize, width);
+                    const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
+                      .filter((delta: any) => Number(delta.hpAfter) === 0)
+                      .map((delta: any) => Number(delta.posBefore));
+                    const allDeathPositions = [
+                      ...(targetHp <= 0 ? [mobPos] : []),
+                      ...secondaryDeathPositions
+                    ];
+                    const lootSnapshot = targetHp <= 0 ? payload.data?.heaps
+                      : secondaryDeathPositions.length > 0 ? secondaryMobPayload?.heaps : undefined;
+                    const validLootSnapshot = secondaryMobPayload != null
+                      && (allDeathPositions.length === 0
+                        ? payload.data?.heaps === undefined && secondaryMobPayload.heaps === undefined
+                        : isValidNativeLootSnapshot(lootSnapshot, combatLevel?.heaps, allDeathPositions, levelSize));
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
                       && targetBuffPreStateMatches
@@ -1674,13 +1686,26 @@ export class MatchRoom {
                       savedMob.pos = targetPosAfter;
                       savedMob.buffs = JSON.parse(String(payload.data.targetBuffs));
                        savedMob.shielding = Number(payload.data.targetShieldAfter);
-                      if (newHp <= 0) combatLevel.heaps = payload.data.heaps;
-                      this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-                        ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                        `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
-                      if (newHp <= 0) {
+                      if (allDeathPositions.length > 0) combatLevel.heaps = lootSnapshot;
+                      for (const delta of secondaryMobPayload.deltas) {
+                        const secondaryMobId = resolveServerMobIdByEntityId(combatLevel, delta.entityId);
+                        if (secondaryMobId == null) throw new Error("Secondary combat mob identity disappeared after validation");
+                        const secondaryMob = combatLevel.mobs.find((mob: any) => Number(mob.mobId) === secondaryMobId);
+                        if (!secondaryMob) throw new Error("Secondary combat mob missing from authoritative snapshot");
+                        secondaryMob.hp = delta.hpAfter;
+                        secondaryMob.ht = delta.htAfter;
+                        secondaryMob.pos = delta.posAfter;
+                        secondaryMob.shielding = delta.shieldAfter;
+                        secondaryMob.buffs = JSON.parse(delta.buffsAfter);
+                        this.sql.exec(\`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?\`,
+                          delta.hpAfter, delta.posAfter, secondaryMobId, this.currentDepth);
+                      }
+                      this.sql.exec(\`INSERT INTO room_meta (key,value) VALUES (?,?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value\`,
+                        \`levelSnapshot:\${this.currentDepth}\`, JSON.stringify(combatLevel));
+                      if (allDeathPositions.length > 0) {
                         for (const heap of combatLevel.heaps) {
-                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+                          this.sql.exec(\`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?\`, Number(heap.pos), this.currentDepth);
                         }
                       }
                       eventType = "PLAYER_ATTACKED";
