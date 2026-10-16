@@ -491,6 +491,7 @@ export class MatchRoom {
           }
         }
         const mobIds = new Set<number>();
+        const entityIds = new Set<string>();
         for (const mob of mobs) {
           const id = Number(mob?.mobId), hp = Number(mob?.hp), ht = Number(mob?.ht);
           if (!validPos(Number(mob?.pos)) || !Number.isInteger(id) || id < 0 || mobIds.has(id)
@@ -504,6 +505,15 @@ export class MatchRoom {
             return;
           }
           mobIds.add(id);
+          if (mob?.entityId != null) {
+            const entityId = String(mob.entityId);
+            if (entityId.length < 8 || entityId.length > 80 || entityIds.has(entityId)) {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+                sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_ENTITY_IDS" }) }));
+              return;
+            }
+            entityIds.add(entityId);
+          }
         }
         const invalidObjects =
           heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","LOCKED_CHEST","CRYSTAL_CHEST","TOMB","SKELETON","REMAINS"].includes(String(heap?.type))
@@ -518,6 +528,43 @@ export class MatchRoom {
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_ENTITIES" }) }));
           return;
         }
+        // Assign stable server identities before replacing the previous snapshot. Preserve an
+        // existing identity supplied by the publisher; otherwise reuse a previous identity only
+        // when the same native actor key/class can be matched, then fall back to a unique ID.
+        const previousSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+          `levelSnapshot:${depth}`).toArray()[0];
+        let previousSnapshot: any = {};
+        try {
+          previousSnapshot = previousSnapshotRow && typeof previousSnapshotRow.value === "string"
+            ? JSON.parse(String(previousSnapshotRow.value)) : {};
+        } catch (_) { previousSnapshot = {}; }
+        const previousMobs: any[] = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : [];
+        const previousByNativeId = new Map<number, any>();
+        const previousByClassAndPosition = new Map<string, any>();
+        for (const previous of previousMobs) {
+          if (Number.isInteger(Number(previous?.mobId)) && typeof previous?.entityId === "string") {
+            previousByNativeId.set(Number(previous.mobId), previous);
+          }
+          if (typeof previous?.name === "string" && Number.isInteger(Number(previous?.pos))
+            && typeof previous?.entityId === "string") {
+            previousByClassAndPosition.set(`${String(previous.name)}:${Number(previous.pos)}`, previous);
+          }
+        }
+        const assignedEntityIds = new Set<string>();
+        for (const mob of mobs) {
+          const supplied = typeof mob.entityId === "string" && mob.entityId.length >= 8
+            && mob.entityId.length <= 80 ? mob.entityId : "";
+          const previousById = previousByNativeId.get(Number(mob.mobId));
+          const previousByPosition = previousByClassAndPosition.get(`${String(mob.name)}:${Number(mob.pos)}`);
+          let entityId = supplied
+            || (previousById && String(previousById.name) === String(mob.name) ? String(previousById.entityId) : "")
+            || (previousByPosition ? String(previousByPosition.entityId) : "");
+          if (!entityId || assignedEntityIds.has(entityId)) entityId = crypto.randomUUID();
+          assignedEntityIds.add(entityId);
+          mob.entityId = entityId;
+        }
+        level.mobs = mobs;
+
         this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
         this.sql.exec(`DELETE FROM level_transitions WHERE depth = ?`, depth);
         this.sql.exec(`DELETE FROM mobs WHERE depth = ?`, depth);
@@ -550,7 +597,8 @@ export class MatchRoom {
         }
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
           sequence: this.currentSequence, payloadJson: JSON.stringify({ accepted: true, source: "SPD_JAVA_GENERATOR",
-            depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length }) }));
+            depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length,
+            entities: mobs.map((mob: any) => ({ mobId: Number(mob.mobId), entityId: String(mob.entityId) })) }) }));
         return;
       }
 
@@ -980,6 +1028,7 @@ export class MatchRoom {
         const savedMob = originalMobs.get(Number(mob.mob_id)) || {};
         return {
           ...savedMob, ...mob,
+          entityId: typeof savedMob.entityId === "string" ? savedMob.entityId : "",
           state: typeof savedMob.state === "string" ? savedMob.state : mob.state,
           defenseSkill: Number(savedMob.defenseSkill) || 0,
           baseSpeed: Number(savedMob.baseSpeed) || 1,
