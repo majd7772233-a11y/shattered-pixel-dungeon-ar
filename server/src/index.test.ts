@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -510,7 +510,7 @@ describe('Native mob damage wire contract', () => {
     sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]',
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
     targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
-    engineDamageResult: true, targetBuffs: '[]'
+    engineDamageResult: true, targetBuffsBefore: '[]', targetBuffs: '[]'
   });
 
   it('accepts well-typed native damage state and rejects spoofed fields', () => {
@@ -583,5 +583,35 @@ describe('Native mob shield pre-state validation', () => {
     expect(hasMatchingNativeMobShieldSnapshot(1.5, 0, 1.5)).toBe(false);
     expect(hasMatchingNativeMobShieldSnapshot(1, Number.POSITIVE_INFINITY, 1)).toBe(false);
     expect(hasMatchingNativeMobShieldSnapshot(100001, 0, 100001)).toBe(false);
+  });
+});
+
+
+describe('Native hero buff pre-state validation', () => {
+  it('matches the reported pre-damage buff bundles against the saved hero state', () => {
+    const saved = {
+      buffCount: 2,
+      buff_0: 'native-poison',
+      buffCooldown_0: 1.5,
+      buff_1: 'native-shield',
+      buffCooldown_1: 0
+    };
+    const matching = [
+      { serializedBundle: 'native-poison', cooldown: 1.5 },
+      { serializedBundle: 'native-shield', cooldown: 0 }
+    ];
+    expect(hasMatchingNativeHeroBuffSnapshot(JSON.stringify(matching), saved)).toBe(true);
+    expect(hasMatchingNativeHeroBuffSnapshot(JSON.stringify([
+      { serializedBundle: 'forged-buff', cooldown: 1.5 },
+      { serializedBundle: 'native-shield', cooldown: 0 }
+    ]), saved)).toBe(false);
+    expect(hasMatchingNativeHeroBuffSnapshot('[]', { ...saved, buffCooldown_0: 999 })).toBe(false);
+  });
+
+  it('rejects absent, malformed and oversized authoritative buff state', () => {
+    expect(hasMatchingNativeHeroBuffSnapshot('[]', null)).toBe(false);
+    expect(hasMatchingNativeHeroBuffSnapshot('{broken', { buffCount: 0 })).toBe(false);
+    expect(hasMatchingNativeHeroBuffSnapshot('[]', { buffCount: 513 })).toBe(false);
+    expect(hasMatchingNativeHeroBuffSnapshot('[]', { buffCount: 1, buff_0: '', buffCooldown_0: -1 })).toBe(false);
   });
 });
