@@ -750,8 +750,20 @@ export class MatchRoom {
               }
             }
           } else if (actionStr === "ATTACK") {
-            const targetId = payload.data?.targetId || payload.targetId;
+            let targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
+            let targetEntityId: string | null = null;
+            if (targetType !== "PLAYER") {
+              targetEntityId = typeof payload.data?.targetEntityId === "string" ? payload.data.targetEntityId : null;
+              const savedLevelRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                `levelSnapshot:${this.currentDepth}`).toArray()[0];
+              let savedLevel: any = null;
+              try { savedLevel = savedLevelRow && typeof savedLevelRow.value === "string" ? JSON.parse(String(savedLevelRow.value)) : null; } catch (_) {}
+              const nativeTarget = targetEntityId && savedLevel && Array.isArray(savedLevel.mobs)
+                ? savedLevel.mobs.find((mob: any) => String(mob?.entityId || "") === targetEntityId) : null;
+              // Never treat a publisher-local Actor.id() as a network identity.
+              targetId = nativeTarget && Number.isInteger(Number(nativeTarget.mobId)) ? Number(nativeTarget.mobId) : null;
+            }
 
             const attackerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (attackerRow.length > 0) {
@@ -847,7 +859,7 @@ export class MatchRoom {
                       }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
-                        attackerId: session.playerId, targetId, targetType: "MOB",
+                        attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
                         targetHt, engineResolved: true
                       };
