@@ -126,7 +126,14 @@ public class RemotePlayerActionReceiver {
                         if (ht > 0) mob.HT = ht;
                         if (hp >= 0) {
                             if (hp == 0) {
-                                if (mob.isAlive()) mob.die(Dungeon.hero);
+                                // A remote death is already resolved by the owning SPD engine.
+                                // Never call Mob.die() here: it can duplicate loot and rewards.
+                                Dungeon.level.mobs.remove(mob);
+                                Actor.remove(mob);
+                                if (mob.sprite != null) mob.sprite.remove();
+                                mob.destroy();
+                                MultiplayerManager.getInstance().requestResync(
+                                        MultiplayerManager.getInstance().getLastSequence());
                             } else {
                                 mob.HP = Math.min(hp, mob.HT);
                             }
