@@ -574,9 +574,11 @@ public final class MessageRouter {
         if (Dungeon.level == null) return;
         boolean sourceMobDamage = "PLAYER_DAMAGED".equals(type)
                 && "MOB".equals(stringValue(action.get("sourceType"), ""));
+        boolean nativeMobDamage = "CHAR_DAMAGED".equals(type)
+                && "MOB".equals(stringValue(action.get("targetType"), ""));
         int mobId = intValue(action.get("mobId"), -1);
         if (mobId < 0 && (("PLAYER_ATTACKED".equals(type)
-                && "MOB".equals(stringValue(action.get("targetType"), ""))) || sourceMobDamage)) {
+                && "MOB".equals(stringValue(action.get("targetType"), ""))) || sourceMobDamage || nativeMobDamage)) {
             String stableEntityId = sourceMobDamage
                     ? stringValue(action.get("sourceEntityId"), null)
                     : stringValue(action.get("targetId"), null);
@@ -611,6 +613,17 @@ public final class MessageRouter {
                     mob.HP = Math.min(hp, mob.HT);
                     String sourceBuffs = stringValue(action.get("sourceMobBuffs"), null);
                     if (sourceBuffs != null) WorldSnapshot.restoreNativeCombatBuffs(mob, sourceBuffs);
+                }
+            } else if (nativeMobDamage) {
+                int hp = intValue(action.get("targetHp"), mob.HP);
+                mob.HT = Math.max(1, intValue(action.get("targetHt"), mob.HT));
+                if (hp <= 0) {
+                    WorldSnapshot.removeMobReplicaWithoutRewards(mob);
+                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
+                } else {
+                    mob.HP = Math.min(hp, mob.HT);
+                    String buffs = stringValue(action.get("targetBuffs"), null);
+                    if (buffs != null) WorldSnapshot.restoreNativeCombatBuffs(mob, buffs);
                 }
             } else if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(stringValue(action.get("targetType"), ""))) {
                 int hp = intValue(action.get("targetHp"), mob.HP);
