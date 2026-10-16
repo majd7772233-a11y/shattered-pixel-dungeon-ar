@@ -8,6 +8,7 @@ on:
       - 'core/**'
       - 'android/**'
       - 'server/**'
+      - 'protocol/**'
       - 'gradle/**'
       - 'build.gradle'
       - 'settings.gradle'
@@ -64,5 +65,5 @@ jobs:
           cache: gradle
       - name: Enable Gradle wrapper
         run: chmod +x gradlew
-      - name: Compile debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Run Java unit tests and compile debug APK
+        run: ./gradlew test assembleDebug --no-daemon
