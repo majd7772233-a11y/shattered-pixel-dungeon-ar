@@ -367,11 +367,20 @@ public final class MessageRouter {
                     String targetId = stringValue(action.get("targetId"), null);
                     int hp = intValue(action.get("targetHp"), -1);
                     if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
-                        applyPlayerHp(targetId, hp);
-                        int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
-                        if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
-                        String targetBuffs = stringValue(action.get("targetBuffs"), null);
-                        if (targetBuffs != null) applyPlayerCombatBuffs(targetId, targetBuffs);
+                        String targetHeroState = stringValue(action.get("targetHeroStateJson"), null);
+                        if (targetHeroState != null && !targetHeroState.isEmpty()) {
+                            if (targetId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                                WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, targetHeroState);
+                            } else {
+                                applyRemoteHeroState(targetId, targetHeroState);
+                            }
+                        } else {
+                            applyPlayerHp(targetId, hp);
+                            int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
+                            if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
+                            String targetBuffs = stringValue(action.get("targetBuffs"), null);
+                            if (targetBuffs != null) applyPlayerCombatBuffs(targetId, targetBuffs);
+                        }
                         String state = stringValue(action.get("targetState"), "ALIVE");
                         if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
