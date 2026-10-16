@@ -17,6 +17,13 @@ public class RemotePlayerActionReceiver {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (!manager.isMultiplayerActive()) return;
 
+        // Typed EVENT_BATCH combat/world events belong exclusively to MessageRouter.
+        // Never parse a malformed batch with substring heuristics.
+        if (message.messageType == MessageType.EVENT_BATCH) {
+            manager.requestResync(message.sequence);
+            return;
+        }
+
         String unescaped = unescapeJson(message.payloadJson);
 
         // Handle Server Mob Events
@@ -132,7 +139,7 @@ public class RemotePlayerActionReceiver {
                                 Dungeon.level.mobs.remove(mob);
                                 Actor.remove(mob);
                                 if (mob.sprite != null) mob.sprite.remove();
-                                mob.destroy();
+                                // Mob.destroy() awards local rewards and may generate duplicate loot.
                                 MultiplayerManager.getInstance().requestResync(
                                         MultiplayerManager.getInstance().getLastSequence());
                             } else {
