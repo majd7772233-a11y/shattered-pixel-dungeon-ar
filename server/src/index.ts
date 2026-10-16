@@ -950,9 +950,6 @@ export class MatchRoom {
                 ? JSON.parse(String(sourceLevelRow.value)) : null;
             } catch (_) { sourceLevel = null; }
             const sourceMobId = resolveServerMobIdByEntityId(sourceLevel, data?.sourceEntityId);
-            const sourceMobSnapshot = sourceMobId == null ? null
-              : (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
-                .find((mob: any) => Number(mob?.mobId) === Number(sourceMobId)) || null;
             const sourceMob = sourceMobId == null ? [] : this.sql.exec(
               `SELECT pos, hp, ht FROM mobs WHERE mob_id = ? AND depth = ?`, sourceMobId, this.currentDepth
             ).toArray();
