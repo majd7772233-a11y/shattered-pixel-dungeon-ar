@@ -752,8 +752,15 @@ export class MatchRoom {
 
         // Persistent Deduplication Check
         if (msg.requestId) {
-          const dupRow = this.sql.exec(`SELECT sequence, result_json FROM processed_actions WHERE request_id = ?`, msg.requestId).toArray();
+          const dupRow = this.sql.exec(`SELECT player_id, sequence, result_json FROM processed_actions WHERE request_id = ?`, msg.requestId).toArray();
           if (dupRow.length > 0) {
+            if (String(dupRow[0].player_id) !== session.playerId) {
+              ws.send(JSON.stringify({
+                protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+                sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" })
+              }));
+              return;
+            }
             const origSeq = Number(dupRow[0].sequence);
             const origResult = String(dupRow[0].result_json);
             ws.send(JSON.stringify({
@@ -873,7 +880,8 @@ export class MatchRoom {
                 actionCost = 1.0;
               }
             }
-          } else if (actionStr === "ATTACK") {
+          } else if (actionStr === "ATTACK" && typeof msg.requestId === "string"
+              && msg.requestId.length >= 8 && msg.requestId.length <= 80) {
             let targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
             let targetEntityId: string | null = null;
