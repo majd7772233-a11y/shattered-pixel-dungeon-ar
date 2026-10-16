@@ -52,8 +52,15 @@ public final class MessageRouter {
     }
 
     private static void handleCombatRequest(NetworkMessage message) {
+        if (message == null || message.payloadJson == null) return;
+        // Network transports deliver callbacks on their own thread. Native SPD combat touches
+        // Actor scheduling, Dungeon state, sprites and inventory; run it only on the game thread.
+        Game.runOnRenderThread(() -> handleCombatRequestOnRenderThread(message));
+    }
+
+    private static void handleCombatRequestOnRenderThread(NetworkMessage message) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        if (message.payloadJson == null || Dungeon.level == null) return;
+        if (!manager.isMultiplayerActive() || Dungeon.level == null || Dungeon.hero == null) return;
         try {
             JsonValue payload = new JsonReader().parse(message.payloadJson);
             String requestId = stringValue(payload.get("requestId"), message.requestId);
