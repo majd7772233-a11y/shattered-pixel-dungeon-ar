@@ -554,6 +554,7 @@ public class Hero extends Char {
 					+ ",\"targetPosAfter\":" + enemy.pos
 					+ ",\"targetHpBefore\":" + targetHpBefore
 					+ ",\"targetHtBefore\":" + targetHtBefore
+					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(enemy))
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
 					+ ",\"engineRanged\":" + ranged
