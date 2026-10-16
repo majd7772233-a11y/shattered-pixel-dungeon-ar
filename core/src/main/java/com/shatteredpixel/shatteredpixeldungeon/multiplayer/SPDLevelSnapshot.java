@@ -6,6 +6,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.watabou.utils.Bundle;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
@@ -254,6 +255,23 @@ public final class SPDLevelSnapshot {
             }
         }
         out.heroStateJson = currentHeroStateJson();
+        return new Json().toJson(out);
+    }
+
+    /** Serializes native timed buffs after combat without reimplementing their effects remotely. */
+    public static String currentCombatBuffsJson(Char character) {
+        List<BuffData> out = new ArrayList<>();
+        if (character != null) {
+            for (Buff buff : character.buffs()) {
+                if (buff == null) continue;
+                BuffData data = new BuffData();
+                Bundle buffBundle = new Bundle();
+                buffBundle.put("buff", buff);
+                data.serializedBundle = buffBundle.toString();
+                data.cooldown = Math.max(0f, buff.cooldown());
+                out.add(data);
+            }
+        }
         return new Json().toJson(out);
     }
 
