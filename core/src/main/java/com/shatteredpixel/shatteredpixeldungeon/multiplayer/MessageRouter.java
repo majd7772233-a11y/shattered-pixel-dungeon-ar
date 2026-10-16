@@ -7,6 +7,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
+import com.watabou.noosa.Game;
 
 public final class MessageRouter {
 
@@ -286,15 +287,23 @@ public final class MessageRouter {
                 }
             }
 
-            if (WorldSnapshot.restoreWorld(snapshot)) {
-                manager.markSnapshotApplied(snapshot.sequence);
-            } else {
-                WorldSnapshot.rollbackToLastApplied();
-                manager.requestResync(snapshot.sequence);
-            }
+            // All live-world mutations must run on the game/render thread. Parsing and
+            // structural preflight above are safe on the transport thread.
+            Game.runOnRenderThread(() -> {
+                try {
+                    if (WorldSnapshot.restoreWorld(snapshot)) {
+                        manager.markSnapshotApplied(snapshot.sequence);
+                    } else {
+                        WorldSnapshot.rollbackToLastApplied();
+                        manager.requestResync(snapshot.sequence);
+                    }
+                } catch (RuntimeException restoreError) {
+                    WorldSnapshot.rollbackToLastApplied();
+                    manager.requestResync(snapshot.sequence);
+                }
+            });
         } catch (RuntimeException ignored) {
-            // Restore the last known-good snapshot before asking the server to resync.
-            WorldSnapshot.rollbackToLastApplied();
+            // A malformed envelope is never acknowledged; request a clean authoritative snapshot.
             manager.requestResync(message.sequence);
         }
     }
