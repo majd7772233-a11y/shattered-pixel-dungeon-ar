@@ -37,7 +37,8 @@
         "LEAVE",
         "PING",
         "CHAT",
-        "ERROR"
+        "ERROR",
+        "COMBAT_REQUEST"
       ]
     },
     "requestId": {
@@ -244,7 +245,8 @@
         "targetShieldAfter",
         "targetHeroStateJson",
         "targetBuffsBefore",
-        "secondaryMobDeltas"
+        "secondaryMobDeltas",
+        "attackerStateBefore"
       ],
       "properties": {
         "targetEntityId": {
@@ -368,6 +370,11 @@
           "type": "string",
           "maxLength": 200000,
           "description": "JSON-encoded complete native secondary-mob combat delta list; includes stable identities, exact pre/post HP/HT/position/shield/buffs and a bounded heap snapshot for any secondary death."
+        },
+        "attackerStateBefore": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "Native attacker state captured immediately before the attack; validated against server-held hero state before an authority client resolves combat."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs.",
