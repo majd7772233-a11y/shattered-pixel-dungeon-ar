@@ -522,6 +522,7 @@ describe('Native mob damage wire contract', () => {
     expect(hasStrictNativeDamageFields({ ...validDamage(), targetHp: '0' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceType: 'PLAYER' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceEntityId: null })).toBe(false);
+    expect(hasStrictNativeDamageFields({ ...validDamage(), targetBuffsBefore: undefined })).toBe(false);
   });
 
   it('validates hero state fields against the authoritative post-state', () => {
