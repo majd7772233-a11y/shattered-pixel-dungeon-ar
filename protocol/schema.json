@@ -231,7 +231,8 @@
         "targetHt",
         "damage",
         "engineDistance",
-        "engineActionCost"
+        "engineActionCost",
+        "targetBuffs"
       ],
       "properties": {
         "targetEntityId": {
@@ -322,6 +323,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "Target position after native attack effects such as knockback; server validates bounds and displacement."
+        },
+        "targetBuffs": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "JSON array of serialized native Buff bundles and cooldowns captured after the attack."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
@@ -383,6 +389,141 @@
           "type": "boolean"
         }
       }
+    },
+    "NativeCombatOutcomeEvent": {
+      "type": "object",
+      "required": [
+        "combatSchemaVersion",
+        "matchId",
+        "combatDepth",
+        "combatSequence",
+        "combatRequestId",
+        "attackerId",
+        "targetId",
+        "targetType",
+        "attackerPos",
+        "targetPos",
+        "targetPosAfter",
+        "targetHpBefore",
+        "targetHtBefore",
+        "targetHp",
+        "targetHt",
+        "hit",
+        "damage",
+        "attackKind",
+        "engineDistance",
+        "engineActionCost",
+        "targetBuffs",
+        "attackerStateJson"
+      ],
+      "properties": {
+        "combatSchemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "matchId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Server-assigned Durable Object room identity."
+        },
+        "combatDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "combatSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "combatRequestId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Echo of the unique outer requestId; the server deduplicates this key."
+        },
+        "attackerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Stable server entity ID for mobs, player ID for player targets."
+        },
+        "targetType": {
+          "type": "string",
+          "enum": [
+            "MOB",
+            "PLAYER"
+          ]
+        },
+        "attackerPos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetPos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Target pre-state position used for authoritative range validation."
+        },
+        "targetPosAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Native post-state position after knockback or other movement procs."
+        },
+        "targetHpBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHtBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetHp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "hit": {
+          "type": "boolean"
+        },
+        "damage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attackKind": {
+          "type": "string",
+          "enum": [
+            "MELEE",
+            "RANGED"
+          ]
+        },
+        "engineDistance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "engineActionCost": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "targetBuffs": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "attackerStateJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      },
+      "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
     }
   }
 }
