@@ -1679,6 +1679,7 @@ public class Hero extends Char {
 		// Capture the source before thorns/armor procs can damage or displace it.
 		int sourceMobHpBefore = src instanceof Mob ? ((Mob) src).HP : -1;
 		int sourceMobHtBefore = src instanceof Mob ? ((Mob) src).HT : -1;
+		int sourceMobShieldBefore = src instanceof Mob ? Math.max(0, ((Mob) src).shielding()) : -1;
 		int sourceMobPosBefore = src instanceof Mob ? ((Mob) src).pos : -1;
 		String sourceMobBuffsBefore = src instanceof Mob
 				? SPDLevelSnapshot.currentCombatBuffsJson((Mob) src) : "[]";
@@ -1740,6 +1741,7 @@ public class Hero extends Char {
 		int targetShieldAfter = shielding();
 		int sourceMobHpAfter = src instanceof Mob ? Math.max(0, ((Mob) src).HP) : -1;
 		int sourceMobHtAfter = src instanceof Mob ? ((Mob) src).HT : -1;
+		int sourceMobShieldAfter = src instanceof Mob ? Math.max(0, ((Mob) src).shielding()) : -1;
 		int sourceMobPosAfter = src instanceof Mob ? ((Mob) src).pos : -1;
 		if (sourceMobHpAfter <= 0 && sourceMobPosAfter < 0) sourceMobPosAfter = sourceMobPosBefore;
 		String sourceMobBuffsAfter = src instanceof Mob
@@ -1770,9 +1772,11 @@ public class Hero extends Char {
 						+ ",\"sourceActionCost\":" + sourceMob.attackDelay()
 						+ ",\"sourceMobHpBefore\":" + sourceMobHpBefore
 						+ ",\"sourceMobHtBefore\":" + sourceMobHtBefore
+						+ ",\"sourceMobShieldBefore\":" + sourceMobShieldBefore
 						+ ",\"sourceMobPosBefore\":" + sourceMobPosBefore
 						+ ",\"sourceMobHpAfter\":" + sourceMobHpAfter
 						+ ",\"sourceMobHtAfter\":" + sourceMobHtAfter
+						+ ",\"sourceMobShieldAfter\":" + sourceMobShieldAfter
 						+ ",\"sourceMobPosAfter\":" + sourceMobPosAfter
 						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
 						+ ",\"sourceMobBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsBefore)
