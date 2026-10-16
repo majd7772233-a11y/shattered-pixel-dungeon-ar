@@ -211,13 +211,16 @@ public class WorldSnapshot {
         for (Integer pos : snapshot.claimedItemPositions)
             if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return false;
         java.util.Set<Integer> mobIds = new java.util.HashSet<>();
+        java.util.Set<String> serverEntityIds = new java.util.HashSet<>();
         for (Map<String, Object> mob : snapshot.mobs) {
             if (mob == null) return false;
             int id = number(mob.get("mobId"), -1);
+            String entityId = String.valueOf(mob.get("entityId") == null ? "" : mob.get("entityId"));
             int pos = number(mob.get("pos"), -1);
             int hp = number(mob.get("hp"), -1);
             int ht = number(mob.get("ht"), -1);
-            if (id < 0 || !mobIds.add(id) || pos < 0 || pos >= length || hp < 0 || ht < 1 || hp > ht) return false;
+            if (id < 0 || !mobIds.add(id) || entityId.length() < 8 || entityId.length() > 80
+                    || !serverEntityIds.add(entityId) || pos < 0 || pos >= length || hp < 0 || ht < 1 || hp > ht) return false;
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
             Object buffs = mob.get("buffs");
             if (!(buffs instanceof List)) return false;
