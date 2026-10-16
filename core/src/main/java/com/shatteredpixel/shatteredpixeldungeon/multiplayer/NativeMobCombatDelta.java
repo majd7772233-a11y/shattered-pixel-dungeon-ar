@@ -136,7 +136,8 @@ public final class NativeMobCombatDelta {
 
     private static boolean sameCombatState(State a, State b) {
         return a.hp == b.hp && a.ht == b.ht && a.pos == b.pos
-                && a.shielding == b.shielding && safeEquals(a.buffs, b.buffs);
+                && a.shielding == b.shielding && safeEquals(a.buffs, b.buffs)
+                && safeEquals(a.serializedBundle, b.serializedBundle);
     }
 
     private static boolean safeEquals(String a, String b) {
