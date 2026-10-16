@@ -1010,6 +1010,93 @@
           "description": "Full native heap snapshot when a defensive proc kills the source mob."
         }
       }
+    },
+    "NativeBlessedAnkhRevivalPayload": {
+      "type": "object",
+      "description": "Native blessed-Ankh revival produced by Hero.die; server requires a trusted prior blessed Ankh, exact one-item consumption, unchanged max HP/position, and native quarter-health post-state.",
+      "required": [
+        "targetHpBefore",
+        "targetHtBefore",
+        "targetHp",
+        "targetHt",
+        "targetPosBefore",
+        "targetPosAfter",
+        "targetShieldBefore",
+        "targetShieldAfter",
+        "targetBuffsBefore",
+        "targetBuffs",
+        "ankhCountBefore",
+        "ankhCountAfter",
+        "blessedAnkhCountBefore",
+        "blessedAnkhCountAfter",
+        "heroStateJson"
+      ],
+      "properties": {
+        "targetHpBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetHtBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetHp": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Must equal floor(targetHt / 4), matching native blessed-Ankh behavior."
+        },
+        "targetHt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetPosBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetPosAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetBuffsBefore": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "targetBuffs": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "ankhCountBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ankhCountAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blessedAnkhCountBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "blessedAnkhCountAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heroStateJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      }
     }
   }
 }
