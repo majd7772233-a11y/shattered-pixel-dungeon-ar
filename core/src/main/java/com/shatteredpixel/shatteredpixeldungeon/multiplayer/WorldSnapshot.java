@@ -145,8 +145,7 @@ public class WorldSnapshot {
      */
     public static boolean validateForRestore(WorldSnapshot snapshot) {
         if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
-        if (snapshot.sequence < MultiplayerManager.getInstance().getLastSequence()
-                || snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
+        if (snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
                 || snapshot.levelWidth != Dungeon.level.width() || snapshot.levelHeight != Dungeon.level.height()
                 || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
                 || snapshot.levelWidth > 100 || snapshot.levelHeight > 100
@@ -301,7 +300,7 @@ public class WorldSnapshot {
         WorldSnapshot backup = lastAppliedSnapshot;
         if (backup == null) return false;
         try {
-            return restoreWorld(backup);
+            return restoreWorld(backup, true);
         } catch (RuntimeException rollbackError) {
             GLog.w("Multiplayer snapshot rollback failed: " + rollbackError.getMessage());
             return false;
@@ -309,13 +308,18 @@ public class WorldSnapshot {
     }
 
     public static boolean restoreWorld(WorldSnapshot snapshot) {
+        return restoreWorld(snapshot, false);
+    }
+
+    private static boolean restoreWorld(WorldSnapshot snapshot, boolean rollback) {
         if (!validateForRestore(snapshot)) {
             GLog.w("Rejected incomplete or invalid multiplayer world snapshot; live dungeon was left unchanged.");
             return false;
         }
 
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        if (!manager.isMultiplayerActive()) return false;
+        if (!manager.isMultiplayerActive()
+                || (!rollback && snapshot.sequence < manager.getLastSequence())) return false;
 
         Dungeon.depth = snapshot.depth;
         Dungeon.branch = snapshot.branch;
