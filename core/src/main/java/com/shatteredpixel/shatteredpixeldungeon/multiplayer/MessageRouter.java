@@ -277,7 +277,7 @@ public final class MessageRouter {
             }
 
             if (WorldSnapshot.restoreWorld(snapshot)) {
-                manager.updateLastSequence(snapshot.sequence);
+                manager.markSnapshotApplied(snapshot.sequence);
             } else {
                 manager.requestResync(snapshot.sequence);
             }
