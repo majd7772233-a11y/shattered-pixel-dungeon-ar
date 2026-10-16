@@ -1038,21 +1038,27 @@ public class GameScene extends PixelScene {
 	/** Rebuilds native custom tile/wall visuals after an authoritative world snapshot. */
 	public static void refreshMultiplayerCustomVisuals() {
 		if (scene == null || Dungeon.level == null || scene.terrain == null) return;
-		if (scene.customTiles != null) {
-			scene.terrain.remove(scene.customTiles);
-			scene.customTiles.destroy();
+		Group oldCustomTiles = scene.customTiles;
+		Group newCustomTiles = new Group();
+		if (oldCustomTiles != null) {
+			scene.terrain.replace(oldCustomTiles, newCustomTiles);
+			oldCustomTiles.destroy();
+		} else {
+			scene.terrain.add(newCustomTiles);
 		}
-		scene.customTiles = new Group();
-		scene.terrain.add(scene.customTiles);
+		scene.customTiles = newCustomTiles;
 		if (Dungeon.level.customTiles != null) {
 			for (CustomTilemap visual : Dungeon.level.customTiles) scene.addCustomTile(visual);
 		}
-		if (scene.customWalls != null) {
-			scene.remove(scene.customWalls);
-			scene.customWalls.destroy();
+		Group oldCustomWalls = scene.customWalls;
+		Group newCustomWalls = new Group();
+		if (oldCustomWalls != null) {
+			scene.replace(oldCustomWalls, newCustomWalls);
+			oldCustomWalls.destroy();
+		} else {
+			scene.add(newCustomWalls);
 		}
-		scene.customWalls = new Group();
-		scene.add(scene.customWalls);
+		scene.customWalls = newCustomWalls;
 		if (Dungeon.level.customWalls != null) {
 			for (CustomTilemap visual : Dungeon.level.customWalls) scene.addCustomWall(visual);
 		}
