@@ -357,6 +357,7 @@ public class WorldSnapshot {
             java.util.Set<com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob> authoritativeMobs = new java.util.HashSet<>();
             for (Map<String, Object> data : snapshot.mobs) {
                 int id = number(data.get("mobId"), -1);
+                String entityId = String.valueOf(data.get("entityId") == null ? "" : data.get("entityId"));
                 int pos = number(data.get("pos"), -1);
                 int hp = number(data.get("hp"), 1);
                 int ht = number(data.get("ht"), 1);
@@ -365,11 +366,27 @@ public class WorldSnapshot {
                 // because Mob.die() may create loot and award rewards a second time.
                 if (hp <= 0) continue;
                 com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob matched = null;
-                for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
-                    if (!authoritativeMobs.contains(mob) && mob.id() == id) { matched = mob; break; }
+                Integer mappedActorId = entityId.isEmpty() ? null : manager.getLocalActorIdForServerEntity(entityId);
+                if (mappedActorId != null) {
+                    for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
+                        if (!authoritativeMobs.contains(mob) && mob.id() == mappedActorId) { matched = mob; break; }
+                    }
                 }
                 if (matched == null) {
-                    String name = String.valueOf(data.get("name"));
+                    for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
+                        if (!authoritativeMobs.contains(mob) && mob.id() == id) { matched = mob; break; }
+                    }
+                }
+                String name = String.valueOf(data.get("name"));
+                if (matched == null) {
+                    // Position + native class is a stronger fallback than class-only matching:
+                    // floors commonly contain several mobs of the same class.
+                    for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
+                        if (!authoritativeMobs.contains(mob) && mob.pos == pos
+                                && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
+                    }
+                }
+                if (matched == null && entityId.isEmpty()) {
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
                         if (!authoritativeMobs.contains(mob) && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
@@ -415,6 +432,7 @@ public class WorldSnapshot {
                     }
                 }
                 if (matched != null) {
+                    if (!entityId.isEmpty()) manager.registerServerEntityId(matched.id(), entityId);
                     authoritativeMobs.add(matched);
                     restoreMobBuffs(matched, data);
                 }
