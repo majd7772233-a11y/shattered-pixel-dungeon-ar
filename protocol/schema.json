@@ -1289,7 +1289,26 @@
           "maxItems": 1024,
           "description": "Required when the native mob dies; all heap changes must be confined to that mob's native death cell."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "hpAfter": {
+                "const": 0
+              }
+            },
+            "required": [
+              "hpAfter"
+            ]
+          },
+          "then": {
+            "required": [
+              "heaps"
+            ]
+          }
+        }
+      ]
     }
   }
 }
