@@ -1736,6 +1736,7 @@ public class Hero extends Char {
 		int sourceMobHpAfter = src instanceof Mob ? Math.max(0, ((Mob) src).HP) : -1;
 		int sourceMobHtAfter = src instanceof Mob ? ((Mob) src).HT : -1;
 		int sourceMobPosAfter = src instanceof Mob ? ((Mob) src).pos : -1;
+		if (sourceMobHpAfter <= 0 && sourceMobPosAfter < 0) sourceMobPosAfter = sourceMobPosBefore;
 		int postHP = HP + targetShieldAfter;
 		if (src instanceof Hunger) postHP -= targetShieldAfter;
 		int effectiveDamage = preHP - postHP;
