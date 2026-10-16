@@ -1748,6 +1748,7 @@ public class Hero extends Char {
 						+ ",\"sourceEntityId\":" + new com.badlogic.gdx.utils.Json().toJson(sourceEntityId)
 						+ ",\"sourcePos\":" + sourcePosBefore
 						+ ",\"sourceAttackKind\":\"" + (Dungeon.level.distance(sourcePosBefore, targetPosBefore) <= 1 ? "MELEE" : "RANGED") + "\""
+						+ ",\"sourceActionCost\":" + sourceMob.attackDelay()
 						+ ",\"targetHpBefore\":" + targetHpBefore
 						+ ",\"targetHtBefore\":" + targetHtBefore
 						+ ",\"targetHp\":" + Math.max(0, HP)
