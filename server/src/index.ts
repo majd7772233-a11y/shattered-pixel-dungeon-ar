@@ -1313,13 +1313,17 @@ export class MatchRoom {
                       combatLevel = combatLevelRow && typeof combatLevelRow.value === "string"
                         ? JSON.parse(String(combatLevelRow.value)) : null;
                     } catch (_) { combatLevel = null; }
-                    const expectedEntityId = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
-                      .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
+                    const savedTargetMob = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
+                      .find((mob: any) => Number(mob?.mobId) === Number(targetId));
+                    const expectedEntityId = savedTargetMob?.entityId || "";
+                    const targetBuffPreStateMatches = !!savedTargetMob
+                      && hasMatchingNativeBuffSnapshot(payload.data?.targetBuffsBefore, savedTargetMob.buffs);
                     const validLootSnapshot = targetHp > 0
                       ? payload.data?.heaps === undefined
                       : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
+                      && targetBuffPreStateMatches
                       && validLootSnapshot
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
