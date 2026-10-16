@@ -330,6 +330,15 @@ public final class SPDLevelSnapshot {
         heroState.put("ht", hero.HT);
         heroState.put("pos", hero.pos);
         heroState.put("shielding", hero.shielding());
+        int ankhCount = 0;
+        int blessedAnkhCount = 0;
+        for (com.shatteredpixel.shatteredpixeldungeon.items.Ankh ankh
+                : hero.belongings.getAllItems(com.shatteredpixel.shatteredpixeldungeon.items.Ankh.class)) {
+            ankhCount++;
+            if (ankh.isBlessed()) blessedAnkhCount++;
+        }
+        heroState.put("ankhCount", ankhCount);
+        heroState.put("blessedAnkhCount", blessedAnkhCount);
         heroState.put("cooldown", Math.max(0f, hero.cooldown()));
         heroState.put("buffCount", hero.buffs().size());
         int buffIndex = 0;
