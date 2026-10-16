@@ -216,9 +216,10 @@ function comparableHeap(heap: any): string {
 }
 
 /** A kill may change loot only at the dead mob's cell; all other heaps must remain byte-for-byte equivalent. */
-export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown, targetPos: number, levelSize: number): boolean {
+export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown, targetPos: number | number[], levelSize: number): boolean {
+  const allowedPositions = new Set<number>(Array.isArray(targetPos) ? targetPos : [targetPos]);
   if (!Array.isArray(value) || value.length > 1024 || !Array.isArray(previousHeaps)
-    || !Number.isInteger(targetPos) || targetPos < 0 || targetPos >= levelSize) return false;
+    || allowedPositions.size < 1 || [...allowedPositions].some(pos => !Number.isInteger(pos) || pos < 0 || pos >= levelSize)) return false;
   const allowedTypes = new Set(["HEAP", "FOR_SALE", "CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST", "TOMB", "SKELETON", "REMAINS"]);
   const nextByPos = new Map<number, any>();
   for (const heap of value) {
@@ -244,7 +245,7 @@ export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown
     previousByPos.set(pos, heap);
   }
   const otherPositions = new Set<number>([...previousByPos.keys(), ...nextByPos.keys()]);
-  otherPositions.delete(targetPos);
+  for (const pos of allowedPositions) otherPositions.delete(pos);
   for (const pos of otherPositions) {
     const before = previousByPos.get(pos), after = nextByPos.get(pos);
     if (!before || !after || comparableHeap(before) !== comparableHeap(after)) return false;
