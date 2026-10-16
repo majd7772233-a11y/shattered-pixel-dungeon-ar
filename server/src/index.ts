@@ -143,6 +143,45 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
   } catch (_) { return false; }
 }
 
+export function mergeNativeHeroState(previousValue: unknown, reportedValue: unknown, expected: {
+  hp: number; ht: number; pos: number; shielding: number;
+}, targetBuffsValue: unknown): string | null {
+  if (typeof previousValue !== "string" || typeof reportedValue !== "string"
+    || typeof targetBuffsValue !== "string") return null;
+  let previous: any, reported: any, buffs: any;
+  try {
+    previous = JSON.parse(previousValue);
+    reported = JSON.parse(reportedValue);
+    buffs = JSON.parse(targetBuffsValue);
+  } catch (_) { return null; }
+  if (!isValidNativeHeroStateJson(previousValue, {
+    hp: Number(previous?.hp), ht: Number(previous?.ht), pos: Number(previous?.pos), shielding: Number(previous?.shielding)
+  }) || !isValidNativeHeroStateJson(reportedValue, expected)
+    || !Array.isArray(buffs) || buffs.length > 256 || reported.buffCount !== buffs.length) return null;
+  if (previous.hp !== expected.hp && previous.hp < 0) return null;
+  for (let i = 0; i < buffs.length; i++) {
+    if (reported[`buff_${i}`] !== buffs[i]?.serializedBundle
+      || Number(reported[`buffCooldown_${i}`]) !== Number(buffs[i]?.cooldown)) return null;
+  }
+  const merged: any = {
+    ...previous,
+    hp: expected.hp,
+    ht: expected.ht,
+    pos: expected.pos,
+    shielding: expected.shielding,
+    cooldown: Number.isFinite(Number(reported.cooldown)) ? Math.max(0, Math.min(100000, Number(reported.cooldown))) : 0,
+    buffCount: buffs.length
+  };
+  for (const key of Object.keys(merged)) {
+    if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete merged[key];
+  }
+  for (let i = 0; i < buffs.length; i++) {
+    merged[`buff_${i}`] = reported[`buff_${i}`];
+    merged[`buffCooldown_${i}`] = Number(reported[`buffCooldown_${i}`]);
+  }
+  return JSON.stringify(merged);
+}
+
 export function isValidNativeCombatBuffs(value: unknown): boolean {
   if (typeof value !== "string" || value.length > 200000) return false;
   let buffs: any;
@@ -1044,9 +1083,14 @@ export class MatchRoom {
                     } catch (_) { defenderHeroState = null; }
                     const targetShieldBefore = payload.data?.targetShieldBefore;
                     const targetShieldAfter = payload.data?.targetShieldAfter;
-                    const targetHeroStateValid = isValidNativeHeroStateJson(payload.data?.targetHeroStateJson, {
-                      hp: targetHp, ht: targetHt, pos: targetPosAfter, shielding: Number(targetShieldAfter)
-                    });
+                    const mergedTargetHeroStateJson = mergeNativeHeroState(defenderStateRow?.value,
+                      payload.data?.targetHeroStateJson,
+                      { hp: targetHp, ht: targetHt, pos: targetPosAfter, shielding: Number(targetShieldAfter) },
+                      payload.data?.targetBuffs);
+                    const targetHeroStateValid = mergedTargetHeroStateJson != null
+                      && Number.isInteger(defenderHeroState?.hp) && defenderHeroState.hp === Number(defenderRow[0].hp)
+                      && Number.isInteger(defenderHeroState?.ht) && defenderHeroState.ht === Number(defenderRow[0].ht)
+                      && Number.isInteger(defenderHeroState?.pos) && defenderHeroState.pos === defPos;
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
@@ -1085,7 +1129,7 @@ export class MatchRoom {
                         newHp, targetHt, newState, targetPosAfter, String(targetId));
                       this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                        `heroState:${String(targetId)}`, String(payload.data.targetHeroStateJson));
+                        `heroState:${String(targetId)}`, String(mergedTargetHeroStateJson));
                       if (newHp === 0) {
                         this.sql.exec(`UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?`, session.playerId);
                         this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, String(targetId));
@@ -1095,7 +1139,7 @@ export class MatchRoom {
                         attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
                         attackerPos, targetPos: defPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
-                        targetShieldBefore, targetShieldAfter, targetHeroStateJson: payload.data.targetHeroStateJson,
+                        targetShieldBefore, targetShieldAfter, targetHeroStateJson: mergedTargetHeroStateJson,
                         hit: payload.data?.engineHit === true, damage: reportedDamage,
                         targetHp: newHp, targetHt, targetState: newState,
                         attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
