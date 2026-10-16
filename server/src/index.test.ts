@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -505,5 +505,17 @@ describe('Native mob damage wire contract', () => {
     });
     expect(isValidNativeHeroStateJson(state, { hp: 8, ht: 12, pos: 11, shielding: 0 })).toBe(true);
     expect(isValidNativeHeroStateJson(state, { hp: 0, ht: 12, pos: 11, shielding: 0 })).toBe(false);
+  });
+});
+
+
+describe('Combat request idempotency contract', () => {
+  it('requires a bounded request id and distinguishes replay from cross-player collision', () => {
+    expect(isValidNativeCombatRequestId('123e4567-e89b-12d3-a456-426614174000')).toBe(true);
+    expect(isValidNativeCombatRequestId('short')).toBe(false);
+    expect(isValidNativeCombatRequestId('bad id value')).toBe(false);
+    expect(classifyRequestReplay(null, 'player-a')).toBe('NEW');
+    expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-a')).toBe('REPLAY');
+    expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-b')).toBe('CONFLICT');
   });
 });
