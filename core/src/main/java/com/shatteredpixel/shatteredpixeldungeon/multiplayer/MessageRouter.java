@@ -426,9 +426,12 @@ public final class MessageRouter {
                 if ("PLAYER_ATTACKED".equals(type)) {
                     String attackerId = stringValue(action.get("attackerId"), null);
                     String attackerState = stringValue(action.get("attackerStateJson"), null);
-                    if (attackerId != null && !attackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())
-                            && attackerState != null && !attackerState.isEmpty()) {
-                        applyRemoteHeroState(attackerId, attackerState);
+                    if (attackerId != null && attackerState != null && !attackerState.isEmpty()) {
+                        if (attackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                            if (Dungeon.hero != null) WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerState);
+                        } else {
+                            applyRemoteHeroState(attackerId, attackerState);
+                        }
                     }
                 }
 

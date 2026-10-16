@@ -327,6 +327,21 @@ export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, autho
   return true;
 }
 
+export function nativeBuffSnapshotFromHeroState(value: unknown): string | null {
+  let state: any = value;
+  try { if (typeof state === "string") state = JSON.parse(state); } catch (_) { return null; }
+  if (!state || typeof state !== "object" || !Number.isInteger(state.buffCount)
+    || state.buffCount < 0 || state.buffCount > 256) return null;
+  const buffs: Array<{ serializedBundle: string; cooldown: number }> = [];
+  for (let i = 0; i < state.buffCount; i++) {
+    const serializedBundle = state[`buff_${i}`], cooldown = Number(state[`buffCooldown_${i}`]);
+    if (typeof serializedBundle !== "string" || serializedBundle.length < 1 || serializedBundle.length > 200000
+      || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000) return null;
+    buffs.push({ serializedBundle, cooldown });
+  }
+  return JSON.stringify(buffs);
+}
+
 export function hasMatchingNativeHeroBuffSnapshot(reported: unknown, authoritativeHeroState: unknown): boolean {
   let state: any = authoritativeHeroState;
   try {
@@ -1914,7 +1929,8 @@ export class MatchRoom {
               const pending = { requestId: msg.requestId, attackerId: session.playerId, authorityId: defenderId,
                 targetType: "PLAYER", targetId: defenderId, attackerPos, targetPos: defenderPos,
                 targetLockKey: "PLAYER:" + defenderId, depth: this.currentDepth,
-                attackerStateBefore, targetHeroStateBefore: defenderStateBefore };
+                attackerStateBefore, attackerStateAfter: payload.heroStateJson,
+                targetHeroStateBefore: defenderStateBefore };
               if (!this.reservePendingCombat(pending)) {
                 ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
                   requestId: msg.requestId, sequence: this.currentSequence,
