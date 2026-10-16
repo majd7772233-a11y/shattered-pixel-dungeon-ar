@@ -1748,8 +1748,7 @@ public class Hero extends Char {
 		String targetBuffsBefore = SPDLevelSnapshot.currentCombatBuffsJson(this);
 		int ankhCountBefore = countAnkhs(false);
 		int blessedAnkhCountBefore = countAnkhs(true);
-		int sourcePosBefore = src instanceof Mob ? sourceMobHpBefore >= 0 ? sourceMobPosBefore : -1
-				: (src instanceof Char ? ((Char) src).pos : -1);
+		int sourcePosBefore = src instanceof Mob ? sourceMobPosBefore : (src instanceof Char ? ((Char) src).pos : -1);
 		int preHP = HP + targetShieldBefore;
 		if (src instanceof Hunger) preHP -= targetShieldBefore;
 		super.damage( dmg, src );
@@ -1795,8 +1794,9 @@ public class Hero extends Char {
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
 		}
 
-		if (!revivedByBlessedAnkh && this == Dungeon.hero && src instanceof Mob
-				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
+		if (this == Dungeon.hero && src instanceof Mob
+				&& MultiplayerManager.getInstance().isMultiplayerActive()
+				&& (!revivedByBlessedAnkh || sourceMobChanged)) {
 			MultiplayerManager manager = MultiplayerManager.getInstance();
 			Mob sourceMob = (Mob) src;
 			String sourceEntityId = manager.getServerEntityId(sourceMob.id());
@@ -1821,18 +1821,18 @@ public class Hero extends Char {
 						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
 						+ ",\"sourceMobBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsBefore)
 						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsAfter)
-						+ ",\"targetHpBefore\":" + targetHpBefore
-						+ ",\"targetHtBefore\":" + targetHtBefore
+						+ ",\"targetHpBefore\":" + (revivedByBlessedAnkh ? Math.max(0, HP) : targetHpBefore)
+						+ ",\"targetHtBefore\":" + (revivedByBlessedAnkh ? Math.max(1, HT) : targetHtBefore)
 						+ ",\"targetHp\":" + Math.max(0, HP)
 						+ ",\"targetHt\":" + Math.max(1, HT)
-						+ ",\"targetPosBefore\":" + targetPosBefore
+						+ ",\"targetPosBefore\":" + (revivedByBlessedAnkh ? pos : targetPosBefore)
 						+ ",\"targetPosAfter\":" + pos
-						+ ",\"targetShieldBefore\":" + targetShieldBefore
+						+ ",\"targetShieldBefore\":" + (revivedByBlessedAnkh ? targetShieldAfter : targetShieldBefore)
 						+ ",\"targetShieldAfter\":" + targetShieldAfter
-						+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
+						+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(revivedByBlessedAnkh ? targetBuffsAfter : targetBuffsBefore)
 						+ ",\"targetState\":\"" + state + "\""
-						+ ",\"damage\":" + Math.max(0, targetHpBefore - Math.max(0, HP))
-						+ ",\"effectiveDamage\":" + Math.max(0, effectiveDamage)
+						+ ",\"damage\":" + (revivedByBlessedAnkh ? 0 : Math.max(0, targetHpBefore - Math.max(0, HP)))
+						+ ",\"effectiveDamage\":" + (revivedByBlessedAnkh ? 0 : Math.max(0, effectiveDamage))
 						+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(this))
 						+ (sourceMobHpAfter <= 0 ? ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson() : "")
 						+ ",\"engineDamageResult\":true}";
