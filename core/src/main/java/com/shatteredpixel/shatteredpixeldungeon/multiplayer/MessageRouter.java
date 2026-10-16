@@ -348,6 +348,8 @@ public final class MessageRouter {
                     int hp = intValue(action.get("targetHp"), -1);
                     if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
                         applyPlayerHp(targetId, hp);
+                        int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
+                        if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
                         String state = stringValue(action.get("targetState"), "ALIVE");
                         if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
@@ -397,6 +399,29 @@ public final class MessageRouter {
         }
     }
 
+    private static void applyPlayerPosition(String playerId, int pos) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (playerId.equals(manager.getLocalPlayerId())) {
+            if (Dungeon.hero != null && Dungeon.level != null && pos < Dungeon.level.length()) {
+                int oldPos = Dungeon.hero.pos;
+                Dungeon.hero.pos = pos;
+                if (Dungeon.hero.sprite != null && oldPos != pos) Dungeon.hero.sprite.move(oldPos, pos);
+            }
+            return;
+        }
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+            manager.addRemotePlayer(remote);
+        }
+        int oldPos = remote.pos;
+        remote.pos = pos;
+        if (remote.heroInstance != null) {
+            remote.heroInstance.pos = pos;
+            if (remote.heroInstance.sprite != null && oldPos != pos) remote.heroInstance.sprite.move(oldPos, pos);
+        }
+    }
+
     private static void applyPlayerHp(String playerId, int hp) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (playerId.equals(manager.getLocalPlayerId())) {
@@ -442,7 +467,7 @@ public final class MessageRouter {
 
         for (Mob mob : Dungeon.level.mobs) {
             if (mob.id() != mobId) continue;
-            int toPos = intValue(action.get("toPos"), -1);
+            int toPos = intValue(action.get("targetPosAfter"), intValue(action.get("toPos"), -1));
             if (toPos >= 0 && toPos < Dungeon.level.length()) {
                 int fromPos = mob.pos;
                 mob.pos = toPos;
