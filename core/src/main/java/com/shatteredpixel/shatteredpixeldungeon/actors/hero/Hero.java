@@ -224,6 +224,8 @@ public class Hero extends Char {
 
 	//reference to the enemy the hero is currently in the process of attacking
 	private Char attackTarget;
+	/** Set by the native blessed-Ankh path and consumed by damage() after death handling. */
+	private boolean multiplayerRevivedByBlessedAnkh;
 	
 	public boolean resting = false;
 	
@@ -461,6 +463,15 @@ public class Hero extends Char {
 			return true;
 		}
 		return super.blockSound(pitch);
+	}
+
+	private int countAnkhs(boolean blessedOnly) {
+		if (belongings == null) return 0;
+		int count = 0;
+		for (Ankh ankh : belongings.getAllItems(Ankh.class)) {
+			if (!blessedOnly || ankh.isBlessed()) count++;
+		}
+		return count;
 	}
 
 	public void live() {
@@ -1735,11 +1746,19 @@ public class Hero extends Char {
 		int targetPosBefore = pos;
 		int targetShieldBefore = shielding();
 		String targetBuffsBefore = SPDLevelSnapshot.currentCombatBuffsJson(this);
-		int sourcePosBefore = src instanceof Mob ? sourceMobPosBefore : (src instanceof Char ? ((Char) src).pos : -1);
+		int ankhCountBefore = countAnkhs(false);
+		int blessedAnkhCountBefore = countAnkhs(true);
+		int sourcePosBefore = src instanceof Mob ? sourceMobHpBefore >= 0 ? sourceMobPosBefore : -1
+				: (src instanceof Char ? ((Char) src).pos : -1);
 		int preHP = HP + targetShieldBefore;
 		if (src instanceof Hunger) preHP -= targetShieldBefore;
 		super.damage( dmg, src );
+		boolean revivedByBlessedAnkh = multiplayerRevivedByBlessedAnkh;
+		multiplayerRevivedByBlessedAnkh = false;
 		int targetShieldAfter = shielding();
+		int ankhCountAfter = countAnkhs(false);
+		int blessedAnkhCountAfter = countAnkhs(true);
+		String targetBuffsAfter = SPDLevelSnapshot.currentCombatBuffsJson(this);
 		int sourceMobHpAfter = src instanceof Mob ? Math.max(0, ((Mob) src).HP) : -1;
 		int sourceMobHtAfter = src instanceof Mob ? ((Mob) src).HT : -1;
 		int sourceMobShieldAfter = src instanceof Mob ? Math.max(0, ((Mob) src).shielding()) : -1;
@@ -1754,9 +1773,29 @@ public class Hero extends Char {
 		boolean sourceMobChanged = src instanceof Mob
 				&& (sourceMobHpAfter < sourceMobHpBefore || sourceMobPosAfter != sourceMobPosBefore
 				|| !sourceMobBuffsAfter.equals(sourceMobBuffsBefore));
-		if (effectiveDamage <= 0 && !sourceMobChanged) return;
+		if (effectiveDamage <= 0 && !sourceMobChanged && !revivedByBlessedAnkh) return;
 
-		if (this == Dungeon.hero && src instanceof Mob
+		if (this == Dungeon.hero && revivedByBlessedAnkh
+				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
+			String revival = "{\"targetHpBefore\":" + targetHpBefore
+					+ ",\"targetHtBefore\":" + targetHtBefore
+					+ ",\"targetHp\":" + Math.max(0, HP)
+					+ ",\"targetHt\":" + Math.max(1, HT)
+					+ ",\"targetPosBefore\":" + targetPosBefore
+					+ ",\"targetPosAfter\":" + pos
+					+ ",\"targetShieldBefore\":" + targetShieldBefore
+					+ ",\"targetShieldAfter\":" + targetShieldAfter
+					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
+					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsAfter)
+					+ ",\"ankhCountBefore\":" + ankhCountBefore
+					+ ",\"ankhCountAfter\":" + ankhCountAfter
+					+ ",\"blessedAnkhCountBefore\":" + blessedAnkhCountBefore
+					+ ",\"blessedAnkhCountAfter\":" + blessedAnkhCountAfter
+					+ ",\"heroStateJson\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson(this)) + "}";
+			MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
+		}
+
+		if (!revivedByBlessedAnkh && this == Dungeon.hero && src instanceof Mob
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
 			MultiplayerManager manager = MultiplayerManager.getInstance();
 			Mob sourceMob = (Mob) src;
@@ -2303,6 +2342,7 @@ public class Hero extends Char {
 
 			if (ankh.isBlessed()) {
 				this.HP = HT / 4;
+				multiplayerRevivedByBlessedAnkh = true;
 
 				PotionOfHealing.cure(this);
 				Buff.prolong(this, Invulnerability.class, Invulnerability.DURATION);
