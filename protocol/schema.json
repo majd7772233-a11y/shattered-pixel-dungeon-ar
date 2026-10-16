@@ -65,7 +65,8 @@
         "hp",
         "ht",
         "serializedBundle",
-        "buffs"
+        "buffs",
+        "shielding"
       ],
       "properties": {
         "mobId": {
@@ -102,6 +103,12 @@
         "buffs": {
           "type": "array",
           "maxItems": 256
+        },
+        "shielding": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Native derived shield total captured with mob HP/HT and buff pre-state."
         }
       }
     },
