@@ -86,7 +86,9 @@ public final class MessageRouter {
                                 Dungeon.level.mobs.remove(mob);
                                 Actor.remove(mob);
                                 if (mob.sprite != null) mob.sprite.remove();
-                                mob.destroy();
+                                // Mob.destroy() also awards local kill statistics/XP and can run
+                                // native side effects. A replicated remote death is only a removal.
+                                mob.destroyed = true;
                             }
                             break;
                         }
