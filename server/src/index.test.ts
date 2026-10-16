@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -763,6 +763,15 @@ describe('Native secondary mob combat deltas', () => {
   });
 });
 
+
+describe('Native mob bundle validation', () => {
+  it('accepts only non-empty bounded native bundles', () => {
+    expect(isValidNativeMobBundle('native-mob-bundle')).toBe(true);
+    expect(isValidNativeMobBundle('')).toBe(false);
+    expect(isValidNativeMobBundle(null)).toBe(false);
+    expect(isValidNativeMobBundle('x'.repeat(200001))).toBe(false);
+  });
+});
 
 describe('Native mob damage owner authorization', () => {
   it('accepts only the exact authenticated level publisher identity', () => {
