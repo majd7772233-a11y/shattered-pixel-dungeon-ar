@@ -21,10 +21,7 @@ public class MultiplayerLevelMetadataTest {
 
     private static class TestLevel extends Level {
         TestLevel() {
-            width = 8;
-            height = 8;
-            length = width * height;
-            map = new int[length];
+            setSize(8, 8);
             Arrays.fill(map, Terrain.WALL);
             customTiles = new ArrayList<>();
             customWalls = new ArrayList<>();
