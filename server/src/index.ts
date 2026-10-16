@@ -1698,15 +1698,15 @@ export class MatchRoom {
                         secondaryMob.pos = delta.posAfter;
                         secondaryMob.shielding = delta.shieldAfter;
                         secondaryMob.buffs = JSON.parse(delta.buffsAfter);
-                        this.sql.exec(\`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?\`,
+                        this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                           delta.hpAfter, delta.posAfter, secondaryMobId, this.currentDepth);
                       }
-                      this.sql.exec(\`INSERT INTO room_meta (key,value) VALUES (?,?)
-                        ON CONFLICT(key) DO UPDATE SET value=excluded.value\`,
-                        \`levelSnapshot:\${this.currentDepth}\`, JSON.stringify(combatLevel));
+                      this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                        `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
                       if (allDeathPositions.length > 0) {
                         for (const heap of combatLevel.heaps) {
-                          this.sql.exec(\`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?\`, Number(heap.pos), this.currentDepth);
+                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
                         }
                       }
                       eventType = "PLAYER_ATTACKED";
