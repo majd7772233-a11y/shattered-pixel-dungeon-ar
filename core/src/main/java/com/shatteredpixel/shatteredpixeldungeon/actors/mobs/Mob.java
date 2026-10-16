@@ -826,12 +826,15 @@ public abstract class Mob extends Char {
 				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
 				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
-		String serverEntityId = manager.getServerEntityId(id());
+		boolean capturePeriodicState = nativePeriodicSource && manager.isMultiplayerActive()
+				&& manager.isLevelPublisher() && !Hero.isNativeAttackInProgress();
+		String serverEntityId = capturePeriodicState ? manager.getServerEntityId(id()) : null;
 		int hpBefore = HP;
 		int htBefore = HT;
 		int posBefore = pos;
-		int shieldBefore = shielding();
-		String buffsBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this);
+		int shieldBefore = capturePeriodicState ? shielding() : 0;
+		String buffsBefore = capturePeriodicState
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this) : "";
 
 		if (!isInvulnerable(src.getClass())) {
 			if (state == SLEEPING) {
@@ -857,13 +860,12 @@ public abstract class Mob extends Char {
 
 		int hpAfter = Math.max(0, HP);
 		int htAfter = Math.max(1, HT);
-		int shieldAfter = shielding();
-		String buffsAfter = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this);
+		int shieldAfter = capturePeriodicState ? shielding() : 0;
+		String buffsAfter = capturePeriodicState
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this) : "";
 		boolean changed = hpBefore != hpAfter || htBefore != htAfter || posBefore != pos
 				|| shieldBefore != shieldAfter || !buffsBefore.equals(buffsAfter);
-		if (nativePeriodicSource && changed && !Hero.isNativeAttackInProgress()
-				&& manager.isMultiplayerActive() && manager.isLevelPublisher()
-				&& serverEntityId != null && serverEntityId.length() >= 8) {
+		if (capturePeriodicState && changed && serverEntityId != null && serverEntityId.length() >= 8) {
 			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
 			String outcome = "{\"combatSchemaVersion\":1"
 					+ ",\"combatDepth\":" + Dungeon.depth
