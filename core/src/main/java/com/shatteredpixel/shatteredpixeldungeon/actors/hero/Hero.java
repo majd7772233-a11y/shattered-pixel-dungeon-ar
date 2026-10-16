@@ -531,6 +531,7 @@ public class Hero extends Char {
 		String attackerStateBefore = MultiplayerManager.getInstance().isMultiplayerActive()
 				? SPDLevelSnapshot.currentHeroStateJson(this) : "";
 		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
+		String targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
 		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
 				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
 						: java.util.Collections.emptyMap();
@@ -579,10 +580,15 @@ public class Hero extends Char {
 				for (RemotePlayer candidate : MultiplayerManager.getInstance().getRemotePlayers().values()) {
 					if (candidate.heroInstance == enemy) { remote = candidate; break; }
 				}
-				if (remote == null) return result;
-				targetType = "PLAYER";
-				targetIdJson = "\"" + remote.playerId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-			}
+				if (remote == null && authoritySimulation && enemy == Dungeon.hero) {
+					targetType = "PLAYER";
+					targetIdJson = new com.badlogic.gdx.utils.Json().toJson(manager.getLocalPlayerId());
+				} else {
+					if (remote == null) return result;
+					targetType = "PLAYER";
+					targetIdJson = "\"" + remote.playerId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+				}
+			}}
 			int targetHp = Math.max(0, enemy.HP);
 			int dealt = Math.max(0, targetHpBefore - targetHp);
 			String action = "{\"targetId\":" + targetIdJson
@@ -600,6 +606,7 @@ public class Hero extends Char {
 					+ ",\"targetHtBefore\":" + targetHtBefore
 					+ ",\"targetShieldBefore\":" + targetShieldBefore
 					+ ",\"targetShieldAfter\":" + targetShieldAfter
+					+ ",\"targetHeroStateBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetHeroStateBefore)
 					+ ",\"targetHeroStateJson\":" + (enemy instanceof Hero
 						? new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) enemy)) : "null")
 					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
@@ -617,7 +624,8 @@ public class Hero extends Char {
 					+ extraLoot + "}";
 			if (authoritySimulation) {
 				manager.sendAuthorityAction(manager.getAuthorityCombatRequestId(),
-						NetworkActionType.SYNC_MOB_STATE, action, SPDLevelSnapshot.currentHeroStateJson(this));
+						"PLAYER".equals(targetType) ? NetworkActionType.SYNC_PLAYER_COMBAT : NetworkActionType.SYNC_MOB_STATE,
+						action, SPDLevelSnapshot.currentHeroStateJson(this));
 			} else {
 				manager.sendAction(NetworkActionType.ATTACK, action);
 			}

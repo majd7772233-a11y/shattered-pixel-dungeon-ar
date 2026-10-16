@@ -16,5 +16,6 @@ public enum NetworkActionType {
     WAIT,
     REVIVE,
     SYNC_HERO_STATE,
-    SYNC_MOB_STATE
+    SYNC_MOB_STATE,
+    SYNC_PLAYER_COMBAT
 }

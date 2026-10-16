@@ -53,33 +53,44 @@ public final class MessageRouter {
 
     private static void handleCombatRequest(NetworkMessage message) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        if (!manager.isLevelPublisher() || message.payloadJson == null || Dungeon.level == null) return;
+        if (message.payloadJson == null || Dungeon.level == null) return;
         try {
             JsonValue payload = new JsonReader().parse(message.payloadJson);
             String requestId = stringValue(payload.get("requestId"), message.requestId);
             String attackerId = stringValue(payload.get("attackerId"), null);
+            String targetType = stringValue(payload.get("targetType"), "MOB");
             String targetEntityId = stringValue(payload.get("targetEntityId"), null);
+            String targetPlayerId = stringValue(payload.get("targetPlayerId"), null);
             String attackerStateBefore = stringValue(payload.get("attackerStateBefore"), null);
             int attackerPos = intValue(payload.get("attackerPos"), -1);
-            if (requestId == null || attackerId == null || targetEntityId == null
-                    || attackerStateBefore == null || attackerPos < 0 || attackerPos >= Dungeon.level.length()) {
+            if (requestId == null || attackerId == null || attackerStateBefore == null
+                    || attackerPos < 0 || attackerPos >= Dungeon.level.length()
+                    || ("MOB".equals(targetType) && (!manager.isLevelPublisher() || targetEntityId == null))
+                    || ("PLAYER".equals(targetType) && (!manager.getLocalPlayerId().equals(targetPlayerId)
+                        || Dungeon.hero == null || Dungeon.hero.HP <= 0))
+                    || (!"MOB".equals(targetType) && !"PLAYER".equals(targetType))) {
                 manager.requestResync(manager.getLastSequence());
                 return;
             }
-            Integer localMobId = manager.getLocalActorIdForServerEntity(targetEntityId);
-            if (localMobId == null) {
-                manager.requestResync(manager.getLastSequence());
-                return;
-            }
-            Mob target = null;
-            for (Mob candidate : Dungeon.level.mobs) {
-                if (candidate.id() == localMobId) { target = candidate; break; }
+            com.shatteredpixel.shatteredpixeldungeon.actors.Char target;
+            if ("PLAYER".equals(targetType)) {
+                target = Dungeon.hero;
+            } else {
+                Integer localMobId = manager.getLocalActorIdForServerEntity(targetEntityId);
+                if (localMobId == null) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                Mob mobTarget = null;
+                for (Mob candidate : Dungeon.level.mobs) {
+                    if (candidate.id() == localMobId) { mobTarget = candidate; break; }
+                }
+                target = mobTarget;
             }
             if (target == null || target.HP <= 0) {
                 manager.requestResync(manager.getLastSequence());
                 return;
             }
-
             RemotePlayer remote = manager.getRemotePlayer(attackerId);
             if (remote == null) {
                 remote = new RemotePlayer(attackerId, "Player", "WARRIOR");
@@ -92,8 +103,7 @@ public final class MessageRouter {
             remoteHero.pos = attackerPos;
             manager.beginAuthorityCombat(requestId);
             try {
-                // Resolve this attack through the original SPD Java engine on the designated
-                // level owner. The attack override sends its native outcome under requestId.
+                // Resolve with native SPD combat on the target owner (PvP) or level publisher (mobs).
                 remoteHero.attack(target);
             } finally {
                 manager.endAuthorityCombat();
