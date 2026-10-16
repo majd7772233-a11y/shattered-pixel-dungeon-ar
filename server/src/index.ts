@@ -229,6 +229,17 @@ function comparableBuffs(value: any): string {
     || a.cooldown - b.cooldown));
 }
 
+export function isValidNativeMissTransition(hit: unknown, hpBefore: unknown, hpAfter: unknown,
+  damage: unknown, shieldBefore: unknown, shieldAfter: unknown, buffsBefore: unknown,
+  buffsAfter: unknown, posBefore: unknown, posAfter: unknown): boolean {
+  if (hit !== false) return true;
+  return Number.isInteger(hpBefore) && Number.isInteger(hpAfter) && hpBefore === hpAfter
+    && damage === 0
+    && Number.isInteger(shieldBefore) && Number.isInteger(shieldAfter) && shieldBefore === shieldAfter
+    && Number.isInteger(posBefore) && Number.isInteger(posAfter) && posBefore === posAfter
+    && hasMatchingNativeBuffSnapshot(buffsBefore, buffsAfter);
+}
+
 export function hasMatchingNativeMobShieldSnapshot(reportedBefore: unknown, reportedAfter: unknown, authoritativeBefore: unknown): boolean {
   return Number.isInteger(reportedBefore) && Number(reportedBefore) >= 0 && Number(reportedBefore) <= 100000
     && Number.isInteger(reportedAfter) && Number(reportedAfter) >= 0 && Number(reportedAfter) <= 100000
@@ -1268,6 +1279,11 @@ export class MatchRoom {
                       && (defenderHeroState == null || !Number.isInteger(defenderHeroState?.shielding)
                         || targetShieldBefore === defenderHeroState.shielding)
                       && targetHeroStateValid
+                      && isValidNativeMissTransition(payload.data?.engineHit,
+                        payload.data?.targetHpBefore, targetHp, reportedDamage,
+                        payload.data?.targetShieldBefore, payload.data?.targetShieldAfter,
+                        payload.data?.targetBuffsBefore, payload.data?.targetBuffs,
+                        defPos, targetPosAfter)
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
@@ -1371,6 +1387,11 @@ export class MatchRoom {
                       && hasStrictNativeCombatFields(payload.data)
                       && targetBuffPreStateMatches
                       && targetShieldPreStateMatches
+                      && isValidNativeMissTransition(payload.data?.engineHit,
+                        payload.data?.targetHpBefore, targetHp, reportedDamage,
+                        payload.data?.targetShieldBefore, payload.data?.targetShieldAfter,
+                        payload.data?.targetBuffsBefore, payload.data?.targetBuffs,
+                        mobPos, targetPosAfter)
                       && validLootSnapshot
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
