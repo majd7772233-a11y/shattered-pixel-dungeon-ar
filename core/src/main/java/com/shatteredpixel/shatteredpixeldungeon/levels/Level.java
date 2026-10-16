@@ -482,6 +482,62 @@ public abstract class Level implements Bundlable {
 	}
 
 	/** Stable string bridge for multiplayer metadata without exposing the internal enum. */
+	/** Serializes gameplay-relevant level metadata omitted by the tile/entity arrays. */
+	public String multiplayerMetadataBundle() {
+		Bundle metadata = new Bundle();
+		metadata.put("customTiles", customTiles == null ? new ArrayList<CustomTilemap>() : customTiles);
+		metadata.put("customWalls", customWalls == null ? new ArrayList<CustomTilemap>() : customWalls);
+		metadata.put("mobs_to_spawn", mobsToSpawn == null ? new Class[0] : mobsToSpawn.toArray(new Class[0]));
+		if (respawner != null) metadata.put("respawner", respawner);
+		return metadata.toString();
+	}
+
+	/** Preflight native metadata without changing the live level. */
+	public boolean canRestoreMultiplayerMetadata(Bundle metadata) {
+		if (metadata == null) return false;
+		try {
+			java.util.Collection<Bundlable> tiles = metadata.getCollection("customTiles");
+			java.util.Collection<Bundlable> walls = metadata.getCollection("customWalls");
+			if (tiles.size() > 512 || walls.size() > 512) return false;
+			for (Bundlable value : tiles) if (!(value instanceof CustomTilemap)) return false;
+			for (Bundlable value : walls) if (!(value instanceof CustomTilemap)) return false;
+			if (metadata.contains("respawner") && !(metadata.get("respawner") instanceof MobSpawner)) return false;
+			Class<?>[] spawnClasses = metadata.getClassArray("mobs_to_spawn");
+			if (spawnClasses.length > 512) return false;
+			for (Class<?> spawnClass : spawnClasses)
+				if (spawnClass != null && !Mob.class.isAssignableFrom(spawnClass)) return false;
+			return true;
+		} catch (RuntimeException invalidMetadata) {
+			return false;
+		}
+	}
+
+	/** Applies already-preflighted native custom visuals and respawner state. */
+	@SuppressWarnings("unchecked")
+	public boolean restoreMultiplayerMetadata(Bundle metadata) {
+		if (!canRestoreMultiplayerMetadata(metadata)) return false;
+		try {
+			java.util.Collection<Bundlable> tiles = metadata.getCollection("customTiles");
+			java.util.Collection<Bundlable> walls = metadata.getCollection("customWalls");
+			customTiles.clear();
+			customWalls.clear();
+			for (Bundlable value : tiles) customTiles.add((CustomTilemap) value);
+			for (Bundlable value : walls) customWalls.add((CustomTilemap) value);
+			mobsToSpawn.clear();
+			for (Class<?> spawnClass : metadata.getClassArray("mobs_to_spawn")) {
+				if (spawnClass != null) mobsToSpawn.add((Class<? extends Mob>) spawnClass);
+			}
+			if (respawner != null) Actor.remove(respawner);
+			respawner = metadata.contains("respawner") ? (MobSpawner) metadata.get("respawner") : null;
+			if (respawner != null) Actor.add(respawner);
+			buildFlagMaps();
+			cleanWalls();
+			return true;
+		} catch (RuntimeException invalidMetadata) {
+			return false;
+		}
+	}
+
 	public String multiplayerFeelingName() {
 		return feeling == null ? "NONE" : feeling.name();
 	}
