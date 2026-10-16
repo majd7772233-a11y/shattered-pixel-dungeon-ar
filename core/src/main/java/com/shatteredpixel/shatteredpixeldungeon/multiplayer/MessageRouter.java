@@ -137,10 +137,17 @@ public final class MessageRouter {
     }
 
     private static void handleSnapshotMessage(NetworkMessage message) {
-        if (message.payloadJson == null) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message.payloadJson == null) {
+            manager.requestResync(message.sequence);
+            return;
+        }
         try {
             JsonValue root = new JsonReader().parse(message.payloadJson);
-            if (root == null || !root.isObject()) return;
+            if (root == null || !root.isObject()) {
+                manager.requestResync(message.sequence);
+                return;
+            }
 
             WorldSnapshot snapshot = new WorldSnapshot();
             snapshot.sequence = longValue(root.get("sequence"), message.sequence);
@@ -270,10 +277,13 @@ public final class MessageRouter {
             }
 
             if (WorldSnapshot.restoreWorld(snapshot)) {
-                MultiplayerManager.getInstance().updateLastSequence(snapshot.sequence);
+                manager.updateLastSequence(snapshot.sequence);
+            } else {
+                manager.requestResync(snapshot.sequence);
             }
         } catch (RuntimeException ignored) {
-            // Ignore malformed snapshots; the transport can request RESYNC rather than corrupt state.
+            // Preserve the last acknowledged sequence and request a clean authoritative snapshot.
+            manager.requestResync(message.sequence);
         }
     }
 
