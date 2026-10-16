@@ -213,6 +213,7 @@ public class WorldSnapshot {
         for (Integer pos : snapshot.claimedItemPositions)
             if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return false;
         java.util.Set<Integer> mobIds = new java.util.HashSet<>();
+        java.util.Set<Integer> mobPositions = new java.util.HashSet<>();
         java.util.Set<String> serverEntityIds = new java.util.HashSet<>();
         for (Map<String, Object> mob : snapshot.mobs) {
             if (mob == null) return false;
@@ -222,7 +223,8 @@ public class WorldSnapshot {
             int hp = number(mob.get("hp"), -1);
             int ht = number(mob.get("ht"), -1);
             if (id < 0 || !mobIds.add(id) || entityId.length() < 8 || entityId.length() > 80
-                    || !serverEntityIds.add(entityId) || pos < 0 || pos >= length || hp < 0 || ht < 1 || hp > ht) return false;
+                    || !serverEntityIds.add(entityId) || pos < 0 || pos >= length || !mobPositions.add(pos)
+                    || hp < 0 || ht < 1 || hp > ht) return false;
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
             Object buffs = mob.get("buffs");
             if (!(buffs instanceof List)) return false;
@@ -490,8 +492,7 @@ public class WorldSnapshot {
                 authoritativeHeapPositions.add(pos);
                 Heap heap = new Heap();
                 heap.pos = pos;
-                try { heap.type = Heap.Type.valueOf(String.valueOf(data.get("type"))); }
-                catch (RuntimeException ignored) { heap.type = Heap.Type.HEAP; }
+                heap.type = Heap.Type.valueOf(String.valueOf(data.get("type")));
                 heap.seen = Boolean.TRUE.equals(data.get("seen"));
                 heap.haunted = Boolean.TRUE.equals(data.get("haunted"));
                 heap.hidden = Boolean.TRUE.equals(data.get("hidden"));
@@ -545,8 +546,7 @@ public class WorldSnapshot {
                         if (trapBundle != null) trap = (Trap) trapBundle.get("trap");
                     }
                     if (trap == null) {
-                        GLog.w("Snapshot trap bundle did not contain a native Trap at cell " + pos);
-                        continue;
+                        throw new IllegalStateException("Snapshot trap bundle did not contain a native Trap at cell " + pos);
                     }
                     trap.pos = pos;
                     trap.active = Boolean.TRUE.equals(data.get("active"));
@@ -571,8 +571,7 @@ public class WorldSnapshot {
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) plant = (Plant) encoded.get("plant");
                     if (plant == null) {
-                        GLog.w("Snapshot plant bundle did not contain a native Plant at cell " + pos);
-                        continue;
+                        throw new IllegalStateException("Snapshot plant bundle did not contain a native Plant at cell " + pos);
                     }
                     plant.pos = pos;
                     Dungeon.level.plants.put(pos, plant);
@@ -591,8 +590,7 @@ public class WorldSnapshot {
                     Bundle encoded = readBundle(String.valueOf(data.get("serializedBundle")));
                     if (encoded != null) blob = (Blob) encoded.get("blob");
                     if (blob == null) {
-                        GLog.w("Snapshot blob bundle did not contain a native Blob");
-                        continue;
+                        throw new IllegalStateException("Snapshot blob bundle did not contain a native Blob");
                     }
                     blob.restoreMultiplayerCooldown(floatNumber(data.get("cooldown"), 0f));
                     Dungeon.level.blobs.put(blob.getClass(), blob);
