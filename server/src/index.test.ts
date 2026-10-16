@@ -698,12 +698,24 @@ describe('Native environmental and periodic damage validation', () => {
 describe('Native secondary mob combat deltas', () => {
   const entityId = 'native-entity-123456';
   const buffs = [{ serializedBundle: 'native-buff', cooldown: 1 }];
-  const saved = [{ entityId, mobId: 7, hp: 10, ht: 10, pos: 10, shielding: 2, buffs }];
+  const saved = [{ entityId, mobId: 7, hp: 10, ht: 10, pos: 10, shielding: 2,
+    serializedBundle: 'native-mob-state-before', buffs }];
   const delta = () => ({
     entityId, hpBefore: 10, htBefore: 10, posBefore: 10, shieldBefore: 2,
     buffsBefore: JSON.stringify(buffs),
     hpAfter: 7, htAfter: 10, posAfter: 10, shieldAfter: 1,
-    buffsAfter: JSON.stringify([{ serializedBundle: 'native-buff', cooldown: 0 }])
+    buffsAfter: JSON.stringify([{ serializedBundle: 'native-buff', cooldown: 0 }]),
+    serializedBundleAfter: 'native-mob-state-after'
+  });
+
+  it('requires a bounded native mob bundle when a secondary combat state changes', () => {
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), serializedBundleAfter: '' }] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), serializedBundleAfter: 'x'.repeat(200001) }] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [delta()] }, saved, 1024, 32)?.deltas[0].serializedBundleAfter)
+      .toBe('native-mob-state-after');
   });
 
   it('accepts a native secondary HP/shield/cooldown delta based on the exact saved pre-state', () => {
