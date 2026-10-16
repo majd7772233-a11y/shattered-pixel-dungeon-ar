@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, isValidNativeCombatBuffs, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -390,5 +390,33 @@ describe('Native combat buff payload validation', () => {
       { serializedBundle: 'native-buff-bundle', cooldown: -1 }
     ]))).toBe(false);
     expect(isValidNativeCombatBuffs('x'.repeat(200001))).toBe(false);
+  });
+});
+
+
+describe('Native kill loot snapshot validation', () => {
+  const oldHeap = {
+    pos: 10, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false,
+    items: [{ className: 'Gold', quantity: 5, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'gold-native-bundle' }]
+  };
+  const droppedHeap = {
+    pos: 20, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false,
+    items: [{ className: 'PotionOfHealing', quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'potion-native-bundle' }]
+  };
+
+  it('accepts loot added at the dead mob cell while preserving unrelated heaps', () => {
+    expect(isValidNativeLootSnapshot([oldHeap, droppedHeap], [oldHeap], 20, 64)).toBe(true);
+  });
+
+  it('rejects changes to unrelated heaps and malformed item bundles', () => {
+    const changedElsewhere = { ...oldHeap, items: [{ ...oldHeap.items[0], quantity: 4 }] };
+    expect(isValidNativeLootSnapshot([changedElsewhere, droppedHeap], [oldHeap], 20, 64)).toBe(false);
+    const malformed = { ...droppedHeap, items: [{ ...droppedHeap.items[0], serializedBundle: '' }] };
+    expect(isValidNativeLootSnapshot([oldHeap, malformed], [oldHeap], 20, 64)).toBe(false);
+  });
+
+  it('rejects duplicate heap positions and out-of-bounds loot', () => {
+    expect(isValidNativeLootSnapshot([droppedHeap, droppedHeap], [], 20, 64)).toBe(false);
+    expect(isValidNativeLootSnapshot([{ ...droppedHeap, pos: 64 }], [], 20, 64)).toBe(false);
   });
 });
