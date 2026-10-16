@@ -517,12 +517,17 @@ public class Hero extends Char {
 				&& (enemy instanceof Mob || enemy instanceof RemoteHero)) {
 			String targetType;
 			String targetIdJson;
+			String targetEntityIdJson = "null";
 			boolean ranged = belongings.attackingWeapon() instanceof MissileWeapon;
 			String extraLoot = "";
 			if (enemy instanceof Mob) {
 				Mob mob = (Mob) enemy;
 				targetType = "MOB";
 				targetIdJson = String.valueOf(mob.id());
+				String serverEntityId = MultiplayerManager.getInstance().getServerEntityId(mob.id());
+				if (serverEntityId != null) {
+					targetEntityIdJson = "\"" + serverEntityId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+				}
 				if (mob.HP <= 0) extraLoot = ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson();
 			} else {
 				RemotePlayer remote = null;
@@ -536,6 +541,7 @@ public class Hero extends Char {
 			int targetHp = Math.max(0, enemy.HP);
 			int dealt = Math.max(0, targetHpBefore - targetHp);
 			String action = "{\"targetId\":" + targetIdJson
+					+ ",\"targetEntityId\":" + targetEntityIdJson
 					+ ",\"targetType\":\"" + targetType + "\""
 					+ ",\"targetPos\":" + enemy.pos
 					+ ",\"engineResult\":true"
