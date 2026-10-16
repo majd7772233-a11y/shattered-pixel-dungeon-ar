@@ -1577,6 +1577,7 @@ export class MatchRoom {
                         targetHp: newHp, targetHt, targetState: newState,
                         attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
+                        secondaryMobDeltas: secondaryMobPayload,
                         engineResolved: true
                       };
                       actionValid = true;
