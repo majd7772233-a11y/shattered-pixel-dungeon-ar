@@ -542,6 +542,9 @@ public final class MessageRouter {
                     // invoke Mob.die() or Mob.destroy() on remote replicas: they award local
                     // kill rewards and may roll a second copy of the loot.
                     WorldSnapshot.removeMobReplicaWithoutRewards(mob);
+                    // A death can create multiple native drops or trigger secondary effects.
+                    // Pull the authoritative full snapshot so every client receives exact heaps.
+                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
                 } else {
                     mob.HP = Math.min(hp, mob.HT);
                     String targetBuffs = stringValue(action.get("targetBuffs"), null);
