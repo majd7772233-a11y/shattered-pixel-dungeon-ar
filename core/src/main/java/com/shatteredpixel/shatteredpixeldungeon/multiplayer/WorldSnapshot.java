@@ -402,12 +402,15 @@ public class WorldSnapshot {
                         if (!authoritativeMobs.contains(mob) && mob.id() == mappedActorId) { matched = mob; break; }
                     }
                 }
-                if (matched == null) {
+                String name = String.valueOf(data.get("name"));
+                if (matched == null && entityId.isEmpty()) {
+                    // Local Actor.id() is a legacy-only fallback; never use it to reconcile a
+                    // snapshot that already carries a stable server identity.
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
-                        if (!authoritativeMobs.contains(mob) && mob.id() == id) { matched = mob; break; }
+                        if (!authoritativeMobs.contains(mob) && mob.id() == id
+                                && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
                 }
-                String name = String.valueOf(data.get("name"));
                 if (matched == null) {
                     // Position + native class is a stronger fallback than class-only matching:
                     // floors commonly contain several mobs of the same class.
