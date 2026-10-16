@@ -439,6 +439,10 @@ export function hasMatchingNativeHeroEquipmentState(reported: unknown, trusted: 
   } catch (_) { return false; }
 }
 
+export function isValidNativeMobBundle(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 200000;
+}
+
 export function isAuthorizedNativeMobOwner(senderId: unknown, publisherId: unknown): boolean {
   return typeof senderId === "string" && senderId.length > 0
     && typeof publisherId === "string" && publisherId.length > 0
@@ -1355,6 +1359,7 @@ export class MatchRoom {
               const mergedAttackerState = this.reconcileCombatAttackerState(authorityPending, payload.heroStateJson);
               const targetBuffPreStateMatches = !!savedMob && hasMatchingNativeBuffSnapshot(data.targetBuffsBefore, savedMob.buffs);
               const targetShieldPreStateMatches = !!savedMob && hasMatchingNativeMobShieldSnapshot(data.targetShieldBefore, data.targetShieldAfter, savedMob.shielding);
+              const targetMobBundleValid = targetHp <= 0 || isValidNativeMobBundle(data.targetMobBundleAfter);
               const authorityValid = !!authorityPending && String(authorityPending.requestId) === String(data.combatRequestId)
                 && String(authorityPending.authorityId) === session.playerId && String(publisherRow?.value || "") === session.playerId
                 && mergedAttackerState !== null
@@ -1365,7 +1370,7 @@ export class MatchRoom {
                 && mobRow.length > 0 && Number(mobRow[0].hp) > 0 && !!savedMob
                 && Number(data.targetPos) === targetPos && Number(data.targetHpBefore) === Number(mobRow[0].hp)
                 && Number(data.targetHtBefore) === Number(mobRow[0].ht) && targetBuffPreStateMatches && targetShieldPreStateMatches
-                && hasStrictNativeCombatFields(data) && data.engineResult === true
+                && hasStrictNativeCombatFields(data) && data.engineResult === true && targetMobBundleValid
                 && Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10 && Number.isFinite(distance)
                 && (ranged ? this.hasLineOfSight(attackerPos, targetPos, this.currentDepth) : this.isMeleeAdjacent(attackerPos, targetPos, this.currentDepth))
                 && (targetPosAfter === targetPos || (this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
@@ -1389,6 +1394,7 @@ export class MatchRoom {
                   && Date.now() - Number(authorityPending.createdAt) <= 15000) {
                 savedMob.hp = targetHp; savedMob.ht = targetHt; savedMob.pos = targetPosAfter;
                 savedMob.shielding = Number(data.targetShieldAfter); savedMob.buffs = JSON.parse(String(data.targetBuffs));
+                if (targetHp > 0) savedMob.serializedBundle = String(data.targetMobBundleAfter);
                 if (allDeaths.length > 0) levelSnapshot.heaps = lootSnapshot;
                 this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?", targetHp, targetPosAfter, mobId, this.currentDepth);
                 for (const delta of secondaryMobPayload.deltas) {
@@ -1397,6 +1403,7 @@ export class MatchRoom {
                   if (secondaryId == null || !secondary) throw new Error("Validated secondary mob disappeared");
                   secondary.hp = delta.hpAfter; secondary.ht = delta.htAfter; secondary.pos = delta.posAfter;
                   secondary.shielding = delta.shieldAfter; secondary.buffs = JSON.parse(delta.buffsAfter);
+                  secondary.serializedBundle = delta.serializedBundleAfter;
                   this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?", delta.hpAfter, delta.posAfter, secondaryId, this.currentDepth);
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -2166,6 +2173,7 @@ export class MatchRoom {
                     const targetShieldPreStateMatches = !!savedTargetMob
                       && hasMatchingNativeMobShieldSnapshot(payload.data?.targetShieldBefore,
                         payload.data?.targetShieldAfter, savedTargetMob.shielding);
+                    const targetMobBundleValid = targetHp <= 0 || isValidNativeMobBundle(payload.data?.targetMobBundleAfter);
                     const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(
                       payload.data?.secondaryMobDeltas, combatLevel?.mobs, levelSize, width);
                     const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
@@ -2185,6 +2193,7 @@ export class MatchRoom {
                       && hasStrictNativeCombatFields(payload.data)
                       && targetBuffPreStateMatches
                       && targetShieldPreStateMatches
+                      && targetMobBundleValid
                       && isValidNativeMissTransition(payload.data?.engineHit,
                         payload.data?.targetHpBefore, targetHp, reportedDamage,
                         payload.data?.targetShieldBefore, payload.data?.targetShieldAfter,
@@ -2225,6 +2234,7 @@ export class MatchRoom {
                       savedMob.ht = targetHt;
                       savedMob.pos = targetPosAfter;
                       savedMob.buffs = JSON.parse(String(payload.data.targetBuffs));
+                       if (newHp > 0) savedMob.serializedBundle = String(payload.data.targetMobBundleAfter);
                        savedMob.shielding = Number(payload.data.targetShieldAfter);
                       if (allDeathPositions.length > 0) combatLevel.heaps = lootSnapshot;
                       for (const delta of secondaryMobPayload.deltas) {
@@ -2237,6 +2247,7 @@ export class MatchRoom {
                         secondaryMob.pos = delta.posAfter;
                         secondaryMob.shielding = delta.shieldAfter;
                         secondaryMob.buffs = JSON.parse(delta.buffsAfter);
+                         secondaryMob.serializedBundle = delta.serializedBundleAfter;
                         this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                           delta.hpAfter, delta.posAfter, secondaryMobId, this.currentDepth);
                       }
