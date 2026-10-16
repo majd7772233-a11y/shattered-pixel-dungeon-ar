@@ -692,3 +692,52 @@ describe('Native environmental and periodic damage validation', () => {
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetPosAfter: 400 }, authoritative)).toBe(false);
   });
 });
+
+
+describe('Native secondary mob combat deltas', () => {
+  const entityId = 'native-entity-123456';
+  const buffs = [{ serializedBundle: 'native-buff', cooldown: 1 }];
+  const saved = [{ entityId, mobId: 7, hp: 10, ht: 10, pos: 10, shielding: 2, buffs }];
+  const delta = () => ({
+    entityId, hpBefore: 10, htBefore: 10, posBefore: 10, shieldBefore: 2,
+    buffsBefore: JSON.stringify(buffs),
+    hpAfter: 7, htAfter: 10, posAfter: 10, shieldAfter: 1,
+    buffsAfter: JSON.stringify([{ serializedBundle: 'native-buff', cooldown: 0 }])
+  });
+
+  it('accepts a native secondary HP/shield/cooldown delta based on the exact saved pre-state', () => {
+    const result = parseAndValidateNativeSecondaryMobDeltas(
+      JSON.stringify({ complete: true, deltas: [delta()] }), saved, 1024, 32);
+    expect(result?.deltas).toHaveLength(1);
+  });
+
+  it('rejects stale, unknown, duplicate, incomplete and forged secondary mob deltas', () => {
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), hpBefore: 9 }] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), entityId: 'unknown-entity-123' }] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [delta(), delta()] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: false, deltas: [delta()] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), hpAfter: 11 }] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [{ ...delta(), posAfter: 400 }] }, saved, 1024, 32)).toBeNull();
+  });
+
+  it('requires bounded loot snapshots for secondary deaths and rejects unrelated loot changes', () => {
+    const death = { ...delta(), hpAfter: 0, shieldAfter: 0, buffsAfter: '[]' };
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [death] }, saved, 1024, 32)).toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [death], heaps: [] }, saved, 1024, 32)?.heaps).toEqual([]);
+  });
+
+  it('accepts an empty complete delta and rejects an oversized/incomplete collection', () => {
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [] }, saved, 1024, 32)?.deltas).toEqual([]);
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: Array(513).fill(delta()) }, saved, 1024, 32)).toBeNull();
+  });
+});
