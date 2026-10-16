@@ -3,7 +3,11 @@
   "title": "SPDMultiplayerProtocol",
   "version": "1.0.0",
   "type": "object",
-  "required": ["protocolVersion", "messageType", "payloadJson"],
+  "required": [
+    "protocolVersion",
+    "messageType",
+    "payloadJson"
+  ],
   "properties": {
     "protocolVersion": {
       "type": "string",
@@ -48,6 +52,161 @@
     },
     "payloadJson": {
       "type": "string"
+    }
+  },
+  "definitions": {
+    "NativeMobEntity": {
+      "type": "object",
+      "required": [
+        "mobId",
+        "entityId",
+        "name",
+        "pos",
+        "hp",
+        "ht",
+        "serializedBundle",
+        "buffs"
+      ],
+      "properties": {
+        "mobId": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Publisher-local SPD Actor.id(); never use as a cross-device identity."
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Stable room-assigned identity preserved across snapshots and reconnects."
+        },
+        "name": {
+          "type": "string"
+        },
+        "pos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ht": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "serializedBundle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "buffs": {
+          "type": "array",
+          "maxItems": 256
+        }
+      }
+    },
+    "NativeLevelSnapshot": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "depth",
+        "branch",
+        "width",
+        "height",
+        "seed",
+        "locked",
+        "feeling",
+        "nativeLevelMetadataBundle",
+        "tiles",
+        "transitions",
+        "mobs",
+        "heaps",
+        "traps",
+        "plants",
+        "blobs",
+        "visitedPositions",
+        "mappedPositions"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "branch": {
+          "const": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 100
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 100
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "feeling": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "CHASM",
+            "WATER",
+            "GRASS",
+            "DARK",
+            "LARGE",
+            "TRAPS",
+            "SECRETS"
+          ]
+        },
+        "nativeLevelMetadataBundle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        },
+        "mobs": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/NativeMobEntity"
+          }
+        },
+        "tiles": {
+          "type": "array"
+        },
+        "transitions": {
+          "type": "array",
+          "maxItems": 128
+        },
+        "heaps": {
+          "type": "array"
+        },
+        "traps": {
+          "type": "array"
+        },
+        "plants": {
+          "type": "array"
+        },
+        "blobs": {
+          "type": "array",
+          "maxItems": 128
+        },
+        "visitedPositions": {
+          "type": "array"
+        },
+        "mappedPositions": {
+          "type": "array"
+        }
+      }
     }
   }
 }
