@@ -100,7 +100,8 @@ public class WorldSnapshot {
         if (root == null || !root.isArray() || root.size > 256) {
             throw new IllegalArgumentException("Invalid native combat buff payload");
         }
-        List<Map<String, Object>> buffs = new ArrayList<>();
+        List<Buff> preparedBuffs = new ArrayList<>();
+        List<Float> preparedCooldowns = new ArrayList<>();
         for (JsonValue value = root.child; value != null; value = value.next) {
             if (!value.isObject()) throw new IllegalArgumentException("Invalid native combat buff entry");
             JsonValue bundleValue = value.get("serializedBundle");
@@ -111,14 +112,19 @@ public class WorldSnapshot {
                     || cooldownValue.asFloat() > 100000f) {
                 throw new IllegalArgumentException("Invalid native combat buff bundle");
             }
-            Map<String, Object> buff = new HashMap<>();
-            buff.put("serializedBundle", bundleValue.asString());
-            buff.put("cooldown", cooldownValue.asFloat());
-            buffs.add(buff);
+            Bundle buffBundle = readBundle(bundleValue.asString());
+            Object decoded = buffBundle == null ? null : buffBundle.get("buff");
+            if (!(decoded instanceof Buff)) throw new IllegalArgumentException("Native combat bundle did not contain a Buff");
+            preparedBuffs.add((Buff) decoded);
+            preparedCooldowns.add(cooldownValue.asFloat());
         }
-        Map<String, Object> state = new HashMap<>();
-        state.put("buffs", buffs);
-        restoreMobBuffs(character, state);
+        // Prepare every native object before mutating the current state.
+        for (Buff old : new java.util.ArrayList<>(character.buffs())) old.detach();
+        for (int i = 0; i < preparedBuffs.size(); i++) {
+            Buff buff = preparedBuffs.get(i);
+            buff.attachTo(character);
+            buff.restoreMultiplayerCooldown(preparedCooldowns.get(i));
+        }
     }
 
     /** Removes a replicated dead mob without re-running native death, rewards, or loot rolls. */
