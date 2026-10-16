@@ -15,5 +15,6 @@ public enum NetworkActionType {
     USE_ABILITY,
     WAIT,
     REVIVE,
-    SYNC_HERO_STATE
+    SYNC_HERO_STATE,
+    SYNC_MOB_STATE
 }
