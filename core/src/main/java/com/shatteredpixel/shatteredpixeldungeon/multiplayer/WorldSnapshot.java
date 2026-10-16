@@ -130,6 +130,12 @@ public class WorldSnapshot {
         if (hero == null || encodedState == null || encodedState.isEmpty()) return;
         Bundle heroState = readBundle(encodedState);
         if (heroState == null) return;
+        hero.HT = Math.max(1, heroState.getInt("ht"));
+        hero.HP = Math.max(0, Math.min(heroState.getInt("hp"), hero.HT));
+        int nativePos = heroState.getInt("pos");
+        if (Dungeon.level != null && nativePos >= 0 && nativePos < Dungeon.level.length()) {
+            hero.pos = nativePos;
+        }
         Bundle nativeHero = readBundle(heroState.getString("combatBundle"));
         if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
         Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
