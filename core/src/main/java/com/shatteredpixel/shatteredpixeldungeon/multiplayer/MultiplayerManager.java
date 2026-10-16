@@ -18,6 +18,7 @@ public class MultiplayerManager implements TransportCallback {
     private String localPlayerId;
     private String sessionToken;
     private long lastSequence = 0;
+    private long lastResyncRequestedSequence = -1L;
     private String lastPublishedLevelKey;
     private Long authoritativeSeed;
     private NetworkTransport activeTransport;
@@ -57,6 +58,7 @@ public class MultiplayerManager implements TransportCallback {
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
         this.lastSequence = 0L;
+        this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
         this.activeTransport = transport;
@@ -85,6 +87,7 @@ public class MultiplayerManager implements TransportCallback {
         this.localPlayerId = null;
         this.roomCode = null;
         this.lastSequence = 0L;
+        this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
     }
@@ -112,7 +115,22 @@ public class MultiplayerManager implements TransportCallback {
     public void updateLastSequence(long seq) {
         if (seq > this.lastSequence) {
             this.lastSequence = seq;
+            this.lastResyncRequestedSequence = -1L;
         }
+    }
+
+    /** Requests a full authoritative snapshot after a failed restore, once per bad sequence. */
+    public void requestResync(long rejectedSnapshotSequence) {
+        if (!isMultiplayerActive || activeTransport == null
+                || lastResyncRequestedSequence == rejectedSnapshotSequence) return;
+        lastResyncRequestedSequence = rejectedSnapshotSequence;
+        NetworkMessage msg = new NetworkMessage();
+        msg.messageType = MessageType.RESYNC;
+        msg.senderId = localPlayerId;
+        msg.requestId = UUID.randomUUID().toString();
+        msg.payloadJson = "{\"lastSequence\":" + lastSequence
+                + ",\"rejectedSnapshotSequence\":" + rejectedSnapshotSequence + "}";
+        activeTransport.send(msg);
     }
 
     public Map<String, RemotePlayer> getRemotePlayers() {
@@ -266,7 +284,8 @@ public class MultiplayerManager implements TransportCallback {
             }
         }
 
-        if (message.sequence > this.lastSequence) {
+        // A snapshot sequence is acknowledged only after its full native world is restored.
+        if (message.messageType != MessageType.SNAPSHOT && message.sequence > this.lastSequence) {
             this.lastSequence = message.sequence;
         }
 
