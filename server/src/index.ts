@@ -971,9 +971,9 @@ export class MatchRoom {
                 targetId: session.playerId, targetType: "PLAYER",
                 targetHpBefore: previousHp, targetHtBefore: previousHt, targetHp: hp, targetHt: ht,
                 targetPos: targetPosBefore, targetPosAfter, targetShieldBefore, targetShieldAfter,
-                targetState: newState, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
+                targetState: newState, hit: true, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
                 targetBuffs: data.targetBuffs, targetHeroStateJson: payload.heroStateJson,
-                engineResolved: true
+                attackerStateJson: null, engineResolved: true
               };
               actionValid = true;
               actionCost = 0;
