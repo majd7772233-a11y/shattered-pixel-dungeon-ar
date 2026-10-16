@@ -845,15 +845,6 @@ public abstract class Mob extends Char {
 	}
 	
 	
-	/**
-	 * Removes a mob replica after an authoritative multiplayer death without running
-	 * this device's kill statistics, experience, loot or native death side effects.
-	 */
-	public void removeMultiplayerReplicaWithoutRewards() {
-		super.destroy();
-		Dungeon.level.mobs.remove(this);
-	}
-
 	@Override
 	public void destroy() {
 		
