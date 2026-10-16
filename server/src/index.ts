@@ -578,6 +578,48 @@ export class MatchRoom {
     this.initDatabase();
   }
 
+  private clearPendingCombat(pending: any) {
+    if (!pending || typeof pending !== "object") return;
+    if (typeof pending.requestId === "string") {
+      this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + pending.requestId);
+    }
+    if (typeof pending.attackerId === "string") {
+      this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombatAttacker:" + pending.attackerId);
+    }
+    if (typeof pending.targetLockKey === "string") {
+      this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombatTarget:" + pending.targetLockKey);
+    }
+  }
+
+  /** Reserve one native combat per attacker and target; stale reservations expire after 15 seconds. */
+  private reservePendingCombat(pending: any): boolean {
+    if (!pending || typeof pending.requestId !== "string" || typeof pending.attackerId !== "string") return false;
+    const now = Date.now();
+    const lockKeys = ["pendingCombatAttacker:" + pending.attackerId];
+    if (typeof pending.targetLockKey === "string" && pending.targetLockKey.length > 0) {
+      lockKeys.push("pendingCombatTarget:" + pending.targetLockKey);
+    }
+    for (const key of lockKeys) {
+      const lock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", key).toArray()[0];
+      if (!lock || typeof lock.value !== "string") continue;
+      const previousRequestId = String(lock.value);
+      const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + previousRequestId).toArray()[0];
+      let previous: any = null;
+      try { previous = row && typeof row.value === "string" ? JSON.parse(String(row.value)) : null; } catch (_) {}
+      if (previous && Number.isFinite(Number(previous.createdAt)) && now - Number(previous.createdAt) <= 15000) return false;
+      if (previous) this.clearPendingCombat(previous);
+      else this.sql.exec("DELETE FROM room_meta WHERE key = ?", key);
+    }
+    pending.createdAt = now;
+    this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      "pendingCombat:" + pending.requestId, JSON.stringify(pending));
+    for (const key of lockKeys) {
+      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        key, pending.requestId);
+    }
+    return true;
+  }
+
   private initDatabase() {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS room_meta (
@@ -1182,6 +1224,7 @@ export class MatchRoom {
             }, String(data.targetBuffs || ""), true);
             const authorityValid = !!pending && pending.targetType === "PLAYER"
               && String(pending.requestId) === String(data.combatRequestId)
+              && Number.isFinite(Number(pending.createdAt)) && Date.now() - Number(pending.createdAt) <= 15000
               && String(pending.authorityId) === session.playerId && defenderId === session.playerId
               && String(pending.attackerId) === String(data.attackerId) && attackerId !== defenderId
               && String(data.targetType) === "PLAYER" && String(data.targetId) === defenderId
@@ -1214,7 +1257,7 @@ export class MatchRoom {
               if (hpAfter <= 0) this.sql.exec("UPDATE players SET kills = kills + 1 WHERE player_id = ?", attackerId);
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + defenderId, mergedState);
-              this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId));
+              this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
               actionResultPayload = {
                 attackerId, attackerType: "PLAYER", targetId: defenderId, targetType: "PLAYER",
@@ -1284,7 +1327,8 @@ export class MatchRoom {
                   authoritativeDistance: Math.max(Math.abs((attackerPos % width) - (targetPos % width)), Math.abs(Math.floor(attackerPos / width) - Math.floor(targetPos / width))),
                   actionCost: nativeCost
                 }) && validLoot;
-              if (authorityValid) {
+              if (authorityValid && Number.isFinite(Number(authorityPending?.createdAt))
+                  && Date.now() - Number(authorityPending.createdAt) <= 15000) {
                 savedMob.hp = targetHp; savedMob.ht = targetHt; savedMob.pos = targetPosAfter;
                 savedMob.shielding = Number(data.targetShieldAfter); savedMob.buffs = JSON.parse(String(data.targetBuffs));
                 if (allDeaths.length > 0) levelSnapshot.heaps = lootSnapshot;
@@ -1299,7 +1343,7 @@ export class MatchRoom {
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "levelSnapshot:" + this.currentDepth, JSON.stringify(levelSnapshot));
-                this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + data.combatRequestId);
+                this.clearPendingCombat(authorityPending);
                 if (allDeaths.length > 0) for (const heap of levelSnapshot.heaps) this.sql.exec(
                   "DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?", Number(heap.pos), this.currentDepth);
                 eventType = "PLAYER_ATTACKED";
@@ -1790,11 +1834,14 @@ export class MatchRoom {
                   requestId: msg.requestId, attackerId: session.playerId, authorityId: publisherId,
                   targetType: "MOB", targetEntityId, targetId: resolvedMobId,
                   targetPos: Number(mobRow[0].pos), attackerPos: Number(attackerRow.pos),
-                  depth: this.currentDepth, attackerStateBefore
+                  targetLockKey: "MOB:" + targetEntityId, depth: this.currentDepth, attackerStateBefore
                 };
-                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                  `pendingCombat:${msg.requestId}`, JSON.stringify(pending));
+                if (!this.reservePendingCombat(pending)) {
+                  ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                    requestId: msg.requestId, sequence: this.currentSequence,
+                    payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_ALREADY_PENDING" }) }));
+                  return;
+                }
                 let authorityFound = false;
                 for (const authorityWs of this.state.getWebSockets()) {
                   const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
@@ -1812,7 +1859,7 @@ export class MatchRoom {
                   }));
                 }
                 if (!authorityFound) {
-                  this.sql.exec(`DELETE FROM room_meta WHERE key = ?`, `pendingCombat:${msg.requestId}`);
+                  this.clearPendingCombat(pending);
                   ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
                     requestId: msg.requestId, sequence: this.currentSequence,
                     payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_AUTHORITY_UNAVAILABLE" }) }));
@@ -1855,9 +1902,14 @@ export class MatchRoom {
               }
               const pending = { requestId: msg.requestId, attackerId: session.playerId, authorityId: defenderId,
                 targetType: "PLAYER", targetId: defenderId, attackerPos, targetPos: defenderPos,
-                depth: this.currentDepth, attackerStateBefore, targetHeroStateBefore: defenderStateBefore };
-              this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                "pendingCombat:" + msg.requestId, JSON.stringify(pending));
+                targetLockKey: "PLAYER:" + defenderId, depth: this.currentDepth,
+                attackerStateBefore, targetHeroStateBefore: defenderStateBefore };
+              if (!this.reservePendingCombat(pending)) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_ALREADY_PENDING" }) }));
+                return;
+              }
               let authorityFound = false;
               for (const authorityWs of this.state.getWebSockets()) {
                 const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
@@ -1870,7 +1922,7 @@ export class MatchRoom {
                     attackerStateBefore, targetHeroStateBefore: defenderStateBefore }) }));
               }
               if (!authorityFound) {
-                this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + msg.requestId);
+                this.clearPendingCombat(pending);
                 ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
                   requestId: msg.requestId, sequence: this.currentSequence,
                   payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_AUTHORITY_UNAVAILABLE" }) }));
