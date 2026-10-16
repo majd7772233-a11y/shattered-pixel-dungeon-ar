@@ -61,6 +61,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
+        WorldSnapshot.clearAppliedSnapshot();
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
@@ -90,6 +91,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
+        WorldSnapshot.clearAppliedSnapshot();
     }
 
     public boolean isMultiplayerActive() {
