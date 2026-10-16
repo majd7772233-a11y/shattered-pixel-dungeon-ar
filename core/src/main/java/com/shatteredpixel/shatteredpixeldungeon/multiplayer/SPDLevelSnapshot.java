@@ -310,22 +310,27 @@ public final class SPDLevelSnapshot {
     }
 
     public static String currentHeroStateJson() {
-        if (Dungeon.hero == null) return "";
+        return currentHeroStateJson(Dungeon.hero);
+    }
+
+    /** Serializes the same native combat/inventory state contract for a remote hero replica. */
+    public static String currentHeroStateJson(com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero) {
+        if (hero == null) return "";
         Bundle heroState = new Bundle();
         Bundle nativeHero = new Bundle();
-        Dungeon.hero.storeInBundle(nativeHero);
+        hero.storeInBundle(nativeHero);
         heroState.put("combatBundle", nativeHero.toString());
         Bundle inventory = new Bundle();
-        Dungeon.hero.belongings.storeInBundle(inventory);
+        hero.belongings.storeInBundle(inventory);
         heroState.put("inventoryBundle", inventory.toString());
-        heroState.put("hp", Dungeon.hero.HP);
-        heroState.put("ht", Dungeon.hero.HT);
-        heroState.put("pos", Dungeon.hero.pos);
-        heroState.put("shielding", Dungeon.hero.shielding());
-        heroState.put("cooldown", Math.max(0f, Dungeon.hero.cooldown()));
-        heroState.put("buffCount", Dungeon.hero.buffs().size());
+        heroState.put("hp", hero.HP);
+        heroState.put("ht", hero.HT);
+        heroState.put("pos", hero.pos);
+        heroState.put("shielding", hero.shielding());
+        heroState.put("cooldown", Math.max(0f, hero.cooldown()));
+        heroState.put("buffCount", hero.buffs().size());
         int buffIndex = 0;
-        for (Buff buff : Dungeon.hero.buffs()) {
+        for (Buff buff : hero.buffs()) {
             Bundle buffBundle = new Bundle();
             buffBundle.put("buff", buff);
             heroState.put("buff_" + buffIndex, buffBundle.toString());
@@ -333,5 +338,4 @@ public final class SPDLevelSnapshot {
             buffIndex++;
         }
         return heroState.toString();
-    }
-}
+    }}
