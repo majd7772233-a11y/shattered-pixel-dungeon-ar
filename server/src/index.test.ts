@@ -480,3 +480,30 @@ describe('Native hero state merge safety', () => {
       { hp: 0, ht: 12, pos: 41, shielding: 3 }, '[]')).toBeNull();
   });
 });
+
+
+describe('Native mob damage wire contract', () => {
+  const validDamage = () => ({
+    combatSchemaVersion: 1, combatDepth: 2, targetType: 'PLAYER', sourceType: 'MOB',
+    sourceEntityId: 'stable-mob-0001', sourcePos: 10, sourceAttackKind: 'MELEE',
+    targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
+    targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
+    engineDamageResult: true, targetBuffs: '[]'
+  });
+
+  it('accepts well-typed native damage state and rejects spoofed fields', () => {
+    expect(hasStrictNativeDamageFields(validDamage())).toBe(true);
+    expect(hasStrictNativeDamageFields({ ...validDamage(), targetHp: '0' })).toBe(false);
+    expect(hasStrictNativeDamageFields({ ...validDamage(), sourceType: 'PLAYER' })).toBe(false);
+    expect(hasStrictNativeDamageFields({ ...validDamage(), sourceEntityId: null })).toBe(false);
+  });
+
+  it('validates hero state fields against the authoritative post-state', () => {
+    const state = JSON.stringify({
+      combatBundle: 'native-combat-bundle', inventoryBundle: 'native-inventory-bundle',
+      hp: 8, ht: 12, pos: 11, shielding: 0, cooldown: 0, buffCount: 0
+    });
+    expect(isValidNativeHeroStateJson(state, { hp: 8, ht: 12, pos: 11, shielding: 0 })).toBe(true);
+    expect(isValidNativeHeroStateJson(state, { hp: 0, ht: 12, pos: 11, shielding: 0 })).toBe(false);
+  });
+});
