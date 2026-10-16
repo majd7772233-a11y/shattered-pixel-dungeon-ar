@@ -370,7 +370,11 @@ public final class MessageRouter {
                         String targetHeroState = stringValue(action.get("targetHeroStateJson"), null);
                         if (targetHeroState != null && !targetHeroState.isEmpty()) {
                             if (targetId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                                int oldPos = Dungeon.hero == null ? -1 : Dungeon.hero.pos;
                                 WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, targetHeroState);
+                                if (Dungeon.hero != null && Dungeon.hero.sprite != null && oldPos >= 0 && oldPos != Dungeon.hero.pos) {
+                                    Dungeon.hero.sprite.move(oldPos, Dungeon.hero.pos);
+                                }
                             } else {
                                 applyRemoteHeroState(targetId, targetHeroState);
                             }
@@ -439,7 +443,11 @@ public final class MessageRouter {
             manager.addRemotePlayer(remote);
         }
         RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+        int oldPos = remote.pos;
         WorldSnapshot.restoreRemoteHeroState(remote.heroInstance, encodedState);
+        if (remote.heroInstance.sprite != null && oldPos != remote.heroInstance.pos) {
+            remote.heroInstance.sprite.move(oldPos, remote.heroInstance.pos);
+        }
         remote.hp = remote.heroInstance.HP;
         remote.ht = remote.heroInstance.HT;
         remote.pos = remote.heroInstance.pos;
