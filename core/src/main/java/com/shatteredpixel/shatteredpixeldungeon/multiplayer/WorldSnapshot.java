@@ -1,6 +1,9 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
@@ -69,8 +72,7 @@ public class WorldSnapshot {
     }
 
     @SuppressWarnings("unchecked")
-    private static void restoreMobBuffs(com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob,
-                                        Map<String, Object> data) {
+    private static void restoreMobBuffs(Char mob, Map<String, Object> data) {
         Object raw = data.get("buffs");
         if (!(raw instanceof List)) return;
         for (Buff old : new java.util.ArrayList<>(mob.buffs())) old.detach();
@@ -88,6 +90,40 @@ public class WorldSnapshot {
                 }
             } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
         }
+    }
+
+    /** Applies the exact native buff bundles captured after combat to a local replica. */
+    public static void restoreNativeCombatBuffs(Char character, String encodedBuffs) {
+        if (character == null || encodedBuffs == null || encodedBuffs.isEmpty()) return;
+        if (encodedBuffs.length() > 200000) throw new IllegalArgumentException("Combat buff payload is oversized");
+        JsonValue root = new JsonReader().parse(encodedBuffs);
+        if (root == null || !root.isArray() || root.size > 256) {
+            throw new IllegalArgumentException("Invalid native combat buff payload");
+        }
+        List<Map<String, Object>> buffs = new ArrayList<>();
+        for (JsonValue value = root.child; value != null; value = value.next) {
+            if (!value.isObject()) throw new IllegalArgumentException("Invalid native combat buff entry");
+            JsonValue bundleValue = value.get("serializedBundle");
+            JsonValue cooldownValue = value.get("cooldown");
+            if (bundleValue == null || !bundleValue.isString() || bundleValue.asString().isEmpty()
+                    || bundleValue.asString().length() > 200000 || cooldownValue == null
+                    || !cooldownValue.isNumber() || cooldownValue.asFloat() < 0f
+                    || cooldownValue.asFloat() > 100000f) {
+                throw new IllegalArgumentException("Invalid native combat buff bundle");
+            }
+            Map<String, Object> buff = new HashMap<>();
+            buff.put("serializedBundle", bundleValue.asString());
+            buff.put("cooldown", cooldownValue.asFloat());
+            buffs.add(buff);
+        }
+        Map<String, Object> state = new HashMap<>();
+        state.put("buffs", buffs);
+        restoreMobBuffs(character, state);
+    }
+
+    /** Restores class/subclass, native combat stats, equipment, talents and buffs on a remote hero. */
+    public static void restoreRemoteHeroState(Hero hero, String encodedState) {
+        restoreHeroState(hero, encodedState);
     }
 
     private static void restoreHeroState(Hero hero, String encodedState) {
@@ -480,7 +516,8 @@ public class WorldSnapshot {
                 if (!authoritativeMobs.contains(stale)) {
                     manager.removeServerEntityIdForActor(stale.id());
                     Dungeon.level.mobs.remove(stale);
-                    stale.destroy();
+                    Actor.remove(stale);
+                    for (Buff oldBuff : new java.util.ArrayList<>(stale.buffs())) oldBuff.detach();
                     if (stale.sprite != null) stale.sprite.remove();
                 }
             }
