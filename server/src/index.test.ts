@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, isValidNativeCombatBuffs, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -368,5 +368,27 @@ describe('Native combat event contract', () => {
 
   it('rejects a client claiming an attacker identity it does not own', () => {
     expect(isValidNativeCombatEvent(validEvent({ attackerId: 'player-b' }))).toBe(false);
+  });
+});
+
+
+describe('Native combat buff payload validation', () => {
+  it('accepts bounded native buff bundles and an explicit empty buff list', () => {
+    expect(isValidNativeCombatBuffs('[]')).toBe(true);
+    expect(isValidNativeCombatBuffs(JSON.stringify([
+      { serializedBundle: 'native-buff-bundle', cooldown: 2.5 }
+    ]))).toBe(true);
+  });
+
+  it('rejects malformed, oversized, or invalid native buff payloads', () => {
+    expect(isValidNativeCombatBuffs('{bad json')).toBe(false);
+    expect(isValidNativeCombatBuffs('{"serializedBundle":"not-an-array"}')).toBe(false);
+    expect(isValidNativeCombatBuffs(JSON.stringify([
+      { serializedBundle: '', cooldown: 0 }
+    ]))).toBe(false);
+    expect(isValidNativeCombatBuffs(JSON.stringify([
+      { serializedBundle: 'native-buff-bundle', cooldown: -1 }
+    ]))).toBe(false);
+    expect(isValidNativeCombatBuffs('x'.repeat(200001))).toBe(false);
   });
 });
