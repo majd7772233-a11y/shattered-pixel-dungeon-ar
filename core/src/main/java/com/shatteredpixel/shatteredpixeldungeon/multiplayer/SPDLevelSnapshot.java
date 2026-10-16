@@ -32,6 +32,8 @@ public final class SPDLevelSnapshot {
     public long seed;
     public boolean locked;
     public String feeling;
+    /** Native Bundle with custom tilemaps/walls, mob spawn classes and respawner state. */
+    public String nativeLevelMetadataBundle = "";
     public List<Integer> visitedPositions = new ArrayList<>();
     public List<Integer> mappedPositions = new ArrayList<>();
     public List<Tile> tiles = new ArrayList<>();
@@ -139,6 +141,7 @@ public final class SPDLevelSnapshot {
         out.seed = Dungeon.seedCurDepth();
         out.locked = level.locked;
         out.feeling = level.multiplayerFeelingName();
+        out.nativeLevelMetadataBundle = level.multiplayerMetadataBundle();
         for (int i = 0; i < level.length(); i++) {
             if (level.visited != null && level.visited[i]) out.visitedPositions.add(i);
             if (level.mapped != null && level.mapped[i]) out.mappedPositions.add(i);
