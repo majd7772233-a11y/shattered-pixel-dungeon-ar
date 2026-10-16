@@ -488,6 +488,10 @@ public abstract class Level implements Bundlable {
 		metadata.put("customTiles", customTiles == null ? new ArrayList<CustomTilemap>() : customTiles);
 		metadata.put("customWalls", customWalls == null ? new ArrayList<CustomTilemap>() : customWalls);
 		metadata.put("mobs_to_spawn", mobsToSpawn == null ? new Class[0] : mobsToSpawn.toArray(new Class[0]));
+		metadata.put("itemsToSpawn", itemsToSpawn == null ? new ArrayList<Item>() : itemsToSpawn);
+		metadata.put("viewDistance", viewDistance);
+		metadata.put("color1", color1);
+		metadata.put("color2", color2);
 		if (respawner != null) {
 			metadata.put("respawner", respawner);
 			metadata.put("respawnerCooldown", Math.max(0f, respawner.cooldown()));
@@ -513,6 +517,15 @@ public abstract class Level implements Bundlable {
 			if (spawnClasses.length > 512) return false;
 			for (Class<?> spawnClass : spawnClasses)
 				if (spawnClass != null && !Mob.class.isAssignableFrom(spawnClass)) return false;
+			java.util.Collection<Bundlable> pendingItems = metadata.getCollection("itemsToSpawn");
+			if (pendingItems.size() > 512) return false;
+			for (Bundlable value : pendingItems) if (!(value instanceof Item)) return false;
+			int restoredViewDistance = metadata.getInt("viewDistance");
+			int restoredColor1 = metadata.getInt("color1");
+			int restoredColor2 = metadata.getInt("color2");
+			if (restoredViewDistance < 1 || restoredViewDistance > 64
+					|| restoredColor1 < 0 || restoredColor1 > 0xFFFFFF
+					|| restoredColor2 < 0 || restoredColor2 > 0xFFFFFF) return false;
 			return true;
 		} catch (RuntimeException invalidMetadata) {
 			return false;
@@ -534,6 +547,11 @@ public abstract class Level implements Bundlable {
 			for (Class<?> spawnClass : metadata.getClassArray("mobs_to_spawn")) {
 				if (spawnClass != null) mobsToSpawn.add((Class<? extends Mob>) spawnClass);
 			}
+			itemsToSpawn.clear();
+			for (Bundlable value : metadata.getCollection("itemsToSpawn")) itemsToSpawn.add((Item) value);
+			viewDistance = metadata.getInt("viewDistance");
+			color1 = metadata.getInt("color1");
+			color2 = metadata.getInt("color2");
 			if (respawner != null) Actor.remove(respawner);
 			respawner = metadata.contains("respawner") ? (MobSpawner) metadata.get("respawner") : null;
 			if (respawner != null) {
