@@ -821,6 +821,18 @@ public abstract class Mob extends Char {
 	@Override
 	public void damage( int dmg, Object src ) {
 
+		boolean nativePeriodicSource = src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+		String serverEntityId = manager.getServerEntityId(id());
+		int hpBefore = HP;
+		int htBefore = HT;
+		int posBefore = pos;
+		int shieldBefore = shielding();
+		String buffsBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this);
+
 		if (!isInvulnerable(src.getClass())) {
 			if (state == SLEEPING) {
 				state = WANDERING;
@@ -840,8 +852,38 @@ public abstract class Mob extends Char {
 				}
 			}
 		}
-		
+
 		super.damage( dmg, src );
+
+		int hpAfter = Math.max(0, HP);
+		int htAfter = Math.max(1, HT);
+		int shieldAfter = shielding();
+		String buffsAfter = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this);
+		boolean changed = hpBefore != hpAfter || htBefore != htAfter || posBefore != pos
+				|| shieldBefore != shieldAfter || !buffsBefore.equals(buffsAfter);
+		if (nativePeriodicSource && changed && !Hero.isNativeAttackInProgress()
+				&& manager.isMultiplayerActive() && manager.isLevelPublisher()
+				&& serverEntityId != null && serverEntityId.length() >= 8) {
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			String outcome = "{\"combatSchemaVersion\":1"
+					+ ",\"combatDepth\":" + Dungeon.depth
+					+ ",\"entityId\":" + json.toJson(serverEntityId)
+					+ ",\"sourceClass\":" + json.toJson(src.getClass().getName())
+					+ ",\"hpBefore\":" + hpBefore
+					+ ",\"htBefore\":" + htBefore
+					+ ",\"posBefore\":" + posBefore
+					+ ",\"shieldBefore\":" + shieldBefore
+					+ ",\"buffsBefore\":" + json.toJson(buffsBefore)
+					+ ",\"hpAfter\":" + hpAfter
+					+ ",\"htAfter\":" + htAfter
+					+ ",\"posAfter\":" + pos
+					+ ",\"shieldAfter\":" + shieldAfter
+					+ ",\"buffsAfter\":" + json.toJson(buffsAfter)
+					+ ",\"engineDamageResult\":true"
+					+ (hpAfter <= 0 ? ",\"heaps\":" + com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeapsJson() : "")
+					+ "}";
+			manager.sendAction(com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType.SYNC_MOB_STATE, outcome);
+		}
 	}
 	
 	
