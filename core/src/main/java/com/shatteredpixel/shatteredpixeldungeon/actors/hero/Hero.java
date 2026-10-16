@@ -588,7 +588,7 @@ public class Hero extends Char {
 					targetType = "PLAYER";
 					targetIdJson = "\"" + remote.playerId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 				}
-			}}
+			}
 			int targetHp = Math.max(0, enemy.HP);
 			int dealt = Math.max(0, targetHpBefore - targetHp);
 			String action = "{\"targetId\":" + targetIdJson
