@@ -417,7 +417,8 @@ public final class MessageRouter {
                 }
             }
         } catch (RuntimeException ignored) {
-            // Keep the last known good world; caller can request a fresh snapshot.
+            // Do not keep using a partially reconciled combat state.
+            MultiplayerManager.getInstance().requestResync(message.sequence);
         }
     }
 
