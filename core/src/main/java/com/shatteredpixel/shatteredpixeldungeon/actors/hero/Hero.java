@@ -1734,6 +1734,7 @@ public class Hero extends Char {
 		int targetHtBefore = HT;
 		int targetPosBefore = pos;
 		int targetShieldBefore = shielding();
+		String targetBuffsBefore = SPDLevelSnapshot.currentCombatBuffsJson(this);
 		int sourcePosBefore = src instanceof Mob ? sourceMobPosBefore : (src instanceof Char ? ((Char) src).pos : -1);
 		int preHP = HP + targetShieldBefore;
 		if (src instanceof Hunger) preHP -= targetShieldBefore;
@@ -1789,6 +1790,7 @@ public class Hero extends Char {
 						+ ",\"targetPosAfter\":" + pos
 						+ ",\"targetShieldBefore\":" + targetShieldBefore
 						+ ",\"targetShieldAfter\":" + targetShieldAfter
+						+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
 						+ ",\"targetState\":\"" + state + "\""
 						+ ",\"damage\":" + Math.max(0, targetHpBefore - Math.max(0, HP))
 						+ ",\"effectiveDamage\":" + Math.max(0, effectiveDamage)
