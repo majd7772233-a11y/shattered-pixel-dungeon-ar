@@ -311,6 +311,7 @@ describe('Native combat event contract', () => {
     attackerPos: 40, authoritativeAttackerPos: 40,
     targetType: 'MOB', targetEntityId: 'stable-mob-0001', expectedTargetEntityId: 'stable-mob-0001',
     targetAlive: true, targetPos: 41, authoritativeTargetPos: 41,
+    targetPosAfter: 41, levelSize: 1024, targetMoveDistance: 0,
     previousHp: 12, previousHt: 12, targetHpBefore: 12, targetHtBefore: 12,
     targetHp: 7, targetHt: 12, damage: 5, hit: true,
     ranged: false, attackKind: 'MELEE', distance: 1, authoritativeDistance: 1, actionCost: 1,
@@ -357,6 +358,12 @@ describe('Native combat event contract', () => {
   it('rejects missing or mismatched stable target identity for mobs', () => {
     expect(isValidNativeCombatEvent(validEvent({ targetEntityId: null }))).toBe(false);
     expect(isValidNativeCombatEvent(validEvent({ expectedTargetEntityId: 'another-mob-0001' }))).toBe(false);
+  });
+
+  it('validates native knockback position bounds and displacement', () => {
+    expect(isValidNativeCombatEvent(validEvent({ targetPosAfter: 45, targetMoveDistance: 4 }))).toBe(true);
+    expect(isValidNativeCombatEvent(validEvent({ targetPosAfter: 1024, targetMoveDistance: 0 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ targetMoveDistance: 9 }))).toBe(false);
   });
 
   it('rejects a client claiming an attacker identity it does not own', () => {
