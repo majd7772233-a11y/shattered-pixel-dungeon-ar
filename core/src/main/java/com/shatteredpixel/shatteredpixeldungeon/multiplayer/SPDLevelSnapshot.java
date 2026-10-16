@@ -77,6 +77,8 @@ public final class SPDLevelSnapshot {
         public int pos;
         public int hp;
         public int ht;
+        /** Derived native shield total captured so the server can validate combat pre-state. */
+        public int shielding;
         public String state;
         public String serializedBundle = "";
         public int defenseSkill;
@@ -193,6 +195,7 @@ public final class SPDLevelSnapshot {
                 m.pos = mob.pos;
                 m.hp = mob.HP;
                 m.ht = mob.HT;
+                m.shielding = Math.max(0, mob.shielding());
                 m.state = mob.state == null ? "" : mob.state.getClass().getSimpleName();
                 m.defenseSkill = mob.defenseSkill;
                 m.baseSpeed = mob.multiplayerBaseSpeed();
