@@ -844,28 +844,94 @@ export class MatchRoom {
           const actionStr = payload.action || payload.data?.action;
 
           if (actionStr === "SYNC_HERO_STATE") {
-            const hp = Number(payload.data?.targetHp);
-            const ht = Number(payload.data?.targetHt);
-            if (Number.isInteger(hp) && hp >= 0 && Number.isInteger(ht) && ht > 0) {
-              const previous = this.sql.exec(`SELECT hp, state FROM players WHERE player_id = ?`, session.playerId).toArray();
-              if (previous.length > 0) {
-                const oldState = String(previous[0].state);
-                const newState = hp === 0 && this.gameMode !== "DEATHMATCH" ? "DEAD" : "ALIVE";
-                this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ? WHERE player_id = ?`,
-                  Math.min(hp, ht), ht, newState, session.playerId);
-                if (oldState !== "DEAD" && newState === "DEAD") {
-                  this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
-                }
-                eventType = "PLAYER_DAMAGED";
-                actionResultPayload = {
-                  targetId: session.playerId, targetType: "PLAYER",
-                  targetHp: Math.min(hp, ht), targetHt: ht,
-                  targetState: newState, damage: Math.max(0, Number(payload.data?.damage) || 0),
-                  engineResolved: true
-                };
-                actionValid = true;
-                actionCost = 0;
+            const data = payload.data;
+            const hp = data?.targetHp;
+            const ht = data?.targetHt;
+            const damage = data?.damage;
+            const targetPosBefore = data?.targetPosBefore;
+            const targetPosAfter = data?.targetPosAfter;
+            const targetShieldBefore = data?.targetShieldBefore;
+            const targetShieldAfter = data?.targetShieldAfter;
+            const playerRow = this.sql.exec(`SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, session.playerId).toArray()[0];
+            const previousHeroRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${session.playerId}`).toArray()[0];
+            let previousHeroState: any = null;
+            try {
+              previousHeroState = previousHeroRow && typeof previousHeroRow.value === "string"
+                ? JSON.parse(String(previousHeroRow.value)) : null;
+            } catch (_) { previousHeroState = null; }
+            const sourceLevelRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+              `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let sourceLevel: any = null;
+            try {
+              sourceLevel = sourceLevelRow && typeof sourceLevelRow.value === "string"
+                ? JSON.parse(String(sourceLevelRow.value)) : null;
+            } catch (_) { sourceLevel = null; }
+            const sourceMobId = resolveServerMobIdByEntityId(sourceLevel, data?.sourceEntityId);
+            const sourceMob = sourceMobId == null ? [] : this.sql.exec(
+              `SELECT pos, hp FROM mobs WHERE mob_id = ? AND depth = ?`, sourceMobId, this.currentDepth
+            ).toArray();
+            const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
+            const width = Number(levelRow?.width || 0), height = Number(levelRow?.height || 0);
+            const levelSize = width * height;
+            const sourcePos = Number(data?.sourcePos);
+            const sourceDistance = playerRow && width > 0
+              ? Math.max(Math.abs((sourcePos % width) - (Number(targetPosBefore) % width)),
+                  Math.abs(Math.floor(sourcePos / width) - Math.floor(Number(targetPosBefore) / width)))
+              : Number.POSITIVE_INFINITY;
+            const targetMoveDistance = playerRow && width > 0
+              ? Math.max(Math.abs((Number(targetPosAfter) % width) - (Number(targetPosBefore) % width)),
+                  Math.abs(Math.floor(Number(targetPosAfter) / width) - Math.floor(Number(targetPosBefore) / width)))
+              : Number.POSITIVE_INFINITY;
+            const newHeroStateValid = isValidNativeHeroStateJson(payload.heroStateJson, {
+              hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter)
+            });
+            const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
+              && (sourceDistance <= 1
+                ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
+                : sourceDistance <= 8 && this.hasLineOfSight(sourcePos, Number(targetPosBefore), this.currentDepth));
+            const targetPosValid = Number.isInteger(targetPosAfter) && targetPosAfter >= 0 && targetPosAfter < levelSize
+              && targetMoveDistance <= 8
+              && (targetPosAfter === targetPosBefore || this.isValidCombatTargetPosition(Number(targetPosAfter), this.currentDepth));
+            const previousHp = Number(playerRow?.hp);
+            const previousHt = Number(playerRow?.ht);
+            const validDamage = !!playerRow && String(playerRow.state) === "ALIVE"
+              && hasStrictNativeDamageFields(data)
+              && data.combatDepth === this.currentDepth
+              && Number.isInteger(hp) && Number.isInteger(ht) && Number.isInteger(damage)
+              && Number.isInteger(targetPosBefore) && targetPosBefore === Number(playerRow.pos)
+              && Number.isInteger(targetPosAfter) && Number.isInteger(targetShieldBefore) && Number.isInteger(targetShieldAfter)
+              && Number.isInteger(previousHeroState?.shielding)
+              && targetShieldBefore === previousHeroState.shielding
+              && targetShieldAfter >= 0 && targetShieldAfter <= 100000
+              && hp >= 0 && hp <= previousHp && ht === previousHt
+              && data.targetHpBefore === previousHp && data.targetHtBefore === previousHt
+              && isValidNativeHpTransition(previousHp, hp, damage)
+              && (damage > 0 || targetShieldAfter < targetShieldBefore)
+              && newHeroStateValid && isValidNativeCombatBuffs(data.targetBuffs)
+              && sourceMob.length > 0 && Number(sourceMob[0].hp) > 0
+              && Number(sourceMob[0].pos) === sourcePos && geometryValid && targetPosValid;
+            if (validDamage) {
+              const oldState = String(playerRow.state);
+              const newState = hp === 0
+                ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD")
+                : "ALIVE";
+              this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
+                hp, ht, targetPosAfter, newState, session.playerId);
+              if (oldState !== "DEAD" && oldState !== "SPECTATOR" && (newState === "DEAD" || newState === "SPECTATOR")) {
+                this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
               }
+              eventType = "PLAYER_DAMAGED";
+              actionResultPayload = {
+                sourceType: "MOB", sourceEntityId: data.sourceEntityId, sourcePos,
+                sourceAttackKind: data.sourceAttackKind, targetId: session.playerId, targetType: "PLAYER",
+                targetHpBefore: previousHp, targetHtBefore: previousHt, targetHp: hp, targetHt: ht,
+                targetPos: targetPosBefore, targetPosAfter, targetShieldBefore, targetShieldAfter,
+                targetState: newState, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
+                targetBuffs: data.targetBuffs, targetHeroStateJson: payload.heroStateJson,
+                engineResolved: true
+              };
+              actionValid = true;
+              actionCost = 0;
             }
           } else if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
