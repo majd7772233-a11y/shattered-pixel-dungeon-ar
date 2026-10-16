@@ -289,10 +289,12 @@ public final class MessageRouter {
             if (WorldSnapshot.restoreWorld(snapshot)) {
                 manager.markSnapshotApplied(snapshot.sequence);
             } else {
+                WorldSnapshot.rollbackToLastApplied();
                 manager.requestResync(snapshot.sequence);
             }
         } catch (RuntimeException ignored) {
-            // Preserve the last acknowledged sequence and request a clean authoritative snapshot.
+            // Restore the last known-good snapshot before asking the server to resync.
+            WorldSnapshot.rollbackToLastApplied();
             manager.requestResync(message.sequence);
         }
     }
