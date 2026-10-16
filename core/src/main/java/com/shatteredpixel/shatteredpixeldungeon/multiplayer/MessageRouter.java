@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -74,13 +75,21 @@ public final class MessageRouter {
                 } else if ("MOB".equals(targetType) && targetId != null && hp >= 0 && Dungeon.level != null) {
                     Integer localActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(targetId);
                     if (localActorId == null) return;
-                    for (Mob mob : Dungeon.level.mobs) {
+                    for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
                         if (mob.id() == localActorId) {
                             mob.HP = hp;
-                            if (hp <= 0) mob.die(Dungeon.hero);
+                            if (hp <= 0) {
+                                // The authoritative attack already ran native death/loot logic on
+                                // its owner. Remove the remote copy without firing rewards or drops.
+                                Dungeon.level.mobs.remove(mob);
+                                Actor.remove(mob);
+                                if (mob.sprite != null) mob.sprite.remove();
+                                mob.destroy();
+                            }
                             break;
                         }
                     }
+                    if (hp <= 0) MultiplayerManager.getInstance().requestResync(message.sequence);
                 }
             } else if ("ITEM_PICKED_UP".equals(eventType)) {
                 // The local SPD engine already removed the picked item from this player's heap.
