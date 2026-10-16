@@ -232,7 +232,10 @@
         "damage",
         "engineDistance",
         "engineActionCost",
-        "targetBuffs"
+        "targetBuffs",
+        "targetShieldBefore",
+        "targetShieldAfter",
+        "targetHeroStateJson"
       ],
       "properties": {
         "targetEntityId": {
@@ -328,6 +331,24 @@
           "type": "string",
           "maxLength": 200000,
           "description": "JSON array of serialized native Buff bundles and cooldowns captured after the attack."
+        },
+        "targetShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetHeroStateJson": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000,
+          "description": "Full native post-state when the target is a player; null for mob targets. The server preserves the target's previously trusted class/equipment/talents."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
@@ -414,7 +435,10 @@
         "engineDistance",
         "engineActionCost",
         "targetBuffs",
-        "attackerStateJson"
+        "attackerStateJson",
+        "targetShieldBefore",
+        "targetShieldAfter",
+        "targetHeroStateJson"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -521,6 +545,22 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200000
+        },
+        "targetShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetHeroStateJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000,
+          "description": "Server-sanitized target state; trusted class/equipment/talents are retained from the previous authoritative player state."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
