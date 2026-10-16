@@ -109,11 +109,17 @@ export function isValidNativeCombatEvent(event: any): boolean {
   const distance = Number(event?.distance);
   const authoritativeDistance = Number(event?.authoritativeDistance);
   const actionCost = Number(event?.actionCost);
+  const targetPosAfter = Number(event?.targetPosAfter);
+  const levelSize = Number(event?.levelSize);
+  const targetMoveDistance = Number(event?.targetMoveDistance);
   const ranged = event?.ranged === true;
   if (Number(event?.schemaVersion) !== 1 || Number(event?.depth) !== Number(event?.currentDepth)) return false;
   if (typeof event?.sessionPlayerId !== "string" || event?.attackerId !== event.sessionPlayerId) return false;
   if (!Number.isInteger(Number(event?.attackerPos)) || Number(event.attackerPos) !== Number(event.authoritativeAttackerPos)) return false;
   if (!Number.isInteger(Number(event?.targetPos)) || Number(event.targetPos) !== Number(event.authoritativeTargetPos)) return false;
+  if (!Number.isInteger(targetPosAfter) || !Number.isInteger(levelSize) || levelSize < 1
+    || targetPosAfter < 0 || targetPosAfter >= levelSize
+    || !Number.isFinite(targetMoveDistance) || targetMoveDistance < 0 || targetMoveDistance > 8) return false;
   if (event?.targetType === "MOB") {
     if (typeof event?.targetEntityId !== "string" || event.targetEntityId.length < 8
       || event.targetEntityId !== event.expectedTargetEntityId) return false;
@@ -835,6 +841,13 @@ export class MatchRoom {
                     const dx = Math.abs((attackerPos % width) - (defPos % width));
                     const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(defPos / width));
                     const authoritativeDistance = Math.max(dx, dy);
+                    const targetPosAfter = Number(payload.data?.targetPosAfter ?? requestedPos);
+                    const targetMoveDistance = Math.max(
+                      Math.abs((targetPosAfter % width) - (defPos % width)),
+                      Math.abs(Math.floor(targetPosAfter / width) - Math.floor(defPos / width))
+                    );
+                    const levelSize = Number(widthRow[0]?.width || 0) * Number(
+                      this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
                       && isValidNativeCombatEvent({
@@ -845,6 +858,7 @@ export class MatchRoom {
                         targetType: "PLAYER", targetEntityId: payload.data?.targetEntityId ?? null,
                         expectedTargetEntityId: null, targetAlive: String(defenderRow[0].state) === "ALIVE",
                         targetPos: requestedPos, authoritativeTargetPos: defPos,
+                        targetPosAfter, levelSize, targetMoveDistance,
                         previousHp: Number(defenderRow[0].hp), previousHt: Number(defenderRow[0].ht),
                         targetHpBefore: payload.data?.targetHpBefore, targetHtBefore: payload.data?.targetHtBefore,
                         targetHp, targetHt, damage: reportedDamage,
@@ -856,8 +870,8 @@ export class MatchRoom {
                       const newState = newHp === 0
                         ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR")
                         : "ALIVE";
-                      this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ? WHERE player_id = ?`,
-                        newHp, targetHt, newState, String(targetId));
+                      this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ?, pos = ? WHERE player_id = ?`,
+                        newHp, targetHt, newState, targetPosAfter, String(targetId));
                       if (newHp === 0) {
                         this.sql.exec(`UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?`, session.playerId);
                         this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, String(targetId));
@@ -866,7 +880,8 @@ export class MatchRoom {
                       actionResultPayload = {
                         attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
                         hit: payload.data?.engineHit === true, damage: Math.min(targetHt, reportedDamage),
-                        targetHp: newHp, targetHt, targetState: newState, engineResolved: true
+                        targetHp: newHp, targetHt, targetState: newState,
+                        targetPos: defPos, targetPosAfter, engineResolved: true
                       };
                       actionValid = true;
                       actionCost = nativeCost;
@@ -892,6 +907,13 @@ export class MatchRoom {
                     const dx = Math.abs((attackerPos % width) - (mobPos % width));
                     const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(mobPos / width));
                     const authoritativeDistance = Math.max(dx, dy);
+                    const targetPosAfter = Number(payload.data?.targetPosAfter ?? requestedPos);
+                    const targetMoveDistance = Math.max(
+                      Math.abs((targetPosAfter % width) - (mobPos % width)),
+                      Math.abs(Math.floor(targetPosAfter / width) - Math.floor(mobPos / width))
+                    );
+                    const levelSize = Number(widthRow[0]?.width || 0) * Number(
+                      this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const combatLevelRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
                       `levelSnapshot:${this.currentDepth}`).toArray()[0];
@@ -912,6 +934,7 @@ export class MatchRoom {
                         targetType: "MOB", targetEntityId, expectedTargetEntityId: String(expectedEntityId),
                         targetAlive: Number(mobRow[0].hp) > 0,
                         targetPos: requestedPos, authoritativeTargetPos: mobPos,
+                        targetPosAfter, levelSize, targetMoveDistance,
                         previousHp: Number(mobRow[0].hp), previousHt: Number(mobRow[0].ht),
                         targetHpBefore: payload.data?.targetHpBefore, targetHtBefore: payload.data?.targetHtBefore,
                         targetHp, targetHt, damage: reportedDamage,
@@ -921,7 +944,8 @@ export class MatchRoom {
                     if (validNativeTarget) {
                       const newHp = targetHp;
                       const rawDmg = reportedDamage;
-                      this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ? AND depth = ?`, newHp, targetId, this.currentDepth);
+                      this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                        newHp, targetPosAfter, targetId, this.currentDepth);
                       if (newHp <= 0 && Array.isArray(payload.data?.heaps) && payload.data.heaps.length <= 1024) {
                         const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
                         try {
@@ -942,7 +966,7 @@ export class MatchRoom {
                       actionResultPayload = {
                         attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
-                        targetHt, engineResolved: true
+                        targetHt, targetPos: mobPos, targetPosAfter, engineResolved: true
                       };
                       actionValid = true;
                       actionCost = nativeCost;
