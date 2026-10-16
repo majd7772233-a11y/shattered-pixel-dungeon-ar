@@ -1260,6 +1260,7 @@ export class MatchRoom {
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
+                      && hasMatchingNativeHeroBuffSnapshot(payload.data?.targetBuffsBefore, defenderHeroState)
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && Number.isInteger(targetShieldBefore) && targetShieldBefore >= 0 && targetShieldBefore <= 100000
