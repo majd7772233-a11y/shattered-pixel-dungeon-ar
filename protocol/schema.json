@@ -207,6 +207,70 @@
           "type": "array"
         }
       }
+    },
+    "NativeAttackPayload": {
+      "type": "object",
+      "required": [
+        "targetEntityId",
+        "targetType",
+        "engineResult",
+        "engineHit",
+        "targetPos",
+        "targetHp",
+        "targetHt",
+        "damage",
+        "engineDistance",
+        "engineActionCost"
+      ],
+      "properties": {
+        "targetEntityId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Required for mob targets; resolves the authoritative room entity, not local Actor.id()."
+        },
+        "targetType": {
+          "type": "string",
+          "enum": [
+            "MOB",
+            "PLAYER"
+          ]
+        },
+        "engineResult": {
+          "type": "boolean"
+        },
+        "engineHit": {
+          "type": "boolean"
+        },
+        "targetPos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "damage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "engineDistance": {
+          "type": "number",
+          "minimum": 0
+        },
+        "engineActionCost": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        }
+      }
     }
   }
 }
