@@ -1713,25 +1713,52 @@ public class Hero extends Char {
 		//we ceil this one to avoid letting the player easily take 0 dmg from tenacity early
 		dmg = (int)Math.ceil(dmg * RingOfTenacity.damageMultiplier( this ));
 
-		int preHP = HP + shielding();
-		if (src instanceof Hunger) preHP -= shielding();
+		int targetHpBefore = HP;
+		int targetHtBefore = HT;
+		int targetPosBefore = pos;
+		int targetShieldBefore = shielding();
+		int sourcePosBefore = src instanceof Char ? ((Char) src).pos : -1;
+		int preHP = HP + targetShieldBefore;
+		if (src instanceof Hunger) preHP -= targetShieldBefore;
 		super.damage( dmg, src );
-		int postHP = HP + shielding();
-		if (src instanceof Hunger) postHP -= shielding();
+		int targetShieldAfter = shielding();
+		int postHP = HP + targetShieldAfter;
+		if (src instanceof Hunger) postHP -= targetShieldAfter;
 		int effectiveDamage = preHP - postHP;
 
 		if (effectiveDamage <= 0) return;
 
-		if (this == Dungeon.hero && src instanceof Char
+		if (this == Dungeon.hero && src instanceof Mob
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
-			String state = HP <= 0 ? "DEAD" : "ALIVE";
-			String damageState = "{\"targetType\":\"PLAYER\","
-					+ "\"targetHp\":" + Math.max(0, HP)
-					+ ",\"targetHt\":" + Math.max(1, HT)
-					+ ",\"targetState\":\"" + state + "\""
-					+ ",\"damage\":" + Math.max(0, effectiveDamage)
-					+ ",\"engineDamageResult\":true}";
-			MultiplayerManager.getInstance().sendAction(NetworkActionType.SYNC_HERO_STATE, damageState);
+			MultiplayerManager manager = MultiplayerManager.getInstance();
+			Mob sourceMob = (Mob) src;
+			String sourceEntityId = manager.getServerEntityId(sourceMob.id());
+			if (sourceEntityId != null) {
+				String state = HP <= 0 ? "DEAD" : "ALIVE";
+				String damageState = "{\"targetType\":\"PLAYER\","
+						+ "\"combatSchemaVersion\":1"
+						+ ",\"combatDepth\":" + Dungeon.depth
+						+ ",\"sourceType\":\"MOB\""
+						+ ",\"sourceEntityId\":" + new com.badlogic.gdx.utils.Json().toJson(sourceEntityId)
+						+ ",\"sourcePos\":" + sourcePosBefore
+						+ ",\"sourceAttackKind\":\"" + (Dungeon.level.distance(sourcePosBefore, targetPosBefore) <= 1 ? "MELEE" : "RANGED") + "\""
+						+ ",\"targetHpBefore\":" + targetHpBefore
+						+ ",\"targetHtBefore\":" + targetHtBefore
+						+ ",\"targetHp\":" + Math.max(0, HP)
+						+ ",\"targetHt\":" + Math.max(1, HT)
+						+ ",\"targetPosBefore\":" + targetPosBefore
+						+ ",\"targetPosAfter\":" + pos
+						+ ",\"targetShieldBefore\":" + targetShieldBefore
+						+ ",\"targetShieldAfter\":" + targetShieldAfter
+						+ ",\"targetState\":\"" + state + "\""
+						+ ",\"damage\":" + Math.max(0, targetHpBefore - Math.max(0, HP))
+						+ ",\"effectiveDamage\":" + Math.max(0, effectiveDamage)
+						+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(this))
+						+ ",\"engineDamageResult\":true}";
+				manager.sendAction(NetworkActionType.SYNC_HERO_STATE, damageState);
+			} else {
+				manager.requestResync(manager.getLastSequence());
+			}
 		}
 
 		if (buff(Challenge.DuelParticipant.class) != null){
