@@ -110,7 +110,7 @@ These pieces are the starting point, not evidence of complete behavior. The most
 - [ ] Trace every native combat path end-to-end in `Char.attack`, `Char.hit`, `Char.drRoll`, `Hero.attack`, `Mob.attack`, `Hero.damage`, `Char.damage`, armor/weapon procs and all relevant buffs. The primary attack and mob-to-hero damage paths have been traced; secondary and periodic damage paths still need a complete audit.
 - [ ] Preserve every native hit/miss, damage-after-procs, HP/HT, death, stable attacker/target identity, melee/ranged kind, actual action cost, shield/buff changes, knockback and kill-loot effect exactly once. Primary attacks, mob-to-hero damage, shield/buff state, reactive source-mob damage, and death loot snapshots are now represented; secondary multi-target/periodic effects and player resurrection/Ankh outcomes are not yet fully reconciled.
 - [x] Define a versioned combat outcome contract with server-stamped match/depth/sequence/request ID, stable IDs, pre/post state, and native outcome fields in `protocol/schema.json`.
-- [ ] Harden the server so all impossible/stale changes are rejected. It now validates sender/target identity, current depth, stable entity mapping, legal range/LOS, HP/HT transitions, shield/buff bundle bounds, occupied knockback destinations, request replay, and loot changes outside confirmed death cells. A consistent but forged client-reported damage amount is still possible; this item is not complete.
+- [ ] Harden the server so all impossible/stale changes are rejected. It validates sender/target identity, current depth, stable entity mapping, legal range/LOS, HP/HT transitions, shield/buff bundle bounds and pre-state, occupied knockback destinations, request replay, and loot changes outside confirmed death cells. Native target buff pre-state is now checked against saved mob state and saved player hero bundles; mob-to-player damage also checks the player's pre-damage buff bundles. A consistent but forged client-reported damage amount is still possible; this item is not complete.
 - [x] Document the current trust boundary: the Worker validates client-resolved native outcomes but does **not** independently reproduce SPD Java RNG or damage formulas. The server rejects impossible transitions, but this is not cheat-proof combat authority.
 - [ ] Replicate misses as consumed turns and zero-damage/shield-only hits, buffs, armor procs, death and loot exactly once across every attack path. Direct attacks and mob-to-hero damage are handled; all secondary and periodic paths remain open.
 - [x] Serialize and reconcile remote hero class/subclass, trusted equipment/talents, HP/HT/position, shield total, cooldown and native buff bundles. PvP outcome merges preserve the defender's previously trusted class/equipment/talents instead of accepting attacker-supplied replacements.
@@ -321,6 +321,15 @@ Do not mark Phase 2 complete until that gap is closed by an authority capable of
 
 
 ---
+
+## 2026-10-16 Phase 2 continuation — NOT complete
+
+- Latest combat-code checkpoint: `e911d7a7e76f85a1c3a7b10675715f2ee62d1ef1`; validation workflow [38937930225](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38937930225) was still running when this checkpoint was recorded. Recheck the exact SHA and both jobs before reporting.
+- Tightened native mob-to-hero damage validation by capturing `targetBuffsBefore` in `Hero.damage`, validating it against the saved authoritative hero bundle, and requiring it in the native damage contract.
+- Tightened PvP attack validation by comparing the attack's target buff pre-state against the defender's saved hero state.
+- Added `targetBuffsBefore` to server-broadcast combat outcomes and corrected `NativeCombatOutcomeEvent` schema requirements so source-mob state is conditionally required only for mob-sourced outcomes. Added explicit `NativeMobDamagePayload` schema and target-type conditionals for attack payloads.
+- Added backend tests for matching/mismatched/malformed saved hero buff state and missing native pre-state fields.
+- Phase 2 remains **In progress**. The Worker still does not execute original SPD Java attack/damage RNG or proc logic, so a modified client can submit a plausible, internally consistent in-range damage value. Full secondary/periodic-effect and PvP death/Ankh convergence tests are still not complete. Do not claim cheat-proof combat or physical two-device verification.
 
 ## 2026-10-16 Continuation checkpoint — NOT a phase completion
 
