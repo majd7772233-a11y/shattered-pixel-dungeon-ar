@@ -1677,6 +1677,8 @@ public class Hero extends Char {
 		int sourceMobHpBefore = src instanceof Mob ? ((Mob) src).HP : -1;
 		int sourceMobHtBefore = src instanceof Mob ? ((Mob) src).HT : -1;
 		int sourceMobPosBefore = src instanceof Mob ? ((Mob) src).pos : -1;
+		String sourceMobBuffsBefore = src instanceof Mob
+				? SPDLevelSnapshot.currentCombatBuffsJson((Mob) src) : "[]";
 
 		//regular damage interrupt, triggers on any damage except specific mild DOT effects
 		// unless the player recently hit 'continue moving', in which case this is ignored
@@ -1737,11 +1739,16 @@ public class Hero extends Char {
 		int sourceMobHtAfter = src instanceof Mob ? ((Mob) src).HT : -1;
 		int sourceMobPosAfter = src instanceof Mob ? ((Mob) src).pos : -1;
 		if (sourceMobHpAfter <= 0 && sourceMobPosAfter < 0) sourceMobPosAfter = sourceMobPosBefore;
+		String sourceMobBuffsAfter = src instanceof Mob
+				? SPDLevelSnapshot.currentCombatBuffsJson((Mob) src) : "[]";
 		int postHP = HP + targetShieldAfter;
 		if (src instanceof Hunger) postHP -= targetShieldAfter;
 		int effectiveDamage = preHP - postHP;
 
-		if (effectiveDamage <= 0) return;
+		boolean sourceMobChanged = src instanceof Mob
+				&& (sourceMobHpAfter < sourceMobHpBefore || sourceMobPosAfter != sourceMobPosBefore
+				|| !sourceMobBuffsAfter.equals(sourceMobBuffsBefore));
+		if (effectiveDamage <= 0 && !sourceMobChanged) return;
 
 		if (this == Dungeon.hero && src instanceof Mob
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
@@ -1765,7 +1772,8 @@ public class Hero extends Char {
 						+ ",\"sourceMobHtAfter\":" + sourceMobHtAfter
 						+ ",\"sourceMobPosAfter\":" + sourceMobPosAfter
 						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
-						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(sourceMob))
+						+ ",\"sourceMobBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsBefore)
+						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsAfter)
 						+ ",\"targetHpBefore\":" + targetHpBefore
 						+ ",\"targetHtBefore\":" + targetHtBefore
 						+ ",\"targetHp\":" + Math.max(0, HP)
