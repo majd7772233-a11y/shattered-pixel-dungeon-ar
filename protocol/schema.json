@@ -438,7 +438,12 @@
         "attackerStateJson",
         "targetShieldBefore",
         "targetShieldAfter",
-        "targetHeroStateJson"
+        "targetHeroStateJson",
+        "attackerType",
+        "sourceType",
+        "sourceEntityId",
+        "sourcePos",
+        "sourceAttackKind"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -542,9 +547,12 @@
           "maxLength": 200000
         },
         "attackerStateJson": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 200000
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000,
+          "description": "Native player state for player attackers; null for mob attackers."
         },
         "targetShieldBefore": {
           "type": "integer",
@@ -563,6 +571,45 @@
           ],
           "maxLength": 200000,
           "description": "Server-sanitized target state for player targets; null for mob targets. Trusted class/equipment/talents are retained from the prior authoritative player state."
+        },
+        "attackerType": {
+          "type": "string",
+          "enum": [
+            "PLAYER",
+            "MOB"
+          ]
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": [
+            "PLAYER",
+            "MOB"
+          ]
+        },
+        "sourceEntityId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "sourcePos": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "sourceAttackKind": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "MELEE",
+            "RANGED",
+            null
+          ]
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
