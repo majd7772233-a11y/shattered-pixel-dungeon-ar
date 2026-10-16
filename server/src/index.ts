@@ -248,6 +248,25 @@ export function hasMatchingNativeMobShieldSnapshot(reportedBefore: unknown, repo
     && Number(reportedBefore) === Number(authoritativeBefore);
 }
 
+export function hasValidBlessedAnkhConsumption(previousValue: unknown, reportedValue: unknown): boolean {
+  let previous: any = previousValue, reported: any = reportedValue;
+  try {
+    if (typeof previous === "string") previous = JSON.parse(previous);
+    if (typeof reported === "string") reported = JSON.parse(reported);
+  } catch (_) { return false; }
+  if (!previous || typeof previous !== "object" || !reported || typeof reported !== "object") return false;
+  return Number.isInteger(previous.ankhCount) && previous.ankhCount > 0
+    && Number.isInteger(previous.blessedAnkhCount) && previous.blessedAnkhCount > 0
+    && Number.isInteger(reported.ankhCount) && reported.ankhCount === previous.ankhCount - 1
+    && Number.isInteger(reported.blessedAnkhCount)
+    && reported.blessedAnkhCount === previous.blessedAnkhCount - 1
+    && Number.isInteger(reported.ht) && reported.ht === previous.ht && reported.ht > 0
+    && Number.isInteger(reported.hp) && reported.hp > 0 && reported.hp === Math.floor(reported.ht / 4)
+    && typeof previous.inventoryBundle === "string" && previous.inventoryBundle.length > 0
+    && typeof reported.inventoryBundle === "string" && reported.inventoryBundle.length > 0
+    && reported.inventoryBundle !== previous.inventoryBundle;
+}
+
 export function hasMatchingNativeHeroBuffSnapshot(reported: unknown, authoritativeHeroState: unknown): boolean {
   let state: any = authoritativeHeroState;
   try {
@@ -1160,6 +1179,63 @@ export class MatchRoom {
               actionValid = true;
               actionCost = 0;
             }
+          } else if (actionStr === "REVIVE" && isValidNativeCombatRequestId(msg.requestId)) {
+            const data = payload.data || {};
+            const playerRow = this.sql.exec(
+              `SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, session.playerId
+            ).toArray()[0];
+            const previousHeroRow = this.sql.exec(
+              `SELECT value FROM room_meta WHERE key = ?`, `heroState:${session.playerId}`
+            ).toArray()[0];
+            let previousHeroState: any = null, reportedHeroState: any = null;
+            try {
+              previousHeroState = previousHeroRow && typeof previousHeroRow.value === "string"
+                ? JSON.parse(String(previousHeroRow.value)) : null;
+              reportedHeroState = typeof payload.heroStateJson === "string"
+                ? JSON.parse(payload.heroStateJson) : null;
+            } catch (_) { previousHeroState = null; reportedHeroState = null; }
+            const hp = Number(data.targetHp), ht = Number(data.targetHt), pos = Number(data.targetPosAfter);
+            const shieldBefore = Number(data.targetShieldBefore), shieldAfter = Number(data.targetShieldAfter);
+            const targetBuffs = data.targetBuffs;
+            const mergedJson = mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
+              { hp, ht, pos, shielding: shieldAfter }, targetBuffs);
+            const validRevival = !!playerRow && String(playerRow.state) === "ALIVE"
+              && Number(data.targetHpBefore) === Number(playerRow.hp)
+              && Number(data.targetHtBefore) === Number(playerRow.ht) && Number(data.targetPosBefore) === Number(playerRow.pos)
+              && hp > 0 && Number.isInteger(hp) && Number.isInteger(ht) && ht === Number(playerRow.ht)
+              && hp === Math.floor(ht / 4) && pos === Number(playerRow.pos)
+              && Number.isInteger(shieldBefore) && shieldBefore >= 0 && shieldBefore <= 100000
+              && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
+              && previousHeroState != null && Number(previousHeroState.hp) === Number(playerRow.hp)
+              && Number(previousHeroState.ht) === Number(playerRow.ht) && Number(previousHeroState.pos) === Number(playerRow.pos)
+              && Number(previousHeroState.shielding) === shieldBefore
+              && hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, previousHeroState)
+              && isValidNativeCombatBuffs(targetBuffs)
+              && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shieldAfter })
+              && hasValidBlessedAnkhConsumption(previousHeroRow?.value, payload.heroStateJson)
+              && Number(data.ankhCountBefore) === Number(previousHeroState.ankhCount)
+              && Number(data.ankhCountAfter) === Number(reportedHeroState?.ankhCount)
+              && Number(data.blessedAnkhCountBefore) === Number(previousHeroState.blessedAnkhCount)
+              && Number(data.blessedAnkhCountAfter) === Number(reportedHeroState?.blessedAnkhCount)
+              && mergedJson != null;
+            if (validRevival) {
+              const merged: any = JSON.parse(mergedJson as string);
+              merged.inventoryBundle = reportedHeroState.inventoryBundle;
+              merged.ankhCount = reportedHeroState.ankhCount;
+              merged.blessedAnkhCount = reportedHeroState.blessedAnkhCount;
+              const storedHeroState = JSON.stringify(merged);
+              this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = 'ALIVE' WHERE player_id = ?`,
+                hp, ht, pos, session.playerId);
+              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                `heroState:${session.playerId}`, storedHeroState);
+              eventType = "PLAYER_REVIVED";
+              actionResultPayload = { playerId: session.playerId, hp, ht, pos, shielding: shieldAfter,
+                targetBuffs, heroStateJson: storedHeroState, ankhCount: reportedHeroState.ankhCount,
+                blessedAnkhCount: reportedHeroState.blessedAnkhCount };
+              actionValid = true;
+              actionCost = 0;
+            }
           } else if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
@@ -1575,7 +1651,7 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
           this.checkMatchEndCondition();
-          if (eventType !== "PLAYER_DAMAGED") this.processMobTurns();
+          if (eventType !== "PLAYER_DAMAGED" && eventType !== "PLAYER_REVIVED") this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
