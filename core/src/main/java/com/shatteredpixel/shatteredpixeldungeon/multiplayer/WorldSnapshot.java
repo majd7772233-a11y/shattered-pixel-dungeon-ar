@@ -158,7 +158,11 @@ public class WorldSnapshot {
             if (tile == null) return false;
             int pos = number(tile.get("pos"), -1);
             int terrain = number(tile.get("terrain"), -1);
-            if (pos < 0 || pos >= length || terrain < 0 || tileSeen[pos]) return false;
+            if (pos < 0 || pos >= length || terrain < 0 || terrain > 255 || tileSeen[pos]) return false;
+            for (String flag : new String[]{"passable", "solid", "pit", "losBlocking", "flammable", "secret", "avoid", "water", "discoverable", "openSpace"}) {
+                int value = number(tile.get(flag), -1);
+                if (value != 0 && value != 1) return false;
+            }
             tileSeen[pos] = true;
         }
         for (boolean seen : tileSeen) if (!seen) return false;
@@ -352,15 +356,14 @@ public class WorldSnapshot {
                 Dungeon.level.solid[pos] = number(tile.get("solid"), 0) != 0;
                 Dungeon.level.pit[pos] = number(tile.get("pit"), 0) != 0;
                 Dungeon.level.losBlocking[pos] = number(tile.get("losBlocking"), 0) != 0;
+                Dungeon.level.flamable[pos] = number(tile.get("flammable"), 0) != 0;
+                Dungeon.level.secret[pos] = number(tile.get("secret"), 0) != 0;
+                Dungeon.level.avoid[pos] = number(tile.get("avoid"), 0) != 0;
+                Dungeon.level.water[pos] = number(tile.get("water"), 0) != 0;
+                Dungeon.level.discoverable[pos] = number(tile.get("discoverable"), 0) != 0;
+                Dungeon.level.openSpace[pos] = number(tile.get("openSpace"), 0) != 0;
+                GameScene.updateMap(pos);
             }
-            Game.runOnRenderThread(() -> {
-                if (Dungeon.level != null) {
-                    for (Map<String, Object> tile : snapshot.tiles) {
-                        int pos = number(tile.get("pos"), -1);
-                        if (pos >= 0 && pos < Dungeon.level.length()) GameScene.updateMap(pos);
-                    }
-                }
-            });
         }
 
 
