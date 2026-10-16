@@ -157,7 +157,10 @@ public final class MessageRouter {
                         && hasArray(level, "transitions") && hasArray(level, "heaps")
                         && hasArray(level, "traps") && hasArray(level, "blobs")
                         && hasArray(level, "plants") && hasArray(level, "mobs")
-                        && hasArray(level, "visitedPositions") && hasArray(level, "mappedPositions");
+                        && hasArray(level, "visitedPositions") && hasArray(level, "mappedPositions")
+                        && level.get("nativeLevelMetadataBundle") != null
+                        && level.get("nativeLevelMetadataBundle").isString()
+                        && !level.get("nativeLevelMetadataBundle").asString().isEmpty();
                 snapshot.levelWidth = intValue(level.get("width"), 0);
                 snapshot.levelHeight = intValue(level.get("height"), 0);
                 snapshot.branch = intValue(level.get("branch"), -1);
@@ -165,6 +168,7 @@ public final class MessageRouter {
                 snapshot.exitPos = intValue(level.get("exitPos"), -1);
                 snapshot.levelLocked = level.get("locked") != null && level.get("locked").asBoolean();
                 snapshot.levelFeeling = stringValue(level.get("feeling"), "");
+                snapshot.nativeLevelMetadataBundle = stringValue(level.get("nativeLevelMetadataBundle"), "");
                 readIntegerArray(level.get("visitedPositions"), snapshot.visitedPositions);
                 readIntegerArray(level.get("mappedPositions"), snapshot.mappedPositions);
                 JsonValue tiles = level.get("tiles");
