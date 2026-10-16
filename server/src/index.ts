@@ -541,7 +541,7 @@ export class MatchRoom {
             return;
           }
           mobIds.add(id);
-          if (mob?.entityId != null) {
+          if (mob?.entityId != null && String(mob.entityId).length > 0) {
             const entityId = String(mob.entityId);
             if (entityId.length < 8 || entityId.length > 80 || entityIds.has(entityId)) {
               ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
