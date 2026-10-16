@@ -686,6 +686,13 @@ public class WorldSnapshot {
                 }
             }
         }
+        // Recompute visibility only after authoritative terrain, hero position and entities
+        // are in place; do not call Dungeon.observe(), which would invent extra visited cells.
+        if (Dungeon.level != null && Dungeon.hero != null) {
+            Dungeon.level.updateFieldOfView(Dungeon.hero, Dungeon.level.heroFOV);
+            for (int pos = 0; pos < Dungeon.level.length(); pos++) GameScene.updateMap(pos);
+        }
+
         lastAppliedSnapshot = snapshot;
         return true;
     }
