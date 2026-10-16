@@ -16,6 +16,40 @@ export interface SessionData {
   sessionToken: string;
 }
 
+/** Assign stable room identities while keeping local SPD Actor.id() as a runtime-only key. */
+export function assignStableEntityIds(
+  mobs: any[],
+  previousMobs: any[],
+  createId: () => string = () => crypto.randomUUID()
+): any[] {
+  const previousByNativeId = new Map<number, any>();
+  const previousByClassAndPosition = new Map<string, any>();
+  for (const previous of previousMobs || []) {
+    if (Number.isInteger(Number(previous?.mobId)) && typeof previous?.entityId === "string") {
+      previousByNativeId.set(Number(previous.mobId), previous);
+    }
+    if (typeof previous?.name === "string" && Number.isInteger(Number(previous?.pos))
+      && typeof previous?.entityId === "string") {
+      previousByClassAndPosition.set(`${String(previous.name)}:${Number(previous.pos)}`, previous);
+    }
+  }
+  const assigned = new Set<string>();
+  for (const mob of mobs || []) {
+    const supplied = typeof mob?.entityId === "string" && mob.entityId.length >= 8 && mob.entityId.length <= 80
+      ? mob.entityId : "";
+    const previousById = previousByNativeId.get(Number(mob?.mobId));
+    const previousByPosition = previousByClassAndPosition.get(`${String(mob?.name)}:${Number(mob?.pos)}`);
+    let entityId = supplied
+      || (previousById && String(previousById.name) === String(mob?.name) ? String(previousById.entityId) : "")
+      || (previousByPosition ? String(previousByPosition.entityId) : "");
+    if (!entityId || assigned.has(entityId)) entityId = createId();
+    while (!entityId || assigned.has(entityId)) entityId = createId();
+    assigned.add(entityId);
+    mob.entityId = entityId;
+  }
+  return mobs;
+}
+
 /** Rejects partial/legacy level payloads before any room state is replaced. */
 export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   if (!level || typeof level !== "object" || Number(level.schemaVersion) !== 1
@@ -538,31 +572,7 @@ export class MatchRoom {
           previousSnapshot = previousSnapshotRow && typeof previousSnapshotRow.value === "string"
             ? JSON.parse(String(previousSnapshotRow.value)) : {};
         } catch (_) { previousSnapshot = {}; }
-        const previousMobs: any[] = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : [];
-        const previousByNativeId = new Map<number, any>();
-        const previousByClassAndPosition = new Map<string, any>();
-        for (const previous of previousMobs) {
-          if (Number.isInteger(Number(previous?.mobId)) && typeof previous?.entityId === "string") {
-            previousByNativeId.set(Number(previous.mobId), previous);
-          }
-          if (typeof previous?.name === "string" && Number.isInteger(Number(previous?.pos))
-            && typeof previous?.entityId === "string") {
-            previousByClassAndPosition.set(`${String(previous.name)}:${Number(previous.pos)}`, previous);
-          }
-        }
-        const assignedEntityIds = new Set<string>();
-        for (const mob of mobs) {
-          const supplied = typeof mob.entityId === "string" && mob.entityId.length >= 8
-            && mob.entityId.length <= 80 ? mob.entityId : "";
-          const previousById = previousByNativeId.get(Number(mob.mobId));
-          const previousByPosition = previousByClassAndPosition.get(`${String(mob.name)}:${Number(mob.pos)}`);
-          let entityId = supplied
-            || (previousById && String(previousById.name) === String(mob.name) ? String(previousById.entityId) : "")
-            || (previousByPosition ? String(previousByPosition.entityId) : "");
-          if (!entityId || assignedEntityIds.has(entityId)) entityId = crypto.randomUUID();
-          assignedEntityIds.add(entityId);
-          mob.entityId = entityId;
-        }
+        assignStableEntityIds(mobs, Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : []);
         level.mobs = mobs;
 
         this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
