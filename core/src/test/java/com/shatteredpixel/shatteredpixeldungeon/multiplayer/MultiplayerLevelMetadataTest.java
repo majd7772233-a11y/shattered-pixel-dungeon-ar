@@ -86,4 +86,33 @@ public class MultiplayerLevelMetadataTest {
         Assert.assertTrue(restored.customTiles.isEmpty());
         Assert.assertTrue(restored.customWalls.isEmpty());
     }
+
+    @Test
+    public void applyingTheSameNativeMetadataTwiceDoesNotDuplicateVisuals() throws Exception {
+        TestLevel source = new TestLevel();
+        source.customTiles.add(new TestCustomTilemap());
+        source.customWalls.add(new TestCustomTilemap());
+        String encoded = source.multiplayerMetadataBundle();
+        Bundle decoded = Bundle.read(new ByteArrayInputStream(encoded.getBytes(StandardCharsets.UTF_8)));
+
+        TestLevel restored = new TestLevel();
+        Assert.assertTrue(restored.restoreMultiplayerMetadata(decoded));
+        Assert.assertTrue(restored.restoreMultiplayerMetadata(decoded));
+        Assert.assertEquals(1, restored.customTiles.size());
+        Assert.assertEquals(1, restored.customWalls.size());
+    }
+
+    @Test
+    public void rejectsRespawnerMetadataWithTheWrongNativeTypeBeforeMutation() {
+        TestLevel level = new TestLevel();
+        level.customTiles.add(new TestCustomTilemap());
+        Bundle malformed = new Bundle();
+        malformed.put("customTiles", new ArrayList<TestCustomTilemap>());
+        malformed.put("customWalls", new ArrayList<TestCustomTilemap>());
+        malformed.put("mobs_to_spawn", new Class[0]);
+        malformed.put("respawner", new TestCustomTilemap());
+
+        Assert.assertFalse(level.canRestoreMultiplayerMetadata(malformed));
+        Assert.assertEquals(1, level.customTiles.size());
+    }
 }
