@@ -513,6 +513,19 @@ export class MatchRoom {
     return true;
   }
 
+  private isCombatDestinationFree(pos: number, depth: number, targetType: string, targetId: string | number): boolean {
+    if (targetType === "MOB") {
+      const mobRows = this.sql.exec(`SELECT mob_id FROM mobs WHERE depth = ? AND hp > 0 AND pos = ? AND mob_id != ?`,
+        depth, pos, Number(targetId)).toArray();
+      const playerRows = this.sql.exec(`SELECT player_id FROM players WHERE state = 'ALIVE' AND pos = ?`, pos).toArray();
+      return mobRows.length === 0 && playerRows.length === 0;
+    }
+    const playerRows = this.sql.exec(`SELECT player_id FROM players WHERE state = 'ALIVE' AND pos = ? AND player_id != ?`,
+      pos, String(targetId)).toArray();
+    const mobRows = this.sql.exec(`SELECT mob_id FROM mobs WHERE depth = ? AND hp > 0 AND pos = ?`, depth, pos).toArray();
+    return playerRows.length === 0 && mobRows.length === 0;
+  }
+
   private isValidCombatTargetPosition(pos: number, depth: number): boolean {
     const level = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, depth).toArray()[0];
     if (!level) return false;
@@ -1108,7 +1121,8 @@ export class MatchRoom {
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
-                      && (targetPosAfter === defPos || this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth))
+                      && (targetPosAfter === defPos || (this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
+                        && this.isCombatDestinationFree(targetPosAfter, this.currentDepth, "PLAYER", String(targetId))))
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
@@ -1204,7 +1218,8 @@ export class MatchRoom {
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth))
-                      && (targetPosAfter === mobPos || this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth))
+                      && (targetPosAfter === mobPos || (this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
+                        && this.isCombatDestinationFree(targetPosAfter, this.currentDepth, "MOB", Number(targetId))))
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
