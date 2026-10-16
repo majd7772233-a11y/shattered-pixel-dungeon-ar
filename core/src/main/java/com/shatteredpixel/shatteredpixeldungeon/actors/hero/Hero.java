@@ -1819,7 +1819,7 @@ public class Hero extends Char {
 				|| pos != targetPosBefore || !targetBuffsAfter.equals(targetBuffsBefore);
 		if (effectiveDamage <= 0 && !sourceMobChanged && !targetCombatStateChanged && !revivedByBlessedAnkh) return;
 
-		if (this == Dungeon.hero && revivedByBlessedAnkh
+		if (this == Dungeon.hero && revivedByBlessedAnkh && !nativeAttackInProgress
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
 			String revival = "{\"targetHpBefore\":" + targetHpBefore
 					+ ",\"targetHtBefore\":" + targetHtBefore
@@ -1839,7 +1839,7 @@ public class Hero extends Char {
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
 		}
 
-		if (!revivedByBlessedAnkh && this == Dungeon.hero && !(src instanceof Mob)
+		if (!revivedByBlessedAnkh && !nativeAttackInProgress && this == Dungeon.hero && !(src instanceof Mob)
 				&& MultiplayerManager.getInstance().isMultiplayerActive() && targetCombatStateChanged) {
 			String state = HP <= 0 ? "DEAD" : "ALIVE";
 			String environmentDamage = "{\"sourceType\":\"ENVIRONMENT\""
