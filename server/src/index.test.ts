@@ -766,6 +766,7 @@ describe('Authoritative native hero pre-state', () => {
   const heroState = () => ({
     hp: 20, ht: 20, pos: 12, shielding: 2, cooldown: 1, buffCount: 1,
     combatBundle: 'native-combat', inventoryBundle: 'native-inventory',
+    ankhCount: 0, blessedAnkhCount: 0,
     buff_0: 'native-buff', buffCooldown_0: 2
   });
   it('matches complete trusted hero state including equipment, shield, cooldown and native buffs', () => {

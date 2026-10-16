@@ -207,7 +207,7 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
 
 export function mergeNativeHeroState(previousValue: unknown, reportedValue: unknown, expected: {
   hp: number; ht: number; pos: number; shielding: number;
-}, targetBuffsValue: unknown): string | null {
+}, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false): string | null {
   if (typeof previousValue !== "string" || typeof reportedValue !== "string"
     || typeof targetBuffsValue !== "string") return null;
   let previous: any, reported: any, buffs: any;
@@ -224,8 +224,14 @@ export function mergeNativeHeroState(previousValue: unknown, reportedValue: unkn
     if (reported[`buff_${i}`] !== buffs[i]?.serializedBundle
       || Number(reported[`buffCooldown_${i}`]) !== Number(buffs[i]?.cooldown)) return null;
   }
+  const blessedAnkhConsumed = allowBlessedAnkhConsumption && hasValidBlessedAnkhConsumption(previous, reported);
   const merged: any = {
     ...previous,
+    ...(blessedAnkhConsumed ? {
+      inventoryBundle: reported.inventoryBundle,
+      ankhCount: reported.ankhCount,
+      blessedAnkhCount: reported.blessedAnkhCount
+    } : {}),
     hp: expected.hp,
     ht: expected.ht,
     pos: expected.pos,
@@ -1156,6 +1162,8 @@ export class MatchRoom {
             const attackerRow = attackerId ? this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", attackerId).toArray() : [];
             const trustedRow = defenderId ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + defenderId).toArray()[0] : null;
             const trustedState = trustedRow && typeof trustedRow.value === "string" ? String(trustedRow.value) : "";
+            const attackerStateRow = attackerId ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + attackerId).toArray()[0] : null;
+            const trustedAttackerState = attackerStateRow && typeof attackerStateRow.value === "string" ? String(attackerStateRow.value) : "";
             let trusted: any = null;
             try { trusted = JSON.parse(trustedState); } catch (_) {}
             const hpBefore = Number(data.targetHpBefore), htBefore = Number(data.targetHtBefore);
@@ -1171,7 +1179,7 @@ export class MatchRoom {
               || (hpAfter > hpBefore && hasValidBlessedAnkhConsumption(trustedState, data.targetHeroStateJson));
             const mergedState = mergeNativeHeroState(trustedState, String(data.targetHeroStateJson || ""), {
               hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter
-            }, String(data.targetBuffs || ""));
+            }, String(data.targetBuffs || ""), true);
             const authorityValid = !!pending && pending.targetType === "PLAYER"
               && String(pending.requestId) === String(data.combatRequestId)
               && String(pending.authorityId) === session.playerId && defenderId === session.playerId
@@ -1179,6 +1187,8 @@ export class MatchRoom {
               && String(data.targetType) === "PLAYER" && String(data.targetId) === defenderId
               && Number(pending.depth) === this.currentDepth && defenderRow.length > 0 && attackerRow.length > 0
               && String(defenderRow[0].state) === "ALIVE" && String(attackerRow[0].state) === "ALIVE"
+              && Number(pending.attackerPos) === attackerPos && Number(data.attackerPos) === attackerPos
+              && hasMatchingNativeHeroStateSnapshot(pending.attackerStateBefore, trustedAttackerState)
               && hasMatchingNativeHeroStateSnapshot(data.targetHeroStateBefore, trusted)
               && hpBefore === Number(defenderRow[0].hp) && htBefore === Number(defenderRow[0].ht)
               && posBefore === defenderPos && Number(pending.targetPos) === defenderPos
@@ -1191,6 +1201,8 @@ export class MatchRoom {
               && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
               && Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10
               && Number.isFinite(distance) && data.engineResult === true
+              && distance === Math.max(Math.abs((attackerPos % width) - (defenderPos % width)),
+                Math.abs(Math.floor(attackerPos / width) - Math.floor(defenderPos / width)))
               && (ranged ? this.hasLineOfSight(attackerPos, defenderPos, this.currentDepth) : this.isMeleeAdjacent(attackerPos, defenderPos, this.currentDepth))
               && (posAfter === posBefore || (this.isValidCombatTargetPosition(posAfter, this.currentDepth)
                 && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
@@ -1199,6 +1211,7 @@ export class MatchRoom {
               const newStatus = hpAfter > 0 ? "ALIVE" : "DEAD";
               this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
                 hpAfter, htAfter, posAfter, newStatus, defenderId);
+              if (hpAfter <= 0) this.sql.exec("UPDATE players SET kills = kills + 1 WHERE player_id = ?", attackerId);
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + defenderId, mergedState);
               this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId));
@@ -1820,7 +1833,8 @@ export class MatchRoom {
               try { reportedAttacker = JSON.parse(String(payload.data?.attackerStateBefore || "")); } catch (_) {}
               try { reportedDefender = JSON.parse(String(payload.data?.targetHeroStateBefore || "")); } catch (_) {}
               const attackerStateBefore = payload.data?.attackerStateBefore;
-              const defenderStateBefore = payload.data?.targetHeroStateBefore;
+              const defenderStateBefore = defenderStateRow && typeof defenderStateRow.value === "string"
+                ? String(defenderStateRow.value) : "";
               const attackerPos = Number(attackerRow[0]?.pos), defenderPos = Number(defenderRow[0]?.pos);
               const preStatesMatch = !!defenderId && defenderId !== session.playerId
                 && attackerRow.length > 0 && defenderRow.length > 0
