@@ -525,8 +525,14 @@ public class Hero extends Char {
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
 		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
+		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
+				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
+						: java.util.Collections.emptyMap();
 		int attackerPosBefore = pos;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
+		String secondaryMobDeltas = enemy instanceof Mob
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(secondaryMobStateBefore, (Mob) enemy)
+				: "{\"complete\":true,\"deltas\":[]}";
 		int targetShieldAfter = enemy == null ? 0 : enemy.shielding();
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
@@ -575,6 +581,7 @@ public class Hero extends Char {
 						? new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) enemy)) : "null")
 					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
 					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(enemy))
+					+ ",\"secondaryMobDeltas\":" + new com.badlogic.gdx.utils.Json().toJson(secondaryMobDeltas)
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
 					+ ",\"engineRanged\":" + ranged
