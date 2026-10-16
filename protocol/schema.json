@@ -456,7 +456,9 @@
         "sourceType",
         "sourceEntityId",
         "sourcePos",
-        "sourceAttackKind"
+        "sourceAttackKind",
+        "sourceMobShieldBefore",
+        "sourceMobShieldAfter"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -664,6 +666,18 @@
           "type": "array",
           "maxItems": 1024,
           "description": "Full native heap snapshot, included only when an accepted combat effect kills a mob."
+        },
+        "sourceMobShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Native mob shield total before retaliation/thorns effects."
+        },
+        "sourceMobShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Native mob shield total after retaliation/thorns effects."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
