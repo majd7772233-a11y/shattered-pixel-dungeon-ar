@@ -447,6 +447,7 @@ describe('Strict native combat wire fields', () => {
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineHit: 'true' })).toBe(false);
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineRanged: true })).toBe(false);
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineActionCost: '1' })).toBe(false);
+    expect(hasStrictNativeCombatFields({ ...validPayload(), targetBuffsBefore: undefined })).toBe(false);
   });
 });
 
