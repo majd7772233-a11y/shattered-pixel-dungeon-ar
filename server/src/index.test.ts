@@ -181,7 +181,7 @@ describe('Native level snapshot contract', () => {
 
   it('rejects entities without native serialized bundles', () => {
     const snapshot: any = completeSnapshot();
-    snapshot.mobs.push({ serializedBundle: "", buffs: [] });
+    snapshot.mobs.push({ serializedBundle: "", buffs: [], shielding: 0 });
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
   });
 
@@ -208,6 +208,7 @@ describe('Native level snapshot contract', () => {
       pos: 20,
       hp: 0,
       ht: 10,
+      shielding: 0,
       serializedBundle: "native-dead-mob-bundle",
       buffs: []
     });
