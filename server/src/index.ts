@@ -98,6 +98,15 @@ export function isValidNativeHpTransition(previousHp: number, targetHp: number, 
     && reportedDamage === previousHp - targetHp;
 }
 
+export function isValidNativeCombatRequestId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{8,80}$/.test(value);
+}
+
+export function classifyRequestReplay(existing: any, playerId: string): "NEW" | "REPLAY" | "CONFLICT" {
+  if (!existing) return "NEW";
+  return String(existing.player_id) === playerId ? "REPLAY" : "CONFLICT";
+}
+
 export function hasStrictNativeCombatFields(data: any): boolean {
   return data != null && data.combatSchemaVersion === 1
     && Number.isInteger(data.combatDepth)
@@ -857,7 +866,7 @@ export class MatchRoom {
         if (msg.requestId) {
           const dupRow = this.sql.exec(`SELECT player_id, sequence, result_json FROM processed_actions WHERE request_id = ?`, msg.requestId).toArray();
           if (dupRow.length > 0) {
-            if (String(dupRow[0].player_id) !== session.playerId) {
+            if (classifyRequestReplay(dupRow[0], session.playerId) === "CONFLICT") {
               ws.send(JSON.stringify({
                 protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
                 sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" })
@@ -898,7 +907,7 @@ export class MatchRoom {
 
           const actionStr = payload.action || payload.data?.action;
 
-          if (actionStr === "SYNC_HERO_STATE") {
+          if (actionStr === "SYNC_HERO_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data;
             const hp = data?.targetHp;
             const ht = data?.targetHt;
@@ -1049,8 +1058,7 @@ export class MatchRoom {
                 actionCost = 1.0;
               }
             }
-          } else if (actionStr === "ATTACK" && typeof msg.requestId === "string"
-              && msg.requestId.length >= 8 && msg.requestId.length <= 80) {
+          } else if (actionStr === "ATTACK" && isValidNativeCombatRequestId(msg.requestId)) {
             let targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
             let targetEntityId: string | null = null;
