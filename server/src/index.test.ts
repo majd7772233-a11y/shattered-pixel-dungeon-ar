@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -427,6 +427,7 @@ describe('Strict native combat wire fields', () => {
     combatSchemaVersion: 1, combatDepth: 2, attackerId: 'player-a',
     attackerPos: 10, targetPos: 11, targetPosAfter: 11,
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 7, targetHt: 12, damage: 5,
+    targetShieldBefore: 0, targetShieldAfter: 0,
     engineResult: true, engineHit: true, engineRanged: false, attackKind: 'MELEE',
     engineDistance: 1, engineActionCost: 1, targetBuffs: '[]'
   });
@@ -440,5 +441,42 @@ describe('Strict native combat wire fields', () => {
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineHit: 'true' })).toBe(false);
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineRanged: true })).toBe(false);
     expect(hasStrictNativeCombatFields({ ...validPayload(), engineActionCost: '1' })).toBe(false);
+  });
+});
+
+
+describe('Native hero state merge safety', () => {
+  const previous = {
+    combatBundle: 'trusted-class-equipment-talents',
+    inventoryBundle: 'trusted-inventory',
+    hp: 12, ht: 12, pos: 41, shielding: 3, cooldown: 0,
+    buffCount: 1, buff_0: 'old-native-buff', buffCooldown_0: 1
+  };
+
+  it('preserves trusted class/equipment/talents while accepting validated HP and buff state', () => {
+    const buffs = [{ serializedBundle: 'new-native-buff', cooldown: 2 }];
+    const reported = {
+      combatBundle: 'attacker-forged-class-equipment',
+      inventoryBundle: 'attacker-forged-inventory',
+      hp: 7, ht: 12, pos: 42, shielding: 0, cooldown: 0,
+      buffCount: 1, buff_0: 'new-native-buff', buffCooldown_0: 2
+    };
+    const mergedJson = mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(reported),
+      { hp: 7, ht: 12, pos: 42, shielding: 0 }, JSON.stringify(buffs));
+    expect(mergedJson).not.toBeNull();
+    const merged = JSON.parse(String(mergedJson));
+    expect(merged.combatBundle).toBe(previous.combatBundle);
+    expect(merged.inventoryBundle).toBe(previous.inventoryBundle);
+    expect(merged.hp).toBe(7);
+    expect(merged.pos).toBe(42);
+    expect(merged.buff_0).toBe('new-native-buff');
+  });
+
+  it('rejects target-state/buff mismatches and forged HP post-state', () => {
+    const reported = { ...previous, hp: 0, buffCount: 0 };
+    expect(mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(reported),
+      { hp: 0, ht: 12, pos: 41, shielding: 3 }, '[]')).not.toBeNull();
+    expect(mergeNativeHeroState(JSON.stringify(previous), JSON.stringify({ ...reported, hp: 1 }),
+      { hp: 0, ht: 12, pos: 41, shielding: 3 }, '[]')).toBeNull();
   });
 });
