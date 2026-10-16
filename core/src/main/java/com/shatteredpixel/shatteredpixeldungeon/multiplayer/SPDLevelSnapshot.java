@@ -61,6 +61,8 @@ public final class SPDLevelSnapshot {
     }
 
     public static final class MobData {
+        /** Stable room/server identity; mobId remains the local SPD Actor.id(). */
+        public String entityId = "";
         public int mobId;
         public String name;
         public int pos;
@@ -169,6 +171,8 @@ public final class SPDLevelSnapshot {
             for (Mob mob : level.mobs) {
                 MobData m = new MobData();
                 m.mobId = mob.id();
+                String serverEntityId = MultiplayerManager.getInstance().getServerEntityId(m.mobId);
+                m.entityId = serverEntityId == null ? "" : serverEntityId;
                 m.name = mob.getClass().getSimpleName();
                 m.pos = mob.pos;
                 m.hp = mob.HP;
