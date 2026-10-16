@@ -530,7 +530,7 @@ public abstract class Level implements Bundlable {
 			if (respawner != null) Actor.remove(respawner);
 			respawner = metadata.contains("respawner") ? (MobSpawner) metadata.get("respawner") : null;
 			if (respawner != null) Actor.add(respawner);
-			buildFlagMaps();
+			// Preserve collision flags supplied by the authoritative tile snapshot.
 			cleanWalls();
 			return true;
 		} catch (RuntimeException invalidMetadata) {
