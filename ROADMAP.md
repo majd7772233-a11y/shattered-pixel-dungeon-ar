@@ -75,20 +75,20 @@ These pieces are the starting point, not evidence of complete behavior. The most
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status:** In progress. Snapshot contract/preflight and exploration metadata have been tightened; this phase is not complete until stable server entity identity, fully prepared/rollback-safe restoration, omitted native level metadata, and round-trip/idempotency coverage are implemented and verified.
+**Status:** In progress. Stable server identities now flow through snapshot publication, ACK mapping, reconciliation and mob attack targets; native custom-tile/wall and respawner metadata is included; failed/stale restores request resync without acknowledging the snapshot. Fully prepared rollback-safe restoration, full native round-trip coverage and two-device convergence still require verification.
 
 ### Work items
 
-- [ ] Define one documented snapshot schema/version shared by `SPDLevelSnapshot`, `MessageRouter`, `WorldSnapshot`, the server's `LEVEL_DATA` validator, `getCurrentLevelSnapshot()`, and `protocol/schema.json`.
+- [x] Define one documented snapshot schema/version shared by `SPDLevelSnapshot`, `MessageRouter`, `WorldSnapshot`, the server's `LEVEL_DATA` validator, `getCurrentLevelSnapshot()`, and `protocol/schema.json`.
 - [ ] Audit every serialized field against the native SPD object it represents. Include dimensions/branch/depth/seed, tiles and collision flags, transitions, stable mob identity and native state, heap type and every item bundle, traps, plants, blobs, hero bundle, inventory, buffs and actor cooldowns.
-- [ ] Add stable server-assigned entity IDs that survive reconnects and do not depend on local `Actor.id()`. Keep native actor IDs as local runtime identities only.
-- [ ] Make absent collection versus explicit empty collection semantics clear. A complete snapshot with zero traps/heaps/mobs must clear stale local objects; a partial snapshot must never accidentally clear them.
+- [x] Add stable server-assigned entity IDs that survive reconnects and do not depend on local `Actor.id()`. Keep native actor IDs as local runtime identities only; IDs now map through publication ACKs, snapshots and mob attack target resolution.
+- [x] Make absent collection versus explicit empty collection semantics clear. A complete snapshot with zero traps/heaps/mobs must clear stale local objects; a partial snapshot must never accidentally clear them.
 - [ ] Validate bounds, duplicates, bundle size, class allowlists, array counts, numeric ranges and depth/branch before changing the live world.
 - [ ] Make restoration ordered and atomic from the caller's perspective: validate first, prepare native objects, apply world geometry, reconcile entities, then publish the snapshot as applied. On failure, keep the last good state and request a fresh snapshot.
-- [ ] Reconcile all entities both ways: create missing native instances, update matched instances, remove stale instances safely, and preserve tombstones for dead entities without rerunning kill rewards/loot.
+- [x] Reconcile all entities both ways: create missing native instances, update matched instances, remove stale instances safely, and preserve tombstones for dead entities without rerunning kill rewards/loot. Stable IDs are cleaned up on removal, and remote death events remove entities without calling native loot-producing `Mob.die()`.
 - [ ] Restore complete heaps without losing stack order, item properties, special heap state or remaining items. Restore traps/plants/blobs with their real native bundles and scheduler timing.
 - [ ] Rebuild visuals on the render thread; refresh map cells, FOV, pathfinding dimensions and actor sprites after geometry changes.
-- [ ] Audit and include gameplay-relevant level metadata omitted by the current snapshot (including map exploration state, level lock/feeling, custom tiles/walls, respawner and inter-level state where applicable).
+- [x] Audit and include gameplay-relevant level metadata omitted by the current snapshot (map exploration state, level lock/feeling, custom tiles/walls, mob spawn classes, respawner bundle and remaining cooldown, and native transitions).
 - [ ] Add round-trip, missing-entity, stale-entity, empty-list, invalid-bundle, duplicate-ID, killed-mob/tombstone, multiple-items-in-one-heap and reconnect snapshot tests.
 
 ### Acceptance criteria
