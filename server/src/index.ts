@@ -1425,7 +1425,9 @@ export class MatchRoom {
                   sourceType: "PLAYER", sourceEntityId: attackerId, sourcePos: attackerPos, sourceAttackKind: data.attackKind,
                   attackerPos, targetPos, targetPosAfter, targetHpBefore: Number(data.targetHpBefore), targetHtBefore: Number(data.targetHtBefore),
                   targetShieldBefore: Number(data.targetShieldBefore), targetShieldAfter: Number(data.targetShieldAfter), targetHeroStateJson: null,
-                  targetBuffsBefore: data.targetBuffsBefore, hit: data.engineHit === true, damage, targetHp, targetHt,
+                  targetBuffsBefore: data.targetBuffsBefore,
+                  targetMobBundleAfter: targetHp > 0 ? String(data.targetMobBundleAfter) : null,
+                  hit: data.engineHit === true, damage, targetHp, targetHt,
                   attackKind: data.attackKind, engineDistance: distance, engineActionCost: nativeCost, targetBuffs: data.targetBuffs,
                   attackerStateJson: payload.heroStateJson, secondaryMobDeltas: secondaryMobPayload, engineResolved: true
                 };
@@ -2268,6 +2270,7 @@ export class MatchRoom {
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         targetShieldBefore: Number(payload.data?.targetShieldBefore), targetShieldAfter: Number(payload.data?.targetShieldAfter),
                         targetHeroStateJson: null, targetBuffsBefore: payload.data?.targetBuffsBefore,
+                        targetMobBundleAfter: newHp > 0 ? String(payload.data?.targetMobBundleAfter) : null,
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
                         targetHt, attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
