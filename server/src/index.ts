@@ -150,7 +150,8 @@ export function hasStrictNativeDamageFields(data: any): boolean {
     && Number.isInteger(data.targetPosBefore) && Number.isInteger(data.targetPosAfter)
     && Number.isInteger(data.targetShieldBefore) && Number.isInteger(data.targetShieldAfter)
     && typeof data.engineDamageResult === "boolean" && data.engineDamageResult === true
-    && typeof data.targetBuffs === "string";
+    && typeof data.targetBuffs === "string"
+    && typeof data.targetBuffsBefore === "string";
 }
 
 export function isValidNativeHeroStateJson(value: unknown, expected: {
@@ -234,6 +235,25 @@ export function hasMatchingNativeMobShieldSnapshot(reportedBefore: unknown, repo
     && Number.isInteger(authoritativeBefore) && Number(authoritativeBefore) >= 0
     && Number(authoritativeBefore) <= 100000
     && Number(reportedBefore) === Number(authoritativeBefore);
+}
+
+export function hasMatchingNativeHeroBuffSnapshot(reported: unknown, authoritativeHeroState: unknown): boolean {
+  let state: any = authoritativeHeroState;
+  try {
+    if (typeof state === "string") state = JSON.parse(state);
+  } catch (_) {
+    return false;
+  }
+  if (!state || typeof state !== "object" || !Number.isInteger(state.buffCount)
+    || state.buffCount < 0 || state.buffCount > 512) return false;
+  const authoritative: Array<{ serializedBundle: string; cooldown: number }> = [];
+  for (let i = 0; i < state.buffCount; i++) {
+    const serializedBundle = state[`buff_${i}`];
+    const cooldown = state[`buffCooldown_${i}`];
+    if (typeof serializedBundle !== "string" || !Number.isFinite(cooldown) || cooldown < 0) return false;
+    authoritative.push({ serializedBundle, cooldown });
+  }
+  return hasMatchingNativeBuffSnapshot(reported, authoritative);
 }
 
 export function hasMatchingNativeBuffSnapshot(reported: unknown, authoritative: unknown): boolean {
@@ -1052,6 +1072,7 @@ export class MatchRoom {
             const previousHt = Number(playerRow?.ht);
             const validDamage = !!playerRow && String(playerRow.state) === "ALIVE"
               && hasStrictNativeDamageFields(data)
+              && hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, previousHeroState)
               && data.combatDepth === this.currentDepth
               && Number.isInteger(hp) && Number.isInteger(ht) && Number.isInteger(damage)
               && Number.isInteger(targetPosBefore) && targetPosBefore === Number(playerRow.pos)
