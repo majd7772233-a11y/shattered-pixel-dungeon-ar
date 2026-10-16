@@ -14,6 +14,7 @@ public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
 
     private boolean isMultiplayerActive = false;
+    private volatile boolean levelPublisher = false;
     private String roomCode;
     private String localPlayerId;
     private String sessionToken;
@@ -57,6 +58,7 @@ public class MultiplayerManager implements TransportCallback {
         this.roomCode = roomCode;
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
+        this.levelPublisher = false;
         this.lastSequence = 0L;
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
@@ -85,6 +87,7 @@ public class MultiplayerManager implements TransportCallback {
         this.actorToServerEntityId.clear();
         this.serverEntityIdToActor.clear();
         this.sessionToken = null;
+        this.levelPublisher = false;
         this.localPlayerId = null;
         this.roomCode = null;
         this.lastSequence = 0L;
@@ -93,6 +96,8 @@ public class MultiplayerManager implements TransportCallback {
         this.authoritativeSeed = null;
         WorldSnapshot.clearAppliedSnapshot();
     }
+
+    public boolean isLevelPublisher() { return levelPublisher; }
 
     public boolean isMultiplayerActive() {
         return isMultiplayerActive;
@@ -286,6 +291,8 @@ public class MultiplayerManager implements TransportCallback {
                 if (tokenValue != null && !tokenValue.isNull()) {
                     this.sessionToken = tokenValue.asString();
                 }
+                JsonValue publisherValue = payload.get("isLevelPublisher");
+                this.levelPublisher = publisherValue != null && !publisherValue.isNull() && publisherValue.asBoolean();
                 JsonValue seqValue = payload.get("sequence");
                 if (seqValue != null && !seqValue.isNull()) {
                     updateLastSequence(seqValue.asLong());
