@@ -1071,6 +1071,10 @@ export class MatchRoom {
             const newHeroStateValid = isValidNativeHeroStateJson(payload.heroStateJson, {
               hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter)
             });
+            const mergedDamagedHeroStateJson = mergeNativeHeroState(previousHeroRow?.value,
+              payload.heroStateJson,
+              { hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter) },
+              data?.targetBuffs);
             const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
               && (sourceDistance <= 1
                 ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
@@ -1097,7 +1101,8 @@ export class MatchRoom {
               && isValidNativeHpTransition(previousHp, hp, damage)
               && (damage > 0 || targetShieldAfter < targetShieldBefore || Number(data.sourceMobDamage) > 0
                 || sourceMobPosAfter !== sourceMobPosBefore || sourceMobBuffsChanged)
-              && newHeroStateValid && isValidNativeCombatBuffs(data.targetBuffs)
+              && newHeroStateValid && mergedDamagedHeroStateJson != null
+              && isValidNativeCombatBuffs(data.targetBuffs)
               && sourceMob.length > 0 && Number(sourceMob[0].hp) > 0
               && Number(sourceMob[0].pos) === sourcePos && geometryValid && targetPosValid
               && sourceMobStateValid;
@@ -1108,6 +1113,9 @@ export class MatchRoom {
                 : "ALIVE";
               this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
                 hp, ht, targetPosAfter, newState, session.playerId);
+              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                `heroState:${session.playerId}`, mergedDamagedHeroStateJson);
               this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                 sourceMobHpAfter, sourceMobPosAfter, sourceMobId, this.currentDepth);
               const savedSourceMob = (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
@@ -1517,8 +1525,9 @@ export class MatchRoom {
           }
           if (actionValid && typeof payload.heroStateJson === "string"
               && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000) {
-            this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-              ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+            // An ordinary MOVE/ATTACK payload must never overwrite the server's trusted
+            // class/equipment/talent baseline. Combat branches update state only after validation.
+            this.sql.exec(`INSERT OR IGNORE INTO room_meta (key,value) VALUES (?,?)`,
               `heroState:${session.playerId}`, payload.heroStateJson);
           }
         } catch (_) {}
