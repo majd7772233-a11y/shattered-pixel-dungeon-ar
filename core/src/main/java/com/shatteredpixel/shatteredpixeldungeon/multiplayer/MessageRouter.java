@@ -550,7 +550,12 @@ public final class MessageRouter {
             if (mappedActorId != null) mobId = mappedActorId;
             else mobId = intValue(action.get("targetId"), -1);
         }
-        if (mobId < 0) return;
+        if (mobId < 0) {
+            if (sourceMobDamage || "PLAYER_ATTACKED".equals(type)) {
+                MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
+            }
+            return;
+        }
 
         for (Mob mob : Dungeon.level.mobs) {
             if (mob.id() != mobId) continue;
