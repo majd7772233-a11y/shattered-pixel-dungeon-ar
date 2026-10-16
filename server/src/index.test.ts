@@ -172,6 +172,12 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
   });
 
+  it('rejects snapshots that omit the native custom-tile and respawner metadata bundle', () => {
+    const snapshot: any = completeSnapshot();
+    delete snapshot.nativeLevelMetadataBundle;
+    expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
+  });
+
   it('rejects entities without native serialized bundles', () => {
     const snapshot: any = completeSnapshot();
     snapshot.mobs.push({ serializedBundle: "", buffs: [] });
@@ -221,5 +227,20 @@ describe('Stable native entity identity', () => {
     const next = [{ mobId: 17, name: 'Skeleton', pos: 10 }];
     assignStableEntityIds(next, previous, () => 'server-entity-skeleton');
     expect(next[0].entityId).toBe('server-entity-skeleton');
+  });
+});
+
+describe('Snapshot identity idempotency', () => {
+  it('keeps the same entity IDs when the exact same snapshot is assigned repeatedly', () => {
+    const first = [
+      { mobId: 4, name: 'Rat', pos: 15 },
+      { mobId: 8, name: 'Skeleton', pos: 22 }
+    ];
+    let id = 0;
+    assignStableEntityIds(first, [], () => 'stable-generated-' + (++id));
+    const before = first.map((mob) => mob.entityId);
+    const repeated = first.map((mob) => ({ ...mob }));
+    assignStableEntityIds(repeated, first, () => 'unexpected-generated-' + (++id));
+    expect(repeated.map((mob) => mob.entityId)).toEqual(before);
   });
 });
