@@ -343,6 +343,15 @@ public final class MessageRouter {
                     continue;
                 }
 
+                if ("PLAYER_ATTACKED".equals(type)) {
+                    String attackerId = stringValue(action.get("attackerId"), null);
+                    String attackerState = stringValue(action.get("attackerStateJson"), null);
+                    if (attackerId != null && !attackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())
+                            && attackerState != null && !attackerState.isEmpty()) {
+                        applyRemoteHeroState(attackerId, attackerState);
+                    }
+                }
+
                 if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
                     applyMobEvent(type, action);
                 } else if ("PLAYER_MOVED".equals(type)) {
@@ -361,6 +370,8 @@ public final class MessageRouter {
                         applyPlayerHp(targetId, hp);
                         int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
                         if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
+                        String targetBuffs = stringValue(action.get("targetBuffs"), null);
+                        if (targetBuffs != null) applyPlayerCombatBuffs(targetId, targetBuffs);
                         String state = stringValue(action.get("targetState"), "ALIVE");
                         if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
@@ -408,6 +419,41 @@ public final class MessageRouter {
         } catch (RuntimeException ignored) {
             // Keep the last known good world; caller can request a fresh snapshot.
         }
+    }
+
+    private static void applyRemoteHeroState(String playerId, String encodedState) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+            manager.addRemotePlayer(remote);
+        }
+        RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+        WorldSnapshot.restoreRemoteHeroState(remote.heroInstance, encodedState);
+        remote.hp = remote.heroInstance.HP;
+        remote.ht = remote.heroInstance.HT;
+        remote.pos = remote.heroInstance.pos;
+        remote.isAlive = remote.hp > 0;
+        remote.heroClass = remote.heroInstance.heroClass == null ? remote.heroClass : remote.heroInstance.heroClass.name();
+    }
+
+    private static void applyPlayerCombatBuffs(String playerId, String encodedBuffs) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (playerId.equals(manager.getLocalPlayerId())) {
+            WorldSnapshot.restoreNativeCombatBuffs(Dungeon.hero, encodedBuffs);
+            return;
+        }
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+            manager.addRemotePlayer(remote);
+        }
+        RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+        WorldSnapshot.restoreNativeCombatBuffs(remote.heroInstance, encodedBuffs);
+        remote.hp = remote.heroInstance.HP;
+        remote.ht = remote.heroInstance.HT;
+        remote.pos = remote.heroInstance.pos;
+        remote.isAlive = remote.hp > 0;
     }
 
     private static void applyPlayerPosition(String playerId, int pos) {
@@ -500,6 +546,8 @@ public final class MessageRouter {
                     if (mob.sprite != null) mob.sprite.remove();
                 } else {
                     mob.HP = Math.min(hp, mob.HT);
+                    String targetBuffs = stringValue(action.get("targetBuffs"), null);
+                    if (targetBuffs != null) WorldSnapshot.restoreNativeCombatBuffs(mob, targetBuffs);
                 }
             } else if ("MOB_ATTACKED".equals(type)) {
                 // Player damage is represented in the event; player HP is reconciled separately.
