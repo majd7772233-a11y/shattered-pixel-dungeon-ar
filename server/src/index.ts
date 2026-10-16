@@ -1107,7 +1107,82 @@ export class MatchRoom {
 
           const actionStr = payload.action || payload.data?.action;
 
-          if (actionStr === "SYNC_HERO_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
+          if (actionStr === "SYNC_MOB_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
+            const data = payload.data || {};
+            const publisherRow = this.sql.exec(\`SELECT value FROM room_meta WHERE key = 'levelPublisher'\`).toArray()[0];
+            const levelRow = this.sql.exec(\`SELECT width, height FROM levels WHERE depth = ?\`, this.currentDepth).toArray()[0];
+            const levelSnapshotRow = this.sql.exec(\`SELECT value FROM room_meta WHERE key = ?\`,
+              \`levelSnapshot:\${this.currentDepth}\`).toArray()[0];
+            let levelSnapshot: any = null;
+            try {
+              levelSnapshot = levelSnapshotRow && typeof levelSnapshotRow.value === "string"
+                ? JSON.parse(String(levelSnapshotRow.value)) : null;
+            } catch (_) { levelSnapshot = null; }
+            const width = Number(levelRow?.width || 0), height = Number(levelRow?.height || 0);
+            const levelSize = width * height;
+            const mobId = resolveServerMobIdByEntityId(levelSnapshot, data.entityId);
+            const savedMob = mobId == null ? null
+              : (Array.isArray(levelSnapshot?.mobs) ? levelSnapshot.mobs : [])
+                  .find((mob: any) => Number(mob?.mobId) === mobId);
+            const mobRow = mobId == null ? [] : this.sql.exec(
+              \`SELECT hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?\`, mobId, this.currentDepth
+            ).toArray();
+            const delta = {
+              entityId: data.entityId,
+              hpBefore: data.hpBefore, htBefore: data.htBefore, posBefore: data.posBefore,
+              shieldBefore: data.shieldBefore, buffsBefore: data.buffsBefore,
+              hpAfter: data.hpAfter, htAfter: data.htAfter, posAfter: data.posAfter,
+              shieldAfter: data.shieldAfter, buffsAfter: data.buffsAfter
+            };
+            const ownerPayload = parseAndValidateNativeSecondaryMobDeltas({
+              complete: true, deltas: [delta], ...(data.heaps === undefined ? {} : { heaps: data.heaps })
+            }, levelSnapshot?.mobs, levelSize, width, true);
+            const isOwner = !!publisherRow && String(publisherRow.value) === session.playerId;
+            const nativeEnvelopeValid = data.combatSchemaVersion === 1
+              && Number(data.combatDepth) === this.currentDepth
+              && typeof data.sourceClass === "string" && data.sourceClass.length > 0 && data.sourceClass.length <= 256
+              && data.engineDamageResult === true && ownerPayload != null
+              && !!savedMob && mobRow.length > 0
+              && Number(mobRow[0].hp) === Number(data.hpBefore)
+              && Number(mobRow[0].ht) === Number(data.htBefore)
+              && Number(mobRow[0].pos) === Number(data.posBefore);
+            const deadPositions = Number(data.hpAfter) === 0 ? [Number(data.posAfter)] : [];
+            const validLoot = deadPositions.length > 0
+              ? isValidNativeLootSnapshot(data.heaps, levelSnapshot?.heaps, deadPositions, levelSize)
+              : data.heaps === undefined;
+            if (isOwner && nativeEnvelopeValid && validLoot) {
+              savedMob.hp = Number(data.hpAfter);
+              savedMob.ht = Number(data.htAfter);
+              savedMob.pos = Number(data.posAfter);
+              savedMob.shielding = Number(data.shieldAfter);
+              savedMob.buffs = JSON.parse(String(data.buffsAfter));
+              if (deadPositions.length > 0) levelSnapshot.heaps = data.heaps;
+              this.sql.exec(\`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?\`,
+                savedMob.hp, savedMob.pos, mobId, this.currentDepth);
+              this.sql.exec(\`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value\`,
+                \`levelSnapshot:\${this.currentDepth}\`, JSON.stringify(levelSnapshot));
+              if (deadPositions.length > 0) {
+                for (const heap of levelSnapshot.heaps) {
+                  this.sql.exec(\`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?\`,
+                    Number(heap.pos), this.currentDepth);
+                }
+              }
+              eventType = "CHAR_DAMAGED";
+              actionResultPayload = {
+                targetId: data.entityId, targetType: "MOB",
+                targetHpBefore: Number(data.hpBefore), targetHtBefore: Number(data.htBefore),
+                targetHp: Number(data.hpAfter), targetHt: Number(data.htAfter),
+                targetPosBefore: Number(data.posBefore), targetPosAfter: Number(data.posAfter),
+                targetShieldBefore: Number(data.shieldBefore), targetShieldAfter: Number(data.shieldAfter),
+                targetBuffsBefore: data.buffsBefore, targetBuffs: data.buffsAfter,
+                sourceType: "ENVIRONMENT", sourceClass: data.sourceClass,
+                engineResolved: true, ...(deadPositions.length > 0 ? { heaps: data.heaps } : {})
+              };
+              actionValid = true;
+              actionCost = 0;
+            }
+          } else if (actionStr === "SYNC_HERO_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data;
             if (data?.sourceType === "ENVIRONMENT") {
               const playerRow = this.sql.exec(
@@ -1842,7 +1917,7 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
           this.checkMatchEndCondition();
-          if (eventType !== "PLAYER_DAMAGED" && eventType !== "PLAYER_REVIVED") this.processMobTurns();
+          if (eventType !== "PLAYER_DAMAGED" && eventType !== "PLAYER_REVIVED" && eventType !== "CHAR_DAMAGED") this.processMobTurns();
         } else {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
