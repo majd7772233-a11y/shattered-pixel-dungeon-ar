@@ -893,7 +893,14 @@ export class MatchRoom {
                     const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(mobPos / width));
                     const authoritativeDistance = Math.max(dx, dy);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
-                    const expectedEntityId = (savedLevel && Array.isArray(savedLevel.mobs) ? savedLevel.mobs : [])
+                    const combatLevelRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                      `levelSnapshot:${this.currentDepth}`).toArray()[0];
+                    let combatLevel: any = null;
+                    try {
+                      combatLevel = combatLevelRow && typeof combatLevelRow.value === "string"
+                        ? JSON.parse(String(combatLevelRow.value)) : null;
+                    } catch (_) { combatLevel = null; }
+                    const expectedEntityId = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
                       .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
                       && (!ranged || this.hasLineOfSight(attackerPos, mobPos, this.currentDepth))
