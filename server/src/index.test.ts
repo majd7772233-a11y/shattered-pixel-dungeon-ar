@@ -184,6 +184,20 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(false);
   });
 
+  it('preserves complete heaps containing multiple native item bundles', () => {
+    const snapshot: any = completeSnapshot();
+    snapshot.heaps.push({
+      pos: 21,
+      type: "HEAP",
+      items: [
+        { itemClass: "PotionOfHealing", serializedBundle: "native-item-bundle-1" },
+        { itemClass: "ScrollOfUpgrade", serializedBundle: "native-item-bundle-2" },
+        { itemClass: "Gold", serializedBundle: "native-item-bundle-3" }
+      ]
+    });
+    expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(true);
+  });
+
   it('rejects unsupported schema versions and oversized bundle payloads', () => {
     const unsupported: any = completeSnapshot();
     unsupported.schemaVersion = 2;
