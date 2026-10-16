@@ -146,12 +146,17 @@ export function isValidNativeEnvironmentDamage(data: any, authoritative: any): b
   const posBefore = Number(authoritative.pos), shieldBefore = Number(authoritative.shielding);
   const hp = Number(data.targetHp), ht = Number(data.targetHt), posAfter = Number(data.targetPosAfter);
   const shieldAfter = Number(data.targetShieldAfter), damage = Number(data.damage);
+  const width = Number(authoritative.levelWidth);
+  const moveDistance = Number.isInteger(width) && width > 0
+    ? Math.max(Math.abs((posAfter % width) - (posBefore % width)),
+        Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width)))
+    : Number.POSITIVE_INFINITY;
   const buffsBefore = data.targetBuffsBefore, buffsAfter = data.targetBuffs;
   return Number.isInteger(data.targetHpBefore) && data.targetHpBefore === hpBefore
     && Number.isInteger(data.targetHtBefore) && data.targetHtBefore === htBefore
     && Number.isInteger(data.targetPosBefore) && data.targetPosBefore === posBefore
     && Number.isInteger(data.targetPosAfter) && Number.isInteger(authoritative.levelSize)
-    && posAfter >= 0 && posAfter < authoritative.levelSize
+    && posAfter >= 0 && posAfter < authoritative.levelSize && moveDistance <= 8
     && Number.isInteger(data.targetShieldBefore) && shieldBefore >= 0 && shieldBefore <= 100000
     && data.targetShieldBefore === shieldBefore
     && Number.isInteger(data.targetShieldAfter) && shieldAfter >= 0 && shieldAfter <= shieldBefore
@@ -1059,7 +1064,8 @@ export class MatchRoom {
                 { hp, ht, pos, shielding: shield }, data?.targetBuffs);
               const validEnvironmentDamage = !!playerRow && previousHeroState != null
                 && isValidNativeEnvironmentDamage(data, {
-                  ...playerRow, levelSize, heroState: previousHeroState, shielding: previousHeroState.shielding
+                  ...playerRow, levelSize, levelWidth: Number(levelRow?.width || 0),
+                  heroState: previousHeroState, shielding: previousHeroState.shielding
                 })
                 && Number(previousHeroState.hp) === Number(playerRow.hp)
                 && Number(previousHeroState.ht) === Number(playerRow.ht)
