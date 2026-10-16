@@ -89,12 +89,50 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   return true;
 }
 
-/** Validates the client-reported HP delta without reimplementing SPD combat formulas. */
+/** Validates a client-resolved result against the authoritative room pre-state. This does not
+ * pretend that a TypeScript Worker can reproduce SPD's Java RNG and native proc pipeline. */
 export function isValidNativeHpTransition(previousHp: number, targetHp: number, reportedDamage: number): boolean {
   return Number.isInteger(previousHp) && previousHp >= 0
     && Number.isInteger(targetHp) && targetHp >= 0 && targetHp <= previousHp
     && Number.isFinite(reportedDamage) && reportedDamage >= 0
     && reportedDamage === previousHp - targetHp;
+}
+
+export function isValidNativeCombatEvent(event: any): boolean {
+  const previousHp = Number(event?.previousHp);
+  const previousHt = Number(event?.previousHt);
+  const targetHpBefore = Number(event?.targetHpBefore);
+  const targetHtBefore = Number(event?.targetHtBefore);
+  const targetHp = Number(event?.targetHp);
+  const targetHt = Number(event?.targetHt);
+  const damage = Number(event?.damage);
+  const distance = Number(event?.distance);
+  const authoritativeDistance = Number(event?.authoritativeDistance);
+  const actionCost = Number(event?.actionCost);
+  const ranged = event?.ranged === true;
+  if (Number(event?.schemaVersion) !== 1 || Number(event?.depth) !== Number(event?.currentDepth)) return false;
+  if (typeof event?.sessionPlayerId !== "string" || event?.attackerId !== event.sessionPlayerId) return false;
+  if (!Number.isInteger(Number(event?.attackerPos)) || Number(event.attackerPos) !== Number(event.authoritativeAttackerPos)) return false;
+  if (!Number.isInteger(Number(event?.targetPos)) || Number(event.targetPos) !== Number(event.authoritativeTargetPos)) return false;
+  if (event?.targetType === "MOB") {
+    if (typeof event?.targetEntityId !== "string" || event.targetEntityId.length < 8
+      || event.targetEntityId !== event.expectedTargetEntityId) return false;
+  } else if (event?.targetType === "PLAYER") {
+    if (event?.targetEntityId != null) return false;
+  } else {
+    return false;
+  }
+  if (event?.targetAlive !== true) return false;
+  if (!Number.isInteger(previousHt) || previousHt < 1 || !Number.isInteger(previousHp)
+    || previousHp < 0 || previousHp > previousHt) return false;
+  if (targetHpBefore !== previousHp || targetHtBefore !== previousHt || targetHt !== previousHt) return false;
+  if (!isValidNativeHpTransition(previousHp, targetHp, damage)) return false;
+  if (event?.hit !== true && (targetHp !== previousHp || damage !== 0)) return false;
+  if (event?.attackKind !== (ranged ? "RANGED" : "MELEE")) return false;
+  if (!Number.isFinite(distance) || distance !== authoritativeDistance
+    || distance < 0 || distance > (ranged ? 8 : 1)) return false;
+  if (!Number.isFinite(actionCost) || actionCost <= 0 || actionCost > 10) return false;
+  return true;
 }
 
 export class SeededRNG {
@@ -797,13 +835,24 @@ export class MatchRoom {
                     const dx = Math.abs((attackerPos % width) - (defPos % width));
                     const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(defPos / width));
                     const authoritativeDistance = Math.max(dx, dy);
-                    const validNativeTarget = requestedPos === defPos && Number.isFinite(distance)
-                      && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
-                      && Number.isInteger(targetHp) && targetHp >= 0
-                      && Number.isInteger(targetHt) && targetHt > 0
-                      && isValidNativeHpTransition(Number(defenderRow[0].hp), targetHp, reportedDamage);
+                    const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
+                    const validNativeTarget = requestedPos === defPos && nativeCostValid
+                      && isValidNativeCombatEvent({
+                        schemaVersion: payload.data?.combatSchemaVersion,
+                        depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
+                        sessionPlayerId: session.playerId, attackerId: payload.data?.attackerId,
+                        attackerPos: payload.data?.attackerPos, authoritativeAttackerPos: attackerPos,
+                        targetType: "PLAYER", targetEntityId: payload.data?.targetEntityId ?? null,
+                        expectedTargetEntityId: null, targetAlive: String(defenderRow[0].state) === "ALIVE",
+                        targetPos: requestedPos, authoritativeTargetPos: defPos,
+                        previousHp: Number(defenderRow[0].hp), previousHt: Number(defenderRow[0].ht),
+                        targetHpBefore: payload.data?.targetHpBefore, targetHtBefore: payload.data?.targetHtBefore,
+                        targetHp, targetHt, damage: reportedDamage,
+                        hit: payload.data?.engineHit, ranged, attackKind: payload.data?.attackKind,
+                        distance, authoritativeDistance, actionCost: nativeCost
+                      });
                     if (validNativeTarget) {
-                      const newHp = Math.min(targetHp, targetHt);
+                      const newHp = targetHp;
                       const newState = newHp === 0
                         ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR")
                         : "ALIVE";
@@ -820,7 +869,7 @@ export class MatchRoom {
                         targetHp: newHp, targetHt, targetState: newState, engineResolved: true
                       };
                       actionValid = true;
-                      actionCost = Number.isFinite(nativeCost) ? Math.max(0.05, Math.min(10, nativeCost)) : 1.0;
+                      actionCost = nativeCost;
                     }
                   }
                 }
@@ -836,20 +885,35 @@ export class MatchRoom {
                     const nativeCost = Number(payload.data?.engineActionCost);
                     const ranged = payload.data?.engineRanged === true;
                     const targetHp = Number(payload.data?.targetHp);
+                    const targetHt = Number(payload.data?.targetHt);
                     const reportedDamage = Number(payload.data?.damage);
                     const widthRow = this.sql.exec(`SELECT width FROM levels WHERE depth = ?`, this.currentDepth).toArray();
                     const width = Number(widthRow[0]?.width || 1);
                     const dx = Math.abs((attackerPos % width) - (mobPos % width));
                     const dy = Math.abs(Math.floor(attackerPos / width) - Math.floor(mobPos / width));
                     const authoritativeDistance = Math.max(dx, dy);
-                    const validNativeTarget = requestedPos === mobPos && Number.isFinite(distance)
-                      && distance === authoritativeDistance && distance >= 0 && distance <= (ranged ? 8 : 1)
-                      && Number.isInteger(targetHp) && targetHp >= 0
-                      && isValidNativeHpTransition(Number(mobRow[0].hp), targetHp, reportedDamage);
+                    const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
+                    const expectedEntityId = (savedLevel && Array.isArray(savedLevel.mobs) ? savedLevel.mobs : [])
+                      .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
+                    const validNativeTarget = requestedPos === mobPos && nativeCostValid
+                      && (!ranged || this.hasLineOfSight(attackerPos, mobPos, this.currentDepth))
+                      && isValidNativeCombatEvent({
+                        schemaVersion: payload.data?.combatSchemaVersion,
+                        depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
+                        sessionPlayerId: session.playerId, attackerId: payload.data?.attackerId,
+                        attackerPos: payload.data?.attackerPos, authoritativeAttackerPos: attackerPos,
+                        targetType: "MOB", targetEntityId, expectedTargetEntityId: String(expectedEntityId),
+                        targetAlive: Number(mobRow[0].hp) > 0,
+                        targetPos: requestedPos, authoritativeTargetPos: mobPos,
+                        previousHp: Number(mobRow[0].hp), previousHt: Number(mobRow[0].ht),
+                        targetHpBefore: payload.data?.targetHpBefore, targetHtBefore: payload.data?.targetHtBefore,
+                        targetHp, targetHt, damage: reportedDamage,
+                        hit: payload.data?.engineHit, ranged, attackKind: payload.data?.attackKind,
+                        distance, authoritativeDistance, actionCost: nativeCost
+                      });
                     if (validNativeTarget) {
-                      const targetHt = Math.max(1, Number(mobRow[0].ht) || Number(payload.data?.targetHt) || 1);
-                      const newHp = Math.max(0, Math.min(targetHt, targetHp));
-                      const rawDmg = Math.max(0, Math.min(targetHt, reportedDamage));
+                      const newHp = targetHp;
+                      const rawDmg = reportedDamage;
                       this.sql.exec(`UPDATE mobs SET hp = ? WHERE mob_id = ? AND depth = ?`, newHp, targetId, this.currentDepth);
                       if (newHp <= 0 && Array.isArray(payload.data?.heaps) && payload.data.heaps.length <= 1024) {
                         const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
@@ -874,7 +938,7 @@ export class MatchRoom {
                         targetHt, engineResolved: true
                       };
                       actionValid = true;
-                      actionCost = Number.isFinite(nativeCost) ? Math.max(0.05, Math.min(10, nativeCost)) : 1.0;
+                      actionCost = nativeCost;
                     }
                   }
                 }
