@@ -319,7 +319,9 @@ public final class MessageRouter {
         try {
             JsonValue events = new JsonReader().parse(message.payloadJson);
             if (events == null || !events.isArray()) {
-                RemotePlayerActionReceiver.handleNetworkMessage(message);
+                // Combat/world events have one typed, sequence-aware path. Substring parsing
+                // can apply damage or death effects twice and can resolve the wrong target.
+                MultiplayerManager.getInstance().requestResync(message.sequence);
                 return;
             }
 
@@ -450,7 +452,13 @@ public final class MessageRouter {
                 int hp = intValue(action.get("targetHp"), mob.HP);
                 mob.HT = Math.max(1, intValue(action.get("targetHt"), mob.HT));
                 if (hp <= 0) {
-                    if (mob.isAlive()) mob.die(Dungeon.hero);
+                    // The native attacker already ran SPD's death/proc/loot pipeline. Do not
+                    // invoke Mob.die() or Mob.destroy() on remote replicas: they award local
+                    // kill rewards and may roll a second copy of the loot.
+                    MultiplayerManager.getInstance().removeServerEntityIdForActor(mob.id());
+                    Dungeon.level.mobs.remove(mob);
+                    Actor.remove(mob);
+                    if (mob.sprite != null) mob.sprite.remove();
                 } else {
                     mob.HP = Math.min(hp, mob.HT);
                 }
