@@ -557,10 +557,12 @@
           "maximum": 100000
         },
         "targetHeroStateJson": {
-          "type": "string",
-          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ],
           "maxLength": 200000,
-          "description": "Server-sanitized target state; trusted class/equipment/talents are retained from the previous authoritative player state."
+          "description": "Server-sanitized target state for player targets; null for mob targets. Trusted class/equipment/talents are retained from the prior authoritative player state."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
