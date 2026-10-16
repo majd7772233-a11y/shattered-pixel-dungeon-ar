@@ -298,6 +298,28 @@ public class MultiplayerManager implements TransportCallback {
     public void onMessageReceived(NetworkMessage message) {
         if (message == null) return;
 
+        // Native combat accepted by another player's authority returns to the attacker in
+        // EVENT_BATCH. Clear its optimistic request from that sequenced result.
+        if (message.messageType == MessageType.EVENT_BATCH && message.payloadJson != null) {
+            try {
+                JsonValue events = new JsonReader().parse(message.payloadJson);
+                if (events != null && events.isArray()) {
+                    for (JsonValue event = events.child; event != null; event = event.next) {
+                        JsonValue action = event.get("action");
+                        if (action == null || !action.isObject()) {
+                            JsonValue stored = event.get("payload");
+                            if (stored != null && stored.isString()) action = new JsonReader().parse(stored.asString());
+                            else if (stored != null && stored.isObject()) action = stored;
+                        }
+                        JsonValue combatRequestId = action == null ? null : action.get("combatRequestId");
+                        if (combatRequestId != null && combatRequestId.isString()) {
+                            pendingActions.remove(combatRequestId.asString());
+                        }
+                    }
+                }
+            } catch (RuntimeException ignored) {}
+        }
+
         if (message.messageType == MessageType.ACTION_ACCEPTED && message.requestId != null) {
             pendingActions.remove(message.requestId);
         } else if (message.messageType == MessageType.ERROR && message.requestId != null) {

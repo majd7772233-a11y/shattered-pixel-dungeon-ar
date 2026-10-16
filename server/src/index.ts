@@ -1175,6 +1175,8 @@ export class MatchRoom {
         let actionResultPayload: any = {};
         let actionValid = false;
         let actionCost = 1.0;
+        let actionOwnerId = session.playerId;
+        let pendingCombatForCleanup: any = null;
 
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
@@ -1198,6 +1200,8 @@ export class MatchRoom {
             const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId || "")).toArray()[0];
             let pending: any = null;
             try { pending = pendingRow && typeof pendingRow.value === "string" ? JSON.parse(String(pendingRow.value)) : null; } catch (_) {}
+            pendingCombatForCleanup = pending;
+            if (pending && typeof pending.attackerId === "string") actionOwnerId = pending.attackerId;
             const defenderId = String(pending?.targetId || "");
             const attackerId = String(pending?.attackerId || "");
             const defenderRow = defenderId ? this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", defenderId).toArray() : [];
@@ -1251,10 +1255,15 @@ export class MatchRoom {
                 && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
                   Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2));
             if (authorityValid) {
-              const newStatus = hpAfter > 0 ? "ALIVE" : "DEAD";
+              const newStatus = hpAfter > 0 ? "ALIVE"
+                : this.gameMode === "DEATHMATCH" ? "ALIVE"
+                  : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
               this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
                 hpAfter, htAfter, posAfter, newStatus, defenderId);
-              if (hpAfter <= 0) this.sql.exec("UPDATE players SET kills = kills + 1 WHERE player_id = ?", attackerId);
+              if (hpAfter <= 0) {
+                this.sql.exec("UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?", attackerId);
+                this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", defenderId);
+              }
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + defenderId, mergedState);
               this.clearPendingCombat(pending);
@@ -1275,6 +1284,8 @@ export class MatchRoom {
             if (typeof data.combatRequestId === "string") {
               const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + data.combatRequestId).toArray()[0];
               try { authorityPending = pendingRow && typeof pendingRow.value === "string" ? JSON.parse(String(pendingRow.value)) : null; } catch (_) { authorityPending = null; }
+              pendingCombatForCleanup = authorityPending;
+              if (authorityPending && typeof authorityPending.attackerId === "string") actionOwnerId = authorityPending.attackerId;
               const publisherRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
               const levelRow = this.sql.exec("SELECT width,height FROM levels WHERE depth = ?", this.currentDepth).toArray()[0];
               const width = Number(levelRow?.width || 0), height = Number(levelRow?.height || 0), levelSize = width * height;
@@ -2292,7 +2303,7 @@ export class MatchRoom {
           if (msg.requestId) {
             this.sql.exec(
               `INSERT INTO processed_actions (request_id, player_id, sequence, result_json) VALUES (?, ?, ?, ?)`,
-              msg.requestId, session.playerId, this.currentSequence, resultJson
+              msg.requestId, actionOwnerId, this.currentSequence, resultJson
             );
           }
 
@@ -2313,13 +2324,23 @@ export class MatchRoom {
           this.checkMatchEndCondition();
           if (eventType !== "PLAYER_DAMAGED" && eventType !== "PLAYER_REVIVED" && eventType !== "CHAR_DAMAGED") this.processMobTurns();
         } else {
-          ws.send(JSON.stringify({
+          if (pendingCombatForCleanup && String(pendingCombatForCleanup.authorityId || "") === session.playerId) {
+            this.clearPendingCombat(pendingCombatForCleanup);
+          }
+          const errorMessage = JSON.stringify({
             protocolVersion: "1.0.0",
             messageType: "ERROR",
             requestId: msg.requestId,
             sequence: this.currentSequence,
             payloadJson: JSON.stringify({ error: "INVALID_ACTION" })
-          }));
+          });
+          ws.send(errorMessage);
+          if (pendingCombatForCleanup && actionOwnerId !== session.playerId) {
+            for (const peer of this.state.getWebSockets()) {
+              const peerSession = peer.deserializeAttachment() as SessionData | null;
+              if (peerSession?.playerId === actionOwnerId) peer.send(errorMessage);
+            }
+          }
         }
       } else if (msg.messageType === "READY") {
         this.sql.exec(`UPDATE players SET ready = 1 WHERE player_id = ?`, session.playerId);
