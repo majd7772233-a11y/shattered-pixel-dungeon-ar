@@ -447,7 +447,7 @@ describe('Strict native combat wire fields', () => {
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 7, targetHt: 12, damage: 5,
     targetShieldBefore: 0, targetShieldAfter: 0,
     engineResult: true, engineHit: true, engineRanged: false, attackKind: 'MELEE',
-    engineDistance: 1, engineActionCost: 1, targetBuffsBefore: '[]', targetBuffs: '[]'
+    engineDistance: 1, engineActionCost: 1, targetBuffsBefore: '[]', targetBuffs: '[]', secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] })
   });
 
   it('accepts the complete typed native payload', () => {
