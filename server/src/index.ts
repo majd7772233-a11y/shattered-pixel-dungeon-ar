@@ -385,6 +385,18 @@ export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown
   return true;
 }
 
+export function hasMatchingNativeHeroEquipmentState(reported: unknown, trusted: unknown): boolean {
+  try {
+    const next = typeof reported === "string" ? JSON.parse(reported) : reported as any;
+    const saved = typeof trusted === "string" ? JSON.parse(trusted) : trusted as any;
+    return !!next && !!saved
+      && typeof next.combatBundle === "string" && next.combatBundle.length > 0
+      && next.combatBundle === saved.combatBundle
+      && typeof next.inventoryBundle === "string" && next.inventoryBundle.length > 0
+      && next.inventoryBundle === saved.inventoryBundle;
+  } catch (_) { return false; }
+}
+
 export function isAuthorizedNativeMobOwner(senderId: unknown, publisherId: unknown): boolean {
   return typeof senderId === "string" && senderId.length > 0
     && typeof publisherId === "string" && publisherId.length > 0
@@ -1541,6 +1553,84 @@ export class MatchRoom {
           } else if (actionStr === "ATTACK" && isValidNativeCombatRequestId(msg.requestId)) {
             let targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
+            if (targetType === "MOB") {
+              const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray()[0];
+              const publisherId = String(publisherRow?.value || "");
+              if (publisherId && publisherId !== session.playerId) {
+                const attackerStateBefore = payload.data?.attackerStateBefore;
+                const targetEntityId = payload.data?.targetEntityId;
+                const attackerRow = this.sql.exec(
+                  `SELECT pos,hp,ht,state FROM players WHERE player_id = ?`, session.playerId
+                ).toArray()[0];
+                const trustedHeroRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                  `heroState:${session.playerId}`).toArray()[0];
+                let trustedHeroState: any = null;
+                try {
+                  trustedHeroState = trustedHeroRow && typeof trustedHeroRow.value === "string"
+                    ? JSON.parse(String(trustedHeroRow.value)) : null;
+                } catch (_) { trustedHeroState = null; }
+                let reportedHeroState: any = null;
+                try {
+                  reportedHeroState = typeof attackerStateBefore === "string" ? JSON.parse(attackerStateBefore) : null;
+                } catch (_) { reportedHeroState = null; }
+                const preStateMatches = !!attackerRow && String(attackerRow.state) === "ALIVE"
+                  && !!reportedHeroState && !!trustedHeroState
+                  && Number(reportedHeroState.hp) === Number(attackerRow.hp)
+                  && Number(reportedHeroState.ht) === Number(attackerRow.ht)
+                  && Number(reportedHeroState.pos) === Number(attackerRow.pos)
+                  && Number(reportedHeroState.shielding) === Number(trustedHeroState.shielding)
+                  && hasMatchingNativeHeroEquipmentState(attackerStateBefore, trustedHeroState);
+                const levelSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                  `levelSnapshot:${this.currentDepth}`).toArray()[0];
+                let savedLevel: any = null;
+                try { savedLevel = levelSnapshotRow && typeof levelSnapshotRow.value === "string" ? JSON.parse(String(levelSnapshotRow.value)) : null; } catch (_) {}
+                const resolvedMobId = resolveServerMobIdByEntityId(savedLevel, targetEntityId);
+                const mobRow = resolvedMobId == null ? [] : this.sql.exec(
+                  `SELECT hp,ht,pos FROM mobs WHERE mob_id = ? AND depth = ?`, resolvedMobId, this.currentDepth
+                ).toArray();
+                const targetMob = (Array.isArray(savedLevel?.mobs) ? savedLevel.mobs : [])
+                  .find((mob: any) => Number(mob?.mobId) === Number(resolvedMobId));
+                if (!preStateMatches || typeof targetEntityId !== "string" || mobRow.length === 0
+                    || !targetMob || Number(mobRow[0].hp) <= 0) {
+                  ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                    requestId: msg.requestId, sequence: this.currentSequence,
+                    payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_PRESTATE_REJECTED" }) }));
+                  return;
+                }
+                const pending = {
+                  requestId: msg.requestId, attackerId: session.playerId, authorityId: publisherId,
+                  targetType: "MOB", targetEntityId, targetId: resolvedMobId,
+                  targetPos: Number(mobRow[0].pos), attackerPos: Number(attackerRow.pos),
+                  depth: this.currentDepth, attackerStateBefore
+                };
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                  `pendingCombat:${msg.requestId}`, JSON.stringify(pending));
+                let authorityFound = false;
+                for (const authorityWs of this.state.getWebSockets()) {
+                  const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
+                  if (!authoritySession || authoritySession.playerId !== publisherId) continue;
+                  authorityFound = true;
+                  authorityWs.send(JSON.stringify({
+                    protocolVersion: "1.0.0", messageType: "COMBAT_REQUEST",
+                    senderId: "SERVER", requestId: msg.requestId, sequence: this.currentSequence,
+                    payloadJson: JSON.stringify({
+                      requestId: msg.requestId, attackerId: session.playerId,
+                      targetType: "MOB", targetEntityId,
+                      attackerPos: Number(attackerRow.pos), targetPos: Number(mobRow[0].pos),
+                      attackerStateBefore
+                    })
+                  }));
+                }
+                if (!authorityFound) {
+                  this.sql.exec(`DELETE FROM room_meta WHERE key = ?`, `pendingCombat:${msg.requestId}`);
+                  ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                    requestId: msg.requestId, sequence: this.currentSequence,
+                    payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_AUTHORITY_UNAVAILABLE" }) }));
+                }
+                return;
+              }
+            }
             let targetEntityId: string | null = null;
             if (targetType !== "PLAYER") {
               targetEntityId = typeof payload.data?.targetEntityId === "string" ? payload.data.targetEntityId : null;
