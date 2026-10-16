@@ -222,6 +222,21 @@ function comparableBuffs(value: any): string {
     || a.cooldown - b.cooldown));
 }
 
+export function hasMatchingNativeBuffSnapshot(reported: unknown, authoritative: unknown): boolean {
+  let reportedValue: any = reported;
+  let authoritativeValue: any = authoritative;
+  try {
+    if (typeof reportedValue === "string") reportedValue = JSON.parse(reportedValue);
+    if (typeof authoritativeValue === "string") authoritativeValue = JSON.parse(authoritativeValue);
+  } catch (_) {
+    return false;
+  }
+  if (!Array.isArray(reportedValue) || !Array.isArray(authoritativeValue)) return false;
+  if (!isValidNativeCombatBuffs(JSON.stringify(reportedValue))
+    || !isValidNativeCombatBuffs(JSON.stringify(authoritativeValue))) return false;
+  return comparableBuffs(reportedValue) === comparableBuffs(authoritativeValue);
+}
+
 function comparableHeap(heap: any): string {
   return JSON.stringify({
     pos: Number(heap?.pos), type: heap?.type, seen: heap?.seen, haunted: heap?.haunted,
@@ -985,6 +1000,13 @@ export class MatchRoom {
               sourceMobBuffsAfterParsed = JSON.parse(String(data?.sourceMobBuffs));
             } catch (_) { sourceMobBuffsBeforeParsed = null; sourceMobBuffsAfterParsed = null; }
             const sourceMobBuffsChanged = comparableBuffs(sourceMobBuffsBeforeParsed) !== comparableBuffs(sourceMobBuffsAfterParsed);
+            const savedSourceMobBefore = Array.isArray(sourceLevel?.mobs)
+              ? sourceLevel.mobs.find((mob: any) => Number(mob?.mobId) === Number(sourceMobId)) : null;
+            const sourceMobPreStateMatchesSnapshot = !!savedSourceMobBefore
+              && Number(savedSourceMobBefore.hp) === sourceMobHpBefore
+              && Number(savedSourceMobBefore.ht) === sourceMobHtBefore
+              && Number(savedSourceMobBefore.pos) === sourceMobPosBefore
+              && hasMatchingNativeBuffSnapshot(sourceMobBuffsBeforeParsed, savedSourceMobBefore.buffs);
             const sourceMobLootValid = sourceMobHpAfter > 0
               ? data?.heaps === undefined
               : isValidNativeLootSnapshot(data?.heaps, sourceLevel?.heaps, sourceMobPosAfter, levelSize);
@@ -992,6 +1014,7 @@ export class MatchRoom {
               && isValidNativeCombatBuffs(data?.sourceMobBuffsBefore)
               && sourceMob.length > 0 && sourceMobHpBefore === Number(sourceMob[0].hp)
               && sourceMobHtBefore === Number(sourceMob[0].ht) && sourceMobPosBefore === sourcePos
+              && sourceMobPreStateMatchesSnapshot
               && sourceMobHpAfter >= 0 && sourceMobHpAfter <= sourceMobHpBefore
               && sourceMobHtAfter === sourceMobHtBefore
               && isValidNativeHpTransition(sourceMobHpBefore, sourceMobHpAfter, Number(data.sourceMobDamage))
