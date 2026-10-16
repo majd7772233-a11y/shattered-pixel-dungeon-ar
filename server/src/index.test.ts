@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -300,5 +300,66 @@ describe('Stable entity target resolution', () => {
     expect(resolveServerMobIdByEntityId(level, 'server-entity-missing')).toBeNull();
     expect(resolveServerMobIdByEntityId(level, null)).toBeNull();
     expect(resolveServerMobIdByEntityId({ mobs: [] }, 'server-entity-unique-1')).toBeNull();
+  });
+});
+
+
+describe('Native combat event contract', () => {
+  const validEvent = (overrides: any = {}) => ({
+    schemaVersion: 1, depth: 3, currentDepth: 3,
+    sessionPlayerId: 'player-a', attackerId: 'player-a',
+    attackerPos: 40, authoritativeAttackerPos: 40,
+    targetType: 'MOB', targetEntityId: 'stable-mob-0001', expectedTargetEntityId: 'stable-mob-0001',
+    targetAlive: true, targetPos: 41, authoritativeTargetPos: 41,
+    previousHp: 12, previousHt: 12, targetHpBefore: 12, targetHtBefore: 12,
+    targetHp: 7, targetHt: 12, damage: 5, hit: true,
+    ranged: false, attackKind: 'MELEE', distance: 1, authoritativeDistance: 1, actionCost: 1,
+    ...overrides
+  });
+
+  it('accepts a consistent native melee hit with matching pre-state and post-state', () => {
+    expect(isValidNativeCombatEvent(validEvent())).toBe(true);
+  });
+
+  it('accepts a consumed native miss only when HP and damage remain unchanged', () => {
+    expect(isValidNativeCombatEvent(validEvent({ targetHp: 12, damage: 0, hit: false }))).toBe(true);
+    expect(isValidNativeCombatEvent(validEvent({ targetHp: 11, damage: 1, hit: false }))).toBe(false);
+  });
+
+  it('rejects stale pre-state, changed max HP, and altered attacker position', () => {
+    expect(isValidNativeCombatEvent(validEvent({ targetHpBefore: 10 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ targetHt: 99 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ attackerPos: 39 }))).toBe(false);
+  });
+
+  it('rejects changed depth, forged stable target, and dead target', () => {
+    expect(isValidNativeCombatEvent(validEvent({ depth: 2 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ targetEntityId: 'stable-mob-other' }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ targetAlive: false }))).toBe(false);
+  });
+
+  it('rejects illegal range, attack-kind mismatch, and impossible action cost', () => {
+    expect(isValidNativeCombatEvent(validEvent({ distance: 2, authoritativeDistance: 2 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ attackKind: 'RANGED' }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ actionCost: 0 }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ actionCost: 11 }))).toBe(false);
+  });
+
+  it('validates ranged attacks against the bounded native range', () => {
+    expect(isValidNativeCombatEvent(validEvent({
+      ranged: true, attackKind: 'RANGED', distance: 8, authoritativeDistance: 8
+    }))).toBe(true);
+    expect(isValidNativeCombatEvent(validEvent({
+      ranged: true, attackKind: 'RANGED', distance: 9, authoritativeDistance: 9
+    }))).toBe(false);
+  });
+
+  it('rejects missing or mismatched stable target identity for mobs', () => {
+    expect(isValidNativeCombatEvent(validEvent({ targetEntityId: null }))).toBe(false);
+    expect(isValidNativeCombatEvent(validEvent({ expectedTargetEntityId: 'another-mob-0001' }))).toBe(false);
+  });
+
+  it('rejects a client claiming an attacker identity it does not own', () => {
+    expect(isValidNativeCombatEvent(validEvent({ attackerId: 'player-b' }))).toBe(false);
   });
 });
