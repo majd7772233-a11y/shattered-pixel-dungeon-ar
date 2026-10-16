@@ -121,6 +121,17 @@ public class WorldSnapshot {
         restoreMobBuffs(character, state);
     }
 
+    /** Removes a replicated dead mob without re-running native death, rewards, or loot rolls. */
+    public static void removeMobReplicaWithoutRewards(com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob) {
+        if (mob == null) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.removeServerEntityIdForActor(mob.id());
+        if (Dungeon.level != null) Dungeon.level.mobs.remove(mob);
+        Actor.remove(mob);
+        for (Buff oldBuff : new java.util.ArrayList<>(mob.buffs())) oldBuff.detach();
+        if (mob.sprite != null) mob.sprite.remove();
+    }
+
     /** Restores class/subclass, native combat stats, equipment, talents and buffs on a remote hero. */
     public static void restoreRemoteHeroState(Hero hero, String encodedState) {
         restoreHeroState(hero, encodedState);
