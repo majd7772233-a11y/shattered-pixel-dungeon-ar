@@ -1197,6 +1197,99 @@
           "const": true
         }
       }
+    },
+    "NativePeriodicMobDamagePayload": {
+      "type": "object",
+      "description": "Native periodic/environmental damage to a mob reported only by the server-designated level publisher; the Worker verifies publisher identity and exact pre-state before committing the bounded native post-state.",
+      "required": [
+        "combatSchemaVersion",
+        "combatDepth",
+        "entityId",
+        "sourceClass",
+        "hpBefore",
+        "htBefore",
+        "posBefore",
+        "shieldBefore",
+        "buffsBefore",
+        "hpAfter",
+        "htAfter",
+        "posAfter",
+        "shieldAfter",
+        "buffsAfter",
+        "engineDamageResult"
+      ],
+      "properties": {
+        "combatSchemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "combatDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "entityId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80
+        },
+        "sourceClass": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "hpBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "htBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "posBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "shieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "buffsBefore": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "hpAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "htAfter": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "posAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "shieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "buffsAfter": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "engineDamageResult": {
+          "type": "boolean",
+          "const": true
+        },
+        "heaps": {
+          "type": "array",
+          "maxItems": 1024,
+          "description": "Required when the native mob dies; all heap changes must be confined to that mob's native death cell."
+        }
+      }
     }
   }
 }
