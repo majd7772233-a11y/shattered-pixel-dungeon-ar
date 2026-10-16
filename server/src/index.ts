@@ -987,15 +987,13 @@ export class MatchRoom {
               sourceMobBuffsBeforeParsed = JSON.parse(String(data?.sourceMobBuffsBefore));
               sourceMobBuffsAfterParsed = JSON.parse(String(data?.sourceMobBuffs));
             } catch (_) { sourceMobBuffsBeforeParsed = null; sourceMobBuffsAfterParsed = null; }
-            const sourceMobBuffsMatch = !!sourceMobSnapshot
-              && comparableBuffs(sourceMobBuffsBeforeParsed) === comparableBuffs(sourceMobSnapshot.buffs);
             const sourceMobBuffsChanged = comparableBuffs(sourceMobBuffsBeforeParsed) !== comparableBuffs(sourceMobBuffsAfterParsed);
             const sourceMobLootValid = sourceMobHpAfter > 0
               ? data?.heaps === undefined
               : isValidNativeLootSnapshot(data?.heaps, sourceLevel?.heaps, sourceMobPosAfter, levelSize);
             const sourceMobStateValid = hasStrictNativeSourceMobState(data)
               && isValidNativeCombatBuffs(data?.sourceMobBuffsBefore)
-              && sourceMobBuffsMatch && sourceMob.length > 0 && sourceMobHpBefore === Number(sourceMob[0].hp)
+              && sourceMob.length > 0 && sourceMobHpBefore === Number(sourceMob[0].hp)
               && sourceMobHtBefore === Number(sourceMob[0].ht) && sourceMobPosBefore === sourcePos
               && sourceMobHpAfter >= 0 && sourceMobHpAfter <= sourceMobHpBefore
               && sourceMobHtAfter === sourceMobHtBefore
