@@ -155,7 +155,7 @@ public class RemotePlayerActionReceiver {
         }
     }
 
-    private static void setupRemoteHeroInstance(RemotePlayer remote) {
+    public static void setupRemoteHeroInstance(RemotePlayer remote) {
         if (remote.heroInstance == null) {
             remote.heroInstance = new RemoteHero();
             remote.heroInstance.pos = remote.pos;
