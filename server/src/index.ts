@@ -105,6 +105,7 @@ export function hasStrictNativeCombatFields(data: any): boolean {
     && Number.isInteger(data.attackerPos) && Number.isInteger(data.targetPos) && Number.isInteger(data.targetPosAfter)
     && Number.isInteger(data.targetHpBefore) && Number.isInteger(data.targetHtBefore)
     && Number.isInteger(data.targetHp) && Number.isInteger(data.targetHt) && Number.isInteger(data.damage)
+    && Number.isInteger(data.targetShieldBefore) && Number.isInteger(data.targetShieldAfter)
     && typeof data.engineResult === "boolean" && data.engineResult === true
     && typeof data.engineHit === "boolean" && typeof data.engineRanged === "boolean"
     && data.attackKind === (data.engineRanged ? "RANGED" : "MELEE")
@@ -1034,11 +1035,28 @@ export class MatchRoom {
                     );
                     const levelSize = Number(widthRow[0]?.width || 0) * Number(
                       this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
+                    const defenderStateRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                      `heroState:${String(targetId)}`).toArray()[0];
+                    let defenderHeroState: any = null;
+                    try {
+                      defenderHeroState = defenderStateRow && typeof defenderStateRow.value === "string"
+                        ? JSON.parse(String(defenderStateRow.value)) : null;
+                    } catch (_) { defenderHeroState = null; }
+                    const targetShieldBefore = payload.data?.targetShieldBefore;
+                    const targetShieldAfter = payload.data?.targetShieldAfter;
+                    const targetHeroStateValid = isValidNativeHeroStateJson(payload.data?.targetHeroStateJson, {
+                      hp: targetHp, ht: targetHt, pos: targetPosAfter, shielding: Number(targetShieldAfter)
+                    });
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
+                      && Number.isInteger(targetShieldBefore) && targetShieldBefore >= 0 && targetShieldBefore <= 100000
+                      && Number.isInteger(targetShieldAfter) && targetShieldAfter >= 0 && targetShieldAfter <= 100000
+                      && (defenderHeroState == null || !Number.isInteger(defenderHeroState?.shielding)
+                        || targetShieldBefore === defenderHeroState.shielding)
+                      && targetHeroStateValid
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
@@ -1065,6 +1083,9 @@ export class MatchRoom {
                         : "ALIVE";
                       this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ?, pos = ? WHERE player_id = ?`,
                         newHp, targetHt, newState, targetPosAfter, String(targetId));
+                      this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                        `heroState:${String(targetId)}`, String(payload.data.targetHeroStateJson));
                       if (newHp === 0) {
                         this.sql.exec(`UPDATE players SET kills = kills + 1, score = score + 1 WHERE player_id = ?`, session.playerId);
                         this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, String(targetId));
@@ -1074,6 +1095,7 @@ export class MatchRoom {
                         attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
                         attackerPos, targetPos: defPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
+                        targetShieldBefore, targetShieldAfter, targetHeroStateJson: payload.data.targetHeroStateJson,
                         hit: payload.data?.engineHit === true, damage: reportedDamage,
                         targetHp: newHp, targetHt, targetState: newState,
                         attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
