@@ -511,6 +511,7 @@ public class Hero extends Char {
 	public boolean attack(Char enemy, float dmgMulti, float dmgBonus, float accMulti) {
 		int targetHpBefore = enemy == null ? 0 : enemy.HP;
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
+		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int attackerPosBefore = pos;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
@@ -549,7 +550,8 @@ public class Hero extends Char {
 					+ ",\"combatDepth\":" + Dungeon.depth
 					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(MultiplayerManager.getInstance().getLocalPlayerId())
 					+ ",\"attackerPos\":" + attackerPosBefore
-					+ ",\"targetPos\":" + enemy.pos
+					+ ",\"targetPos\":" + targetPosBefore
+					+ ",\"targetPosAfter\":" + enemy.pos
 					+ ",\"targetHpBefore\":" + targetHpBefore
 					+ ",\"targetHtBefore\":" + targetHtBefore
 					+ ",\"engineResult\":true"
@@ -559,7 +561,7 @@ public class Hero extends Char {
 					+ ",\"damage\":" + dealt
 					+ ",\"targetHp\":" + targetHp
 					+ ",\"targetHt\":" + Math.max(1, enemy.HT)
-					+ ",\"engineDistance\":" + Dungeon.level.distance(pos, enemy.pos)
+					+ ",\"engineDistance\":" + Dungeon.level.distance(attackerPosBefore, targetPosBefore)
 					+ ",\"engineActionCost\":" + attackDelay()
 					+ extraLoot + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
