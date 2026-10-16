@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -553,5 +553,21 @@ describe('Native combat pre-state binding', () => {
     const first = [buff('native-a', 1), buff('native-b', 3)];
     const reordered = [buff('native-b', 3), buff('native-a', 1)];
     expect(hasMatchingNativeBuffSnapshot(first, reordered)).toBe(true);
+  });
+});
+
+
+describe('Native mob shield pre-state validation', () => {
+  it('accepts only a shield total matching the authoritative pre-attack snapshot', () => {
+    expect(hasMatchingNativeMobShieldSnapshot(4, 2, 4)).toBe(true);
+    expect(hasMatchingNativeMobShieldSnapshot(3, 2, 4)).toBe(false);
+    expect(hasMatchingNativeMobShieldSnapshot(4, 2, undefined)).toBe(false);
+  });
+
+  it('rejects negative, fractional, non-finite and out-of-range shield values', () => {
+    expect(hasMatchingNativeMobShieldSnapshot(-1, 0, -1)).toBe(false);
+    expect(hasMatchingNativeMobShieldSnapshot(1.5, 0, 1.5)).toBe(false);
+    expect(hasMatchingNativeMobShieldSnapshot(1, Number.POSITIVE_INFINITY, 1)).toBe(false);
+    expect(hasMatchingNativeMobShieldSnapshot(100001, 0, 100001)).toBe(false);
   });
 });
