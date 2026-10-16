@@ -235,7 +235,8 @@
         "targetBuffs",
         "targetShieldBefore",
         "targetShieldAfter",
-        "targetHeroStateJson"
+        "targetHeroStateJson",
+        "targetBuffsBefore"
       ],
       "properties": {
         "targetEntityId": {
@@ -349,6 +350,11 @@
           ],
           "maxLength": 200000,
           "description": "Full native post-state when the target is a player; null for mob targets. The server preserves the target's previously trusted class/equipment/talents."
+        },
+        "targetBuffsBefore": {
+          "type": "string",
+          "maxLength": 100000,
+          "description": "JSON-encoded native target buff bundles captured immediately before the attack; the server compares it to its authoritative saved target snapshot."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
