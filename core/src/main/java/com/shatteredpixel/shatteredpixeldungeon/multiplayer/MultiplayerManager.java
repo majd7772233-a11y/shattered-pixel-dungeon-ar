@@ -15,6 +15,8 @@ public class MultiplayerManager implements TransportCallback {
 
     private boolean isMultiplayerActive = false;
     private volatile boolean levelPublisher = false;
+    private volatile boolean resolvingAuthorityCombat = false;
+    private volatile String authorityCombatRequestId;
     private String roomCode;
     private String localPlayerId;
     private String sessionToken;
@@ -59,6 +61,7 @@ public class MultiplayerManager implements TransportCallback {
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.endAuthorityCombat();
         this.lastSequence = 0L;
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
@@ -88,6 +91,7 @@ public class MultiplayerManager implements TransportCallback {
         this.serverEntityIdToActor.clear();
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.endAuthorityCombat();
         this.localPlayerId = null;
         this.roomCode = null;
         this.lastSequence = 0L;
@@ -98,6 +102,20 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public boolean isLevelPublisher() { return levelPublisher; }
+
+    public boolean isResolvingAuthorityCombat() { return resolvingAuthorityCombat; }
+
+    public String getAuthorityCombatRequestId() { return authorityCombatRequestId; }
+
+    public void beginAuthorityCombat(String requestId) {
+        authorityCombatRequestId = requestId;
+        resolvingAuthorityCombat = requestId != null && !requestId.isEmpty();
+    }
+
+    public void endAuthorityCombat() {
+        resolvingAuthorityCombat = false;
+        authorityCombatRequestId = null;
+    }
 
     public boolean isMultiplayerActive() {
         return isMultiplayerActive;
@@ -216,6 +234,19 @@ public class MultiplayerManager implements TransportCallback {
             pendingActions.put(msg.requestId, msg);
         }
 
+        activeTransport.send(msg);
+    }
+
+    public void sendAuthorityAction(String requestId, NetworkActionType actionType,
+                                    String actionDetailsJson, String heroStateJson) {
+        if (!isMultiplayerActive || activeTransport == null || requestId == null || requestId.isEmpty()) return;
+        NetworkMessage msg = new NetworkMessage();
+        msg.messageType = MessageType.ACTION;
+        msg.senderId = localPlayerId;
+        msg.requestId = requestId;
+        msg.payloadJson = "{\"action\":\"" + actionType.name() + "\",\"data\":" + actionDetailsJson
+                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
+        pendingActions.put(requestId, msg);
         activeTransport.send(msg);
     }
 
