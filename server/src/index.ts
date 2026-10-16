@@ -138,6 +138,35 @@ export function hasStrictNativeSourceMobState(data: any): boolean {
     && typeof data.sourceMobBuffs === "string";
 }
 
+export function isValidNativeEnvironmentDamage(data: any, authoritative: any): boolean {
+  if (!data || data.sourceType !== "ENVIRONMENT" || typeof data.sourceClass !== "string"
+    || data.sourceClass.length < 1 || data.sourceClass.length > 256 || data.engineDamageResult !== true
+    || !authoritative || String(authoritative.state) !== "ALIVE") return false;
+  const hpBefore = Number(authoritative.hp), htBefore = Number(authoritative.ht);
+  const posBefore = Number(authoritative.pos), shieldBefore = Number(authoritative.shielding);
+  const hp = Number(data.targetHp), ht = Number(data.targetHt), posAfter = Number(data.targetPosAfter);
+  const shieldAfter = Number(data.targetShieldAfter), damage = Number(data.damage);
+  const buffsBefore = data.targetBuffsBefore, buffsAfter = data.targetBuffs;
+  return Number.isInteger(data.targetHpBefore) && data.targetHpBefore === hpBefore
+    && Number.isInteger(data.targetHtBefore) && data.targetHtBefore === htBefore
+    && Number.isInteger(data.targetPosBefore) && data.targetPosBefore === posBefore
+    && Number.isInteger(data.targetPosAfter) && Number.isInteger(authoritative.levelSize)
+    && posAfter >= 0 && posAfter < authoritative.levelSize
+    && Number.isInteger(data.targetShieldBefore) && shieldBefore >= 0 && shieldBefore <= 100000
+    && data.targetShieldBefore === shieldBefore
+    && Number.isInteger(data.targetShieldAfter) && shieldAfter >= 0 && shieldAfter <= shieldBefore
+    && Number.isInteger(data.targetHt) && ht === htBefore
+    && Number.isInteger(data.targetHp) && hp >= 0 && hp <= hpBefore
+    && Number.isInteger(data.damage) && isValidNativeHpTransition(hpBefore, hp, damage)
+    && Number.isInteger(data.effectiveDamage) && data.effectiveDamage >= 0
+    && data.targetState === (hp > 0 ? "ALIVE" : "DEAD")
+    && hasMatchingNativeHeroBuffSnapshot(buffsBefore, authoritative.heroState)
+    && isValidNativeCombatBuffs(buffsAfter)
+    && (damage > 0 || shieldAfter < shieldBefore
+      || comparableBuffs(JSON.parse(String(buffsBefore))) !== comparableBuffs(JSON.parse(String(buffsAfter)))
+      || posAfter !== posBefore);
+}
+
 export function hasStrictNativeDamageFields(data: any): boolean {
   return data != null && data.combatSchemaVersion === 1 && Number.isInteger(data.combatDepth)
     && data.targetType === "PLAYER" && data.sourceType === "MOB"
@@ -1008,6 +1037,66 @@ export class MatchRoom {
 
           if (actionStr === "SYNC_HERO_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data;
+            if (data?.sourceType === "ENVIRONMENT") {
+              const playerRow = this.sql.exec(
+                `SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, session.playerId
+              ).toArray()[0];
+              const previousHeroRow = this.sql.exec(
+                `SELECT value FROM room_meta WHERE key = ?`, `heroState:${session.playerId}`
+              ).toArray()[0];
+              let previousHeroState: any = null;
+              try {
+                previousHeroState = previousHeroRow && typeof previousHeroRow.value === "string"
+                  ? JSON.parse(String(previousHeroRow.value)) : null;
+              } catch (_) { previousHeroState = null; }
+              const levelRow = this.sql.exec(
+                `SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth
+              ).toArray()[0];
+              const levelSize = Number(levelRow?.width || 0) * Number(levelRow?.height || 0);
+              const hp = Number(data?.targetHp), ht = Number(data?.targetHt);
+              const pos = Number(data?.targetPosAfter), shield = Number(data?.targetShieldAfter);
+              const mergedJson = mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
+                { hp, ht, pos, shielding: shield }, data?.targetBuffs);
+              const validEnvironmentDamage = !!playerRow && previousHeroState != null
+                && isValidNativeEnvironmentDamage(data, {
+                  ...playerRow, levelSize, heroState: previousHeroState, shielding: previousHeroState.shielding
+                })
+                && Number(previousHeroState.hp) === Number(playerRow.hp)
+                && Number(previousHeroState.ht) === Number(playerRow.ht)
+                && Number(previousHeroState.pos) === Number(playerRow.pos)
+                && Number(previousHeroState.shielding) === Number(data.targetShieldBefore)
+                && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shield })
+                && isValidNativeCombatBuffs(data?.targetBuffs)
+                && mergedJson != null
+                && (pos === Number(playerRow.pos)
+                  || (this.isValidCombatTargetPosition(pos, this.currentDepth)
+                    && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)));
+              if (validEnvironmentDamage) {
+                const oldState = String(playerRow.state);
+                const newState = hp > 0 ? "ALIVE" : "DEAD";
+                const mergedState = JSON.parse(mergedJson as string);
+                const storedHeroState = JSON.stringify(mergedState);
+                this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
+                  hp, ht, pos, newState, session.playerId);
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                  `heroState:${session.playerId}`, storedHeroState);
+                if (oldState === "ALIVE" && newState === "DEAD") {
+                  this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
+                }
+                eventType = "PLAYER_DAMAGED";
+                actionResultPayload = { playerId: session.playerId, targetId: session.playerId, targetType: "PLAYER",
+                  sourceType: "ENVIRONMENT", sourceClass: data.sourceClass,
+                  targetHpBefore: Number(data.targetHpBefore), targetHtBefore: Number(data.targetHtBefore),
+                  targetHp: hp, targetHt: ht, targetPos: Number(data.targetPosBefore), targetPosAfter: pos,
+                  targetShieldBefore: Number(data.targetShieldBefore), targetShieldAfter: shield,
+                  targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
+                  targetHeroStateJson: storedHeroState, targetState: newState, damage: Number(data.damage),
+                  effectiveDamage: Number(data.effectiveDamage), engineResolved: true };
+                actionValid = true;
+                actionCost = 0;
+              }
+            } else {
             const hp = data?.targetHp;
             const ht = data?.targetHt;
             const damage = data?.damage;
@@ -1178,6 +1267,7 @@ export class MatchRoom {
               };
               actionValid = true;
               actionCost = 0;
+            }
             }
           } else if (actionStr === "REVIVE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
