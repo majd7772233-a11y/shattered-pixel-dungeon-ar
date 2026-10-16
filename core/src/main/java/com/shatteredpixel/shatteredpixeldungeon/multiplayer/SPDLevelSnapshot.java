@@ -136,6 +136,14 @@ public final class SPDLevelSnapshot {
 
     private SPDLevelSnapshot() {}
 
+    /** Serializes a live native mob after combat so state-machine changes travel with HP. */
+    public static String currentMobBundle(Mob mob) {
+        if (mob == null) return "";
+        Bundle mobBundle = new Bundle();
+        mobBundle.put("mob", mob);
+        return mobBundle.toString();
+    }
+
     public static String currentLevelJson() {
         Level level = Dungeon.level;
         if (level == null) return null;
@@ -200,9 +208,7 @@ public final class SPDLevelSnapshot {
                 m.defenseSkill = mob.defenseSkill;
                 m.baseSpeed = mob.multiplayerBaseSpeed();
                 m.cooldown = Math.max(0f, mob.cooldown());
-                Bundle mobBundle = new Bundle();
-                mobBundle.put("mob", mob);
-                m.serializedBundle = mobBundle.toString();
+                m.serializedBundle = currentMobBundle(mob);
                 for (Buff buff : mob.buffs()) {
                     BuffData buffData = new BuffData();
                     Bundle buffBundle = new Bundle();
