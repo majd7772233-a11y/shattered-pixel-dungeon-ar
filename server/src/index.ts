@@ -171,11 +171,12 @@ export function isValidNativeCombatEvent(event: any): boolean {
   const targetPosAfter = Number(event?.targetPosAfter);
   const levelSize = Number(event?.levelSize);
   const targetMoveDistance = Number(event?.targetMoveDistance);
-  const ranged = event?.ranged === true;
-  if (Number(event?.schemaVersion) !== 1 || Number(event?.depth) !== Number(event?.currentDepth)) return false;
+  if (typeof event?.ranged !== "boolean" || typeof event?.hit !== "boolean") return false;
+  const ranged = event.ranged;
+  if (event?.schemaVersion !== 1 || !Number.isInteger(event?.depth) || event.depth !== event.currentDepth) return false;
   if (typeof event?.sessionPlayerId !== "string" || event?.attackerId !== event.sessionPlayerId) return false;
-  if (!Number.isInteger(Number(event?.attackerPos)) || Number(event.attackerPos) !== Number(event.authoritativeAttackerPos)) return false;
-  if (!Number.isInteger(Number(event?.targetPos)) || Number(event.targetPos) !== Number(event.authoritativeTargetPos)) return false;
+  if (!Number.isInteger(event?.attackerPos) || event.attackerPos !== event.authoritativeAttackerPos) return false;
+  if (!Number.isInteger(event?.targetPos) || event.targetPos !== event.authoritativeTargetPos) return false;
   if (!Number.isInteger(targetPosAfter) || !Number.isInteger(levelSize) || levelSize < 1
     || targetPosAfter < 0 || targetPosAfter >= levelSize
     || !Number.isFinite(targetMoveDistance) || targetMoveDistance < 0 || targetMoveDistance > 8) return false;
@@ -188,6 +189,9 @@ export function isValidNativeCombatEvent(event: any): boolean {
     return false;
   }
   if (event?.targetAlive !== true) return false;
+  if (!Number.isInteger(event?.previousHp) || !Number.isInteger(event?.previousHt)
+    || !Number.isInteger(event?.targetHpBefore) || !Number.isInteger(event?.targetHtBefore)
+    || !Number.isInteger(event?.targetHp) || !Number.isInteger(event?.targetHt) || !Number.isInteger(event?.damage)) return false;
   if (!Number.isInteger(previousHt) || previousHt < 1 || !Number.isInteger(previousHp)
     || previousHp < 0 || previousHp > previousHt) return false;
   if (targetHpBefore !== previousHp || targetHtBefore !== previousHt || targetHt !== previousHt) return false;
