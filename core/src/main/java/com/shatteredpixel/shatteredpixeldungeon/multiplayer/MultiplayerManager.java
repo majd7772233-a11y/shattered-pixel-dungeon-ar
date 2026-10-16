@@ -272,7 +272,8 @@ public class MultiplayerManager implements TransportCallback {
         } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
             NetworkMessage rejected = pendingActions.remove(message.requestId);
             if (rejected != null && rejected.payloadJson != null
-                    && rejected.payloadJson.contains("\"action\":\"ATTACK\"")) {
+                    && (rejected.payloadJson.contains("\"action\":\"ATTACK\"")
+                        || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\""))) {
                 // Native combat may already have applied secondary procs locally. If the
                 // authoritative server rejects an incomplete/stale delta, restore the exact
                 // server world instead of leaving this device in a speculative state.
