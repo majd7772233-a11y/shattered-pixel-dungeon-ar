@@ -520,7 +520,10 @@ export class MatchRoom {
           const pos = Number(tile?.pos);
           if (!validPos(pos) || positions.has(pos) || !Number.isInteger(Number(tile?.terrain))
             || typeof tile?.passable !== "boolean" || typeof tile?.solid !== "boolean"
-            || typeof tile?.pit !== "boolean" || typeof tile?.losBlocking !== "boolean") {
+            || typeof tile?.pit !== "boolean" || typeof tile?.losBlocking !== "boolean"
+            || typeof tile?.flammable !== "boolean" || typeof tile?.secret !== "boolean"
+            || typeof tile?.avoid !== "boolean" || typeof tile?.water !== "boolean"
+            || typeof tile?.discoverable !== "boolean" || typeof tile?.openSpace !== "boolean") {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_SPD_LEVEL_TILES" }) }));
             return;
