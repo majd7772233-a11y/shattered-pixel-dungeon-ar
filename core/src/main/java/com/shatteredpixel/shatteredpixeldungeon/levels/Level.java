@@ -488,7 +488,10 @@ public abstract class Level implements Bundlable {
 		metadata.put("customTiles", customTiles == null ? new ArrayList<CustomTilemap>() : customTiles);
 		metadata.put("customWalls", customWalls == null ? new ArrayList<CustomTilemap>() : customWalls);
 		metadata.put("mobs_to_spawn", mobsToSpawn == null ? new Class[0] : mobsToSpawn.toArray(new Class[0]));
-		if (respawner != null) metadata.put("respawner", respawner);
+		if (respawner != null) {
+			metadata.put("respawner", respawner);
+			metadata.put("respawnerCooldown", Math.max(0f, respawner.cooldown()));
+		}
 		return metadata.toString();
 	}
 
@@ -501,7 +504,11 @@ public abstract class Level implements Bundlable {
 			if (tiles.size() > 512 || walls.size() > 512) return false;
 			for (Bundlable value : tiles) if (!(value instanceof CustomTilemap)) return false;
 			for (Bundlable value : walls) if (!(value instanceof CustomTilemap)) return false;
-			if (metadata.contains("respawner") && !(metadata.get("respawner") instanceof MobSpawner)) return false;
+			if (metadata.contains("respawner")) {
+				if (!(metadata.get("respawner") instanceof MobSpawner)) return false;
+				float cooldown = metadata.getFloat("respawnerCooldown");
+				if (!Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return false;
+			}
 			Class<?>[] spawnClasses = metadata.getClassArray("mobs_to_spawn");
 			if (spawnClasses.length > 512) return false;
 			for (Class<?> spawnClass : spawnClasses)
@@ -529,7 +536,10 @@ public abstract class Level implements Bundlable {
 			}
 			if (respawner != null) Actor.remove(respawner);
 			respawner = metadata.contains("respawner") ? (MobSpawner) metadata.get("respawner") : null;
-			if (respawner != null) Actor.add(respawner);
+			if (respawner != null) {
+				Actor.add(respawner);
+				respawner.restoreMultiplayerCooldown(metadata.getFloat("respawnerCooldown"));
+			}
 			// Preserve collision flags supplied by the authoritative tile snapshot.
 			cleanWalls();
 			return true;
