@@ -158,7 +158,6 @@ export function mergeNativeHeroState(previousValue: unknown, reportedValue: unkn
     hp: Number(previous?.hp), ht: Number(previous?.ht), pos: Number(previous?.pos), shielding: Number(previous?.shielding)
   }) || !isValidNativeHeroStateJson(reportedValue, expected)
     || !Array.isArray(buffs) || buffs.length > 256 || reported.buffCount !== buffs.length) return null;
-  if (previous.hp !== expected.hp && previous.hp < 0) return null;
   for (let i = 0; i < buffs.length; i++) {
     if (reported[`buff_${i}`] !== buffs[i]?.serializedBundle
       || Number(reported[`buffCooldown_${i}`]) !== Number(buffs[i]?.cooldown)) return null;
