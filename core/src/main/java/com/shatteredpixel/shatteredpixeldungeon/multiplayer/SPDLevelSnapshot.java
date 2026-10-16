@@ -321,6 +321,7 @@ public final class SPDLevelSnapshot {
         heroState.put("hp", Dungeon.hero.HP);
         heroState.put("ht", Dungeon.hero.HT);
         heroState.put("pos", Dungeon.hero.pos);
+        heroState.put("shielding", Dungeon.hero.shielding());
         heroState.put("cooldown", Math.max(0f, Dungeon.hero.cooldown()));
         heroState.put("buffCount", Dungeon.hero.buffs().size());
         int buffIndex = 0;
