@@ -451,6 +451,7 @@ export interface NativeSecondaryMobDeltaPayload {
     entityId: string;
     hpBefore: number; htBefore: number; posBefore: number; shieldBefore: number; buffsBefore: string;
     hpAfter: number; htAfter: number; posAfter: number; shieldAfter: number; buffsAfter: string;
+    serializedBundleAfter: string;
   }>;
   heaps?: unknown;
 }
@@ -491,6 +492,8 @@ export function parseAndValidateNativeSecondaryMobDeltas(
       || delta.posAfter < 0 || delta.posAfter >= levelSize
       || delta.shieldAfter < 0 || delta.shieldAfter > (authoritativeOwner ? 100000 : delta.shieldBefore)
       || typeof delta.buffsBefore !== "string" || typeof delta.buffsAfter !== "string"
+      || typeof delta.serializedBundleAfter !== "string" || delta.serializedBundleAfter.length < 1
+      || delta.serializedBundleAfter.length > 200000
       || !hasMatchingNativeBuffSnapshot(delta.buffsBefore, saved.buffs)
       || !isValidNativeCombatBuffs(delta.buffsAfter)) return null;
     const moveDistance = Math.max(
@@ -500,7 +503,8 @@ export function parseAndValidateNativeSecondaryMobDeltas(
     if (moveDistance > 8) return null;
     const changed = delta.hpAfter !== delta.hpBefore || delta.posAfter !== delta.posBefore
       || delta.shieldAfter !== delta.shieldBefore
-      || comparableBuffs(JSON.parse(delta.buffsAfter)) !== comparableBuffs(JSON.parse(delta.buffsBefore));
+      || comparableBuffs(JSON.parse(delta.buffsAfter)) !== comparableBuffs(JSON.parse(delta.buffsBefore))
+      || delta.serializedBundleAfter !== String(saved.serializedBundle || "");
     if (!changed) return null;
     if (delta.hpAfter === 0) deathPositions.add(delta.posAfter);
   }
