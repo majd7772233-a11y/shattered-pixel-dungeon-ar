@@ -198,6 +198,23 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(true);
   });
 
+  it('accepts a dead-mob tombstone in a complete native snapshot without dropping its identity', () => {
+    const snapshot: any = completeSnapshot();
+    snapshot.mobs.push({
+      mobId: 42,
+      entityId: "server-entity-dead-0001",
+      name: "Rat",
+      pos: 20,
+      hp: 0,
+      ht: 10,
+      serializedBundle: "native-dead-mob-bundle",
+      buffs: []
+    });
+    expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(true);
+    expect(snapshot.mobs[0].entityId).toBe("server-entity-dead-0001");
+    expect(snapshot.mobs[0].hp).toBe(0);
+  });
+
   it('rejects unsupported schema versions and oversized bundle payloads', () => {
     const unsupported: any = completeSnapshot();
     unsupported.schemaVersion = 2;
