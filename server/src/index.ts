@@ -900,8 +900,9 @@ export class MatchRoom {
               && Number.isInteger(hp) && Number.isInteger(ht) && Number.isInteger(damage)
               && Number.isInteger(targetPosBefore) && targetPosBefore === Number(playerRow.pos)
               && Number.isInteger(targetPosAfter) && Number.isInteger(targetShieldBefore) && Number.isInteger(targetShieldAfter)
-              && Number.isInteger(previousHeroState?.shielding)
-              && targetShieldBefore === previousHeroState.shielding
+              && (previousHeroState == null || !Number.isInteger(previousHeroState?.shielding)
+                || targetShieldBefore === previousHeroState.shielding)
+              && targetShieldBefore >= 0 && targetShieldBefore <= 100000
               && targetShieldAfter >= 0 && targetShieldAfter <= 100000
               && hp >= 0 && hp <= previousHp && ht === previousHt
               && data.targetHpBefore === previousHp && data.targetHtBefore === previousHt
