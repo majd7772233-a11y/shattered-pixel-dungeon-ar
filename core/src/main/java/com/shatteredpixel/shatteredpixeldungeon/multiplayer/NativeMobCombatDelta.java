@@ -73,9 +73,25 @@ public final class NativeMobCombatDelta {
             State oldState = entry.getValue();
             State newState = after.get(entry.getKey());
             if (newState == null) {
-                // A secondary mob disappearing from the local level must be reconciled by a
-                // full snapshot; never silently omit a native death/removal.
-                payload.complete = false;
+                // Native Mob.die() may remove a killed mob from the level immediately. Preserve
+                // that death as a stable-ID tombstone instead of losing its loot/HP transition.
+                if (oldState.hp <= 0 || oldState.entityId == null || oldState.entityId.length() < 8) {
+                    payload.complete = false;
+                    continue;
+                }
+                Delta tombstone = new Delta();
+                tombstone.entityId = oldState.entityId;
+                tombstone.hpBefore = oldState.hp;
+                tombstone.htBefore = oldState.ht;
+                tombstone.posBefore = oldState.pos;
+                tombstone.shieldBefore = oldState.shielding;
+                tombstone.buffsBefore = oldState.buffs;
+                tombstone.hpAfter = 0;
+                tombstone.htAfter = oldState.ht;
+                tombstone.posAfter = oldState.pos;
+                tombstone.shieldAfter = 0;
+                tombstone.buffsAfter = "[]";
+                payload.deltas.add(tombstone);
                 continue;
             }
             if (sameCombatState(oldState, newState)) continue;
