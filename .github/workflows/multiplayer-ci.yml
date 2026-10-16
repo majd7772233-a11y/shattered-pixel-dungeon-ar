@@ -19,6 +19,7 @@ on:
       - 'core/**'
       - 'android/**'
       - 'server/**'
+      - 'protocol/**'
       - 'gradle/**'
       - 'build.gradle'
       - 'settings.gradle'
