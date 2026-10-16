@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 public class WorldSnapshot {
+    private static volatile WorldSnapshot lastAppliedSnapshot;
+
     public long sequence;
     public int depth = 1;
     public int branch;
@@ -288,6 +290,22 @@ public class WorldSnapshot {
         if (bundle == null) return false;
         try { return expectedType.isInstance(bundle.get(key)); }
         catch (RuntimeException restoreError) { return false; }
+    }
+
+    public static void clearAppliedSnapshot() {
+        lastAppliedSnapshot = null;
+    }
+
+    /** Reapplies the last known-good snapshot if a later reconciliation throws mid-apply. */
+    public static boolean rollbackToLastApplied() {
+        WorldSnapshot backup = lastAppliedSnapshot;
+        if (backup == null) return false;
+        try {
+            return restoreWorld(backup);
+        } catch (RuntimeException rollbackError) {
+            GLog.w("Multiplayer snapshot rollback failed: " + rollbackError.getMessage());
+            return false;
+        }
     }
 
     public static boolean restoreWorld(WorldSnapshot snapshot) {
@@ -660,6 +678,7 @@ public class WorldSnapshot {
                 }
             }
         }
+        lastAppliedSnapshot = snapshot;
         return true;
     }
 }
