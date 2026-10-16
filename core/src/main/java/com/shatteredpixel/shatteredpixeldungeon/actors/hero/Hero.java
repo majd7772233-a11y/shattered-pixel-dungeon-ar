@@ -510,6 +510,8 @@ public class Hero extends Char {
 	@Override
 	public boolean attack(Char enemy, float dmgMulti, float dmgBonus, float accMulti) {
 		int targetHpBefore = enemy == null ? 0 : enemy.HP;
+		int targetHtBefore = enemy == null ? 0 : enemy.HT;
+		int attackerPosBefore = pos;
 		boolean result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
@@ -543,10 +545,17 @@ public class Hero extends Char {
 			String action = "{\"targetId\":" + targetIdJson
 					+ ",\"targetEntityId\":" + targetEntityIdJson
 					+ ",\"targetType\":\"" + targetType + "\""
+					+ ",\"combatSchemaVersion\":1"
+					+ ",\"combatDepth\":" + Dungeon.depth
+					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(MultiplayerManager.getInstance().getLocalPlayerId())
+					+ ",\"attackerPos\":" + attackerPosBefore
 					+ ",\"targetPos\":" + enemy.pos
+					+ ",\"targetHpBefore\":" + targetHpBefore
+					+ ",\"targetHtBefore\":" + targetHtBefore
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
 					+ ",\"engineRanged\":" + ranged
+					+ ",\"attackKind\":\"" + (ranged ? "RANGED" : "MELEE") + "\""
 					+ ",\"damage\":" + dealt
 					+ ",\"targetHp\":" + targetHp
 					+ ",\"targetHt\":" + Math.max(1, enemy.HT)
