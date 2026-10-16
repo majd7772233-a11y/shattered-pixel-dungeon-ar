@@ -803,6 +803,7 @@ export class MatchRoom {
           const id = Number(mob?.mobId), hp = Number(mob?.hp), ht = Number(mob?.ht);
           if (!validPos(Number(mob?.pos)) || !Number.isInteger(id) || id < 0 || mobIds.has(id)
             || !Number.isInteger(hp) || !Number.isInteger(ht) || hp < 0 || ht < 1 || hp > ht
+            || !Number.isInteger(mob?.shielding) || Number(mob.shielding) < 0 || Number(mob.shielding) > 100000
             || typeof mob?.name !== "string" || !validBundle(mob?.serializedBundle)
             || !Array.isArray(mob?.buffs) || mob.buffs.length > 256
             || mob.buffs.some((buff: any) => !validBundle(buff?.serializedBundle)
@@ -1319,12 +1320,19 @@ export class MatchRoom {
                     const expectedEntityId = savedTargetMob?.entityId || "";
                     const targetBuffPreStateMatches = !!savedTargetMob
                       && hasMatchingNativeBuffSnapshot(payload.data?.targetBuffsBefore, savedTargetMob.buffs);
+                    const targetShieldPreStateMatches = !!savedTargetMob
+                      && Number.isInteger(savedTargetMob.shielding)
+                      && Number(payload.data?.targetShieldBefore) === Number(savedTargetMob.shielding)
+                      && Number.isInteger(payload.data?.targetShieldAfter)
+                      && Number(payload.data.targetShieldAfter) >= 0
+                      && Number(payload.data.targetShieldAfter) <= 100000;
                     const validLootSnapshot = targetHp > 0
                       ? payload.data?.heaps === undefined
                       : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
                       && targetBuffPreStateMatches
+                      && targetShieldPreStateMatches
                       && validLootSnapshot
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
@@ -1360,6 +1368,7 @@ export class MatchRoom {
                       savedMob.ht = targetHt;
                       savedMob.pos = targetPosAfter;
                       savedMob.buffs = JSON.parse(String(payload.data.targetBuffs));
+                       savedMob.shielding = Number(payload.data.targetShieldAfter);
                       if (newHp <= 0) combatLevel.heaps = payload.data.heaps;
                       this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
