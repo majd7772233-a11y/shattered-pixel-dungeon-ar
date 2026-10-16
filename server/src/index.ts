@@ -66,7 +66,9 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
     || level.mobs.length > 512 || level.visitedPositions.length > size || level.mappedPositions.length > size
     || typeof level.locked !== "boolean"
     || !["NONE", "CHASM", "WATER", "GRASS", "DARK", "LARGE", "TRAPS", "SECRETS"].includes(String(level.feeling))
-    || typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000) return false;
+    || typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000
+    || typeof level.nativeLevelMetadataBundle !== "string"
+    || level.nativeLevelMetadataBundle.length === 0 || level.nativeLevelMetadataBundle.length > 200000) return false;
   const bundle = (value: any) => typeof value === "string" && value.length > 0 && value.length <= 200000;
   if (!level.mobs.every((mob: any) => bundle(mob?.serializedBundle) && Array.isArray(mob?.buffs)
     && mob.buffs.length <= 256 && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
