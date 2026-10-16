@@ -1097,6 +1097,100 @@
           "maxLength": 200000
         }
       }
+    },
+    "NativeEnvironmentDamagePayload": {
+      "type": "object",
+      "description": "Native SPD hero damage from a non-mob source, including periodic effects. The authenticated hero owner reports native pre/post state; the server validates HP, shield, position, and buff transitions against the saved state.",
+      "required": [
+        "sourceType",
+        "sourceClass",
+        "targetHpBefore",
+        "targetHtBefore",
+        "targetHp",
+        "targetHt",
+        "targetPosBefore",
+        "targetPosAfter",
+        "targetShieldBefore",
+        "targetShieldAfter",
+        "targetBuffsBefore",
+        "targetBuffs",
+        "damage",
+        "effectiveDamage",
+        "targetState",
+        "engineDamageResult"
+      ],
+      "properties": {
+        "sourceType": {
+          "type": "string",
+          "const": "ENVIRONMENT"
+        },
+        "sourceClass": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "targetHpBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHtBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetHp": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetHt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetPosBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetPosAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetBuffsBefore": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "targetBuffs": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "damage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "effectiveDamage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetState": {
+          "type": "string",
+          "enum": [
+            "ALIVE",
+            "DEAD"
+          ]
+        },
+        "engineDamageResult": {
+          "type": "boolean",
+          "const": true
+        }
+      }
     }
   }
 }
