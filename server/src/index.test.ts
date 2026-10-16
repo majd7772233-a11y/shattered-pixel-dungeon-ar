@@ -517,6 +517,8 @@ describe('Native mob damage wire contract', () => {
     expect(hasStrictNativeDamageFields(validDamage())).toBe(true);
     expect(hasStrictNativeSourceMobState(validDamage())).toBe(true);
     expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobHpAfter: '0' })).toBe(false);
+    expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobShieldAfter: undefined })).toBe(false);
+    expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobShieldAfter: -1 })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), targetHp: '0' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceType: 'PLAYER' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceEntityId: null })).toBe(false);
