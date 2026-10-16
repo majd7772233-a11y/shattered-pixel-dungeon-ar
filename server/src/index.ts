@@ -905,9 +905,11 @@ export class MatchRoom {
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
-                        hit: payload.data?.engineHit === true, damage: Math.min(targetHt, reportedDamage),
+                        attackerPos, targetPos: defPos, targetPosAfter,
+                        targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
+                        hit: payload.data?.engineHit === true, damage: reportedDamage,
                         targetHp: newHp, targetHt, targetState: newState,
-                        targetPos: defPos, targetPosAfter,
+                        attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
                         engineResolved: true
                       };
@@ -998,8 +1000,10 @@ export class MatchRoom {
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
+                        attackerPos, targetPos: mobPos, targetPosAfter,
+                        targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
-                        targetHt, targetPos: mobPos, targetPosAfter,
+                        targetHt, attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
                         engineResolved: true
                       };
@@ -1070,8 +1074,15 @@ export class MatchRoom {
         } catch (_) {}
 
         if (actionValid) {
-          // Increment sequence ONLY after successful validation and commit
+          // Increment sequence ONLY after successful validation and commit.
           this.currentSequence++;
+          if (eventType === "PLAYER_ATTACKED") {
+            actionResultPayload.combatSchemaVersion = 1;
+            actionResultPayload.combatDepth = this.currentDepth;
+            actionResultPayload.combatSequence = this.currentSequence;
+            actionResultPayload.combatRequestId = String(msg.requestId || "");
+            actionResultPayload.matchId = this.state.id.toString();
+          }
           this.worldTime += actionCost;
           this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('worldTime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, String(this.worldTime));
 
