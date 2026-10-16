@@ -25,6 +25,9 @@ public class MultiplayerManager implements TransportCallback {
 
     private final Map<String, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
     private final Map<String, NetworkMessage> pendingActions = new ConcurrentHashMap<>();
+    // Server entity identity is distinct from SPD's device-local Actor.id().
+    private final Map<Integer, String> actorToServerEntityId = new ConcurrentHashMap<>();
+    private final Map<String, Integer> serverEntityIdToActor = new ConcurrentHashMap<>();
 
     private MultiplayerManager() {}
 
@@ -60,6 +63,8 @@ public class MultiplayerManager implements TransportCallback {
         this.isMultiplayerActive = true;
         this.remotePlayers.clear();
         this.pendingActions.clear();
+        this.actorToServerEntityId.clear();
+        this.serverEntityIdToActor.clear();
 
         try {
             this.activeTransport.connect(roomCode, this);
@@ -74,6 +79,8 @@ public class MultiplayerManager implements TransportCallback {
         }
         this.remotePlayers.clear();
         this.pendingActions.clear();
+        this.actorToServerEntityId.clear();
+        this.serverEntityIdToActor.clear();
         this.sessionToken = null;
         this.localPlayerId = null;
         this.roomCode = null;
@@ -126,6 +133,40 @@ public class MultiplayerManager implements TransportCallback {
 
     public RemotePlayer getRemotePlayer(String playerId) {
         return remotePlayers.get(playerId);
+    }
+
+    public String getServerEntityId(int localActorId) {
+        return actorToServerEntityId.get(localActorId);
+    }
+
+    public Integer getLocalActorIdForServerEntity(String entityId) {
+        return entityId == null ? null : serverEntityIdToActor.get(entityId);
+    }
+
+    public void registerServerEntityId(int localActorId, String entityId) {
+        if (localActorId < 0 || entityId == null || entityId.length() < 8 || entityId.length() > 80) return;
+        String oldEntity = actorToServerEntityId.put(localActorId, entityId);
+        if (oldEntity != null && !oldEntity.equals(entityId)) serverEntityIdToActor.remove(oldEntity, localActorId);
+        Integer oldActor = serverEntityIdToActor.put(entityId, localActorId);
+        if (oldActor != null && oldActor != localActorId) actorToServerEntityId.remove(oldActor, entityId);
+    }
+
+    public void handleServerEntityAck(NetworkMessage message) {
+        if (message == null || message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            JsonValue entities = payload == null ? null : payload.get("entities");
+            if (entities == null || !entities.isArray()) return;
+            for (JsonValue entity = entities.child; entity != null; entity = entity.next) {
+                JsonValue mobId = entity.get("mobId");
+                JsonValue entityId = entity.get("entityId");
+                if (mobId != null && mobId.isNumber() && entityId != null && entityId.isString()) {
+                    registerServerEntityId(mobId.asInt(), entityId.asString());
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Ignore malformed identity acknowledgements; the next full snapshot can resync.
+        }
     }
 
     public void sendAction(NetworkActionType actionType, String actionDetailsJson) {
