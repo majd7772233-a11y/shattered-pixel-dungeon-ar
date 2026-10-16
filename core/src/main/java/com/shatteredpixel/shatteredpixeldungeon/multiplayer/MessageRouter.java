@@ -416,7 +416,16 @@ public final class MessageRouter {
                 } else if ("PLAYER_REVIVED".equals(type)) {
                     String playerId = stringValue(action.get("playerId"), null);
                     int hp = intValue(action.get("hp"), -1);
-                    if (playerId != null && hp >= 0) applyPlayerHp(playerId, hp);
+                    String heroStateJson = stringValue(action.get("heroStateJson"), null);
+                    if (playerId != null && heroStateJson != null && !heroStateJson.isEmpty()) {
+                        if (playerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                            WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, heroStateJson);
+                        } else {
+                            applyRemoteHeroState(playerId, heroStateJson);
+                        }
+                    } else if (playerId != null && hp >= 0) {
+                        applyPlayerHp(playerId, hp);
+                    }
                 } else if ("ITEM_PICKED_UP".equals(type)) {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) {
