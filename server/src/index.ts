@@ -98,6 +98,17 @@ export function isValidNativeHpTransition(previousHp: number, targetHp: number, 
     && reportedDamage === previousHp - targetHp;
 }
 
+export function isValidNativeCombatBuffs(value: unknown): boolean {
+  if (typeof value !== "string" || value.length > 200000) return false;
+  let buffs: any;
+  try { buffs = JSON.parse(value); } catch (_) { return false; }
+  if (!Array.isArray(buffs) || buffs.length > 256) return false;
+  return buffs.every((buff: any) => typeof buff?.serializedBundle === "string"
+    && buff.serializedBundle.length > 0 && buff.serializedBundle.length <= 200000
+    && Number.isFinite(Number(buff.cooldown)) && Number(buff.cooldown) >= 0
+    && Number(buff.cooldown) <= 100000);
+}
+
 export function isValidNativeCombatEvent(event: any): boolean {
   const previousHp = Number(event?.previousHp);
   const previousHt = Number(event?.previousHt);
@@ -859,6 +870,8 @@ export class MatchRoom {
                       this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
+                      && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
+                      && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
@@ -894,7 +907,9 @@ export class MatchRoom {
                         attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
                         hit: payload.data?.engineHit === true, damage: Math.min(targetHt, reportedDamage),
                         targetHp: newHp, targetHt, targetState: newState,
-                        targetPos: defPos, targetPosAfter, engineResolved: true
+                        targetPos: defPos, targetPosAfter,
+                        targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
+                        engineResolved: true
                       };
                       actionValid = true;
                       actionCost = nativeCost;
@@ -938,6 +953,8 @@ export class MatchRoom {
                     const expectedEntityId = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
                       .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
+                      && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
+                      && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && (ranged
                         ? this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)
                         : this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth))
@@ -982,7 +999,9 @@ export class MatchRoom {
                       actionResultPayload = {
                         attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
-                        targetHt, targetPos: mobPos, targetPosAfter, engineResolved: true
+                        targetHt, targetPos: mobPos, targetPosAfter,
+                        targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
+                        engineResolved: true
                       };
                       actionValid = true;
                       actionCost = nativeCost;
