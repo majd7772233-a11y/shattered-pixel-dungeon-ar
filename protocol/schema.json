@@ -214,6 +214,13 @@
     "NativeAttackPayload": {
       "type": "object",
       "required": [
+        "combatSchemaVersion",
+        "combatDepth",
+        "attackerId",
+        "attackerPos",
+        "attackKind",
+        "targetHpBefore",
+        "targetHtBefore",
         "targetEntityId",
         "targetType",
         "engineResult",
@@ -272,8 +279,46 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 10
+        },
+        "combatSchemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "combatDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "attackerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Must match the authenticated senderId in the outer message."
+        },
+        "attackerPos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Attacker position before native attack resolution; checked against server room state."
+        },
+        "attackKind": {
+          "type": "string",
+          "enum": [
+            "MELEE",
+            "RANGED"
+          ]
+        },
+        "targetHpBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Target HP observed by the native engine immediately before resolving the attack."
+        },
+        "targetHtBefore": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Target max HP observed before resolving the attack; server rejects changes in this field."
         }
-      }
+      },
+      "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
     },
     "NativeTile": {
       "type": "object",
