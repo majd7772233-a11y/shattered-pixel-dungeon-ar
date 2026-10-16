@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -185,5 +185,41 @@ describe('Native level snapshot contract', () => {
     const oversized: any = completeSnapshot();
     oversized.traps.push({ serializedBundle: "x".repeat(200001) });
     expect(hasCompleteNativeLevelSnapshot(oversized)).toBe(false);
+  });
+});
+
+
+describe('Stable native entity identity', () => {
+  it('keeps an assigned server identity across a republished snapshot even when position changes', () => {
+    const previous = [{ mobId: 17, entityId: 'server-entity-0001', name: 'Rat', pos: 10 }];
+    const next = [{ mobId: 17, name: 'Rat', pos: 11 }];
+    assignStableEntityIds(next, previous, () => 'server-entity-new-1');
+    expect(next[0].entityId).toBe('server-entity-0001');
+  });
+
+  it('preserves identity by native class and position when local actor IDs changed', () => {
+    const previous = [{ mobId: 17, entityId: 'server-entity-0002', name: 'Rat', pos: 10 }];
+    const next = [{ mobId: 99, name: 'Rat', pos: 10 }];
+    assignStableEntityIds(next, previous, () => 'server-entity-new-2');
+    expect(next[0].entityId).toBe('server-entity-0002');
+  });
+
+  it('does not assign one server identity to two entities in the same snapshot', () => {
+    const next = [
+      { mobId: 1, entityId: 'server-entity-shared', name: 'Rat', pos: 10 },
+      { mobId: 2, entityId: 'server-entity-shared', name: 'Rat', pos: 11 }
+    ];
+    let generated = 0;
+    assignStableEntityIds(next, [], () => 'server-entity-generated-' + (++generated));
+    expect(next[0].entityId).toBe('server-entity-shared');
+    expect(next[1].entityId).toBe('server-entity-generated-1');
+    expect(new Set(next.map((mob) => mob.entityId)).size).toBe(2);
+  });
+
+  it('does not reuse a previous ID for a different native mob class', () => {
+    const previous = [{ mobId: 17, entityId: 'server-entity-rat', name: 'Rat', pos: 10 }];
+    const next = [{ mobId: 17, name: 'Skeleton', pos: 10 }];
+    assignStableEntityIds(next, previous, () => 'server-entity-skeleton');
+    expect(next[0].entityId).toBe('server-entity-skeleton');
   });
 });
