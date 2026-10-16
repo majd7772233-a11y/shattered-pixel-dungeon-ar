@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -242,5 +242,20 @@ describe('Snapshot identity idempotency', () => {
     const repeated: any[] = first.map((mob) => ({ ...mob }));
     assignStableEntityIds(repeated, first, () => 'unexpected-generated-' + (++id));
     expect(repeated.map((mob) => mob.entityId)).toEqual(before);
+  });
+});
+
+describe('Stable entity target resolution', () => {
+  it('resolves a stable server ID to the current publisher-local row key', () => {
+    const level = { mobs: [{ mobId: 99, entityId: 'server-entity-unique-1', name: 'Rat' }] };
+    expect(resolveServerMobIdByEntityId(level, 'server-entity-unique-1')).toBe(99);
+  });
+
+  it('rejects local actor IDs, unknown IDs and malformed references', () => {
+    const level = { mobs: [{ mobId: 99, entityId: 'server-entity-unique-1', name: 'Rat' }] };
+    expect(resolveServerMobIdByEntityId(level, '99')).toBeNull();
+    expect(resolveServerMobIdByEntityId(level, 'server-entity-missing')).toBeNull();
+    expect(resolveServerMobIdByEntityId(level, null)).toBeNull();
+    expect(resolveServerMobIdByEntityId({ mobs: [] }, 'server-entity-unique-1')).toBeNull();
   });
 });
