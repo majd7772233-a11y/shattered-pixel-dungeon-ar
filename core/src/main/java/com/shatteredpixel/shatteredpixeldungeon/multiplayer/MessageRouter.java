@@ -32,6 +32,7 @@ public final class MessageRouter {
                 break;
             case ACK:
                 manager.updateLastSequence(message.sequence);
+                manager.handleServerEntityAck(message);
                 break;
             case MATCH_END:
                 manager.updateLastSequence(message.sequence);
@@ -190,6 +191,7 @@ public final class MessageRouter {
                     for (JsonValue mob = levelMobs.child; mob != null; mob = mob.next) {
                         java.util.Map<String, Object> row = new java.util.HashMap<>();
                         row.put("mobId", intValue(mob.get("mob_id"), intValue(mob.get("mobId"), -1)));
+                        row.put("entityId", stringValue(mob.get("entityId"), ""));
                         row.put("name", stringValue(mob.get("name"), "Mob"));
                         row.put("pos", intValue(mob.get("pos"), -1));
                         row.put("hp", intValue(mob.get("hp"), 1));
