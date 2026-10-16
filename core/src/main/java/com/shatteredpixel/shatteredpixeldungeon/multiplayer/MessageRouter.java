@@ -328,9 +328,20 @@ public final class MessageRouter {
             for (JsonValue event = events.child; event != null; event = event.next) {
                 long seq = longValue(event.get("sequence"), message.sequence);
                 MultiplayerManager.getInstance().updateLastSequence(seq);
-                String type = stringValue(event.get("eventType"), "");
+                String type = stringValue(event.get("eventType"), stringValue(event.get("event_type"), ""));
                 JsonValue action = event.get("action");
-                if (action == null || !action.isObject()) continue;
+                if (action == null) {
+                    JsonValue storedPayload = event.get("payload");
+                    if (storedPayload != null && storedPayload.isString()) {
+                        action = new JsonReader().parse(storedPayload.asString());
+                    } else if (storedPayload != null && storedPayload.isObject()) {
+                        action = storedPayload;
+                    }
+                }
+                if (action == null || !action.isObject()) {
+                    MultiplayerManager.getInstance().requestResync(seq);
+                    continue;
+                }
 
                 if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
                     applyMobEvent(type, action);
@@ -338,7 +349,7 @@ public final class MessageRouter {
                     String playerId = stringValue(action.get("playerId"), message.senderId);
                     int pos = intValue(action.get("pos"), -1);
                     if (playerId != null && pos >= 0) {
-                        WorldSnapshot delta = new WorldSnapshot(seq, intValue(event.get("depth"), 1), 0L);
+                        WorldSnapshot delta = new WorldSnapshot(seq, intValue(event.get("depth"), Dungeon.depth), 0L);
                         delta.playerPositions.put(playerId, pos);
                         WorldSnapshot.restoreWorld(delta);
                     }
@@ -461,7 +472,10 @@ public final class MessageRouter {
         int mobId = intValue(action.get("mobId"), -1);
         if (mobId < 0 && "PLAYER_ATTACKED".equals(type)
                 && "MOB".equals(stringValue(action.get("targetType"), ""))) {
-            mobId = intValue(action.get("targetId"), -1);
+            String stableEntityId = stringValue(action.get("targetId"), null);
+            Integer mappedActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(stableEntityId);
+            if (mappedActorId != null) mobId = mappedActorId;
+            else mobId = intValue(action.get("targetId"), -1);
         }
         if (mobId < 0) return;
 
