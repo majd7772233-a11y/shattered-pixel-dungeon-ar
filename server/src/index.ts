@@ -109,6 +109,54 @@ export function isValidNativeCombatBuffs(value: unknown): boolean {
     && Number(buff.cooldown) <= 100000);
 }
 
+function comparableHeap(heap: any): string {
+  return JSON.stringify({
+    pos: Number(heap?.pos), type: heap?.type, seen: heap?.seen, haunted: heap?.haunted,
+    hidden: heap?.hidden, autoExplored: heap?.autoExplored,
+    items: (Array.isArray(heap?.items) ? heap.items : []).map((item: any) => ({
+      className: item?.className, quantity: item?.quantity, level: item?.level,
+      cursed: item?.cursed, cursedKnown: item?.cursedKnown, serializedBundle: item?.serializedBundle
+    }))
+  });
+}
+
+/** A kill may change loot only at the dead mob's cell; all other heaps must remain byte-for-byte equivalent. */
+export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown, targetPos: number, levelSize: number): boolean {
+  if (!Array.isArray(value) || value.length > 1024 || !Array.isArray(previousHeaps)
+    || !Number.isInteger(targetPos) || targetPos < 0 || targetPos >= levelSize) return false;
+  const allowedTypes = new Set(["HEAP", "FOR_SALE", "CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST", "TOMB", "SKELETON", "REMAINS"]);
+  const nextByPos = new Map<number, any>();
+  for (const heap of value) {
+    const pos = Number(heap?.pos);
+    if (!Number.isInteger(pos) || pos < 0 || pos >= levelSize || nextByPos.has(pos)
+      || !allowedTypes.has(String(heap?.type))
+      || typeof heap?.seen !== "boolean" || typeof heap?.haunted !== "boolean"
+      || typeof heap?.hidden !== "boolean" || typeof heap?.autoExplored !== "boolean"
+      || !Array.isArray(heap?.items) || heap.items.length > 512) return false;
+    for (const item of heap.items) {
+      if (typeof item?.className !== "string" || item.className.length < 1 || item.className.length > 256
+        || typeof item?.serializedBundle !== "string" || item.serializedBundle.length < 1 || item.serializedBundle.length > 200000
+        || !Number.isInteger(Number(item?.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 100000
+        || !Number.isInteger(Number(item?.level))
+        || typeof item?.cursed !== "boolean" || typeof item?.cursedKnown !== "boolean") return false;
+    }
+    nextByPos.set(pos, heap);
+  }
+  const previousByPos = new Map<number, any>();
+  for (const heap of previousHeaps) {
+    const pos = Number(heap?.pos);
+    if (!Number.isInteger(pos) || pos < 0 || pos >= levelSize || previousByPos.has(pos)) return false;
+    previousByPos.set(pos, heap);
+  }
+  const otherPositions = new Set<number>([...previousByPos.keys(), ...nextByPos.keys()]);
+  otherPositions.delete(targetPos);
+  for (const pos of otherPositions) {
+    const before = previousByPos.get(pos), after = nextByPos.get(pos);
+    if (!before || !after || comparableHeap(before) !== comparableHeap(after)) return false;
+  }
+  return true;
+}
+
 export function isValidNativeCombatEvent(event: any): boolean {
   const previousHp = Number(event?.previousHp);
   const previousHt = Number(event?.previousHt);
@@ -954,7 +1002,11 @@ export class MatchRoom {
                     } catch (_) { combatLevel = null; }
                     const expectedEntityId = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
                       .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
+                    const validLootSnapshot = targetHp > 0
+                      ? payload.data?.heaps === undefined
+                      : isValidNativeLootSnapshot(payload.data?.heaps, combatLevel?.heaps, mobPos, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
+                      && validLootSnapshot
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && (ranged
@@ -981,21 +1033,21 @@ export class MatchRoom {
                       const rawDmg = reportedDamage;
                       this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                         newHp, targetPosAfter, targetId, this.currentDepth);
-                      if (newHp <= 0 && Array.isArray(payload.data?.heaps) && payload.data.heaps.length <= 1024) {
-                        const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
-                        try {
-                          const levelSnapshot = saved && typeof saved.value === "string" ? JSON.parse(String(saved.value)) : {};
-                          levelSnapshot.heaps = payload.data.heaps.filter((heap: any) =>
-                            Number.isInteger(Number(heap?.pos)) && Number(heap.pos) >= 0
-                            && Number(heap.pos) < Number(levelSnapshot.width) * Number(levelSnapshot.height)
-                            && Array.isArray(heap.items) && heap.items.length <= 64);
-                          this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-                            ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                            `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
-                          for (const heap of levelSnapshot.heaps) {
-                            this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
-                          }
-                        } catch (_) {}
+                      const savedMob = (Array.isArray(combatLevel?.mobs) ? combatLevel.mobs : [])
+                        .find((mob: any) => Number(mob?.mobId) === Number(targetId));
+                      if (!savedMob) throw new Error("Accepted combat target missing from native snapshot");
+                      savedMob.hp = newHp;
+                      savedMob.ht = targetHt;
+                      savedMob.pos = targetPosAfter;
+                      savedMob.buffs = JSON.parse(String(payload.data.targetBuffs));
+                      if (newHp <= 0) combatLevel.heaps = payload.data.heaps;
+                      this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                        `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
+                      if (newHp <= 0) {
+                        for (const heap of combatLevel.heaps) {
+                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+                        }
                       }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
