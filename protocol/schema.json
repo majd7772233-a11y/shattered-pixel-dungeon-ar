@@ -226,6 +226,7 @@
         "engineResult",
         "engineHit",
         "targetPos",
+        "targetPosAfter",
         "targetHp",
         "targetHt",
         "damage",
@@ -316,6 +317,11 @@
           "type": "integer",
           "minimum": 1,
           "description": "Target max HP observed before resolving the attack; server rejects changes in this field."
+        },
+        "targetPosAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Target position after native attack effects such as knockback; server validates bounds and displacement."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
