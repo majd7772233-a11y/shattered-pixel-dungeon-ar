@@ -823,7 +823,10 @@ public abstract class Mob extends Char {
 
 		boolean nativePeriodicSource = src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff
 				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob
-				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.items.Item
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.ArmorAbility
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.ClericSpell;
 		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
 				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
 		boolean capturePeriodicState = nativePeriodicSource && manager.isMultiplayerActive()
