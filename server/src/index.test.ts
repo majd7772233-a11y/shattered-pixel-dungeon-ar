@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -528,5 +528,29 @@ describe('Combat request idempotency contract', () => {
     expect(classifyRequestReplay(null, 'player-a')).toBe('NEW');
     expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-a')).toBe('REPLAY');
     expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-b')).toBe('CONFLICT');
+  });
+});
+
+
+describe('Native combat pre-state binding', () => {
+  const buff = (serializedBundle: string, cooldown = 0) => ({ serializedBundle, cooldown });
+
+  it('requires reactive mob buff pre-state to match the last authoritative snapshot', () => {
+    const authoritative = [buff('native-poison-buff', 2), buff('native-armor-buff', 1)];
+    expect(hasMatchingNativeBuffSnapshot(JSON.stringify(authoritative), authoritative)).toBe(true);
+    expect(hasMatchingNativeBuffSnapshot(JSON.stringify([buff('forged-buff', 2)]), authoritative)).toBe(false);
+    expect(hasMatchingNativeBuffSnapshot(JSON.stringify([buff('native-poison-buff', 99), buff('native-armor-buff', 1)]), authoritative)).toBe(false);
+  });
+
+  it('rejects malformed or absent authoritative buff snapshots', () => {
+    expect(hasMatchingNativeBuffSnapshot('{bad-json', [])).toBe(false);
+    expect(hasMatchingNativeBuffSnapshot('[]', null)).toBe(false);
+    expect(hasMatchingNativeBuffSnapshot('[]', 'not-json')).toBe(false);
+  });
+
+  it('treats buff ordering as irrelevant but preserves each native bundle and cooldown', () => {
+    const first = [buff('native-a', 1), buff('native-b', 3)];
+    const reordered = [buff('native-b', 3), buff('native-a', 1)];
+    expect(hasMatchingNativeBuffSnapshot(first, reordered)).toBe(true);
   });
 });
