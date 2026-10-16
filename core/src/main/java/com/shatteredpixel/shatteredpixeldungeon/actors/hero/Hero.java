@@ -532,6 +532,7 @@ public class Hero extends Char {
 				? SPDLevelSnapshot.currentHeroStateJson(this) : "";
 		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 		String targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
+		String targetMobBundleAfterJson = "null";
 		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
 				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
 						: java.util.Collections.emptyMap();
@@ -574,6 +575,7 @@ public class Hero extends Char {
 				if (serverEntityId != null) {
 					targetEntityIdJson = "\"" + serverEntityId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 				}
+				targetMobBundleAfterJson = new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentMobBundle(mob));
 				if (mob.HP <= 0) extraLoot = ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson();
 			} else {
 				RemotePlayer remote = null;
@@ -611,6 +613,7 @@ public class Hero extends Char {
 						? new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) enemy)) : "null")
 					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
 					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(enemy))
+					+ ",\"targetMobBundleAfter\":" + targetMobBundleAfterJson
 					+ ",\"secondaryMobDeltas\":" + new com.badlogic.gdx.utils.Json().toJson(secondaryMobDeltas)
 					+ ",\"engineResult\":true"
 					+ ",\"engineHit\":" + result
