@@ -207,7 +207,7 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
 
 export function mergeNativeHeroState(previousValue: unknown, reportedValue: unknown, expected: {
   hp: number; ht: number; pos: number; shielding: number;
-}, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false): string | null {
+}, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false, preserveCooldown = true): string | null {
   if (typeof previousValue !== "string" || typeof reportedValue !== "string"
     || typeof targetBuffsValue !== "string") return null;
   let previous: any, reported: any, buffs: any;
@@ -237,7 +237,9 @@ export function mergeNativeHeroState(previousValue: unknown, reportedValue: unkn
     pos: expected.pos,
     shielding: expected.shielding,
     // The attacker does not own the defender's scheduler state; preserve the last trusted cooldown.
-    cooldown: Number.isFinite(Number(previous.cooldown)) ? Math.max(0, Math.min(100000, Number(previous.cooldown))) : 0,
+    cooldown: preserveCooldown
+      ? (Number.isFinite(Number(previous.cooldown)) ? Math.max(0, Math.min(100000, Number(previous.cooldown))) : 0)
+      : (Number.isFinite(Number(reported.cooldown)) ? Math.max(0, Math.min(100000, Number(reported.cooldown))) : 0),
     buffCount: buffs.length
   };
   for (const key of Object.keys(merged)) {
@@ -591,6 +593,29 @@ export class MatchRoom {
     this.state = state;
     this.sql = state.storage.sql;
     this.initDatabase();
+  }
+
+  private reconcileCombatAttackerState(pending: any, authorityStateAfter: unknown): string | null {
+    if (!pending || typeof pending.attackerId !== "string" || typeof pending.attackerStateBefore !== "string") return null;
+    const playerId = pending.attackerId;
+    const stateRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId).toArray()[0];
+    const trustedState = stateRow && typeof stateRow.value === "string" ? String(stateRow.value) : "";
+    const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId).toArray()[0];
+    if (!trustedState || !playerRow || !hasMatchingNativeHeroStateSnapshot(pending.attackerStateBefore, trustedState)) return null;
+    const ownAfter = typeof pending.attackerStateAfter === "string" ? pending.attackerStateAfter : "";
+    const blessedAnkhConsumed = hasValidBlessedAnkhConsumption(trustedState, ownAfter);
+    const selectedState = blessedAnkhConsumed ? ownAfter : String(authorityStateAfter || "");
+    const buffs = nativeBuffSnapshotFromHeroState(selectedState);
+    let parsed: any = null;
+    try { parsed = JSON.parse(selectedState); } catch (_) { return null; }
+    if (buffs == null || !isValidNativeHeroStateJson(selectedState, {
+      hp: Number(parsed?.hp), ht: Number(parsed?.ht), pos: Number(parsed?.pos), shielding: Number(parsed?.shielding)
+    })) return null;
+    if (Number(parsed.ht) < 1 || Number(parsed.hp) < 0 || Number(parsed.hp) > Number(parsed.ht)
+      || Number(parsed.pos) !== Number(playerRow.pos)) return null;
+    return mergeNativeHeroState(trustedState, selectedState, {
+      hp: Number(parsed.hp), ht: Number(parsed.ht), pos: Number(parsed.pos), shielding: Number(parsed.shielding)
+    }, buffs, blessedAnkhConsumed, false);
   }
 
   private clearPendingCombat(pending: any) {
@@ -1322,10 +1347,12 @@ export class MatchRoom {
               const validLoot = secondaryMobPayload != null && (allDeaths.length === 0
                 ? data.heaps === undefined && secondaryMobPayload.heaps === undefined
                 : isValidNativeLootSnapshot(lootSnapshot, levelSnapshot?.heaps, allDeaths, levelSize));
+              const mergedAttackerState = this.reconcileCombatAttackerState(authorityPending, payload.heroStateJson);
               const targetBuffPreStateMatches = !!savedMob && hasMatchingNativeBuffSnapshot(data.targetBuffsBefore, savedMob.buffs);
               const targetShieldPreStateMatches = !!savedMob && hasMatchingNativeMobShieldSnapshot(data.targetShieldBefore, data.targetShieldAfter, savedMob.shielding);
               const authorityValid = !!authorityPending && String(authorityPending.requestId) === String(data.combatRequestId)
                 && String(authorityPending.authorityId) === session.playerId && String(publisherRow?.value || "") === session.playerId
+                && mergedAttackerState !== null
                 && authorityPending.targetType === "MOB" && Number(authorityPending.depth) === this.currentDepth
                 && attackerId === String(data.attackerId) && String(authorityPending.targetEntityId) === String(data.targetEntityId)
                 && Number(authorityPending.attackerPos) === attackerPos && Number(authorityPending.targetPos) === targetPos
@@ -1369,6 +1396,14 @@ export class MatchRoom {
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "levelSnapshot:" + this.currentDepth, JSON.stringify(levelSnapshot));
+                const attackerAfter = JSON.parse(mergedAttackerState as string);
+                const attackerStatus = Number(attackerAfter.hp) > 0 ? "ALIVE"
+                  : this.gameMode === "DEATHMATCH" ? "ALIVE"
+                    : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+                this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
+                  Number(attackerAfter.hp), Number(attackerAfter.ht), Number(attackerAfter.pos), attackerStatus, String(authorityPending.attackerId));
+                this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                  "heroState:" + String(authorityPending.attackerId), mergedAttackerState as string);
                 this.clearPendingCombat(authorityPending);
                 if (allDeaths.length > 0) for (const heap of levelSnapshot.heaps) this.sql.exec(
                   "DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?", Number(heap.pos), this.currentDepth);
@@ -1860,7 +1895,8 @@ export class MatchRoom {
                   requestId: msg.requestId, attackerId: session.playerId, authorityId: publisherId,
                   targetType: "MOB", targetEntityId, targetId: resolvedMobId,
                   targetPos: Number(mobRow[0].pos), attackerPos: Number(attackerRow.pos),
-                  targetLockKey: "MOB:" + targetEntityId, depth: this.currentDepth, attackerStateBefore
+                  targetLockKey: "MOB:" + targetEntityId, depth: this.currentDepth,
+                  attackerStateBefore, attackerStateAfter: payload.heroStateJson
                 };
                 if (!this.reservePendingCombat(pending)) {
                   ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
@@ -2288,10 +2324,37 @@ export class MatchRoom {
           }
           if (actionValid && typeof payload.heroStateJson === "string"
               && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000) {
-            // An ordinary MOVE/ATTACK payload must never overwrite the server's trusted
-            // class/equipment/talent baseline. Combat branches update state only after validation.
-            this.sql.exec(`INSERT OR IGNORE INTO room_meta (key,value) VALUES (?,?)`,
-              `heroState:${session.playerId}`, payload.heroStateJson);
+            // Movement/WAIT advances native cooldowns and buffs. Refresh only from a well-formed
+            // owner state whose HP/HT/position already match the server's accepted player row;
+            // preserve the trusted inventory and combat equipment bundles.
+            if (actionStr === "MOVE" || actionStr === "WAIT") {
+              const playerRow = this.sql.exec("SELECT hp,ht,pos FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+              const previousRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+              let reported: any = null;
+              try { reported = JSON.parse(payload.heroStateJson); } catch (_) {}
+              const buffs = nativeBuffSnapshotFromHeroState(payload.heroStateJson);
+              if (playerRow && reported && buffs != null
+                && Number(reported.hp) === Number(playerRow.hp)
+                && Number(reported.ht) === Number(playerRow.ht)
+                && Number(reported.pos) === Number(playerRow.pos)) {
+                if (previousRow && typeof previousRow.value === "string") {
+                  const merged = mergeNativeHeroState(String(previousRow.value), payload.heroStateJson, {
+                    hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos),
+                    shielding: Number(reported.shielding)
+                  }, buffs, false, false);
+                  if (merged != null) this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    "heroState:" + session.playerId, merged);
+                } else if (isValidNativeHeroStateJson(payload.heroStateJson, {
+                  hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos), shielding: Number(reported.shielding)
+                })) {
+                  this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    "heroState:" + session.playerId, payload.heroStateJson);
+                }
+              }
+            } else {
+              this.sql.exec(`INSERT OR IGNORE INTO room_meta (key,value) VALUES (?,?)`,
+                `heroState:${session.playerId}`, payload.heroStateJson);
+            }
           }
         } catch (_) {}
 
