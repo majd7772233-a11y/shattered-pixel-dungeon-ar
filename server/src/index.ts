@@ -50,6 +50,15 @@ export function assignStableEntityIds(
   return mobs;
 }
 
+/** Resolves a stable room entity ID to the publisher-local mob row key. */
+export function resolveServerMobIdByEntityId(levelSnapshot: any, entityId: unknown): number | null {
+  if (typeof entityId !== "string" || entityId.length < 8 || entityId.length > 80
+    || !levelSnapshot || !Array.isArray(levelSnapshot.mobs)) return null;
+  const mob = levelSnapshot.mobs.find((candidate: any) => String(candidate?.entityId || "") === entityId);
+  if (!mob || !Number.isInteger(Number(mob.mobId)) || Number(mob.mobId) < 0) return null;
+  return Number(mob.mobId);
+}
+
 /** Rejects partial/legacy level payloads before any room state is replaced. */
 export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   if (!level || typeof level !== "object" || Number(level.schemaVersion) !== 1
@@ -759,10 +768,8 @@ export class MatchRoom {
                 `levelSnapshot:${this.currentDepth}`).toArray()[0];
               let savedLevel: any = null;
               try { savedLevel = savedLevelRow && typeof savedLevelRow.value === "string" ? JSON.parse(String(savedLevelRow.value)) : null; } catch (_) {}
-              const nativeTarget = targetEntityId && savedLevel && Array.isArray(savedLevel.mobs)
-                ? savedLevel.mobs.find((mob: any) => String(mob?.entityId || "") === targetEntityId) : null;
               // Never treat a publisher-local Actor.id() as a network identity.
-              targetId = nativeTarget && Number.isInteger(Number(nativeTarget.mobId)) ? Number(nativeTarget.mobId) : null;
+              targetId = resolveServerMobIdByEntityId(savedLevel, targetEntityId);
             }
 
             const attackerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
