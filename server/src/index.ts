@@ -128,7 +128,8 @@ export function hasStrictNativeSourceMobState(data: any): boolean {
     && Number.isInteger(data.sourceMobHpBefore) && Number.isInteger(data.sourceMobHtBefore)
     && Number.isInteger(data.sourceMobPosBefore) && Number.isInteger(data.sourceMobHpAfter)
     && Number.isInteger(data.sourceMobHtAfter) && Number.isInteger(data.sourceMobPosAfter)
-    && Number.isInteger(data.sourceMobDamage) && typeof data.sourceMobBuffs === "string";
+    && Number.isInteger(data.sourceMobDamage) && typeof data.sourceMobBuffsBefore === "string"
+    && typeof data.sourceMobBuffs === "string";
 }
 
 export function hasStrictNativeDamageFields(data: any): boolean {
@@ -940,6 +941,9 @@ export class MatchRoom {
                 ? JSON.parse(String(sourceLevelRow.value)) : null;
             } catch (_) { sourceLevel = null; }
             const sourceMobId = resolveServerMobIdByEntityId(sourceLevel, data?.sourceEntityId);
+            const sourceMobSnapshot = sourceMobId == null ? null
+              : (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
+                .find((mob: any) => Number(mob?.mobId) === Number(sourceMobId)) || null;
             const sourceMob = sourceMobId == null ? [] : this.sql.exec(
               `SELECT pos, hp, ht FROM mobs WHERE mob_id = ? AND depth = ?`, sourceMobId, this.currentDepth
             ).toArray();
@@ -969,11 +973,20 @@ export class MatchRoom {
               && sourceMobPosAfter < levelSize && sourceMobMoveDistance <= 8
               && (sourceMobPosAfter === sourceMobPosBefore || (this.isValidCombatTargetPosition(sourceMobPosAfter, this.currentDepth)
                 && this.isCombatDestinationFree(sourceMobPosAfter, this.currentDepth, "MOB", Number(sourceMobId))));
+            let sourceMobBuffsBeforeParsed: any = null, sourceMobBuffsAfterParsed: any = null;
+            try {
+              sourceMobBuffsBeforeParsed = JSON.parse(String(data?.sourceMobBuffsBefore));
+              sourceMobBuffsAfterParsed = JSON.parse(String(data?.sourceMobBuffs));
+            } catch (_) { sourceMobBuffsBeforeParsed = null; sourceMobBuffsAfterParsed = null; }
+            const sourceMobBuffsMatch = !!sourceMobSnapshot
+              && JSON.stringify(sourceMobBuffsBeforeParsed) === JSON.stringify(sourceMobSnapshot.buffs);
+            const sourceMobBuffsChanged = JSON.stringify(sourceMobBuffsBeforeParsed) !== JSON.stringify(sourceMobBuffsAfterParsed);
             const sourceMobLootValid = sourceMobHpAfter > 0
               ? data?.heaps === undefined
               : isValidNativeLootSnapshot(data?.heaps, sourceLevel?.heaps, sourceMobPosAfter, levelSize);
             const sourceMobStateValid = hasStrictNativeSourceMobState(data)
-              && sourceMob.length > 0 && sourceMobHpBefore === Number(sourceMob[0].hp)
+              && isValidNativeCombatBuffs(data?.sourceMobBuffsBefore)
+              && sourceMobBuffsMatch && sourceMob.length > 0 && sourceMobHpBefore === Number(sourceMob[0].hp)
               && sourceMobHtBefore === Number(sourceMob[0].ht) && sourceMobPosBefore === sourcePos
               && sourceMobHpAfter >= 0 && sourceMobHpAfter <= sourceMobHpBefore
               && sourceMobHtAfter === sourceMobHtBefore
@@ -1006,7 +1019,8 @@ export class MatchRoom {
               && hp >= 0 && hp <= previousHp && ht === previousHt
               && data.targetHpBefore === previousHp && data.targetHtBefore === previousHt
               && isValidNativeHpTransition(previousHp, hp, damage)
-              && (damage > 0 || targetShieldAfter < targetShieldBefore)
+              && (damage > 0 || targetShieldAfter < targetShieldBefore || Number(data.sourceMobDamage) > 0
+                || sourceMobPosAfter !== sourceMobPosBefore || sourceMobBuffsChanged)
               && newHeroStateValid && isValidNativeCombatBuffs(data.targetBuffs)
               && sourceMob.length > 0 && Number(sourceMob[0].hp) > 0
               && Number(sourceMob[0].pos) === sourcePos && geometryValid && targetPosValid
@@ -1052,7 +1066,7 @@ export class MatchRoom {
                 targetBuffs: data.targetBuffs, targetHeroStateJson: payload.heroStateJson,
                 sourceMobHpBefore, sourceMobHtBefore, sourceMobHpAfter, sourceMobHtAfter,
                 sourceMobPosBefore, sourceMobPosAfter, sourceMobDamage: Number(data.sourceMobDamage),
-                sourceMobBuffs: data.sourceMobBuffs,
+                sourceMobBuffsBefore: data.sourceMobBuffsBefore, sourceMobBuffs: data.sourceMobBuffs,
                 ...(sourceMobHpAfter <= 0 ? { heaps: data.heaps } : {}),
                 attackerStateJson: null, engineResolved: true
               };
