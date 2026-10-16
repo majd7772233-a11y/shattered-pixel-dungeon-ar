@@ -1772,7 +1772,9 @@ public class Hero extends Char {
 		boolean sourceMobChanged = src instanceof Mob
 				&& (sourceMobHpAfter < sourceMobHpBefore || sourceMobPosAfter != sourceMobPosBefore
 				|| !sourceMobBuffsAfter.equals(sourceMobBuffsBefore));
-		if (effectiveDamage <= 0 && !sourceMobChanged && !revivedByBlessedAnkh) return;
+		boolean targetCombatStateChanged = HP != targetHpBefore || targetShieldAfter != targetShieldBefore
+				|| pos != targetPosBefore || !targetBuffsAfter.equals(targetBuffsBefore);
+		if (effectiveDamage <= 0 && !sourceMobChanged && !targetCombatStateChanged && !revivedByBlessedAnkh) return;
 
 		if (this == Dungeon.hero && revivedByBlessedAnkh
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
@@ -1792,6 +1794,28 @@ public class Hero extends Char {
 					+ ",\"blessedAnkhCountAfter\":" + blessedAnkhCountAfter
 					+ ",\"heroStateJson\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson(this)) + "}";
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
+		}
+
+		if (!revivedByBlessedAnkh && this == Dungeon.hero && !(src instanceof Mob)
+				&& MultiplayerManager.getInstance().isMultiplayerActive() && targetCombatStateChanged) {
+			String state = HP <= 0 ? "DEAD" : "ALIVE";
+			String environmentDamage = "{\"sourceType\":\"ENVIRONMENT\""
+					+ ",\"sourceClass\":" + new com.badlogic.gdx.utils.Json().toJson(src.getClass().getName())
+					+ ",\"targetHpBefore\":" + targetHpBefore
+					+ ",\"targetHtBefore\":" + targetHtBefore
+					+ ",\"targetHp\":" + Math.max(0, HP)
+					+ ",\"targetHt\":" + Math.max(1, HT)
+					+ ",\"targetPosBefore\":" + targetPosBefore
+					+ ",\"targetPosAfter\":" + pos
+					+ ",\"targetShieldBefore\":" + targetShieldBefore
+					+ ",\"targetShieldAfter\":" + targetShieldAfter
+					+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsBefore)
+					+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(targetBuffsAfter)
+					+ ",\"damage\":" + Math.max(0, targetHpBefore - Math.max(0, HP))
+					+ ",\"effectiveDamage\":" + Math.max(0, effectiveDamage)
+					+ ",\"targetState\":\"" + state + "\""
+					+ ",\"engineDamageResult\":true}";
+			MultiplayerManager.getInstance().sendAction(NetworkActionType.SYNC_HERO_STATE, environmentDamage);
 		}
 
 		if (this == Dungeon.hero && src instanceof Mob
