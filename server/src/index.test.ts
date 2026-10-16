@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -632,5 +632,32 @@ describe('Native combat miss immutability', () => {
     expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 4, buffs, buffs, 22, 23)).toBe(false);
     expect(isValidNativeMissTransition(false, 12, 12, 0, 4, 4, buffs,
       JSON.stringify([{ serializedBundle: 'forged', cooldown: 1 }]), 22, 22)).toBe(false);
+  });
+});
+
+
+describe('Blessed-Ankh revival validation', () => {
+  const previous = {
+    hp: 12, ht: 20, pos: 41, shielding: 2,
+    ankhCount: 2, blessedAnkhCount: 1, inventoryBundle: 'inventory-with-blessed-ankh'
+  };
+
+  it('accepts exactly one consumed blessed Ankh and native quarter-health revival', () => {
+    const reported = {
+      ...previous, hp: 5, ankhCount: 1, blessedAnkhCount: 0,
+      inventoryBundle: 'inventory-after-ankh-consumption'
+    };
+    expect(hasValidBlessedAnkhConsumption(previous, reported)).toBe(true);
+  });
+
+  it('rejects revival without an Ankh, unconsumed Ankhs, forged health, or unchanged inventory', () => {
+    const reported = {
+      ...previous, hp: 5, ankhCount: 1, blessedAnkhCount: 0,
+      inventoryBundle: 'inventory-after-ankh-consumption'
+    };
+    expect(hasValidBlessedAnkhConsumption({ ...previous, blessedAnkhCount: 0 }, reported)).toBe(false);
+    expect(hasValidBlessedAnkhConsumption(previous, { ...reported, blessedAnkhCount: 1 })).toBe(false);
+    expect(hasValidBlessedAnkhConsumption(previous, { ...reported, hp: 6 })).toBe(false);
+    expect(hasValidBlessedAnkhConsumption(previous, { ...reported, inventoryBundle: previous.inventoryBundle })).toBe(false);
   });
 });
