@@ -135,10 +135,7 @@ public class RemotePlayerActionReceiver {
                             if (hp == 0) {
                                 // A remote death is already resolved by the owning SPD engine.
                                 // Never call Mob.die() here: it can duplicate loot and rewards.
-                                MultiplayerManager.getInstance().removeServerEntityIdForActor(mob.id());
-                                Dungeon.level.mobs.remove(mob);
-                                Actor.remove(mob);
-                                if (mob.sprite != null) mob.sprite.remove();
+                                WorldSnapshot.removeMobReplicaWithoutRewards(mob);
                                 // Mob.destroy() awards local rewards and may generate duplicate loot.
                                 MultiplayerManager.getInstance().requestResync(
                                         MultiplayerManager.getInstance().getLastSequence());
