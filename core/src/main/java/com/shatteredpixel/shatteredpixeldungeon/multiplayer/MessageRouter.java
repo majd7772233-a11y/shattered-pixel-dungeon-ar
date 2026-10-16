@@ -597,7 +597,7 @@ public final class MessageRouter {
                 if (damage > 0) {
                     // Legacy damage-only events cannot prove a native SPD outcome. Do not
                     // rerun armor/buff/death logic or accept unauthenticated damage deltas.
-                    MultiplayerManager.getInstance().requestResync(seq);
+                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
                 }
             }
             return;
