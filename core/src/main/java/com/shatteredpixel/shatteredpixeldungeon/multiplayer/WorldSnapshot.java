@@ -516,7 +516,10 @@ public class WorldSnapshot {
                     int oldPos = matched.pos;
                     matched.HT = Math.max(1, ht);
                     if (hp <= 0) {
-                        if (matched.isAlive() && Dungeon.hero != null) matched.die(Dungeon.hero);
+                        // An authoritative dead-mob tombstone is not a local kill. Calling
+                        // Mob.die() here would award duplicate XP/statistics and roll local loot.
+                        removeMobReplicaWithoutRewards(matched);
+                        matched = null;
                     } else {
                         matched.HP = Math.min(hp, matched.HT);
                         matched.pos = pos;
