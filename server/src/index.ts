@@ -781,11 +781,6 @@ export class MatchRoom {
 
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
-          if (typeof payload.heroStateJson === "string" && payload.heroStateJson.length <= 200000) {
-            this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-              ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-              `heroState:${session.playerId}`, payload.heroStateJson);
-          }
           let targetPos = -1;
 
           if (payload.data) {
@@ -1130,6 +1125,12 @@ export class MatchRoom {
             actionResultPayload = { itemPos, claimedBy: session.playerId };
             actionValid = true;
             actionCost = 1.0;
+          }
+          if (actionValid && typeof payload.heroStateJson === "string"
+              && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000) {
+            this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+              ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+              `heroState:${session.playerId}`, payload.heroStateJson);
           }
         } catch (_) {}
 
