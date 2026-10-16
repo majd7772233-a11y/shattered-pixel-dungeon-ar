@@ -549,8 +549,16 @@ public class Hero extends Char {
 		int targetShieldAfter = enemy == null ? 0 : enemy.shielding();
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
-		if (this == Dungeon.hero && MultiplayerManager.getInstance().isMultiplayerActive()
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		boolean authoritySimulation = manager.isResolvingAuthorityCombat() && this instanceof RemoteHero;
+		if ((this == Dungeon.hero || authoritySimulation) && manager.isMultiplayerActive()
 				&& (enemy instanceof Mob || enemy instanceof RemoteHero)) {
+			String attackerPlayerId = manager.getLocalPlayerId();
+			if (authoritySimulation) {
+				for (RemotePlayer candidate : manager.getRemotePlayers().values()) {
+					if (candidate.heroInstance == this) { attackerPlayerId = candidate.playerId; break; }
+				}
+			}
 			String targetType;
 			String targetIdJson;
 			String targetEntityIdJson = "null";
@@ -582,7 +590,8 @@ public class Hero extends Char {
 					+ ",\"targetType\":\"" + targetType + "\""
 					+ ",\"combatSchemaVersion\":1"
 					+ ",\"combatDepth\":" + Dungeon.depth
-					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(MultiplayerManager.getInstance().getLocalPlayerId())
+					+ (authoritySimulation ? ",\"combatRequestId\":" + new com.badlogic.gdx.utils.Json().toJson(manager.getAuthorityCombatRequestId()) : "")
+					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(attackerPlayerId)
 					+ ",\"attackerPos\":" + attackerPosBefore
 					+ ",\"attackerStateBefore\":" + new com.badlogic.gdx.utils.Json().toJson(attackerStateBefore)
 					+ ",\"targetPos\":" + targetPosBefore
@@ -606,7 +615,12 @@ public class Hero extends Char {
 					+ ",\"engineDistance\":" + Dungeon.level.distance(attackerPosBefore, targetPosBefore)
 					+ ",\"engineActionCost\":" + attackDelay()
 					+ extraLoot + "}";
-			MultiplayerManager.getInstance().sendAction(NetworkActionType.ATTACK, action);
+			if (authoritySimulation) {
+				manager.sendAuthorityAction(manager.getAuthorityCombatRequestId(),
+						NetworkActionType.SYNC_MOB_STATE, action, SPDLevelSnapshot.currentHeroStateJson(this));
+			} else {
+				manager.sendAction(NetworkActionType.ATTACK, action);
+			}
 		}
 		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
 			if (buff(Talent.PreciseAssaultTracker.class) != null){
