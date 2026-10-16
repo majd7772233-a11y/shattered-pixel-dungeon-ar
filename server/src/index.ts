@@ -397,7 +397,7 @@ export interface NativeSecondaryMobDeltaPayload {
 
 /** Validates every secondary native mob mutation against the last server-held level snapshot. */
 export function parseAndValidateNativeSecondaryMobDeltas(
-  value: unknown, savedMobs: unknown, levelSize: number, width: number
+  value: unknown, savedMobs: unknown, levelSize: number, width: number, authoritativeOwner = false
 ): NativeSecondaryMobDeltaPayload | null {
   let payload: any = value;
   if (typeof payload === "string" && payload.length > 200000) return null;
@@ -423,12 +423,13 @@ export function parseAndValidateNativeSecondaryMobDeltas(
     if (!integers.every(Number.isInteger) || delta.hpBefore < 0 || delta.htBefore < 1
       || delta.posBefore < 0 || delta.posBefore >= levelSize
       || delta.shieldBefore < 0 || delta.shieldBefore > 100000
-      || delta.hpAfter < 0 || delta.hpAfter > delta.hpBefore
+      || delta.hpAfter < 0 || delta.hpAfter > delta.htBefore
+      || (!authoritativeOwner && delta.hpAfter > delta.hpBefore)
       || delta.htAfter !== delta.htBefore || delta.htBefore !== Number(saved.ht)
       || delta.hpBefore !== Number(saved.hp) || delta.posBefore !== Number(saved.pos)
       || delta.shieldBefore !== Number(saved.shielding)
       || delta.posAfter < 0 || delta.posAfter >= levelSize
-      || delta.shieldAfter < 0 || delta.shieldAfter > delta.shieldBefore
+      || delta.shieldAfter < 0 || delta.shieldAfter > (authoritativeOwner ? 100000 : delta.shieldBefore)
       || typeof delta.buffsBefore !== "string" || typeof delta.buffsAfter !== "string"
       || !hasMatchingNativeBuffSnapshot(delta.buffsBefore, saved.buffs)
       || !isValidNativeCombatBuffs(delta.buffsAfter)) return null;
