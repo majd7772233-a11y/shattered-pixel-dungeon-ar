@@ -405,6 +405,16 @@ public final class MessageRouter {
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
                         applyMobEvent(type, action);
                     }
+                    if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)) {
+                        JsonValue secondary = action.get("secondaryMobDeltas");
+                        JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
+                        if (secondaryDeltas != null && secondaryDeltas.isArray() && secondaryDeltas.size > 0) {
+                            // Secondary weapon/talent/proc effects can change native buffs and
+                            // loot on multiple entities. Apply the authoritative full snapshot
+                            // rather than partially reproducing these native side effects.
+                            MultiplayerManager.getInstance().requestResync(seq);
+                        }
+                    }
                     if ("PLAYER_DAMAGED".equals(type)
                             && "MOB".equals(stringValue(action.get("sourceType"), ""))
                             && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
