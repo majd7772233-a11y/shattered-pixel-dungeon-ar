@@ -155,7 +155,7 @@ describe('Native level snapshot contract', () => {
   const completeSnapshot = () => ({
     schemaVersion: 1, branch: 0, depth: 1, width: 8, height: 8,
     entrancePos: 1, exitPos: 62, seed: 1234, locked: false, feeling: "NONE",
-    heroStateJson: "", tiles: Array.from({ length: 64 }, (_, pos) => ({
+    heroStateJson: "", nativeLevelMetadataBundle: "native-metadata-bundle", tiles: Array.from({ length: 64 }, (_, pos) => ({
       pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false
     })),
     transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
