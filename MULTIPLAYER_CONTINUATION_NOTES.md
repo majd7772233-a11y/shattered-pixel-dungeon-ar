@@ -142,3 +142,14 @@ The following code is present by the gameplay-code commit `657ce010edb03b55707d2
 - Added server contract tests for strict native damage fields, hero-state merge safety, request-ID replay classification, native buff payloads, bounded loot snapshots, armor-reduced/zero-damage/lethal transitions, and stable entity identity.
 - **Phase 2 remains in progress.** The Worker still does not execute the original Java combat engine or reproduce its RNG, so a malicious client can submit a plausible but forged in-range damage amount. Secondary multi-target/periodic effects and PvP death/Ankh outcomes also lack complete end-to-end Java verification. Do not mark Phase 2 complete, and do not describe this client-resolved protocol as cheat-proof.
 - No physical two-device test was performed.
+
+
+## 2026-10-16 — Phase 2 continuation checkpoint (not complete)
+
+- Latest gameplay-code commit: `e911d7a7e76f85a1c3a7b10675715f2ee62d1ef1`. Validation: [38937930225](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38937930225); backend typecheck/tests passed, Android JVM tests and debug APK compilation were still running when checked. Recheck the exact run before claiming overall success.
+- `Hero.damage` now captures `targetBuffsBefore` before mob damage/defensive procs. The Worker compares that pre-state against the previously saved hero state and rejects absent/malformed/stale buff snapshots.
+- PvP attack validation now compares the target's reported pre-attack buff state against the defender's saved native hero bundle.
+- Server-broadcast combat outcomes include target buff pre-state. `protocol/schema.json` now has a typed `NativeMobDamagePayload`, requires `targetBuffsBefore`, and uses conditional fields for MOB-vs-PLAYER attack targets and mob-sourced outcomes. This fixes the previous mismatch where player-sourced events were required to contain mob-only state.
+- Added backend coverage for native hero buff pre-state matching, mismatches, malformed snapshots, invalid cooldowns, and missing pre-state fields.
+- **Phase 2 remains incomplete.** The Worker still validates client-reported results rather than independently executing original SPD Java RNG, hit/damage calculations, weapon/armor procs and secondary effects. A plausible but forged in-range damage result remains possible. Secondary/periodic effect and PvP death/Ankh end-to-end convergence are not verified. No physical two-device test was performed.
+- Continue on `multiplayer-framework-core-14118577486727081892`; do not merge to `main`. Do not mark Phase 2 complete until the authoritative-outcome gap and the remaining listed acceptance criteria are actually resolved.
