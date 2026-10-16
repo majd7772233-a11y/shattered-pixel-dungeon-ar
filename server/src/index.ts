@@ -945,7 +945,8 @@ export class MatchRoom {
                 : sourceDistance <= 8 && this.hasLineOfSight(sourcePos, Number(targetPosBefore), this.currentDepth));
             const targetPosValid = Number.isInteger(targetPosAfter) && targetPosAfter >= 0 && targetPosAfter < levelSize
               && targetMoveDistance <= 8
-              && (targetPosAfter === targetPosBefore || this.isValidCombatTargetPosition(Number(targetPosAfter), this.currentDepth));
+              && (targetPosAfter === targetPosBefore || (this.isValidCombatTargetPosition(Number(targetPosAfter), this.currentDepth)
+                && this.isCombatDestinationFree(Number(targetPosAfter), this.currentDepth, "PLAYER", session.playerId)));
             const previousHp = Number(playerRow?.hp);
             const previousHt = Number(playerRow?.ht);
             const validDamage = !!playerRow && String(playerRow.state) === "ALIVE"
