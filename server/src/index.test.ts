@@ -485,7 +485,7 @@ describe('Native hero state merge safety', () => {
 describe('Native mob damage wire contract', () => {
   const validDamage = () => ({
     combatSchemaVersion: 1, combatDepth: 2, targetType: 'PLAYER', sourceType: 'MOB',
-    sourceEntityId: 'stable-mob-0001', sourcePos: 10, sourceAttackKind: 'MELEE',
+    sourceEntityId: 'stable-mob-0001', sourcePos: 10, sourceAttackKind: 'MELEE', sourceActionCost: 1,
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
     targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
     engineDamageResult: true, targetBuffs: '[]'
