@@ -113,10 +113,8 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public void updateLastSequence(long seq) {
-        if (seq > this.lastSequence) {
-            this.lastSequence = seq;
-            this.lastResyncRequestedSequence = -1L;
-        }
+        if (seq > this.lastSequence) this.lastSequence = seq;
+        if (seq >= this.lastSequence) this.lastResyncRequestedSequence = -1L;
     }
 
     /** Requests a full authoritative snapshot after a failed restore, once per bad sequence. */
