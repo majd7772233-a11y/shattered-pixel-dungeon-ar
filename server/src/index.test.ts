@@ -198,14 +198,14 @@ describe('Native level snapshot contract', () => {
 describe('Stable native entity identity', () => {
   it('keeps an assigned server identity across a republished snapshot even when position changes', () => {
     const previous = [{ mobId: 17, entityId: 'server-entity-0001', name: 'Rat', pos: 10 }];
-    const next = [{ mobId: 17, name: 'Rat', pos: 11 }];
+    const next: any[] = [{ mobId: 17, name: 'Rat', pos: 11 }];
     assignStableEntityIds(next, previous, () => 'server-entity-new-1');
     expect(next[0].entityId).toBe('server-entity-0001');
   });
 
   it('preserves identity by native class and position when local actor IDs changed', () => {
     const previous = [{ mobId: 17, entityId: 'server-entity-0002', name: 'Rat', pos: 10 }];
-    const next = [{ mobId: 99, name: 'Rat', pos: 10 }];
+    const next: any[] = [{ mobId: 99, name: 'Rat', pos: 10 }];
     assignStableEntityIds(next, previous, () => 'server-entity-new-2');
     expect(next[0].entityId).toBe('server-entity-0002');
   });
@@ -224,7 +224,7 @@ describe('Stable native entity identity', () => {
 
   it('does not reuse a previous ID for a different native mob class', () => {
     const previous = [{ mobId: 17, entityId: 'server-entity-rat', name: 'Rat', pos: 10 }];
-    const next = [{ mobId: 17, name: 'Skeleton', pos: 10 }];
+    const next: any[] = [{ mobId: 17, name: 'Skeleton', pos: 10 }];
     assignStableEntityIds(next, previous, () => 'server-entity-skeleton');
     expect(next[0].entityId).toBe('server-entity-skeleton');
   });
@@ -232,14 +232,14 @@ describe('Stable native entity identity', () => {
 
 describe('Snapshot identity idempotency', () => {
   it('keeps the same entity IDs when the exact same snapshot is assigned repeatedly', () => {
-    const first = [
+    const first: any[] = [
       { mobId: 4, name: 'Rat', pos: 15 },
       { mobId: 8, name: 'Skeleton', pos: 22 }
     ];
     let id = 0;
     assignStableEntityIds(first, [], () => 'stable-generated-' + (++id));
     const before = first.map((mob) => mob.entityId);
-    const repeated = first.map((mob) => ({ ...mob }));
+    const repeated: any[] = first.map((mob) => ({ ...mob }));
     assignStableEntityIds(repeated, first, () => 'unexpected-generated-' + (++id));
     expect(repeated.map((mob) => mob.entityId)).toEqual(before);
   });
