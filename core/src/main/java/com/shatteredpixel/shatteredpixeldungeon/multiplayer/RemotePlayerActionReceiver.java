@@ -144,7 +144,11 @@ public class RemotePlayerActionReceiver {
                             }
                         }
                     } else if (damage > 0) {
-                        mob.damage(damage, "SERVER");
+                        // Legacy damage-only packets are not native combat outcomes. Applying
+                        // them through Mob.damage() reruns armor, buffs, death rewards and loot
+                        // locally, causing clients to diverge. Reject and recover from authority.
+                        MultiplayerManager.getInstance().requestResync(
+                                MultiplayerManager.getInstance().getLastSequence());
                     }
                     break;
                 }
