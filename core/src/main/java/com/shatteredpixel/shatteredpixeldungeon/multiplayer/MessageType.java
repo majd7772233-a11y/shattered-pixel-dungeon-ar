@@ -13,6 +13,7 @@ public enum MessageType {
     ACTION,
     LEVEL_DATA,
     ACTION_ACCEPTED,
+    COMBAT_REQUEST,
     EVENT_BATCH,
     SNAPSHOT,
     ACK,
