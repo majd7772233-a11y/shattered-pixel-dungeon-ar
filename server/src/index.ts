@@ -400,6 +400,7 @@ export function parseAndValidateNativeSecondaryMobDeltas(
   value: unknown, savedMobs: unknown, levelSize: number, width: number
 ): NativeSecondaryMobDeltaPayload | null {
   let payload: any = value;
+  if (typeof payload === "string" && payload.length > 200000) return null;
   try { if (typeof payload === "string") payload = JSON.parse(payload); } catch (_) { return null; }
   if (!payload || payload.complete !== true || !Array.isArray(payload.deltas)
     || payload.deltas.length > 512 || !Array.isArray(savedMobs)
@@ -440,7 +441,7 @@ export function parseAndValidateNativeSecondaryMobDeltas(
       || delta.shieldAfter !== delta.shieldBefore
       || comparableBuffs(JSON.parse(delta.buffsAfter)) !== comparableBuffs(JSON.parse(delta.buffsBefore));
     if (!changed) return null;
-    if (delta.hpAfter === 0) deathPositions.add(delta.posBefore);
+    if (delta.hpAfter === 0) deathPositions.add(delta.posAfter);
   }
   if (deathPositions.size > 0) {
     if (!Array.isArray(payload.heaps)) return null;
@@ -1631,9 +1632,9 @@ export class MatchRoom {
                       payload.data?.secondaryMobDeltas, combatLevel?.mobs, levelSize, width);
                     const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
                       .filter((delta: any) => Number(delta.hpAfter) === 0)
-                      .map((delta: any) => Number(delta.posBefore));
+                      .map((delta: any) => Number(delta.posAfter));
                     const allDeathPositions = [
-                      ...(targetHp <= 0 ? [mobPos] : []),
+                      ...(targetHp <= 0 ? [targetPosAfter] : []),
                       ...secondaryDeathPositions
                     ];
                     const lootSnapshot = targetHp <= 0 ? payload.data?.heaps
