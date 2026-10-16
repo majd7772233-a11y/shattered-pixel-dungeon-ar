@@ -365,6 +365,15 @@ export class MatchRoom {
     return true;
   }
 
+  private isValidCombatTargetPosition(pos: number, depth: number): boolean {
+    const level = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, depth).toArray()[0];
+    if (!level) return false;
+    const width = Number(level.width), height = Number(level.height);
+    if (!Number.isInteger(pos) || pos < 0 || pos >= width * height) return false;
+    const tile = this.sql.exec(`SELECT passable, solid FROM level_tiles WHERE depth = ? AND pos = ?`, depth, pos).toArray()[0];
+    return !!tile && Number(tile.solid) !== 1 && Number(tile.passable) === 1;
+  }
+
   public hasLineOfSight(fromPos: number, toPos: number, depth: number): boolean {
     const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, depth).toArray();
     const width = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
@@ -850,6 +859,10 @@ export class MatchRoom {
                       this.sql.exec(`SELECT height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0]?.height || 0);
                     const nativeCostValid = Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10;
                     const validNativeTarget = requestedPos === defPos && nativeCostValid
+                      && (ranged
+                        ? this.hasLineOfSight(attackerPos, defPos, this.currentDepth)
+                        : this.isMeleeAdjacent(attackerPos, defPos, this.currentDepth))
+                      && this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
@@ -925,7 +938,10 @@ export class MatchRoom {
                     const expectedEntityId = (combatLevel && Array.isArray(combatLevel.mobs) ? combatLevel.mobs : [])
                       .find((mob: any) => Number(mob?.mobId) === Number(targetId))?.entityId || "";
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
-                      && (!ranged || this.hasLineOfSight(attackerPos, mobPos, this.currentDepth))
+                      && (ranged
+                        ? this.hasLineOfSight(attackerPos, mobPos, this.currentDepth)
+                        : this.isMeleeAdjacent(attackerPos, mobPos, this.currentDepth))
+                      && this.isValidCombatTargetPosition(targetPosAfter, this.currentDepth)
                       && isValidNativeCombatEvent({
                         schemaVersion: payload.data?.combatSchemaVersion,
                         depth: payload.data?.combatDepth, currentDepth: this.currentDepth,
