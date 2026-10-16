@@ -1109,10 +1109,10 @@ export class MatchRoom {
 
           if (actionStr === "SYNC_MOB_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
-            const publisherRow = this.sql.exec(\`SELECT value FROM room_meta WHERE key = 'levelPublisher'\`).toArray()[0];
-            const levelRow = this.sql.exec(\`SELECT width, height FROM levels WHERE depth = ?\`, this.currentDepth).toArray()[0];
-            const levelSnapshotRow = this.sql.exec(\`SELECT value FROM room_meta WHERE key = ?\`,
-              \`levelSnapshot:\${this.currentDepth}\`).toArray()[0];
+            const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray()[0];
+            const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
+            const levelSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+              `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try {
               levelSnapshot = levelSnapshotRow && typeof levelSnapshotRow.value === "string"
@@ -1125,7 +1125,7 @@ export class MatchRoom {
               : (Array.isArray(levelSnapshot?.mobs) ? levelSnapshot.mobs : [])
                   .find((mob: any) => Number(mob?.mobId) === mobId);
             const mobRow = mobId == null ? [] : this.sql.exec(
-              \`SELECT hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?\`, mobId, this.currentDepth
+              `SELECT hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?`, mobId, this.currentDepth
             ).toArray();
             const delta = {
               entityId: data.entityId,
@@ -1157,14 +1157,14 @@ export class MatchRoom {
               savedMob.shielding = Number(data.shieldAfter);
               savedMob.buffs = JSON.parse(String(data.buffsAfter));
               if (deadPositions.length > 0) levelSnapshot.heaps = data.heaps;
-              this.sql.exec(\`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?\`,
+              this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                 savedMob.hp, savedMob.pos, mobId, this.currentDepth);
-              this.sql.exec(\`INSERT INTO room_meta (key,value) VALUES (?,?)
-                ON CONFLICT(key) DO UPDATE SET value=excluded.value\`,
-                \`levelSnapshot:\${this.currentDepth}\`, JSON.stringify(levelSnapshot));
+              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
               if (deadPositions.length > 0) {
                 for (const heap of levelSnapshot.heaps) {
-                  this.sql.exec(\`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?\`,
+                  this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
                     Number(heap.pos), this.currentDepth);
                 }
               }
