@@ -81,6 +81,7 @@ public final class MessageRouter {
                             if (hp <= 0) {
                                 // The authoritative attack already ran native death/loot logic on
                                 // its owner. Remove the remote copy without firing rewards or drops.
+                                MultiplayerManager.getInstance().removeServerEntityIdForActor(mob.id());
                                 Dungeon.level.mobs.remove(mob);
                                 Actor.remove(mob);
                                 if (mob.sprite != null) mob.sprite.remove();
