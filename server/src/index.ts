@@ -385,6 +385,12 @@ export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown
   return true;
 }
 
+export function isAuthorizedNativeMobOwner(senderId: unknown, publisherId: unknown): boolean {
+  return typeof senderId === "string" && senderId.length > 0
+    && typeof publisherId === "string" && publisherId.length > 0
+    && senderId === publisherId;
+}
+
 export interface NativeSecondaryMobDeltaPayload {
   complete: boolean;
   deltas: Array<{
@@ -1137,7 +1143,7 @@ export class MatchRoom {
             const ownerPayload = parseAndValidateNativeSecondaryMobDeltas({
               complete: true, deltas: [delta], ...(data.heaps === undefined ? {} : { heaps: data.heaps })
             }, levelSnapshot?.mobs, levelSize, width, true);
-            const isOwner = !!publisherRow && String(publisherRow.value) === session.playerId;
+            const isOwner = isAuthorizedNativeMobOwner(session.playerId, publisherRow?.value);
             const nativeEnvelopeValid = data.combatSchemaVersion === 1
               && Number(data.combatDepth) === this.currentDepth
               && typeof data.sourceClass === "string" && data.sourceClass.length > 0 && data.sourceClass.length <= 256
