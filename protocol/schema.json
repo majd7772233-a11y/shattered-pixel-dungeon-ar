@@ -364,7 +364,65 @@
           "description": "JSON-encoded native target buff bundles captured immediately before the attack; the server compares it to its authoritative saved target snapshot."
         }
       },
-      "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs."
+      "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": "MOB"
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "targetEntityId": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 80
+              },
+              "targetHeroStateJson": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "targetEntityId",
+              "targetHeroStateJson"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": "PLAYER"
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "targetEntityId": {
+                "type": "null"
+              },
+              "targetHeroStateJson": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              }
+            },
+            "required": [
+              "targetEntityId",
+              "targetHeroStateJson"
+            ]
+          }
+        }
+      ]
     },
     "NativeTile": {
       "type": "object",
@@ -457,8 +515,7 @@
         "sourceEntityId",
         "sourcePos",
         "sourceAttackKind",
-        "sourceMobShieldBefore",
-        "sourceMobShieldAfter"
+        "targetBuffsBefore"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -678,9 +735,89 @@
           "minimum": 0,
           "maximum": 100000,
           "description": "Native mob shield total after retaliation/thorns effects."
+        },
+        "targetBuffsBefore": {
+          "type": "string",
+          "maxLength": 100000,
+          "description": "Native target buff bundles immediately before the validated combat action."
         }
       },
-      "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
+      "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": "MOB"
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "targetHeroStateJson": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "targetHeroStateJson"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "targetType": {
+                "const": "PLAYER"
+              }
+            },
+            "required": [
+              "targetType"
+            ]
+          },
+          "then": {
+            "properties": {
+              "targetHeroStateJson": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200000
+              }
+            },
+            "required": [
+              "targetHeroStateJson"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sourceType": {
+                "const": "MOB"
+              }
+            },
+            "required": [
+              "sourceType"
+            ]
+          },
+          "then": {
+            "required": [
+              "sourceMobHpBefore",
+              "sourceMobHtBefore",
+              "sourceMobPosBefore",
+              "sourceMobHpAfter",
+              "sourceMobHtAfter",
+              "sourceMobPosAfter",
+              "sourceMobDamage",
+              "sourceMobBuffsBefore",
+              "sourceMobBuffs",
+              "sourceMobShieldBefore",
+              "sourceMobShieldAfter"
+            ]
+          }
+        }
+      ]
     }
   }
 }
