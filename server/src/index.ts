@@ -170,7 +170,8 @@ export function mergeNativeHeroState(previousValue: unknown, reportedValue: unkn
     ht: expected.ht,
     pos: expected.pos,
     shielding: expected.shielding,
-    cooldown: Number.isFinite(Number(reported.cooldown)) ? Math.max(0, Math.min(100000, Number(reported.cooldown))) : 0,
+    // The attacker does not own the defender's scheduler state; preserve the last trusted cooldown.
+    cooldown: Number.isFinite(Number(previous.cooldown)) ? Math.max(0, Math.min(100000, Number(previous.cooldown))) : 0,
     buffCount: buffs.length
   };
   for (const key of Object.keys(merged)) {
