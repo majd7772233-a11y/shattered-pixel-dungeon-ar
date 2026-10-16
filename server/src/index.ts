@@ -79,8 +79,10 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
     || typeof level.nativeLevelMetadataBundle !== "string"
     || level.nativeLevelMetadataBundle.length === 0 || level.nativeLevelMetadataBundle.length > 200000) return false;
   const bundle = (value: any) => typeof value === "string" && value.length > 0 && value.length <= 200000;
-  if (!level.mobs.every((mob: any) => bundle(mob?.serializedBundle) && Array.isArray(mob?.buffs)
-    && mob.buffs.length <= 256 && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
+  if (!level.mobs.every((mob: any) => bundle(mob?.serializedBundle)
+    && Number.isInteger(mob?.shielding) && Number(mob.shielding) >= 0 && Number(mob.shielding) <= 100000
+    && Array.isArray(mob?.buffs) && mob.buffs.length <= 256
+    && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
   if (!level.heaps.every((heap: any) => Array.isArray(heap?.items) && heap.items.length <= 512
     && heap.items.every((item: any) => bundle(item?.serializedBundle)))) return false;
   if (!level.traps.every((trap: any) => bundle(trap?.serializedBundle))
