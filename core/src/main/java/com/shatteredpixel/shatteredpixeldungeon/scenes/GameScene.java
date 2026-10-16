@@ -1035,6 +1035,29 @@ public class GameScene extends PixelScene {
 		customWalls.add( visual.create() );
 	}
 
+	/** Rebuilds native custom tile/wall visuals after an authoritative world snapshot. */
+	public static void refreshMultiplayerCustomVisuals() {
+		if (scene == null || Dungeon.level == null || scene.terrain == null) return;
+		if (scene.customTiles != null) {
+			scene.terrain.remove(scene.customTiles);
+			scene.customTiles.destroy();
+		}
+		scene.customTiles = new Group();
+		scene.terrain.add(scene.customTiles);
+		if (Dungeon.level.customTiles != null) {
+			for (CustomTilemap visual : Dungeon.level.customTiles) scene.addCustomTile(visual);
+		}
+		if (scene.customWalls != null) {
+			scene.remove(scene.customWalls);
+			scene.customWalls.destroy();
+		}
+		scene.customWalls = new Group();
+		scene.add(scene.customWalls);
+		if (Dungeon.level.customWalls != null) {
+			for (CustomTilemap visual : Dungeon.level.customWalls) scene.addCustomWall(visual);
+		}
+	}
+
 	private void addHeapSprite( Heap heap ) {
 		ItemSprite sprite = heap.sprite = (ItemSprite)heaps.recycle( ItemSprite.class );
 		sprite.revive();
