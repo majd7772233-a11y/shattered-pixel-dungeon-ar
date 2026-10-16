@@ -113,6 +113,35 @@ export function hasStrictNativeCombatFields(data: any): boolean {
     && typeof data.targetBuffs === "string";
 }
 
+export function hasStrictNativeDamageFields(data: any): boolean {
+  return data != null && data.combatSchemaVersion === 1 && Number.isInteger(data.combatDepth)
+    && data.targetType === "PLAYER" && data.sourceType === "MOB"
+    && typeof data.sourceEntityId === "string" && data.sourceEntityId.length >= 8 && data.sourceEntityId.length <= 128
+    && Number.isInteger(data.sourcePos) && ["MELEE", "RANGED"].includes(data.sourceAttackKind)
+    && Number.isInteger(data.targetHpBefore) && Number.isInteger(data.targetHtBefore)
+    && Number.isInteger(data.targetHp) && Number.isInteger(data.targetHt) && Number.isInteger(data.damage)
+    && Number.isInteger(data.targetPosBefore) && Number.isInteger(data.targetPosAfter)
+    && Number.isInteger(data.targetShieldBefore) && Number.isInteger(data.targetShieldAfter)
+    && typeof data.engineDamageResult === "boolean" && data.engineDamageResult === true
+    && typeof data.targetBuffs === "string";
+}
+
+export function isValidNativeHeroStateJson(value: unknown, expected: {
+  hp: number; ht: number; pos: number; shielding: number;
+}): boolean {
+  if (typeof value !== "string" || value.length < 1 || value.length > 200000) return false;
+  try {
+    const state = JSON.parse(value);
+    return Number.isInteger(state?.hp) && state.hp === expected.hp
+      && Number.isInteger(state?.ht) && state.ht === expected.ht
+      && Number.isInteger(state?.pos) && state.pos === expected.pos
+      && Number.isInteger(state?.shielding) && state.shielding === expected.shielding
+      && typeof state?.combatBundle === "string" && state.combatBundle.length > 0
+      && typeof state?.inventoryBundle === "string" && state.inventoryBundle.length > 0
+      && Number.isInteger(state?.buffCount) && state.buffCount >= 0 && state.buffCount <= 256;
+  } catch (_) { return false; }
+}
+
 export function isValidNativeCombatBuffs(value: unknown): boolean {
   if (typeof value !== "string" || value.length > 200000) return false;
   let buffs: any;
