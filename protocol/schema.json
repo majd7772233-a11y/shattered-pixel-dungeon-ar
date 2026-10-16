@@ -610,6 +610,47 @@
             "RANGED",
             null
           ]
+        },
+        "sourceMobHpBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceMobHtBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sourceMobPosBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceMobHpAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceMobHtAfter": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sourceMobPosAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceMobDamage": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceMobBuffsBefore": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "sourceMobBuffs": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "heaps": {
+          "type": "array",
+          "maxItems": 1024,
+          "description": "Full native heap snapshot, included only when an accepted combat effect kills a mob."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks."
