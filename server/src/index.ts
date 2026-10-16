@@ -302,6 +302,25 @@ export function hasValidBlessedAnkhConsumption(previousValue: unknown, reportedV
     && reported.inventoryBundle !== previous.inventoryBundle;
 }
 
+export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, authoritativeValue: unknown): boolean {
+  let reported: any = reportedValue, authoritative: any = authoritativeValue;
+  try {
+    if (typeof reported === "string") reported = JSON.parse(reported);
+    if (typeof authoritative === "string") authoritative = JSON.parse(authoritative);
+  } catch (_) { return false; }
+  if (!reported || typeof reported !== "object" || !authoritative || typeof authoritative !== "object") return false;
+  for (const key of ["hp", "ht", "pos", "shielding", "buffCount"]) {
+    if (Number(reported[key]) !== Number(authoritative[key])) return false;
+  }
+  if (!hasMatchingNativeHeroEquipmentState(JSON.stringify(reported), authoritative)) return false;
+  if (!Number.isFinite(Number(reported.cooldown)) || Number(reported.cooldown) !== Number(authoritative.cooldown)) return false;
+  for (let i = 0; i < Number(authoritative.buffCount); i++) {
+    if (reported[`buff_${i}`] !== authoritative[`buff_${i}`]
+      || Number(reported[`buffCooldown_${i}`]) !== Number(authoritative[`buffCooldown_${i}`])) return false;
+  }
+  return true;
+}
+
 export function hasMatchingNativeHeroBuffSnapshot(reported: unknown, authoritativeHeroState: unknown): boolean {
   let state: any = authoritativeHeroState;
   try {
@@ -1126,7 +1145,76 @@ export class MatchRoom {
           const actionStr = payload.action || payload.data?.action;
           let authorityPending: any = null;
 
-          if (actionStr === "SYNC_MOB_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
+          if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
+            const data = payload.data || {};
+            const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId || "")).toArray()[0];
+            let pending: any = null;
+            try { pending = pendingRow && typeof pendingRow.value === "string" ? JSON.parse(String(pendingRow.value)) : null; } catch (_) {}
+            const defenderId = String(pending?.targetId || "");
+            const attackerId = String(pending?.attackerId || "");
+            const defenderRow = defenderId ? this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", defenderId).toArray() : [];
+            const attackerRow = attackerId ? this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", attackerId).toArray() : [];
+            const trustedRow = defenderId ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + defenderId).toArray()[0] : null;
+            const trustedState = trustedRow && typeof trustedRow.value === "string" ? String(trustedRow.value) : "";
+            let trusted: any = null;
+            try { trusted = JSON.parse(trustedState); } catch (_) {}
+            const hpBefore = Number(data.targetHpBefore), htBefore = Number(data.targetHtBefore);
+            const hpAfter = Number(data.targetHp), htAfter = Number(data.targetHt), damage = Number(data.damage);
+            const posBefore = Number(data.targetPos), posAfter = Number(data.targetPosAfter);
+            const shieldBefore = Number(data.targetShieldBefore), shieldAfter = Number(data.targetShieldAfter);
+            const widthRow = this.sql.exec("SELECT width,height FROM levels WHERE depth = ?", this.currentDepth).toArray()[0];
+            const width = Number(widthRow?.width || 0), levelSize = width * Number(widthRow?.height || 0);
+            const attackerPos = Number(attackerRow[0]?.pos), defenderPos = Number(defenderRow[0]?.pos);
+            const nativeCost = Number(data.engineActionCost), distance = Number(data.engineDistance), ranged = data.engineRanged === true;
+            const targetBuffsValid = hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, trustedState);
+            const hpDeltaValid = isValidNativeHpTransition(hpBefore, hpAfter, damage)
+              || (hpAfter > hpBefore && hasValidBlessedAnkhConsumption(trustedState, data.targetHeroStateJson));
+            const mergedState = mergeNativeHeroState(trustedState, String(data.targetHeroStateJson || ""), {
+              hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter
+            }, String(data.targetBuffs || ""));
+            const authorityValid = !!pending && pending.targetType === "PLAYER"
+              && String(pending.requestId) === String(data.combatRequestId)
+              && String(pending.authorityId) === session.playerId && defenderId === session.playerId
+              && String(pending.attackerId) === String(data.attackerId) && attackerId !== defenderId
+              && String(data.targetType) === "PLAYER" && String(data.targetId) === defenderId
+              && Number(pending.depth) === this.currentDepth && defenderRow.length > 0 && attackerRow.length > 0
+              && String(defenderRow[0].state) === "ALIVE" && String(attackerRow[0].state) === "ALIVE"
+              && hasMatchingNativeHeroStateSnapshot(data.targetHeroStateBefore, trusted)
+              && hpBefore === Number(defenderRow[0].hp) && htBefore === Number(defenderRow[0].ht)
+              && posBefore === defenderPos && Number(pending.targetPos) === defenderPos
+              && shieldBefore === Number(trusted?.shielding) && targetBuffsValid
+              && isValidNativeCombatBuffs(data.targetBuffs)
+              && isValidNativeHeroStateJson(String(data.targetHeroStateJson || ""), { hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter })
+              && mergedState !== null && hpDeltaValid
+              && Number.isInteger(hpAfter) && hpAfter >= 0 && Number.isInteger(htAfter) && htAfter >= 1 && hpAfter <= htAfter
+              && Number.isInteger(posAfter) && posAfter >= 0 && posAfter < levelSize
+              && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
+              && Number.isFinite(nativeCost) && nativeCost > 0 && nativeCost <= 10
+              && Number.isFinite(distance) && data.engineResult === true
+              && (ranged ? this.hasLineOfSight(attackerPos, defenderPos, this.currentDepth) : this.isMeleeAdjacent(attackerPos, defenderPos, this.currentDepth))
+              && (posAfter === posBefore || (this.isValidCombatTargetPosition(posAfter, this.currentDepth)
+                && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
+                  Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2));
+            if (authorityValid) {
+              const newStatus = hpAfter > 0 ? "ALIVE" : "DEAD";
+              this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
+                hpAfter, htAfter, posAfter, newStatus, defenderId);
+              this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "heroState:" + defenderId, mergedState);
+              this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId));
+              eventType = "PLAYER_ATTACKED";
+              actionResultPayload = {
+                attackerId, attackerType: "PLAYER", targetId: defenderId, targetType: "PLAYER",
+                targetPos: posBefore, targetPosAfter: posAfter, targetHpBefore: hpBefore, targetHtBefore: htBefore,
+                targetHp: hpAfter, targetHt: htAfter, targetShieldBefore: shieldBefore, targetShieldAfter: shieldAfter,
+                targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
+                targetHeroStateJson: mergedState, targetState: newStatus,
+                damage, hit: data.engineHit === true, attackKind: data.attackKind,
+                engineDistance: distance, engineActionCost: nativeCost, engineResolved: true
+              };
+              actionValid = true; actionCost = nativeCost;
+            }
+          } else if (actionStr === "SYNC_MOB_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
             if (typeof data.combatRequestId === "string") {
               const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + data.combatRequestId).toArray()[0];
@@ -1718,6 +1806,62 @@ export class MatchRoom {
                 }
                 return;
               }
+            }
+            if (targetType === "PLAYER" && isValidNativeCombatRequestId(msg.requestId)
+                && (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH")) {
+              const defenderId = String(targetId || "");
+              const attackerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray();
+              const defenderRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", defenderId).toArray();
+              const attackerStateRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+              const defenderStateRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + defenderId).toArray()[0];
+              let trustedAttacker: any = null, trustedDefender: any = null, reportedAttacker: any = null, reportedDefender: any = null;
+              try { trustedAttacker = attackerStateRow && typeof attackerStateRow.value === "string" ? JSON.parse(String(attackerStateRow.value)) : null; } catch (_) {}
+              try { trustedDefender = defenderStateRow && typeof defenderStateRow.value === "string" ? JSON.parse(String(defenderStateRow.value)) : null; } catch (_) {}
+              try { reportedAttacker = JSON.parse(String(payload.data?.attackerStateBefore || "")); } catch (_) {}
+              try { reportedDefender = JSON.parse(String(payload.data?.targetHeroStateBefore || "")); } catch (_) {}
+              const attackerStateBefore = payload.data?.attackerStateBefore;
+              const defenderStateBefore = payload.data?.targetHeroStateBefore;
+              const attackerPos = Number(attackerRow[0]?.pos), defenderPos = Number(defenderRow[0]?.pos);
+              const preStatesMatch = !!defenderId && defenderId !== session.playerId
+                && attackerRow.length > 0 && defenderRow.length > 0
+                && String(attackerRow[0].state) === "ALIVE" && String(defenderRow[0].state) === "ALIVE"
+                && hasMatchingNativeHeroStateSnapshot(attackerStateBefore, trustedAttacker)
+                && hasMatchingNativeHeroStateSnapshot(defenderStateBefore, trustedDefender)
+                && Number(attackerRow[0].hp) === Number(reportedAttacker?.hp)
+                && Number(attackerRow[0].ht) === Number(reportedAttacker?.ht)
+                && Number(attackerRow[0].pos) === Number(reportedAttacker?.pos)
+                && Number(defenderRow[0].hp) === Number(reportedDefender?.hp)
+                && Number(defenderRow[0].ht) === Number(reportedDefender?.ht)
+                && Number(defenderRow[0].pos) === Number(reportedDefender?.pos);
+              if (!preStatesMatch) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "NATIVE_PVP_PRESTATE_REJECTED" }) }));
+                return;
+              }
+              const pending = { requestId: msg.requestId, attackerId: session.playerId, authorityId: defenderId,
+                targetType: "PLAYER", targetId: defenderId, attackerPos, targetPos: defenderPos,
+                depth: this.currentDepth, attackerStateBefore, targetHeroStateBefore: defenderStateBefore };
+              this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "pendingCombat:" + msg.requestId, JSON.stringify(pending));
+              let authorityFound = false;
+              for (const authorityWs of this.state.getWebSockets()) {
+                const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
+                if (!authoritySession || authoritySession.playerId !== defenderId) continue;
+                authorityFound = true;
+                authorityWs.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "COMBAT_REQUEST",
+                  senderId: "SERVER", requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ requestId: msg.requestId, attackerId: session.playerId,
+                    targetType: "PLAYER", targetPlayerId: defenderId, attackerPos, targetPos: defenderPos,
+                    attackerStateBefore, targetHeroStateBefore: defenderStateBefore }) }));
+              }
+              if (!authorityFound) {
+                this.sql.exec("DELETE FROM room_meta WHERE key = ?", "pendingCombat:" + msg.requestId);
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_AUTHORITY_UNAVAILABLE" }) }));
+              }
+              return;
             }
             let targetEntityId: string | null = null;
             if (targetType !== "PLAYER") {

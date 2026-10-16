@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -758,5 +758,26 @@ describe('Native mob damage owner authorization', () => {
     expect(isAuthorizedNativeMobOwner('player-attacker', 'player-host')).toBe(false);
     expect(isAuthorizedNativeMobOwner('player-host', null)).toBe(false);
     expect(isAuthorizedNativeMobOwner('', 'player-host')).toBe(false);
+  });
+});
+
+
+describe('Authoritative native hero pre-state', () => {
+  const heroState = () => ({
+    hp: 20, ht: 20, pos: 12, shielding: 2, cooldown: 1, buffCount: 1,
+    combatBundle: 'native-combat', inventoryBundle: 'native-inventory',
+    buff_0: 'native-buff', buffCooldown_0: 2
+  });
+  it('matches complete trusted hero state including equipment, shield, cooldown and native buffs', () => {
+    const state = heroState();
+    expect(hasMatchingNativeHeroStateSnapshot(state, state)).toBe(true);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...state, hp: 19 }, state)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...state, inventoryBundle: 'forged-inventory' }, state)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...state, buffCooldown_0: 99 }, state)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...state, shielding: 100 }, state)).toBe(false);
+  });
+  it('rejects malformed or absent hero snapshots', () => {
+    expect(hasMatchingNativeHeroStateSnapshot('{bad-json', heroState())).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot(heroState(), null)).toBe(false);
   });
 });
