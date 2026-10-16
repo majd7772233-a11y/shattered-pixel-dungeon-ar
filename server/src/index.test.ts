@@ -355,6 +355,12 @@ describe('Native combat event contract', () => {
     }))).toBe(false);
   });
 
+  it('accepts native armor-reduced hits, invulnerability zero-damage hits and lethal hits', () => {
+    expect(isValidNativeCombatEvent(validEvent({ targetHp: 10, damage: 2, hit: true }))).toBe(true);
+    expect(isValidNativeCombatEvent(validEvent({ targetHp: 12, damage: 0, hit: true }))).toBe(true);
+    expect(isValidNativeCombatEvent(validEvent({ targetHp: 0, damage: 12, hit: true }))).toBe(true);
+  });
+
   it('rejects missing or mismatched stable target identity for mobs', () => {
     expect(isValidNativeCombatEvent(validEvent({ targetEntityId: null }))).toBe(false);
     expect(isValidNativeCombatEvent(validEvent({ expectedTargetEntityId: 'another-mob-0001' }))).toBe(false);
