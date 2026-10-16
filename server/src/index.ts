@@ -120,7 +120,8 @@ export function hasStrictNativeCombatFields(data: any): boolean {
     && data.attackKind === (data.engineRanged ? "RANGED" : "MELEE")
     && typeof data.engineDistance === "number" && Number.isFinite(data.engineDistance)
     && typeof data.engineActionCost === "number" && Number.isFinite(data.engineActionCost)
-    && typeof data.targetBuffs === "string";
+    && typeof data.targetBuffs === "string"
+    && typeof data.targetBuffsBefore === "string";
 }
 
 export function hasStrictNativeSourceMobState(data: any): boolean {
