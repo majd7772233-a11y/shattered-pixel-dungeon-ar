@@ -156,7 +156,8 @@ describe('Native level snapshot contract', () => {
     schemaVersion: 1, branch: 0, depth: 1, width: 8, height: 8,
     entrancePos: 1, exitPos: 62, seed: 1234, locked: false, feeling: "NONE",
     heroStateJson: "", nativeLevelMetadataBundle: "native-metadata-bundle", tiles: Array.from({ length: 64 }, (_, pos) => ({
-      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+      flammable: false, secret: false, avoid: false, water: false, discoverable: false, openSpace: false
     })),
     transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
     visitedPositions: [], mappedPositions: []
