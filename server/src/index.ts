@@ -1731,7 +1731,7 @@ export class MatchRoom {
                 }
               }
             }
-          } else if (actionStr === "WAIT" {
+          } else if (actionStr === "WAIT") {
             const playerRow = this.sql.exec(`SELECT state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
               eventType = "PLAYER_WAITED";
