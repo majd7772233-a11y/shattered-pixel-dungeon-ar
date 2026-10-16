@@ -129,8 +129,11 @@ export function hasStrictNativeCombatFields(data: any): boolean {
 export function hasStrictNativeSourceMobState(data: any): boolean {
   return data != null
     && Number.isInteger(data.sourceMobHpBefore) && Number.isInteger(data.sourceMobHtBefore)
+    && Number.isInteger(data.sourceMobShieldBefore) && data.sourceMobShieldBefore >= 0 && data.sourceMobShieldBefore <= 100000
     && Number.isInteger(data.sourceMobPosBefore) && Number.isInteger(data.sourceMobHpAfter)
-    && Number.isInteger(data.sourceMobHtAfter) && Number.isInteger(data.sourceMobPosAfter)
+    && Number.isInteger(data.sourceMobHtAfter)
+    && Number.isInteger(data.sourceMobShieldAfter) && data.sourceMobShieldAfter >= 0 && data.sourceMobShieldAfter <= 100000
+    && Number.isInteger(data.sourceMobPosAfter)
     && Number.isInteger(data.sourceMobDamage) && typeof data.sourceMobBuffsBefore === "string"
     && typeof data.sourceMobBuffs === "string";
 }
@@ -1017,6 +1020,8 @@ export class MatchRoom {
             const sourceMobPreStateMatchesSnapshot = !!savedSourceMobBefore
               && Number(savedSourceMobBefore.hp) === sourceMobHpBefore
               && Number(savedSourceMobBefore.ht) === sourceMobHtBefore
+              && hasMatchingNativeMobShieldSnapshot(data?.sourceMobShieldBefore,
+                data?.sourceMobShieldAfter, savedSourceMobBefore.shielding)
               && Number(savedSourceMobBefore.pos) === sourceMobPosBefore
               && hasMatchingNativeBuffSnapshot(sourceMobBuffsBeforeParsed, savedSourceMobBefore.buffs);
             const sourceMobLootValid = sourceMobHpAfter > 0
@@ -1078,6 +1083,7 @@ export class MatchRoom {
               if (!savedSourceMob) throw new Error("Accepted source mob missing from native snapshot");
               savedSourceMob.hp = sourceMobHpAfter;
               savedSourceMob.ht = sourceMobHtAfter;
+              savedSourceMob.shielding = Number(data.sourceMobShieldAfter);
               savedSourceMob.pos = sourceMobPosAfter;
               savedSourceMob.buffs = JSON.parse(String(data.sourceMobBuffs));
               if (sourceMobHpAfter <= 0) sourceLevel.heaps = data.heaps;
