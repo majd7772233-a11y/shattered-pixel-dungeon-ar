@@ -964,7 +964,7 @@ export class MatchRoom {
               }
               eventType = "PLAYER_DAMAGED";
               actionResultPayload = {
-                attackerId: data.sourceEntityId, attackerPos: sourcePos,
+                attackerId: data.sourceEntityId, attackerType: "MOB", attackerPos: sourcePos,
                 sourceType: "MOB", sourceEntityId: data.sourceEntityId, sourcePos,
                 sourceAttackKind: data.sourceAttackKind, attackKind: data.sourceAttackKind,
                 engineDistance: sourceDistance, engineActionCost: data.sourceActionCost,
@@ -1140,7 +1140,7 @@ export class MatchRoom {
                       }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
-                        attackerId: session.playerId, targetId: String(targetId), targetType: "PLAYER",
+                        attackerId: session.playerId, attackerType: "PLAYER", targetId: String(targetId), targetType: "PLAYER",
                         attackerPos, targetPos: defPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         targetShieldBefore, targetShieldAfter, targetHeroStateJson: mergedTargetHeroStateJson,
@@ -1241,7 +1241,7 @@ export class MatchRoom {
                       }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
-                        attackerId: session.playerId, targetId: targetEntityId, targetType: "MOB",
+                        attackerId: session.playerId, attackerType: "PLAYER", targetId: targetEntityId, targetType: "MOB",
                         attackerPos, targetPos: mobPos, targetPosAfter,
                         targetHpBefore: Number(payload.data?.targetHpBefore), targetHtBefore: Number(payload.data?.targetHtBefore),
                         targetShieldBefore: Number(payload.data?.targetShieldBefore), targetShieldAfter: Number(payload.data?.targetShieldAfter),
