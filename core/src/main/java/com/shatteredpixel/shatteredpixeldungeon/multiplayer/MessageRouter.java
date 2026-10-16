@@ -594,7 +594,11 @@ public final class MessageRouter {
                 // Player damage is represented in the event; player HP is reconciled separately.
             } else if ("CHAR_DAMAGED".equals(type)) {
                 int damage = intValue(action.get("damage"), 0);
-                if (damage > 0) mob.damage(damage, "SERVER");
+                if (damage > 0) {
+                    // Legacy damage-only events cannot prove a native SPD outcome. Do not
+                    // rerun armor/buff/death logic or accept unauthenticated damage deltas.
+                    MultiplayerManager.getInstance().requestResync(seq);
+                }
             }
             return;
         }
