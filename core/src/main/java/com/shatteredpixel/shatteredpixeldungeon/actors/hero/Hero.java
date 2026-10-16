@@ -1673,6 +1673,11 @@ public class Hero extends Char {
 			dmg = 0;
 		}
 
+		// Capture the source before thorns/armor procs can damage or displace it.
+		int sourceMobHpBefore = src instanceof Mob ? ((Mob) src).HP : -1;
+		int sourceMobHtBefore = src instanceof Mob ? ((Mob) src).HT : -1;
+		int sourceMobPosBefore = src instanceof Mob ? ((Mob) src).pos : -1;
+
 		//regular damage interrupt, triggers on any damage except specific mild DOT effects
 		// unless the player recently hit 'continue moving', in which case this is ignored
 		if (!(src instanceof Hunger || src instanceof Viscosity.DeferedDamage) && damageInterrupt) {
@@ -1723,11 +1728,14 @@ public class Hero extends Char {
 		int targetHtBefore = HT;
 		int targetPosBefore = pos;
 		int targetShieldBefore = shielding();
-		int sourcePosBefore = src instanceof Char ? ((Char) src).pos : -1;
+		int sourcePosBefore = src instanceof Mob ? sourceMobPosBefore : (src instanceof Char ? ((Char) src).pos : -1);
 		int preHP = HP + targetShieldBefore;
 		if (src instanceof Hunger) preHP -= targetShieldBefore;
 		super.damage( dmg, src );
 		int targetShieldAfter = shielding();
+		int sourceMobHpAfter = src instanceof Mob ? Math.max(0, ((Mob) src).HP) : -1;
+		int sourceMobHtAfter = src instanceof Mob ? ((Mob) src).HT : -1;
+		int sourceMobPosAfter = src instanceof Mob ? ((Mob) src).pos : -1;
 		int postHP = HP + targetShieldAfter;
 		if (src instanceof Hunger) postHP -= targetShieldAfter;
 		int effectiveDamage = preHP - postHP;
@@ -1749,6 +1757,14 @@ public class Hero extends Char {
 						+ ",\"sourcePos\":" + sourcePosBefore
 						+ ",\"sourceAttackKind\":\"" + (Dungeon.level.distance(sourcePosBefore, targetPosBefore) <= 1 ? "MELEE" : "RANGED") + "\""
 						+ ",\"sourceActionCost\":" + sourceMob.attackDelay()
+						+ ",\"sourceMobHpBefore\":" + sourceMobHpBefore
+						+ ",\"sourceMobHtBefore\":" + sourceMobHtBefore
+						+ ",\"sourceMobPosBefore\":" + sourceMobPosBefore
+						+ ",\"sourceMobHpAfter\":" + sourceMobHpAfter
+						+ ",\"sourceMobHtAfter\":" + sourceMobHtAfter
+						+ ",\"sourceMobPosAfter\":" + sourceMobPosAfter
+						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
+						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(sourceMob))
 						+ ",\"targetHpBefore\":" + targetHpBefore
 						+ ",\"targetHtBefore\":" + targetHtBefore
 						+ ",\"targetHp\":" + Math.max(0, HP)
@@ -1761,6 +1777,7 @@ public class Hero extends Char {
 						+ ",\"damage\":" + Math.max(0, targetHpBefore - Math.max(0, HP))
 						+ ",\"effectiveDamage\":" + Math.max(0, effectiveDamage)
 						+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(this))
+						+ (sourceMobHpAfter <= 0 ? ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson() : "")
 						+ ",\"engineDamageResult\":true}";
 				manager.sendAction(NetworkActionType.SYNC_HERO_STATE, damageState);
 			} else {
