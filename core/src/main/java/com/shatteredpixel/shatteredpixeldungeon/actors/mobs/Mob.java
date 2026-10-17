@@ -116,6 +116,9 @@ public abstract class Mob extends Char {
 	public AiState FLEEING		= new Fleeing();
 	public AiState PASSIVE		= new Passive();
 	public AiState state = SLEEPING;
+
+	private String pendingMultiplayerHeroDamageJson;
+	private Hero pendingMultiplayerDamageTarget;
 	
 	public Class<? extends CharSprite> spriteClass;
 	
@@ -400,6 +403,20 @@ public abstract class Mob extends Char {
 				if (fieldOfView[Dungeon.hero.pos] && Dungeon.hero.invisible <= 0) {
 					enemies.add(Dungeon.hero);
 				}
+
+				// Only the level publisher lets native hostile-mob AI target remote hero replicas.
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+						com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+				if (manager.isMultiplayerActive() && manager.isLevelPublisher()) {
+					for (com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer player : manager.getRemotePlayers().values()) {
+						Hero remoteHero = player.heroInstance;
+						if (remoteHero != null && remoteHero != Dungeon.hero && remoteHero.isAlive()
+								&& remoteHero.invisible <= 0 && remoteHero.pos >= 0
+								&& remoteHero.pos < fieldOfView.length && fieldOfView[remoteHero.pos]) {
+							enemies.add(remoteHero);
+						}
+					}
+				}
 				
 			}
 
@@ -683,21 +700,179 @@ public abstract class Mob extends Char {
 			return false;
 			
 		} else {
-			attack( enemy );
+			boolean hit = attack( enemy );
 			Invisibility.dispel(this);
-			spend( attackDelay() );
+			float nativeActionCost = attackDelay();
+			spend(nativeActionCost);
+			boolean reported = flushMultiplayerHeroDamageReport(nativeActionCost);
+			if (!reported) reportNativePlayerNoEffect(enemy, hit, nativeActionCost);
 			return true;
 		}
 	}
 	
 	@Override
 	public void onAttackComplete() {
-		attack( enemy );
+		boolean hit = attack( enemy );
 		Invisibility.dispel(this);
-		spend( attackDelay() );
+		float nativeActionCost = attackDelay();
+		spend(nativeActionCost);
+		boolean reported = flushMultiplayerHeroDamageReport(nativeActionCost);
+		if (!reported) reportNativePlayerNoEffect(enemy, hit, nativeActionCost);
 		super.onAttackComplete();
 	}
+
+	/** Queue target damage changes until the native mob action has finished all procs. */
+	public void queueMultiplayerHeroDamageReport(String payloadJson, Hero target) {
+		if (payloadJson == null || target == null) return;
+		try {
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			java.util.Map<String, Object> next = json.fromJson(java.util.HashMap.class, payloadJson);
+			if (pendingMultiplayerHeroDamageJson != null) {
+				java.util.Map<String, Object> previous = json.fromJson(java.util.HashMap.class, pendingMultiplayerHeroDamageJson);
+				for (String key : new String[]{"targetHpBefore", "targetHtBefore", "targetPosBefore",
+						"targetShieldBefore", "targetBuffsBefore", "ankhCountBefore", "blessedAnkhCountBefore",
+						"sourceMobHpBefore", "sourceMobHtBefore", "sourceMobShieldBefore", "sourceMobPosBefore",
+						"sourceMobBuffsBefore", "sourcePos", "sourceEntityId", "sourceAttackKind"}) {
+					if (previous.containsKey(key)) next.put(key, previous.get(key));
+				}
+			}
+			pendingMultiplayerHeroDamageJson = json.toJson(next);
+			pendingMultiplayerDamageTarget = target;
+		} catch (RuntimeException ignored) {
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+			manager.requestResync(manager.getLastSequence());
+		}
+	}
+
+	public boolean flushMultiplayerHeroDamageReport(float nativeActionCost) {
+		if (pendingMultiplayerHeroDamageJson == null || pendingMultiplayerDamageTarget == null) return false;
+		String encoded = pendingMultiplayerHeroDamageJson;
+		Hero target = pendingMultiplayerDamageTarget;
+		pendingMultiplayerHeroDamageJson = null;
+		pendingMultiplayerDamageTarget = null;
+		try {
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			java.util.Map<String, Object> data = json.fromJson(java.util.HashMap.class, encoded);
+			java.util.Map<String, Object> targetState = json.fromJson(java.util.HashMap.class,
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
+			int hpBefore = number(data.get("targetHpBefore"), target.HP);
+			int hpAfter = Math.max(0, target.HP);
+			int shieldBefore = number(data.get("targetShieldBefore"), target.shielding());
+			int shieldAfter = Math.max(0, target.shielding());
+			boolean blessedAnkhConsumed = number(data.get("blessedAnkhCountAfter"), -1)
+					< number(data.get("blessedAnkhCountBefore"), -1)
+					&& number(data.get("ankhCountAfter"), -1) < number(data.get("ankhCountBefore"), -1);
+			data.put("targetHp", hpAfter);
+			data.put("targetHt", Math.max(1, target.HT));
+			data.put("targetPosAfter", target.pos);
+			data.put("targetShieldAfter", shieldAfter);
+			data.put("targetBuffs", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(target));
+			data.put("targetState", hpAfter > 0 ? "ALIVE" : "DEAD");
+			data.put("damage", blessedAnkhConsumed ? 0 : Math.max(0, hpBefore - hpAfter));
+			data.put("effectiveDamage", blessedAnkhConsumed ? 0 : Math.max(0, hpBefore + shieldBefore - hpAfter - shieldAfter));
+			data.put("ankhCountAfter", targetState.get("ankhCount"));
+			data.put("blessedAnkhCountAfter", targetState.get("blessedAnkhCount"));
+			data.put("sourceMobHpAfter", Math.max(0, HP));
+			data.put("sourceMobHtAfter", Math.max(1, HT));
+			data.put("sourceMobShieldAfter", Math.max(0, shielding()));
+			data.put("sourceMobPosAfter", pos);
+			data.put("sourceMobDamage", Math.max(0, number(data.get("sourceMobHpBefore"), HP) - Math.max(0, HP)));
+			data.put("sourceMobBuffs", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this));
+			data.put("sourceMobBundleAfter", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentMobBundle(this));
+			data.put("sourceActionCost", Math.max(0.01f, Math.min(10f, nativeActionCost)));
+			if (HP <= 0) {
+				data.put("heaps", json.fromJson(java.util.ArrayList.class,
+						com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeapsJson()));
+			} else {
+				data.remove("heaps");
+			}
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+			manager.sendAction(com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType.SYNC_HERO_STATE,
+					json.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
+			return true;
+		} catch (RuntimeException error) {
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+			manager.requestResync(manager.getLastSequence());
+			return true;
+		}
+	}
+
+	private void reportNativePlayerNoEffect(Char target, boolean hit, float nativeActionCost) {
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+		if (!manager.isMultiplayerActive() || !manager.isLevelPublisher() || !(target instanceof Hero)) return;
+		String targetPlayerId = target == Dungeon.hero ? manager.getLocalPlayerId() : null;
+		if (target instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero) {
+			for (com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer player : manager.getRemotePlayers().values()) {
+				if (player.heroInstance == target) { targetPlayerId = player.playerId; break; }
+			}
+		}
+		String entityId = manager.getServerEntityId(id());
+		if (targetPlayerId == null || entityId == null) {
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		try {
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			String buffs = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson((Hero) target);
+			java.util.Map<String, Object> state = json.fromJson(java.util.HashMap.class,
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
+			java.util.Map<String, Object> data = new java.util.HashMap<>();
+			data.put("targetType", "PLAYER");
+			data.put("targetPlayerId", targetPlayerId);
+			data.put("combatSchemaVersion", 1);
+			data.put("combatDepth", Dungeon.depth);
+			data.put("sourceType", "MOB");
+			data.put("sourceEntityId", entityId);
+			data.put("sourcePos", pos);
+			data.put("sourceAttackKind", Dungeon.level.distance(pos, target.pos) <= 1 ? "MELEE" : "RANGED");
+			data.put("sourceActionCost", Math.max(0.01f, Math.min(10f, nativeActionCost)));
+			data.put("sourceMobHpBefore", Math.max(0, HP));
+			data.put("sourceMobHtBefore", Math.max(1, HT));
+			data.put("sourceMobShieldBefore", Math.max(0, shielding()));
+			data.put("sourceMobPosBefore", pos);
+			data.put("sourceMobHpAfter", Math.max(0, HP));
+			data.put("sourceMobHtAfter", Math.max(1, HT));
+			data.put("sourceMobShieldAfter", Math.max(0, shielding()));
+			data.put("sourceMobPosAfter", pos);
+			data.put("sourceMobDamage", 0);
+			data.put("sourceMobBuffsBefore", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this));
+			data.put("sourceMobBuffs", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this));
+			data.put("sourceMobBundleAfter", com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentMobBundle(this));
+			data.put("targetHpBefore", Math.max(0, ((Hero) target).HP));
+			data.put("targetHtBefore", Math.max(1, ((Hero) target).HT));
+			data.put("targetHp", Math.max(0, ((Hero) target).HP));
+			data.put("targetHt", Math.max(1, ((Hero) target).HT));
+			data.put("targetPosBefore", target.pos);
+			data.put("targetPosAfter", target.pos);
+			data.put("targetShieldBefore", Math.max(0, target.shielding()));
+			data.put("targetShieldAfter", Math.max(0, target.shielding()));
+			data.put("targetBuffsBefore", buffs);
+			data.put("targetBuffs", buffs);
+			data.put("ankhCountBefore", state.get("ankhCount"));
+			data.put("ankhCountAfter", state.get("ankhCount"));
+			data.put("blessedAnkhCountBefore", state.get("blessedAnkhCount"));
+			data.put("blessedAnkhCountAfter", state.get("blessedAnkhCount"));
+			data.put("damage", 0);
+			data.put("effectiveDamage", 0);
+			data.put("targetState", ((Hero) target).HP > 0 ? "ALIVE" : "DEAD");
+			data.put("engineHit", hit);
+			data.put("engineDamageResult", true);
+			manager.sendAction(com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType.SYNC_HERO_STATE,
+					json.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
+		} catch (RuntimeException error) {
+			manager.requestResync(manager.getLastSequence());
+		}
+	}
 	
+	private static int number(Object value, int fallback) {
+		if (value instanceof Number) return ((Number) value).intValue();
+		try { return Integer.parseInt(String.valueOf(value)); } catch (RuntimeException ignored) { return fallback; }
+	}
+
 	@Override
 	public int defenseSkill( Char enemy ) {
 		if (buff(GuidingLight.Illuminated.class) != null && Dungeon.hero.heroClass == HeroClass.CLERIC){

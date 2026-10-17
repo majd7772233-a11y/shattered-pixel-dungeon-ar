@@ -15,9 +15,13 @@ public class RemoteHero extends Hero {
 
     @Override
     public void die(Object cause) {
-        // This is only a remote combat replica. Running Hero.die() here would consume a
-        // remote Ankh, alter local statistics, show local resurrection UI, and duplicate
-        // death side effects. The owning client/server outcome reconciles this replica.
+        // Only the native authority may resolve a blessed Ankh for a remote hero replica.
+        if (MultiplayerManager.getInstance().isResolvingAuthorityCombat()
+                && restoreBlessedAnkhForMultiplayerAuthority()) {
+            ready = false;
+            curAction = null;
+            return;
+        }
         HP = 0;
         ready = false;
         curAction = null;

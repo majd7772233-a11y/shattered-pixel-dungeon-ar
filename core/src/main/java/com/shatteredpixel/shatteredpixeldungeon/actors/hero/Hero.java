@@ -495,6 +495,23 @@ public class Hero extends Char {
 		return count;
 	}
 
+	/** Applies the blessed-Ankh branch during native authority simulation without local UI/stat side effects. */
+	protected boolean restoreBlessedAnkhForMultiplayerAuthority() {
+		if (belongings == null) return false;
+		Ankh blessed = null;
+		for (Ankh item : belongings.getAllItems(Ankh.class)) {
+			if (item.isBlessed()) { blessed = item; break; }
+		}
+		if (blessed == null) return false;
+		curAction = null;
+		HP = HT / 4;
+		multiplayerRevivedByBlessedAnkh = true;
+		PotionOfHealing.cure(this);
+		Buff.prolong(this, Invulnerability.class, Invulnerability.DURATION);
+		blessed.detach(belongings.backpack);
+		return true;
+	}
+
 	public void live() {
 		for (Buff b : buffs()){
 			if (!b.revivePersists) b.detach();
@@ -1778,6 +1795,13 @@ public class Hero extends Char {
 
 	@Override
 	public void damage( int dmg, Object src ) {
+		MultiplayerManager activeManager = MultiplayerManager.getInstance();
+		// A mob's combat turn belongs to the level publisher; discard duplicate peer-side mob hits.
+		if (activeManager.isMultiplayerActive() && src instanceof Mob
+				&& (this == Dungeon.hero || this instanceof RemoteHero) && !activeManager.isLevelPublisher()) {
+			activeManager.requestResync(activeManager.getLastSequence());
+			return;
+		}
 		if (buff(TimekeepersHourglass.timeStasis.class) != null
 				|| buff(TimeStasis.class) != null) {
 			return;
@@ -1879,7 +1903,7 @@ public class Hero extends Char {
 				|| pos != targetPosBefore || !targetBuffsAfter.equals(targetBuffsBefore);
 		if (effectiveDamage <= 0 && !sourceMobChanged && !targetCombatStateChanged && !revivedByBlessedAnkh) return;
 
-		if (this == Dungeon.hero && revivedByBlessedAnkh && !nativeAttackInProgress
+		if (this == Dungeon.hero && revivedByBlessedAnkh && !(src instanceof Mob) && !nativeAttackInProgress
 				&& MultiplayerManager.getInstance().isMultiplayerActive()) {
 			String revival = "{\"targetHpBefore\":" + targetHpBefore
 					+ ",\"targetHtBefore\":" + targetHtBefore
@@ -1921,19 +1945,27 @@ public class Hero extends Char {
 			MultiplayerManager.getInstance().sendAction(NetworkActionType.SYNC_HERO_STATE, environmentDamage);
 		}
 
-		if (this == Dungeon.hero && src instanceof Mob
-				&& MultiplayerManager.getInstance().isMultiplayerActive()
-				&& (!revivedByBlessedAnkh || sourceMobChanged)) {
-			MultiplayerManager manager = MultiplayerManager.getInstance();
+		if ((this == Dungeon.hero || this instanceof RemoteHero) && src instanceof Mob
+				&& activeManager.isMultiplayerActive() && activeManager.isLevelPublisher()) {
+			String targetPlayerId = this == Dungeon.hero ? activeManager.getLocalPlayerId() : null;
+			if (this instanceof RemoteHero) {
+				for (com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer candidate : activeManager.getRemotePlayers().values()) {
+					if (candidate.heroInstance == this) { targetPlayerId = candidate.playerId; break; }
+				}
+			}
 			Mob sourceMob = (Mob) src;
-			String sourceEntityId = manager.getServerEntityId(sourceMob.id());
-			if (sourceEntityId != null) {
+			String sourceEntityId = activeManager.getServerEntityId(sourceMob.id());
+			if (targetPlayerId == null || sourceEntityId == null) {
+				activeManager.requestResync(activeManager.getLastSequence());
+			} else {
 				String state = HP <= 0 ? "DEAD" : "ALIVE";
+				com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
 				String damageState = "{\"targetType\":\"PLAYER\","
-						+ "\"combatSchemaVersion\":1"
+						+ "\"targetPlayerId\":" + json.toJson(targetPlayerId)
+						+ ",\"combatSchemaVersion\":1"
 						+ ",\"combatDepth\":" + Dungeon.depth
 						+ ",\"sourceType\":\"MOB\""
-						+ ",\"sourceEntityId\":" + new com.badlogic.gdx.utils.Json().toJson(sourceEntityId)
+						+ ",\"sourceEntityId\":" + json.toJson(sourceEntityId)
 						+ ",\"sourcePos\":" + sourcePosBefore
 						+ ",\"sourceAttackKind\":\"" + (Dungeon.level.distance(sourcePosBefore, targetPosBefore) <= 1 ? "MELEE" : "RANGED") + "\""
 						+ ",\"sourceActionCost\":" + sourceMob.attackDelay()
@@ -1946,28 +1978,32 @@ public class Hero extends Char {
 						+ ",\"sourceMobShieldAfter\":" + sourceMobShieldAfter
 						+ ",\"sourceMobPosAfter\":" + sourceMobPosAfter
 						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
-						+ ",\"sourceMobBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsBefore)
-						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsAfter)
-						+ ",\"sourceMobBundleAfter\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBundleAfter)
-
-						+ ",\"targetHpBefore\":" + (revivedByBlessedAnkh ? Math.max(0, HP) : targetHpBefore)
-						+ ",\"targetHtBefore\":" + (revivedByBlessedAnkh ? Math.max(1, HT) : targetHtBefore)
+						+ ",\"sourceMobBuffsBefore\":" + json.toJson(sourceMobBuffsBefore)
+						+ ",\"sourceMobBuffs\":" + json.toJson(sourceMobBuffsAfter)
+						+ ",\"sourceMobBundleAfter\":" + json.toJson(sourceMobBundleAfter)
+						+ ",\"targetHpBefore\":" + targetHpBefore
+						+ ",\"targetHtBefore\":" + targetHtBefore
 						+ ",\"targetHp\":" + Math.max(0, HP)
 						+ ",\"targetHt\":" + Math.max(1, HT)
-						+ ",\"targetPosBefore\":" + (revivedByBlessedAnkh ? pos : targetPosBefore)
+						+ ",\"targetPosBefore\":" + targetPosBefore
 						+ ",\"targetPosAfter\":" + pos
-						+ ",\"targetShieldBefore\":" + (revivedByBlessedAnkh ? targetShieldAfter : targetShieldBefore)
+						+ ",\"targetShieldBefore\":" + targetShieldBefore
 						+ ",\"targetShieldAfter\":" + targetShieldAfter
-						+ ",\"targetBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(revivedByBlessedAnkh ? targetBuffsAfter : targetBuffsBefore)
-						+ ",\"targetState\":\"" + state + "\""
+						+ ",\"targetBuffsBefore\":" + json.toJson(targetBuffsBefore)
+						+ ",\"targetBuffs\":" + json.toJson(targetBuffsAfter)
+						+ ",\"ankhCountBefore\":" + ankhCountBefore
+						+ ",\"ankhCountAfter\":" + ankhCountAfter
+						+ ",\"blessedAnkhCountBefore\":" + blessedAnkhCountBefore
+						+ ",\"blessedAnkhCountAfter\":" + blessedAnkhCountAfter
 						+ ",\"damage\":" + (revivedByBlessedAnkh ? 0 : Math.max(0, targetHpBefore - Math.max(0, HP)))
 						+ ",\"effectiveDamage\":" + (revivedByBlessedAnkh ? 0 : Math.max(0, effectiveDamage))
-						+ ",\"targetBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentCombatBuffsJson(this))
+						+ ",\"targetState\":\"" + state + "\""
+						+ ",\"engineHit\":true"
+						+ ",\"engineDamageResult\":true"
 						+ (sourceMobHpAfter <= 0 ? ",\"heaps\":" + SPDLevelSnapshot.currentHeapsJson() : "")
-						+ ",\"engineDamageResult\":true}";
-				manager.sendAction(NetworkActionType.SYNC_HERO_STATE, damageState);
-			} else {
-				manager.requestResync(manager.getLastSequence());
+						+ "}";
+				// Wait for Mob to spend its native delay so its final cooldown/bundle is reported once.
+				sourceMob.queueMultiplayerHeroDamageReport(damageState, this);
 			}
 		}
 
@@ -2519,6 +2555,13 @@ public class Hero extends Char {
 			return;
 		}
 		
+		if (MultiplayerManager.getInstance().isMultiplayerActive()) {
+			// The authenticated room combat result owns multiplayer death; never delete a local run here.
+			HP = 0;
+			ready = false;
+			curAction = null;
+			return;
+		}
 		Actor.fixTime();
 		super.die( cause );
 		reallyDie( cause );

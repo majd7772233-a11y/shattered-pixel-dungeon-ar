@@ -220,13 +220,18 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public void sendAction(NetworkActionType actionType, String actionDetailsJson) {
+        sendAction(actionType, actionDetailsJson, SPDLevelSnapshot.currentHeroStateJson());
+    }
+
+    /** Sends an action together with the exact native hero state affected by it. */
+    public void sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
         if (!isMultiplayerActive || activeTransport == null) return;
 
         NetworkMessage msg = new NetworkMessage();
         msg.messageType = MessageType.ACTION;
         msg.senderId = localPlayerId;
         msg.requestId = UUID.randomUUID().toString();
-        String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        String heroStateJson = nativeHeroStateJson == null ? "" : nativeHeroStateJson;
         msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson
                 + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
 
