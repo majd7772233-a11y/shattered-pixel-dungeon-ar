@@ -1782,7 +1782,7 @@ export class MatchRoom {
                 targetPos: targetPosBefore, targetPosAfter, targetShieldBefore, targetShieldAfter,
                 targetState: newState, hit: true, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
                 targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
-                targetHeroStateJson: payload.heroStateJson,
+                targetHeroStateJson: mergedDamagedHeroStateJson,
                 sourceMobHpBefore, sourceMobHtBefore, sourceMobShieldBefore: Number(data.sourceMobShieldBefore),
                 sourceMobHpAfter: committedSourceMobHp, sourceMobHtAfter: committedSourceMobHt,
                 sourceMobShieldAfter: committedSourceMobShield,
