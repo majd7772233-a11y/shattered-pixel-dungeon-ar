@@ -1602,6 +1602,8 @@ export class MatchRoom {
             const sourceMob = sourceMobId == null ? [] : this.sql.exec(
               `SELECT pos, hp, ht FROM mobs WHERE mob_id = ? AND depth = ?`, sourceMobId, this.currentDepth
             ).toArray();
+            const mobPublisherRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
+            const sourceMobAuthority = isAuthorizedNativeMobOwner(session.playerId, String(mobPublisherRow?.value || ""));
             const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
             const width = Number(levelRow?.width || 0), height = Number(levelRow?.height || 0);
             const levelSize = width * height;
@@ -1634,6 +1636,17 @@ export class MatchRoom {
               sourceMobBuffsAfterParsed = JSON.parse(String(data?.sourceMobBuffs));
             } catch (_) { sourceMobBuffsBeforeParsed = null; sourceMobBuffsAfterParsed = null; }
             const sourceMobBuffsChanged = comparableBuffs(sourceMobBuffsBeforeParsed) !== comparableBuffs(sourceMobBuffsAfterParsed);
+            let targetBuffsBeforeParsed: any = null, targetBuffsAfterParsed: any = null;
+            try {
+              targetBuffsBeforeParsed = JSON.parse(String(data?.targetBuffsBefore));
+              targetBuffsAfterParsed = JSON.parse(String(data?.targetBuffs));
+            } catch (_) { targetBuffsBeforeParsed = null; targetBuffsAfterParsed = null; }
+            const targetBuffsChanged = comparableBuffs(targetBuffsBeforeParsed) !== comparableBuffs(targetBuffsAfterParsed);
+            const targetHeroCombatChanged = damage > 0 || targetShieldAfter < targetShieldBefore
+              || Number(targetPosAfter) !== Number(targetPosBefore) || targetBuffsChanged;
+            const sourceMobReportedChanged = sourceMobHpAfter !== sourceMobHpBefore
+              || sourceMobShieldAfter !== sourceMobShieldBefore || sourceMobPosAfter !== sourceMobPosBefore
+              || sourceMobBuffsChanged || sourceMobHpAfter <= 0;
             const savedSourceMobBefore = Array.isArray(sourceLevel?.mobs)
               ? sourceLevel.mobs.find((mob: any) => Number(mob?.mobId) === Number(sourceMobId)) : null;
             const sourceMobPreStateMatchesSnapshot = !!savedSourceMobBefore
@@ -1688,13 +1701,13 @@ export class MatchRoom {
               && hp >= 0 && hp <= previousHp && ht === previousHt
               && data.targetHpBefore === previousHp && data.targetHtBefore === previousHt
               && isValidNativeHpTransition(previousHp, hp, damage)
-              && (damage > 0 || targetShieldAfter < targetShieldBefore || Number(data.sourceMobDamage) > 0
-                || sourceMobPosAfter !== sourceMobPosBefore || sourceMobBuffsChanged)
+              && (sourceMobAuthority ? (targetHeroCombatChanged || sourceMobReportedChanged) : targetHeroCombatChanged)
               && newHeroStateValid && mergedDamagedHeroStateJson != null
               && isValidNativeCombatBuffs(data.targetBuffs)
               && sourceMob.length > 0 && Number(sourceMob[0].hp) > 0
-              && Number(sourceMob[0].pos) === sourcePos && geometryValid && targetPosValid
-              && sourceMobStateValid;
+              && Number(sourceMob[0].pos) === sourcePos && sourceMobPreStateMatchesSnapshot
+              && geometryValid && targetPosValid
+              && (!sourceMobAuthority || sourceMobStateValid);
             if (validDamage) {
               const oldState = String(playerRow.state);
               const newState = hp === 0
@@ -1705,24 +1718,31 @@ export class MatchRoom {
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `heroState:${session.playerId}`, mergedDamagedHeroStateJson);
-              this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
-                sourceMobHpAfter, sourceMobPosAfter, sourceMobId, this.currentDepth);
               const savedSourceMob = (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
                 .find((mob: any) => Number(mob?.mobId) === Number(sourceMobId));
               if (!savedSourceMob) throw new Error("Accepted source mob missing from native snapshot");
-              savedSourceMob.hp = sourceMobHpAfter;
-              savedSourceMob.ht = sourceMobHtAfter;
-              savedSourceMob.shielding = Number(data.sourceMobShieldAfter);
-              savedSourceMob.pos = sourceMobPosAfter;
-              savedSourceMob.buffs = JSON.parse(String(data.sourceMobBuffs));
-              if (sourceMobHpAfter > 0) savedSourceMob.serializedBundle = String(data.sourceMobBundleAfter);
-              if (sourceMobHpAfter <= 0) sourceLevel.heaps = data.heaps;
-              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                `levelSnapshot:${this.currentDepth}`, JSON.stringify(sourceLevel));
-              if (sourceMobHpAfter <= 0) {
-                for (const heap of sourceLevel.heaps) {
-                  this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+              const committedSourceMobHp = sourceMobAuthority ? sourceMobHpAfter : Number(savedSourceMob.hp);
+              const committedSourceMobHt = sourceMobAuthority ? sourceMobHtAfter : Number(savedSourceMob.ht);
+              const committedSourceMobShield = sourceMobAuthority ? Number(data.sourceMobShieldAfter) : Number(savedSourceMob.shielding);
+              const committedSourceMobPos = sourceMobAuthority ? sourceMobPosAfter : Number(savedSourceMob.pos);
+              const committedSourceMobBuffs = sourceMobAuthority ? data.sourceMobBuffs : JSON.stringify(savedSourceMob.buffs);
+              if (sourceMobAuthority) {
+                this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                  committedSourceMobHp, committedSourceMobPos, sourceMobId, this.currentDepth);
+                savedSourceMob.hp = committedSourceMobHp;
+                savedSourceMob.ht = committedSourceMobHt;
+                savedSourceMob.shielding = committedSourceMobShield;
+                savedSourceMob.pos = committedSourceMobPos;
+                savedSourceMob.buffs = JSON.parse(String(committedSourceMobBuffs));
+                if (committedSourceMobHp > 0) savedSourceMob.serializedBundle = String(data.sourceMobBundleAfter);
+                if (committedSourceMobHp <= 0) sourceLevel.heaps = data.heaps;
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                  `levelSnapshot:${this.currentDepth}`, JSON.stringify(sourceLevel));
+                if (committedSourceMobHp <= 0) {
+                  for (const heap of sourceLevel.heaps) {
+                    this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+                  }
                 }
               }
               if (oldState !== "DEAD" && oldState !== "SPECTATOR" && (newState === "DEAD" || newState === "SPECTATOR")) {
@@ -1741,11 +1761,14 @@ export class MatchRoom {
                 targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
                 targetHeroStateJson: payload.heroStateJson,
                 sourceMobHpBefore, sourceMobHtBefore, sourceMobShieldBefore: Number(data.sourceMobShieldBefore),
-                sourceMobHpAfter, sourceMobHtAfter, sourceMobShieldAfter: Number(data.sourceMobShieldAfter),
-                sourceMobPosBefore, sourceMobPosAfter, sourceMobDamage: Number(data.sourceMobDamage),
-                sourceMobBuffsBefore: data.sourceMobBuffsBefore, sourceMobBuffs: data.sourceMobBuffs,
-                sourceMobBundleAfter: sourceMobHpAfter > 0 ? String(data.sourceMobBundleAfter) : null,
-                ...(sourceMobHpAfter <= 0 ? { heaps: data.heaps } : {}),
+                sourceMobHpAfter: committedSourceMobHp, sourceMobHtAfter: committedSourceMobHt,
+                sourceMobShieldAfter: committedSourceMobShield,
+                sourceMobPosBefore, sourceMobPosAfter: committedSourceMobPos,
+                sourceMobDamage: sourceMobAuthority ? Number(data.sourceMobDamage) : 0,
+                sourceMobBuffsBefore: data.sourceMobBuffsBefore, sourceMobBuffs: committedSourceMobBuffs,
+                sourceMobBundleAfter: sourceMobAuthority && committedSourceMobHp > 0 ? String(data.sourceMobBundleAfter) : null,
+                sourceMobResyncRequired: !sourceMobAuthority && sourceMobReportedChanged,
+                ...(sourceMobAuthority && committedSourceMobHp <= 0 ? { heaps: data.heaps } : {}),
                 attackerStateJson: null, engineResolved: true
               };
               actionValid = true;
