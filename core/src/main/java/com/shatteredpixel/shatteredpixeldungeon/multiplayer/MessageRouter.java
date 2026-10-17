@@ -150,9 +150,29 @@ public final class MessageRouter {
                     String state = stringValue(action.get("targetState"), "ALIVE");
                     if ("DEAD".equals(state) || "SPECTATOR".equals(state)) applyPlayerDeath(targetId);
 
+                    // The accepted outcome carries the full native defender bundle. Apply it to
+                    // remote replicas so class, equipment, talents, buffs, cooldown and Ankh state
+                    // do not remain at the optimistic pre-combat state.
+                    String nativeHeroState = stringValue(action.get("targetHeroStateJson"), "");
+                    if (!targetId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                        RemotePlayer remote = MultiplayerManager.getInstance().getRemotePlayer(targetId);
+                        if (remote == null) {
+                            remote = new RemotePlayer(targetId, "Player", "WARRIOR");
+                            RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+                            MultiplayerManager.getInstance().addRemotePlayer(remote);
+                        }
+                        remote.hp = hp;
+                        remote.ht = Math.max(1, intValue(action.get("targetHt"), remote.ht));
+                        remote.pos = intValue(action.get("targetPosAfter"), remote.pos);
+                        if (remote.heroInstance != null && !nativeHeroState.isEmpty() && !"null".equals(nativeHeroState)) {
+                            WorldSnapshot.restoreRemoteHeroState(remote.heroInstance, nativeHeroState);
+                        } else if (!nativeHeroState.isEmpty() && !"null".equals(nativeHeroState)) {
+                            MultiplayerManager.getInstance().requestResync(message.sequence);
+                        }
+                    }
+
                     // Thorns, retaliation and defensive procs may also mutate the source mob.
-                    // Those native side effects are authoritative in the server snapshot; force
-                    // a snapshot reconciliation rather than letting other clients keep stale mobs.
+                    // The server's full native snapshot is the reconciliation source.
                     if ("MOB".equals(stringValue(action.get("sourceType"), ""))
                             && action.get("sourceEntityId") != null) {
                         int sourceHpBefore = intValue(action.get("sourceMobHpBefore"), -1);
@@ -170,20 +190,32 @@ public final class MessageRouter {
                     }
                 } else if ("MOB".equals(targetType) && targetId != null && hp >= 0 && Dungeon.level != null) {
                     Integer localActorId = MultiplayerManager.getInstance().getLocalActorIdForServerEntity(targetId);
-                    if (localActorId == null) return;
-                    for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
-                        if (mob.id() == localActorId) {
-                            mob.HP = hp;
-                            if (hp <= 0) {
-                                // The authoritative attack already ran native death/loot logic on
-                                // its owner. Remove the remote copy without firing rewards or drops.
-                                WorldSnapshot.removeMobReplicaWithoutRewards(mob);
+                    if (localActorId != null) {
+                        for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
+                            if (mob.id() == localActorId) {
+                                mob.HP = hp;
+                                int targetHt = intValue(action.get("targetHt"), mob.HT);
+                                mob.HT = Math.max(1, targetHt);
+                                String buffs = stringValue(action.get("targetBuffs"), "");
+                                if (!buffs.isEmpty()) WorldSnapshot.restoreNativeCombatBuffs(mob, buffs);
+                                if (hp <= 0) {
+                                    // The authoritative attack already ran native death/loot logic on
+                                    // its owner. Remove the remote copy without firing rewards or drops.
+                                    WorldSnapshot.removeMobReplicaWithoutRewards(mob);
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
-                    if (hp <= 0) MultiplayerManager.getInstance().requestResync(message.sequence);
+                    // A scalar event cannot restore native Mob state-machine data, cooldowns,
+                    // all secondary procs and heaps exactly. Always reconcile from the accepted
+                    // authoritative level snapshot after mob combat/damage.
+                    MultiplayerManager.getInstance().requestResync(message.sequence);
                 }
+            } else if ("CHAR_DAMAGED".equals(eventType)) {
+                // Periodic, trap, blob, item and spell effects carry native deltas; restore the
+                // complete authoritative level rather than replaying a partial damage event.
+                MultiplayerManager.getInstance().requestResync(message.sequence);
             } else if ("ITEM_PICKED_UP".equals(eventType)) {
                 // The local SPD engine already removed the picked item from this player's heap.
             } else if ("CHEST_OPENED".equals(eventType)) {
