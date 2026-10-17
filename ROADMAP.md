@@ -356,3 +356,15 @@ Do not mark Phase 2 complete until that gap is closed by an authority capable of
 - A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
 - The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
 - The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
+
+
+## Phase 2 continuation checkpoint — authoritative native state bundles (2026-10-17)
+
+- Verified code checkpoint: `dac97070ee6f11410604a61afb5aeade8873f446` on `multiplayer-framework-core-14118577486727081892`.
+- Exact validation run [38984614970](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38984614970) completed successfully: backend TypeScript build/tests and Android JVM tests/debug APK compilation passed on that SHA.
+- Native combat requests now execute on the SPD game/render thread. Accepted combat event batches, accepted actions, and remote action messages are also serialized onto that thread instead of mutating native actors from transport callbacks.
+- PvP target damage and blessed-Ankh results stay within the single native combat transaction; standalone environment-damage/REVIVE messages are suppressed during that attack to prevent duplicate or out-of-order state commits.
+- Mob combat now captures and bounds complete native mob bundles for the primary target, secondary mob effects, periodic damage, and reactive source-mob changes from defensive procs. The server persists accepted bundles and peers request a full authoritative snapshot rather than pretending scalar HP/buff updates reproduce native AI state.
+- Added backend tests for bounded native mob bundles and required post-state bundles in secondary and mob-to-player damage payloads. Protocol schemas now describe target/source mob bundles.
+- **Phase 2 remains In progress.** The mob-to-player damage path still originates from the damaged player's local native simulation and is not independently resolved/confirmed by the level publisher; unblessed-Ankh resurrection and full PvP death/resurrection convergence are not end-to-end verified; comprehensive native Java combat integration tests and physical two-device convergence are still outstanding. Do not mark Phase 2 complete or start Phase 3 until these blockers are closed.
+- Keep work on this branch; do not merge into `main`.
