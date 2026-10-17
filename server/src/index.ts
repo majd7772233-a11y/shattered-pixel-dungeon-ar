@@ -1457,7 +1457,8 @@ export class MatchRoom {
               hpBefore: data.hpBefore, htBefore: data.htBefore, posBefore: data.posBefore,
               shieldBefore: data.shieldBefore, buffsBefore: data.buffsBefore,
               hpAfter: data.hpAfter, htAfter: data.htAfter, posAfter: data.posAfter,
-              shieldAfter: data.shieldAfter, buffsAfter: data.buffsAfter
+              shieldAfter: data.shieldAfter, buffsAfter: data.buffsAfter,
+              serializedBundleAfter: data.serializedBundleAfter
             };
             const ownerPayload = parseAndValidateNativeSecondaryMobDeltas({
               complete: true, deltas: [delta], ...(data.heaps === undefined ? {} : { heaps: data.heaps })
