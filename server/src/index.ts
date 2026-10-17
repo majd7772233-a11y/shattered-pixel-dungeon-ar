@@ -197,9 +197,44 @@ export function isValidNativeEnvironmentDamage(data: any, authoritative: any): b
       || posAfter !== posBefore);
 }
 
+export function resolveAuthorizedNativeMobDamageTarget(
+  senderId: unknown, publisherId: unknown, reportedTargetId: unknown
+): string | null {
+  if (!isAuthorizedNativeMobOwner(senderId, publisherId)) return null;
+  if (typeof reportedTargetId !== "string" || reportedTargetId.length < 1 || reportedTargetId.length > 80) return null;
+  return reportedTargetId;
+}
+
+export function isValidNativeMobNoEffectOutcome(data: any, previous: {
+  hp: number; ht: number; pos: number; shielding: number;
+}): boolean {
+  if (!data || !previous || typeof data.engineHit !== "boolean" || data.engineDamageResult !== true) return false;
+  let targetBuffsBefore: any, targetBuffsAfter: any, sourceBuffsBefore: any, sourceBuffsAfter: any;
+  try {
+    targetBuffsBefore = JSON.parse(String(data.targetBuffsBefore));
+    targetBuffsAfter = JSON.parse(String(data.targetBuffs));
+    sourceBuffsBefore = JSON.parse(String(data.sourceMobBuffsBefore));
+    sourceBuffsAfter = JSON.parse(String(data.sourceMobBuffs));
+  } catch (_) { return false; }
+  return Number(data.targetHpBefore) === previous.hp && Number(data.targetHp) === previous.hp
+    && Number(data.targetHtBefore) === previous.ht && Number(data.targetHt) === previous.ht
+    && Number(data.targetPosBefore) === previous.pos && Number(data.targetPosAfter) === previous.pos
+    && Number(data.targetShieldBefore) === previous.shielding && Number(data.targetShieldAfter) === previous.shielding
+    && Number(data.damage) === 0 && Number(data.effectiveDamage) === 0
+    && comparableBuffs(targetBuffsBefore) === comparableBuffs(targetBuffsAfter)
+    && Number(data.sourceMobHpBefore) === Number(data.sourceMobHpAfter)
+    && Number(data.sourceMobHtBefore) === Number(data.sourceMobHtAfter)
+    && Number(data.sourceMobShieldBefore) === Number(data.sourceMobShieldAfter)
+    && Number(data.sourceMobPosBefore) === Number(data.sourceMobPosAfter)
+    && Number(data.sourceMobDamage) === 0
+    && comparableBuffs(sourceBuffsBefore) === comparableBuffs(sourceBuffsAfter);
+}
+
 export function hasStrictNativeDamageFields(data: any): boolean {
   return data != null && data.combatSchemaVersion === 1 && Number.isInteger(data.combatDepth)
     && data.targetType === "PLAYER" && data.sourceType === "MOB"
+    && typeof data.targetPlayerId === "string" && data.targetPlayerId.length > 0 && data.targetPlayerId.length <= 80
+    && typeof data.engineHit === "boolean"
     && typeof data.sourceEntityId === "string" && data.sourceEntityId.length >= 8 && data.sourceEntityId.length <= 128
     && Number.isInteger(data.sourcePos) && ["MELEE", "RANGED"].includes(data.sourceAttackKind)
     && typeof data.sourceActionCost === "number" && Number.isFinite(data.sourceActionCost)
@@ -1631,8 +1666,12 @@ export class MatchRoom {
             const targetPosAfter = data?.targetPosAfter;
             const targetShieldBefore = data?.targetShieldBefore;
             const targetShieldAfter = data?.targetShieldAfter;
-            const playerRow = this.sql.exec(`SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, session.playerId).toArray()[0];
-            const previousHeroRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${session.playerId}`).toArray()[0];
+            const damageTargetId = typeof data?.targetPlayerId === "string"
+              && data.targetPlayerId.length > 0 && data.targetPlayerId.length <= 80 ? data.targetPlayerId : null;
+            const playerRow = damageTargetId == null ? null : this.sql.exec(
+              `SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, damageTargetId).toArray()[0];
+            const previousHeroRow = damageTargetId == null ? null : this.sql.exec(
+              `SELECT value FROM room_meta WHERE key = ?`, `heroState:${damageTargetId}`).toArray()[0];
             let previousHeroState: any = null;
             try {
               previousHeroState = previousHeroRow && typeof previousHeroRow.value === "string"
@@ -1651,6 +1690,8 @@ export class MatchRoom {
             ).toArray();
             const mobPublisherRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
             const sourceMobAuthority = isAuthorizedNativeMobOwner(session.playerId, String(mobPublisherRow?.value || ""));
+            const authorizedDamageTarget = resolveAuthorizedNativeMobDamageTarget(
+              session.playerId, String(mobPublisherRow?.value || ""), data?.targetPlayerId);
             const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
             const width = Number(levelRow?.width || 0), height = Number(levelRow?.height || 0);
             const levelSize = width * height;
@@ -1691,7 +1732,8 @@ export class MatchRoom {
               targetBuffsAfterParsed = JSON.parse(String(data?.targetBuffs));
             } catch (_) { targetBuffsBeforeParsed = null; targetBuffsAfterParsed = null; }
             const targetBuffsChanged = comparableBuffs(targetBuffsBeforeParsed) !== comparableBuffs(targetBuffsAfterParsed);
-            const targetHeroCombatChanged = damage > 0 || targetShieldAfter < targetShieldBefore
+            const targetHeroCombatChanged = Number(hp) !== Number(playerRow?.hp)
+              || damage > 0 || targetShieldAfter < targetShieldBefore
               || Number(targetPosAfter) !== Number(targetPosBefore) || targetBuffsChanged;
             const sourceMobReportedChanged = sourceMobHpAfter !== sourceMobHpBefore
               || sourceMobShieldAfter !== sourceMobShieldBefore || sourceMobPosAfter !== sourceMobPosBefore
@@ -1722,10 +1764,22 @@ export class MatchRoom {
             const newHeroStateValid = isValidNativeHeroStateJson(payload.heroStateJson, {
               hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter)
             });
+            const reportedDamagedHeroState = (() => {
+              try { return typeof payload.heroStateJson === "string" ? JSON.parse(payload.heroStateJson) : null; }
+              catch (_) { return null; }
+            })();
+            const ankhRescue = previousHeroState != null
+              && hasValidBlessedAnkhConsumption(previousHeroRow?.value, payload.heroStateJson)
+              && Number(data?.ankhCountBefore) === Number(previousHeroState.ankhCount)
+              && Number(data?.ankhCountAfter) === Number(reportedDamagedHeroState?.ankhCount)
+              && Number(data?.blessedAnkhCountBefore) === Number(previousHeroState.blessedAnkhCount)
+              && Number(data?.blessedAnkhCountAfter) === Number(reportedDamagedHeroState?.blessedAnkhCount)
+              && Number(hp) === Math.floor(Number(ht) / 4) && Number(hp) > 0
+              && Number(data?.damage) === 0;
             const mergedDamagedHeroStateJson = mergeNativeHeroState(previousHeroRow?.value,
               payload.heroStateJson,
               { hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter) },
-              data?.targetBuffs);
+              data?.targetBuffs, ankhRescue);
             const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
               && (sourceDistance <= 1
                 ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
@@ -1736,8 +1790,13 @@ export class MatchRoom {
                 && this.isCombatDestinationFree(Number(targetPosAfter), this.currentDepth, "PLAYER", session.playerId)));
             const previousHp = Number(playerRow?.hp);
             const previousHt = Number(playerRow?.ht);
-            const validDamage = !!playerRow && String(playerRow.state) === "ALIVE"
-              && hasStrictNativeDamageFields(data)
+            const noEffectOutcomeValid = isValidNativeMobNoEffectOutcome(data, {
+              hp: Number(playerRow?.hp), ht: Number(playerRow?.ht), pos: Number(playerRow?.pos),
+              shielding: Number(previousHeroState?.shielding)
+            });
+            const validDamage = damageTargetId != null && authorizedDamageTarget === damageTargetId
+              && !!playerRow && String(playerRow.state) === "ALIVE" && sourceMobAuthority
+              && hasStrictNativeDamageFields(data) && data.targetPlayerId === damageTargetId
               && hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, previousHeroState)
               && data.combatDepth === this.currentDepth
               && Number.isInteger(hp) && Number.isInteger(ht) && Number.isInteger(damage)
@@ -1747,26 +1806,28 @@ export class MatchRoom {
                 || targetShieldBefore === previousHeroState.shielding)
               && targetShieldBefore >= 0 && targetShieldBefore <= 100000
               && targetShieldAfter >= 0 && targetShieldAfter <= 100000
-              && hp >= 0 && hp <= previousHp && ht === previousHt
+              && hp >= 0 && (ankhRescue || hp <= previousHp) && ht === previousHt
               && data.targetHpBefore === previousHp && data.targetHtBefore === previousHt
-              && isValidNativeHpTransition(previousHp, hp, damage)
-              && (sourceMobAuthority ? (targetHeroCombatChanged || sourceMobReportedChanged) : targetHeroCombatChanged)
+              && (ankhRescue
+                ? hp > 0 && hp === Math.floor(ht / 4) && damage === 0
+                : isValidNativeHpTransition(previousHp, hp, damage))
+              && (targetHeroCombatChanged || sourceMobReportedChanged || noEffectOutcomeValid)
               && newHeroStateValid && mergedDamagedHeroStateJson != null
               && isValidNativeCombatBuffs(data.targetBuffs)
               && sourceMob.length > 0 && Number(sourceMob[0].hp) > 0
               && Number(sourceMob[0].pos) === sourcePos && sourceMobPreStateMatchesSnapshot
               && geometryValid && targetPosValid
-              && (!sourceMobAuthority || sourceMobStateValid);
+              && sourceMobAuthority && sourceMobStateValid;
             if (validDamage) {
               const oldState = String(playerRow.state);
               const newState = hp === 0
                 ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD")
                 : "ALIVE";
               this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
-                hp, ht, targetPosAfter, newState, session.playerId);
+                hp, ht, targetPosAfter, newState, damageTargetId);
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                `heroState:${session.playerId}`, mergedDamagedHeroStateJson);
+                `heroState:${damageTargetId}`, mergedDamagedHeroStateJson);
               const savedSourceMob = (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
                 .find((mob: any) => Number(mob?.mobId) === Number(sourceMobId));
               if (!savedSourceMob) throw new Error("Accepted source mob missing from native snapshot");
@@ -1795,7 +1856,7 @@ export class MatchRoom {
                 }
               }
               if (oldState !== "DEAD" && oldState !== "SPECTATOR" && (newState === "DEAD" || newState === "SPECTATOR")) {
-                this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
+                this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, damageTargetId);
               }
               eventType = "PLAYER_DAMAGED";
               actionResultPayload = {
@@ -1803,10 +1864,13 @@ export class MatchRoom {
                 sourceType: "MOB", sourceEntityId: data.sourceEntityId, sourcePos,
                 sourceAttackKind: data.sourceAttackKind, attackKind: data.sourceAttackKind,
                 engineDistance: sourceDistance, engineActionCost: data.sourceActionCost,
-                targetId: session.playerId, targetType: "PLAYER",
+                targetId: damageTargetId, targetPlayerId: damageTargetId, targetType: "PLAYER",
                 targetHpBefore: previousHp, targetHtBefore: previousHt, targetHp: hp, targetHt: ht,
                 targetPos: targetPosBefore, targetPosAfter, targetShieldBefore, targetShieldAfter,
-                targetState: newState, hit: true, damage, effectiveDamage: Number(data.effectiveDamage) || damage,
+                targetState: newState, hit: data.engineHit === true, engineHit: data.engineHit === true,
+                ankhCountBefore: data.ankhCountBefore, ankhCountAfter: data.ankhCountAfter,
+                blessedAnkhCountBefore: data.blessedAnkhCountBefore, blessedAnkhCountAfter: data.blessedAnkhCountAfter,
+                damage, effectiveDamage: Number(data.effectiveDamage) || damage,
                 targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
                 targetHeroStateJson: mergedDamagedHeroStateJson,
                 sourceMobHpBefore, sourceMobHtBefore, sourceMobShieldBefore: Number(data.sourceMobShieldBefore),

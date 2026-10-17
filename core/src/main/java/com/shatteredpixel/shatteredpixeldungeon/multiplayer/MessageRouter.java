@@ -826,12 +826,14 @@ public final class MessageRouter {
                 mob.HT = Math.max(1, intValue(action.get("sourceMobHtAfter"), mob.HT));
                 if (hp <= 0) {
                     WorldSnapshot.removeMobReplicaWithoutRewards(mob);
-                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
                 } else {
                     mob.HP = Math.min(hp, mob.HT);
                     String sourceBuffs = stringValue(action.get("sourceMobBuffs"), null);
                     if (sourceBuffs != null) WorldSnapshot.restoreNativeCombatBuffs(mob, sourceBuffs);
                 }
+                // The Mob's native cooldown is part of its serialized bundle and is committed
+                // after it spends the real action delay; a scalar event cannot restore that bundle.
+                MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
             } else if (nativeMobDamage) {
                 int hp = intValue(action.get("targetHp"), mob.HP);
                 mob.HT = Math.max(1, intValue(action.get("targetHt"), mob.HT));

@@ -912,3 +912,44 @@ describe('Native attack intent contract', () => {
     expect(hasMatchingNativeAttackIntent(standard, null)).toBe(false);
   });
 });
+
+
+describe('Publisher-authoritative mob-to-player outcomes', () => {
+  const noEffect = (overrides: any = {}) => ({
+    targetType: 'PLAYER', targetPlayerId: 'player-target', sourceType: 'MOB',
+    sourceEntityId: 'native-mob-123456', combatSchemaVersion: 1, combatDepth: 3,
+    sourcePos: 41, sourceAttackKind: 'MELEE', sourceActionCost: 1,
+    sourceMobHpBefore: 10, sourceMobHtBefore: 10, sourceMobShieldBefore: 0, sourceMobPosBefore: 41,
+    sourceMobHpAfter: 10, sourceMobHtAfter: 10, sourceMobShieldAfter: 0, sourceMobPosAfter: 41,
+    sourceMobDamage: 0, sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]', sourceMobBundleAfter: 'native-mob-bundle',
+    targetHpBefore: 12, targetHtBefore: 12, targetHp: 12, targetHt: 12,
+    targetPosBefore: 42, targetPosAfter: 42, targetShieldBefore: 2, targetShieldAfter: 2,
+    targetBuffsBefore: '[]', targetBuffs: '[]', targetState: 'ALIVE', damage: 0, effectiveDamage: 0,
+    ankhCountBefore: 0, ankhCountAfter: 0, blessedAnkhCountBefore: 0, blessedAnkhCountAfter: 0,
+    engineHit: false, engineDamageResult: true, ...overrides
+  });
+
+  it('routes player targets only when the sender is the designated native mob publisher', () => {
+    expect(resolveAuthorizedNativeMobDamageTarget('host','host','target')).toBe('target');
+    expect(resolveAuthorizedNativeMobDamageTarget('target','host','target')).toBeNull();
+    expect(resolveAuthorizedNativeMobDamageTarget('host',null,'target')).toBeNull();
+    expect(resolveAuthorizedNativeMobDamageTarget('host','host','')).toBeNull();
+    expect(resolveAuthorizedNativeMobDamageTarget('host','host','x'.repeat(81))).toBeNull();
+  });
+
+  it('accepts a native miss or immune no-effect hit only if target and source state remain unchanged', () => {
+    expect(isValidNativeMobNoEffectOutcome(noEffect(), { hp:12,ht:12,pos:42,shielding:2 })).toBe(true);
+    expect(isValidNativeMobNoEffectOutcome(noEffect({ engineHit:true }), { hp:12,ht:12,pos:42,shielding:2 })).toBe(true);
+    expect(isValidNativeMobNoEffectOutcome(noEffect({ targetHp:11 }), { hp:12,ht:12,pos:42,shielding:2 })).toBe(false);
+    expect(isValidNativeMobNoEffectOutcome(noEffect({ sourceMobDamage:1 }), { hp:12,ht:12,pos:42,shielding:2 })).toBe(false);
+  });
+
+  it('requires a real single blessed-Ankh consumption for an HP-increasing rescue', () => {
+    const previous = { hp:2,ht:20,pos:42,shielding:0,cooldown:1,buffCount:0,
+      combatBundle:'trusted',inventoryBundle:'ankh-before',ankhCount:1,blessedAnkhCount:1 };
+    const rescued = { ...previous,hp:5,inventoryBundle:'ankh-after',ankhCount:0,blessedAnkhCount:0 };
+    expect(hasValidBlessedAnkhConsumption(previous,rescued)).toBe(true);
+    expect(hasValidBlessedAnkhConsumption(previous,{ ...rescued,hp:6 })).toBe(false);
+    expect(hasValidBlessedAnkhConsumption(previous,{ ...rescued,ankhCount:1 })).toBe(false);
+  });
+});

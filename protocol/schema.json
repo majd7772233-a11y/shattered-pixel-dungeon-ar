@@ -936,7 +936,9 @@
         "damage",
         "effectiveDamage",
         "engineDamageResult",
-        "sourceMobBundleAfter"
+        "sourceMobBundleAfter",
+        "targetPlayerId",
+        "engineHit"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -1095,6 +1097,16 @@
           "minLength": 1,
           "maxLength": 200000,
           "description": "Full native source-mob bundle after defensive procs. Shared source-mob changes and death loot are committed only from the authenticated level publisher; untrusted client-reported side effects are discarded."
+        },
+        "targetPlayerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Player whose native Hero received the mob attack; accepted only from the designated level publisher."
+        },
+        "engineHit": {
+          "type": "boolean",
+          "description": "Native attack outcome; misses and no-effect hits are accepted only when the authoritative pre-state remains unchanged."
         }
       }
     },
