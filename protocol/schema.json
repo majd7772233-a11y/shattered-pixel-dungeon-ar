@@ -1244,7 +1244,8 @@
         "posAfter",
         "shieldAfter",
         "buffsAfter",
-        "engineDamageResult"
+        "engineDamageResult",
+        "serializedBundleAfter"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -1316,6 +1317,12 @@
           "type": "array",
           "maxItems": 1024,
           "description": "Required when the native mob dies; all heap changes must be confined to that mob's native death cell."
+        },
+        "serializedBundleAfter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000,
+          "description": "Complete native mob bundle after the periodic/environmental damage effect."
         }
       },
       "allOf": [
