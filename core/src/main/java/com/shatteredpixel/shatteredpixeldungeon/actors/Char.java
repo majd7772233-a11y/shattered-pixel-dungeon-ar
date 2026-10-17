@@ -641,10 +641,20 @@ public abstract class Char extends Actor {
 		//if accuracy or evasion are large enough, treat them as infinite.
 		//note that infinite evasion beats infinite accuracy
 		if (defStat >= INFINITE_EVASION){
-			hitMissIcon = FloatingText.getMissReasonIcon(attacker, acuStat, defender, INFINITE_EVASION);
+			// Hit/miss reason icons are presentation only. The combat engine must remain usable
+			// by headless authority/tests where no CharSprites or texture atlas is loaded.
+			if (attacker.sprite != null || defender.sprite != null) {
+				hitMissIcon = FloatingText.getMissReasonIcon(attacker, acuStat, defender, INFINITE_EVASION);
+			} else {
+				hitMissIcon = -1;
+			}
 			return false;
 		} else if (acuStat >= INFINITE_ACCURACY){
-			hitMissIcon = FloatingText.getHitReasonIcon(attacker, INFINITE_ACCURACY, defender, defStat);
+			if (attacker.sprite != null || defender.sprite != null) {
+				hitMissIcon = FloatingText.getHitReasonIcon(attacker, INFINITE_ACCURACY, defender, defStat);
+			} else {
+				hitMissIcon = -1;
+			}
 			return true;
 		}
 
@@ -681,10 +691,18 @@ public abstract class Char extends Actor {
 		defRoll *= FerretTuft.evasionMultiplier();
 
 		if (acuRoll >= defRoll){
-			hitMissIcon = FloatingText.getHitReasonIcon(attacker, acuRoll, defender, defRoll);
+			if (attacker.sprite != null || defender.sprite != null) {
+				hitMissIcon = FloatingText.getHitReasonIcon(attacker, acuRoll, defender, defRoll);
+			} else {
+				hitMissIcon = -1;
+			}
 			return true;
 		} else {
-			hitMissIcon = FloatingText.getMissReasonIcon(attacker, acuRoll, defender, defRoll);
+			if (attacker.sprite != null || defender.sprite != null) {
+				hitMissIcon = FloatingText.getMissReasonIcon(attacker, acuRoll, defender, defRoll);
+			} else {
+				hitMissIcon = -1;
+			}
 			return false;
 		}
 	}
