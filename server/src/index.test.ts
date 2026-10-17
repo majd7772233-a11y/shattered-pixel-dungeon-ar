@@ -779,8 +779,17 @@ describe('Native mob damage owner authorization', () => {
   it('accepts only the exact authenticated level publisher identity', () => {
     expect(isAuthorizedNativeMobOwner('player-host', 'player-host')).toBe(true);
     expect(isAuthorizedNativeMobOwner('player-attacker', 'player-host')).toBe(false);
+    expect(isAuthorizedNativeMobOwner('player-target', 'player-host')).toBe(false);
     expect(isAuthorizedNativeMobOwner('player-host', null)).toBe(false);
+    expect(isAuthorizedNativeMobOwner('player-host', '')).toBe(false);
     expect(isAuthorizedNativeMobOwner('', 'player-host')).toBe(false);
+  });
+
+  it('does not authorize reactive mob HP, buff, position or loot writes from the damaged-player client', () => {
+    const publisher = 'player-host';
+    const damagedPlayer = 'player-target';
+    expect(isAuthorizedNativeMobOwner(damagedPlayer, publisher)).toBe(false);
+    expect(isAuthorizedNativeMobOwner(publisher, publisher)).toBe(true);
   });
 });
 
