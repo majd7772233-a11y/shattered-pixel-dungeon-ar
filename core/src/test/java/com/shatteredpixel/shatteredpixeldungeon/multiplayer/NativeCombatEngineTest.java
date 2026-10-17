@@ -10,6 +10,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.HashSet;
 
 /** Exercises the real SPD Java attack pipeline without replacing its hit/damage calculation. */
 public class NativeCombatEngineTest {
@@ -20,6 +21,7 @@ public class NativeCombatEngineTest {
             Arrays.fill(map, Terrain.EMPTY);
             Arrays.fill(passable, true);
             Arrays.fill(solid, false);
+            mobs = new HashSet<>();
         }
 
         @Override
