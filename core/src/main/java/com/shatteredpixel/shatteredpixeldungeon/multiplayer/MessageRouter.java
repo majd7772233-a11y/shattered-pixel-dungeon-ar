@@ -229,7 +229,9 @@ public final class MessageRouter {
                 // The local SPD engine has already opened the chest.
             }
         } catch (RuntimeException ignored) {
-            // Keep local state intact if an acknowledgement payload is malformed.
+            // A malformed or partially un-restorable combat event must never be silently
+            // treated as applied; recover from the last authoritative world snapshot.
+            MultiplayerManager.getInstance().requestResync(message.sequence);
         }
     }
 
