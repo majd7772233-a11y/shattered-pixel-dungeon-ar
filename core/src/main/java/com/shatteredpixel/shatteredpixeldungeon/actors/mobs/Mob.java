@@ -866,6 +866,8 @@ public abstract class Mob extends Char {
 		int shieldAfter = capturePeriodicState ? shielding() : 0;
 		String buffsAfter = capturePeriodicState
 				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson(this) : "";
+		String serializedBundleAfter = capturePeriodicState
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentMobBundle(this) : "";
 		boolean changed = hpBefore != hpAfter || htBefore != htAfter || posBefore != pos
 				|| shieldBefore != shieldAfter || !buffsBefore.equals(buffsAfter);
 		if (capturePeriodicState && changed) {
@@ -888,6 +890,7 @@ public abstract class Mob extends Char {
 					+ ",\"posAfter\":" + pos
 					+ ",\"shieldAfter\":" + shieldAfter
 					+ ",\"buffsAfter\":" + json.toJson(buffsAfter)
+					+ ",\"serializedBundleAfter\":" + json.toJson(serializedBundleAfter)
 					+ ",\"engineDamageResult\":true"
 					+ (hpAfter <= 0 ? ",\"heaps\":" + com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeapsJson() : "")
 					+ "}";
