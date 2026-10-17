@@ -48,6 +48,7 @@ public class NativeCombatEngineTest {
     @Test
     public void nativeCharAttackUsesSPDHitAndDamagePipeline() {
         Level previousLevel = Dungeon.level;
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero previousHero = Dungeon.hero;
         try {
             TestLevel level = new TestLevel();
             TestChar attacker = new TestChar();
@@ -57,6 +58,7 @@ public class NativeCombatEngineTest {
             target.pos = 10;
             target.HP = target.HT = 100;
             Dungeon.level = level;
+            Dungeon.hero = new com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero();
 
             int hpBefore = target.HP;
             boolean hit = attacker.attack(target);
@@ -67,6 +69,7 @@ public class NativeCombatEngineTest {
             Assert.assertTrue(target.isAlive());
         } finally {
             Dungeon.level = previousLevel;
+            Dungeon.hero = previousHero;
         }
     }
 }
