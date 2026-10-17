@@ -318,6 +318,27 @@ public final class SPDLevelSnapshot {
         return heaps;
     }
 
+    /** Native Bundle serialization used for exact attack-weapon matching on the authority device. */
+    public static String currentItemBundle(Item item) {
+        if (item == null) return "";
+        Bundle itemBundle = new Bundle();
+        itemBundle.put("item", item);
+        return itemBundle.toString();
+    }
+
+    /** Resolves only a weapon already present in the attacker's trusted restored belongings. */
+    public static com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon findOwnedAttackWeapon(
+            com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero, String serializedBundle) {
+        if (hero == null || hero.belongings == null || serializedBundle == null || serializedBundle.isEmpty()) return null;
+        for (Item item : hero.belongings.getAllItems(Item.class)) {
+            if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon
+                    && serializedBundle.equals(currentItemBundle(item))) {
+                return (com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon) item;
+            }
+        }
+        return null;
+    }
+
     public static String currentHeroStateJson() {
         return currentHeroStateJson(Dungeon.hero);
     }
