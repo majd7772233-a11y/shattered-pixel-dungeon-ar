@@ -510,6 +510,11 @@ public final class MessageRouter {
                             && "MOB".equals(stringValue(action.get("sourceType"), ""))
                             && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
                         applyMobEvent(type, action);
+                        JsonValue sourceBundle = action.get("sourceMobBundleAfter");
+                        if (sourceBundle != null && sourceBundle.isString() && !sourceBundle.asString().isEmpty()) {
+                            // Defensive procs may mutate the mob's full native state, not just HP.
+                            MultiplayerManager.getInstance().requestResync(seq);
+                        }
                     }
                 } else if ("CHAR_DIED".equals(type)) {
                     String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
