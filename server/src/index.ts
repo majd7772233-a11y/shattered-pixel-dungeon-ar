@@ -109,8 +109,32 @@ export function classifyRequestReplay(existing: any, playerId: string): "NEW" | 
   return String(existing.player_id) === playerId ? "REPLAY" : "CONFLICT";
 }
 
+export function isValidNativeAttackIntent(data: any): boolean {
+  if (!data || !["EQUIPPED", "THROWN", "ABILITY", "UNARMED"].includes(String(data.attackWeaponMode))
+    || typeof data.attackWeaponBundle !== "string" || data.attackWeaponBundle.length > 200000
+    || typeof data.damageMultiplier !== "number" || !Number.isFinite(data.damageMultiplier)
+    || data.damageMultiplier < 0 || data.damageMultiplier > 10
+    || typeof data.damageBonus !== "number" || !Number.isFinite(data.damageBonus)
+    || data.damageBonus < -10000 || data.damageBonus > 100000
+    || typeof data.accuracyMultiplier !== "number" || !Number.isFinite(data.accuracyMultiplier)
+    || data.accuracyMultiplier < 0 || data.accuracyMultiplier > 100) return false;
+  if ((data.attackWeaponMode === "THROWN" || data.attackWeaponMode === "ABILITY")
+    && data.attackWeaponBundle.length === 0) return false;
+  if (data.attackWeaponMode === "UNARMED" && data.attackWeaponBundle.length !== 0) return false;
+  return true;
+}
+
+export function hasMatchingNativeAttackIntent(reported: any, expected: any): boolean {
+  return isValidNativeAttackIntent(reported) && expected != null
+    && reported.attackWeaponMode === expected.attackWeaponMode
+    && reported.attackWeaponBundle === expected.attackWeaponBundle
+    && reported.damageMultiplier === expected.damageMultiplier
+    && reported.damageBonus === expected.damageBonus
+    && reported.accuracyMultiplier === expected.accuracyMultiplier;
+}
+
 export function hasStrictNativeCombatFields(data: any): boolean {
-  return data != null && data.combatSchemaVersion === 1
+  return data != null && isValidNativeAttackIntent(data) && data.combatSchemaVersion === 1
     && Number.isInteger(data.combatDepth)
     && typeof data.attackerId === "string" && data.attackerId.length > 0 && data.attackerId.length <= 80
     && Number.isInteger(data.attackerPos) && Number.isInteger(data.targetPos) && Number.isInteger(data.targetPosAfter)
@@ -1286,6 +1310,7 @@ export class MatchRoom {
               && Number.isFinite(Number(pending.createdAt)) && Date.now() - Number(pending.createdAt) <= 15000
               && String(pending.authorityId) === session.playerId && defenderId === session.playerId
               && String(pending.attackerId) === String(data.attackerId) && attackerId !== defenderId
+              && hasMatchingNativeAttackIntent(data, pending)
               && String(data.targetType) === "PLAYER" && String(data.targetId) === defenderId
               && Number(pending.depth) === this.currentDepth && defenderRow.length > 0 && attackerRow.length > 0
               && String(defenderRow[0].state) === "ALIVE" && String(attackerRow[0].state) === "ALIVE"
@@ -1386,6 +1411,7 @@ export class MatchRoom {
                 && authorityPending.targetType === "MOB" && Number(authorityPending.depth) === this.currentDepth
                 && attackerId === String(data.attackerId) && String(authorityPending.targetEntityId) === String(data.targetEntityId)
                 && Number(authorityPending.attackerPos) === attackerPos && Number(authorityPending.targetPos) === targetPos
+                && hasMatchingNativeAttackIntent(data, authorityPending)
                 && attackerRow.length > 0 && String(attackerRow[0].state) === "ALIVE"
                 && mobRow.length > 0 && Number(mobRow[0].hp) > 0 && !!savedMob
                 && Number(data.targetPos) === targetPos && Number(data.targetHpBefore) === Number(mobRow[0].hp)
@@ -1914,6 +1940,12 @@ export class MatchRoom {
           } else if (actionStr === "ATTACK" && isValidNativeCombatRequestId(msg.requestId)) {
             let targetId = payload.data?.targetId || payload.targetId;
             const targetType = payload.data?.targetType || payload.targetType || "MOB";
+            if (!["MOB", "PLAYER"].includes(String(targetType)) || !isValidNativeAttackIntent(payload.data)) {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                requestId: msg.requestId, sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "INVALID_NATIVE_ATTACK_INTENT" }) }));
+              return;
+            }
             if (targetType === "MOB") {
               const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray()[0];
               const publisherId = String(publisherRow?.value || "");
@@ -1969,6 +2001,11 @@ export class MatchRoom {
                   targetType: "MOB", targetEntityId, targetId: resolvedMobId,
                   targetPos: Number(mobRow[0].pos), attackerPos: Number(attackerRow.pos),
                   targetLockKey: "MOB:" + targetEntityId, depth: this.currentDepth,
+                  attackWeaponMode: payload.data.attackWeaponMode,
+                  attackWeaponBundle: payload.data.attackWeaponBundle,
+                  damageMultiplier: payload.data.damageMultiplier,
+                  damageBonus: payload.data.damageBonus,
+                  accuracyMultiplier: payload.data.accuracyMultiplier,
                   attackerStateBefore, attackerStateAfter: payload.heroStateJson
                 };
                 if (!this.reservePendingCombat(pending)) {
@@ -1989,7 +2026,12 @@ export class MatchRoom {
                       requestId: msg.requestId, attackerId: session.playerId,
                       targetType: "MOB", targetEntityId,
                       attackerPos: Number(attackerRow.pos), targetPos: Number(mobRow[0].pos),
-                      attackerStateBefore
+                      attackerStateBefore,
+                      attackWeaponMode: payload.data.attackWeaponMode,
+                      attackWeaponBundle: payload.data.attackWeaponBundle,
+                      damageMultiplier: payload.data.damageMultiplier,
+                      damageBonus: payload.data.damageBonus,
+                      accuracyMultiplier: payload.data.accuracyMultiplier
                     })
                   }));
                 }
@@ -2038,6 +2080,11 @@ export class MatchRoom {
               const pending = { requestId: msg.requestId, attackerId: session.playerId, authorityId: defenderId,
                 targetType: "PLAYER", targetId: defenderId, attackerPos, targetPos: defenderPos,
                 targetLockKey: "PLAYER:" + defenderId, depth: this.currentDepth,
+                attackWeaponMode: payload.data.attackWeaponMode,
+                attackWeaponBundle: payload.data.attackWeaponBundle,
+                damageMultiplier: payload.data.damageMultiplier,
+                damageBonus: payload.data.damageBonus,
+                accuracyMultiplier: payload.data.accuracyMultiplier,
                 attackerStateBefore, attackerStateAfter: payload.heroStateJson,
                 targetHeroStateBefore: defenderStateBefore };
               if (!this.reservePendingCombat(pending)) {
@@ -2055,7 +2102,12 @@ export class MatchRoom {
                   senderId: "SERVER", requestId: msg.requestId, sequence: this.currentSequence,
                   payloadJson: JSON.stringify({ requestId: msg.requestId, attackerId: session.playerId,
                     targetType: "PLAYER", targetPlayerId: defenderId, attackerPos, targetPos: defenderPos,
-                    attackerStateBefore, targetHeroStateBefore: defenderStateBefore }) }));
+                    attackerStateBefore, targetHeroStateBefore: defenderStateBefore,
+                    attackWeaponMode: payload.data.attackWeaponMode,
+                    attackWeaponBundle: payload.data.attackWeaponBundle,
+                    damageMultiplier: payload.data.damageMultiplier,
+                    damageBonus: payload.data.damageBonus,
+                    accuracyMultiplier: payload.data.accuracyMultiplier }) }));
               }
               if (!authorityFound) {
                 this.clearPendingCombat(pending);
