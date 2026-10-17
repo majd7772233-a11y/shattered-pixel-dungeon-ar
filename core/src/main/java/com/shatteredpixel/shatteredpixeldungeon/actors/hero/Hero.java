@@ -1811,6 +1811,8 @@ public class Hero extends Char {
 		if (sourceMobHpAfter <= 0 && sourceMobPosAfter < 0) sourceMobPosAfter = sourceMobPosBefore;
 		String sourceMobBuffsAfter = src instanceof Mob
 				? SPDLevelSnapshot.currentCombatBuffsJson((Mob) src) : "[]";
+		String sourceMobBundleAfter = src instanceof Mob
+				? SPDLevelSnapshot.currentMobBundle((Mob) src) : "";
 		int postHP = HP + targetShieldAfter;
 		if (src instanceof Hunger) postHP -= targetShieldAfter;
 		int effectiveDamage = preHP - postHP;
@@ -1891,6 +1893,8 @@ public class Hero extends Char {
 						+ ",\"sourceMobDamage\":" + Math.max(0, sourceMobHpBefore - sourceMobHpAfter)
 						+ ",\"sourceMobBuffsBefore\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsBefore)
 						+ ",\"sourceMobBuffs\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBuffsAfter)
+						+ ",\"sourceMobBundleAfter\":" + new com.badlogic.gdx.utils.Json().toJson(sourceMobBundleAfter)
+
 						+ ",\"targetHpBefore\":" + (revivedByBlessedAnkh ? Math.max(0, HP) : targetHpBefore)
 						+ ",\"targetHtBefore\":" + (revivedByBlessedAnkh ? Math.max(1, HT) : targetHtBefore)
 						+ ",\"targetHp\":" + Math.max(0, HP)
