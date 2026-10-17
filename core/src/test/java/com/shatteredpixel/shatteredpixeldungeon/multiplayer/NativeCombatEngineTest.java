@@ -40,7 +40,7 @@ public class NativeCombatEngineTest {
     }
 
     @Test
-    public void nativeHeroAttackUsesSPDResolutionAndChangesTargetExactlyOnce() {
+    public void nativeHeroAttackUsesSPDResolutionAndReducesTargetHpWithoutKillingIt() {
         Level previousLevel = Dungeon.level;
         Hero previousHero = Dungeon.hero;
         int previousDepth = Dungeon.depth;
@@ -66,8 +66,6 @@ public class NativeCombatEngineTest {
             Assert.assertTrue("Native SPD damage should reduce the target HP", target.HP < hpBefore);
             Assert.assertTrue("Target must remain alive so the test does not invoke kill/loot side effects",
                     target.HP > 0);
-            Assert.assertEquals("HP delta must equal the actual native result",
-                    hpBefore - target.HP, hpBefore - target.HP);
         } finally {
             Dungeon.level = previousLevel;
             Dungeon.hero = previousHero;
