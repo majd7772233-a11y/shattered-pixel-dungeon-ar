@@ -189,7 +189,7 @@ public class NativeCombatRuntimeIntegrationTest {
         DeathCountingRat target = addDeathCountingRat(hero.pos + 1, 100);
         String stableId = "stable-native-death-0001";
         manager.registerServerEntityId(target.id(), stableId);
-        int heapsBefore = level.heaps.size();
+        int heapsBefore = level.heaps.valueList().size();
 
         String event = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
                 + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
@@ -200,7 +200,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertFalse("Authoritative death must remove the local mob replica", level.mobs.contains(target));
         Assert.assertEquals("A remote death must not invoke the local native death/reward pipeline", 0, target.deathCalls);
-        Assert.assertEquals("Loot is restored from the authority snapshot, not rolled again here", heapsBefore, level.heaps.size());
+        Assert.assertEquals("Loot is restored from the authority snapshot, not rolled again here", heapsBefore, level.heaps.valueList().size());
         Assert.assertNull("The stale Actor-to-server identity mapping must be removed", manager.getServerEntityId(target.id()));
         Assert.assertTrue("A death tombstone must request a full loot/world resync",
                 transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
