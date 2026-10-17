@@ -207,7 +207,8 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
 
 export function mergeNativeHeroState(previousValue: unknown, reportedValue: unknown, expected: {
   hp: number; ht: number; pos: number; shielding: number;
-}, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false, preserveCooldown = true): string | null {
+}, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false, preserveCooldown = true,
+preserveInventory = true): string | null {
   if (typeof previousValue !== "string" || typeof reportedValue !== "string"
     || typeof targetBuffsValue !== "string") return null;
   let previous: any, reported: any, buffs: any;
@@ -227,8 +228,8 @@ export function mergeNativeHeroState(previousValue: unknown, reportedValue: unkn
   const blessedAnkhConsumed = allowBlessedAnkhConsumption && hasValidBlessedAnkhConsumption(previous, reported);
   const merged: any = {
     ...previous,
+    inventoryBundle: (blessedAnkhConsumed || !preserveInventory) ? reported.inventoryBundle : previous.inventoryBundle,
     ...(blessedAnkhConsumed ? {
-      inventoryBundle: reported.inventoryBundle,
       ankhCount: reported.ankhCount,
       blessedAnkhCount: reported.blessedAnkhCount
     } : {}),
@@ -623,7 +624,7 @@ export class MatchRoom {
       || Number(parsed.pos) !== Number(playerRow.pos)) return null;
     return mergeNativeHeroState(trustedState, selectedState, {
       hp: Number(parsed.hp), ht: Number(parsed.ht), pos: Number(parsed.pos), shielding: Number(parsed.shielding)
-    }, buffs, blessedAnkhConsumed, false);
+    }, buffs, blessedAnkhConsumed, false, false);
   }
 
   private clearPendingCombat(pending: any) {
