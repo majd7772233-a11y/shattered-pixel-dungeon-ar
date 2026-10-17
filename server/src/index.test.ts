@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -447,7 +447,9 @@ describe('Strict native combat wire fields', () => {
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 7, targetHt: 12, damage: 5,
     targetShieldBefore: 0, targetShieldAfter: 0,
     engineResult: true, engineHit: true, engineRanged: false, attackKind: 'MELEE',
-    engineDistance: 1, engineActionCost: 1, targetBuffsBefore: '[]', targetBuffs: '[]', secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] })
+    engineDistance: 1, engineActionCost: 1, targetBuffsBefore: '[]', targetBuffs: '[]', secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] }),
+    attackWeaponMode: 'EQUIPPED', attackWeaponBundle: 'native-equipped-weapon',
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1
   });
 
   it('accepts the complete typed native payload', () => {
@@ -876,5 +878,37 @@ describe('Native hero buff snapshot and Ankh merge', () => {
       { hp: 20, ht: 20, pos: 12, shielding: 0 }, '[]', false, false);
     expect(defenderMerge).not.toBeNull();
     expect(JSON.parse(String(defenderMerge)).inventoryBundle).toBe('before-weapon-use');
+  });
+});
+
+
+describe('Native attack intent contract', () => {
+  const standard = {
+    attackWeaponMode: 'EQUIPPED', attackWeaponBundle: 'native-equipped-weapon',
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1
+  };
+
+  it('accepts explicit native modes and bounded attack parameters', () => {
+    expect(isValidNativeAttackIntent(standard)).toBe(true);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'UNARMED', attackWeaponBundle: '' })).toBe(true);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'THROWN', attackWeaponBundle: 'native-missile' })).toBe(true);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'ABILITY', attackWeaponBundle: 'native-ability' })).toBe(true);
+  });
+
+  it('rejects empty transient weapon bundles, invalid modes, and impossible modifiers', () => {
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'THROWN', attackWeaponBundle: '' })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'ABILITY', attackWeaponBundle: '' })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'INVALID' })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, damageMultiplier: 11 })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, damageBonus: 100001 })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, accuracyMultiplier: -1 })).toBe(false);
+    expect(isValidNativeAttackIntent({ ...standard, attackWeaponBundle: 'x'.repeat(200001) })).toBe(false);
+  });
+
+  it('binds an authority result to exactly the reserved native invocation', () => {
+    expect(hasMatchingNativeAttackIntent(standard, standard)).toBe(true);
+    expect(hasMatchingNativeAttackIntent({ ...standard, damageMultiplier: 0.5 }, standard)).toBe(false);
+    expect(hasMatchingNativeAttackIntent({ ...standard, attackWeaponBundle: 'forged' }, standard)).toBe(false);
+    expect(hasMatchingNativeAttackIntent(standard, null)).toBe(false);
   });
 });
