@@ -1467,6 +1467,7 @@ export class MatchRoom {
               && Number(data.combatDepth) === this.currentDepth
               && typeof data.sourceClass === "string" && data.sourceClass.length > 0 && data.sourceClass.length <= 256
               && data.engineDamageResult === true && ownerPayload != null
+              && isValidNativeMobBundle(data.serializedBundleAfter)
               && !!savedMob && mobRow.length > 0
               && Number(mobRow[0].hp) === Number(data.hpBefore)
               && Number(mobRow[0].ht) === Number(data.htBefore)
@@ -1481,6 +1482,7 @@ export class MatchRoom {
               savedMob.pos = Number(data.posAfter);
               savedMob.shielding = Number(data.shieldAfter);
               savedMob.buffs = JSON.parse(String(data.buffsAfter));
+              if (Number(data.hpAfter) > 0) savedMob.serializedBundle = String(data.serializedBundleAfter);
               if (deadPositions.length > 0) levelSnapshot.heaps = data.heaps;
               this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
                 savedMob.hp, savedMob.pos, mobId, this.currentDepth);
@@ -1501,6 +1503,7 @@ export class MatchRoom {
                 targetPosBefore: Number(data.posBefore), targetPosAfter: Number(data.posAfter),
                 targetShieldBefore: Number(data.shieldBefore), targetShieldAfter: Number(data.shieldAfter),
                 targetBuffsBefore: data.buffsBefore, targetBuffs: data.buffsAfter,
+                targetMobBundleAfter: Number(data.hpAfter) > 0 ? String(data.serializedBundleAfter) : null,
                 sourceType: "ENVIRONMENT", sourceClass: data.sourceClass,
                 engineResolved: true, ...(deadPositions.length > 0 ? { heaps: data.heaps } : {})
               };
