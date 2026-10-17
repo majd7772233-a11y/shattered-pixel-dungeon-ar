@@ -852,4 +852,29 @@ describe('Native hero buff snapshot and Ankh merge', () => {
     expect(rejected).not.toBeNull();
     expect(JSON.parse(String(rejected)).inventoryBundle).toBe('before-ankh');
   });
+
+  it('accepts authority-resolved native attacker inventory changes without allowing Ankh counter forgery', () => {
+    const previous = {
+      combatBundle: 'trusted-combat', inventoryBundle: 'before-weapon-use',
+      hp: 20, ht: 20, pos: 12, shielding: 0, cooldown: 1,
+      buffCount: 0, ankhCount: 1, blessedAnkhCount: 0
+    };
+    const afterAttack = {
+      ...previous, inventoryBundle: 'after-weapon-use', cooldown: 2,
+      ankhCount: 99, blessedAnkhCount: 99
+    };
+    const authorityMerge = mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(afterAttack),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 }, '[]', false, false, false);
+    expect(authorityMerge).not.toBeNull();
+    const parsed = JSON.parse(String(authorityMerge));
+    expect(parsed.inventoryBundle).toBe('after-weapon-use');
+    expect(parsed.cooldown).toBe(2);
+    expect(parsed.ankhCount).toBe(1);
+    expect(parsed.blessedAnkhCount).toBe(0);
+
+    const defenderMerge = mergeNativeHeroState(JSON.stringify(previous), JSON.stringify(afterAttack),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 }, '[]', false, false);
+    expect(defenderMerge).not.toBeNull();
+    expect(JSON.parse(String(defenderMerge)).inventoryBundle).toBe('before-weapon-use');
+  });
 });
