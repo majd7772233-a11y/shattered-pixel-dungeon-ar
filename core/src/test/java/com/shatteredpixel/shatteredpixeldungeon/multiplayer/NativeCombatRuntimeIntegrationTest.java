@@ -156,6 +156,70 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertFalse(delta.serializedBundleAfter.isEmpty());
     }
 
+    @Test
+    public void acceptedCombatEventConvergesAcrossClientsWithDifferentLocalActorIds() throws Exception {
+        final String stableMobId = "stable-native-mob-0001";
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+
+        manager.startSession("runtime-convergence", "client-a", new TestTransport());
+        Rat targetA = addRat(hero.pos + 1, 100);
+        int localActorIdA = targetA.id();
+        manager.registerServerEntityId(localActorIdA, stableMobId);
+
+        String event = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableMobId + "\","
+                + "\"targetType\":\"MOB\",\"targetHp\":71,\"targetHt\":100,"
+                + "\"targetPosAfter\":" + (hero.pos + 1) + ",\"targetBuffs\":\"[]\","
+                + "\"damage\":29,\"hit\":true,\"engineResolved\":true}}]";
+        routeEventBatch(event, 2L);
+        Assert.assertEquals(71, targetA.HP);
+        Assert.assertEquals(100, targetA.HT);
+
+        manager.endSession();
+        Actor.clear();
+        Actor.resetNextID();
+        Random.resetGenerators();
+        Dungeon.hero = null;
+        Dungeon.level = null;
+
+        level = new TestLevel();
+        Dungeon.level = level;
+        hero = new Hero();
+        hero.heroClass = HeroClass.WARRIOR;
+        hero.pos = 5 * level.width() + 5;
+        hero.HP = hero.HT = 20;
+        hero.damageInterrupt = false;
+        Arrays.fill(level.heroFOV, false);
+        Dungeon.hero = hero;
+        Actor.add(hero);
+
+        // Insert an unrelated local mob first: this device's Actor.id for the target differs,
+        // even though the server entity ID and authoritative cell are identical.
+        addRat(hero.pos + 2, 8);
+        Rat targetB = addRat(hero.pos + 1, 100);
+        int localActorIdB = targetB.id();
+        Assert.assertNotEquals("The test must exercise distinct device-local actor IDs", localActorIdA, localActorIdB);
+
+        manager.startSession("runtime-convergence", "client-b", new TestTransport());
+        manager.registerServerEntityId(localActorIdB, stableMobId);
+        routeEventBatch(event, 2L);
+
+        Assert.assertEquals("Client B must resolve by stable server ID, not Actor.id()", 71, targetB.HP);
+        Assert.assertEquals(100, targetB.HT);
+        Assert.assertEquals(hero.pos + 1, targetB.pos);
+        Assert.assertEquals(2L, manager.getLastSequence());
+    }
+
+    private static void routeEventBatch(String payload, long sequence) throws Exception {
+        NetworkMessage message = new NetworkMessage(MessageType.EVENT_BATCH, payload);
+        message.sequence = sequence;
+        message.senderId = "SERVER";
+        java.lang.reflect.Method handler = MessageRouter.class.getDeclaredMethod(
+                "handleEventBatchMessage", NetworkMessage.class);
+        handler.setAccessible(true);
+        handler.invoke(null, message);
+    }
+
     private static boolean runNativeAttack(java.util.function.BooleanSupplier operation) {
         try {
             return operation.getAsBoolean();
@@ -173,6 +237,18 @@ public class NativeCombatRuntimeIntegrationTest {
         Actor.add(rat);
         rat.HP = rat.HT = hp;
         return rat;
+    }
+
+    private static final class TestTransport implements NetworkTransport {
+        private boolean connected;
+        @Override public void connect(String endpoint, TransportCallback callback) {
+            connected = true;
+            if (callback != null) callback.onConnected();
+        }
+        @Override public void send(NetworkMessage message) { }
+        @Override public void disconnect() { connected = false; }
+        @Override public boolean isConnected() { return connected; }
+        @Override public String getTransportType() { return "TEST"; }
     }
 
     private static final class TestLevel extends Level {
