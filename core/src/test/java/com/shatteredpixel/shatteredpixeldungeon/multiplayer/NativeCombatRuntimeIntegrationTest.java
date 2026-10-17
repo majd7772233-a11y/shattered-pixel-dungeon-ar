@@ -4,6 +4,8 @@ import com.badlogic.gdx.ApplicationAdapter;
 import com.badlogic.gdx.backends.headless.HeadlessApplication;
 import com.badlogic.gdx.backends.headless.HeadlessApplicationConfiguration;
 import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
@@ -238,19 +240,43 @@ public class NativeCombatRuntimeIntegrationTest {
         final String stableMobId = "stable-native-mob-0001";
         MultiplayerManager manager = MultiplayerManager.getInstance();
 
-        manager.startSession("runtime-convergence", "client-a", new TestTransport());
-        Rat targetA = addRat(hero.pos + 1, 100);
+        TestTransport transportA = new TestTransport();
+        manager.startSession("runtime-convergence", "client-a", transportA);
+        DeterministicRat targetA = addDeterministicRat(hero.pos + 1, 100);
+        targetA.defenseSkill = 2;
+        hero.invisible = 1;
         int localActorIdA = targetA.id();
         manager.registerServerEntityId(localActorIdA, stableMobId);
 
+        // Generate the event from the actual SPD Java attack pipeline, not a fabricated
+        // scalar test value. Then feed that accepted outcome to both client states.
+        boolean hit = runNativeAttack(() -> hero.attack(targetA));
+        Assert.assertTrue("The deterministic native attack must hit", hit);
+        NetworkMessage attackReport = transportA.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null && message.payloadJson.contains("\"action\":\"ATTACK\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("Native Hero.attack must emit its multiplayer attack contract", attackReport);
+        JsonValue report = new JsonReader().parse(attackReport.payloadJson);
+        JsonValue data = report.get("data");
+        Assert.assertNotNull(data);
+        int resolvedHp = data.getInt("targetHp");
+        int resolvedHt = data.getInt("targetHt");
+        int resolvedPos = data.getInt("targetPosAfter");
+        int resolvedDamage = data.getInt("damage");
+        boolean resolvedHit = data.getBoolean("engineHit");
+        String resolvedBuffs = data.getString("targetBuffs", "[]");
+
         String event = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
                 + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableMobId + "\","
-                + "\"targetType\":\"MOB\",\"targetHp\":71,\"targetHt\":100,"
-                + "\"targetPosAfter\":" + (hero.pos + 1) + ",\"targetBuffs\":\"[]\","
-                + "\"damage\":29,\"hit\":true,\"engineResolved\":true}}]";
+                + "\"targetType\":\"MOB\",\"targetHp\":" + resolvedHp
+                + ",\"targetHt\":" + resolvedHt + ",\"targetPosAfter\":" + resolvedPos
+                + ",\"targetBuffs\":" + new Json().toJson(resolvedBuffs)
+                + ",\"damage\":" + resolvedDamage + ",\"hit\":" + resolvedHit
+                + ",\"engineResolved\":true}}]";
         routeEventBatch(event, 2L);
-        Assert.assertEquals(71, targetA.HP);
-        Assert.assertEquals(100, targetA.HT);
+        Assert.assertEquals(resolvedHp, targetA.HP);
+        Assert.assertEquals(resolvedHt, targetA.HT);
 
         manager.endSession();
         Actor.clear();
@@ -277,13 +303,14 @@ public class NativeCombatRuntimeIntegrationTest {
         int localActorIdB = targetB.id();
         Assert.assertNotEquals("The test must exercise distinct device-local actor IDs", localActorIdA, localActorIdB);
 
-        manager.startSession("runtime-convergence", "client-b", new TestTransport());
+        TestTransport transportB = new TestTransport();
+        manager.startSession("runtime-convergence", "client-b", transportB);
         manager.registerServerEntityId(localActorIdB, stableMobId);
         routeEventBatch(event, 2L);
 
-        Assert.assertEquals("Client B must resolve by stable server ID, not Actor.id()", 71, targetB.HP);
-        Assert.assertEquals(100, targetB.HT);
-        Assert.assertEquals(hero.pos + 1, targetB.pos);
+        Assert.assertEquals("Client B must resolve by stable server ID, not Actor.id()", resolvedHp, targetB.HP);
+        Assert.assertEquals(resolvedHt, targetB.HT);
+        Assert.assertEquals(resolvedPos, targetB.pos);
         Assert.assertEquals(2L, manager.getLastSequence());
     }
 
