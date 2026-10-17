@@ -190,7 +190,8 @@ public final class MessageRouter {
                         int sourcePosAfter = intValue(action.get("sourceMobPosAfter"), -1);
                         String sourceBuffsBefore = stringValue(action.get("sourceMobBuffsBefore"), "");
                         String sourceBuffsAfter = stringValue(action.get("sourceMobBuffs"), "");
-                        if (sourceHpBefore != sourceHpAfter || sourceShieldBefore != sourceShieldAfter
+                        if (boolValue(action.get("sourceMobResyncRequired"), false)
+                                || sourceHpBefore != sourceHpAfter || sourceShieldBefore != sourceShieldAfter
                                 || sourcePosBefore != sourcePosAfter || !sourceBuffsBefore.equals(sourceBuffsAfter)) {
                             MultiplayerManager.getInstance().requestResync(message.sequence);
                         }
@@ -806,6 +807,10 @@ public final class MessageRouter {
         try { return value.asString(); } catch (RuntimeException ignored) {
             return value.isNumber() ? value.toString() : fallback;
         }
+    }
+
+    private static boolean boolValue(JsonValue value, boolean fallback) {
+        return value == null || !value.isBoolean() ? fallback : value.asBoolean();
     }
 
     private static int intValue(JsonValue value, int fallback) {
