@@ -508,7 +508,7 @@ describe('Native mob damage wire contract', () => {
     sourceEntityId: 'stable-mob-0001', sourcePos: 10, sourceAttackKind: 'MELEE', sourceActionCost: 1,
     sourceMobHpBefore: 10, sourceMobHtBefore: 10, sourceMobShieldBefore: 0, sourceMobPosBefore: 10,
     sourceMobHpAfter: 8, sourceMobHtAfter: 10, sourceMobShieldAfter: 0, sourceMobPosAfter: 10, sourceMobDamage: 2,
-    sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]',
+    sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]', sourceMobBundleAfter: 'native-mob-state-after',
     targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
     targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
     engineDamageResult: true, targetBuffsBefore: '[]', targetBuffs: '[]'
@@ -520,6 +520,8 @@ describe('Native mob damage wire contract', () => {
     expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobHpAfter: '0' })).toBe(false);
     expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobShieldAfter: undefined })).toBe(false);
     expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobShieldAfter: -1 })).toBe(false);
+    expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobBundleAfter: '' })).toBe(false);
+    expect(hasStrictNativeSourceMobState({ ...validDamage(), sourceMobBundleAfter: 'x'.repeat(200001) })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), targetHp: '0' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceType: 'PLAYER' })).toBe(false);
     expect(hasStrictNativeDamageFields({ ...validDamage(), sourceEntityId: null })).toBe(false);
