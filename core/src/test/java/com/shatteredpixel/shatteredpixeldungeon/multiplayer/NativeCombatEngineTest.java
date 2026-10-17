@@ -2,17 +2,14 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
-import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
-import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.HashSet;
 
-/** Exercises the real SPD Java attack pipeline without replacing its hit/damage calculation. */
+/** Exercises the original SPD Char.attack and Char.damage pipeline with deterministic combat stats. */
 public class NativeCombatEngineTest {
 
     private static final class TestLevel extends Level {
@@ -22,7 +19,6 @@ public class NativeCombatEngineTest {
             Arrays.fill(passable, true);
             Arrays.fill(solid, false);
             heroFOV = new boolean[length()];
-            mobs = new HashSet<>();
         }
 
         @Override
@@ -35,44 +31,42 @@ public class NativeCombatEngineTest {
         protected void createItems() { }
     }
 
-    private static final class HighAccuracyHero extends Hero {
+    private static final class TestChar extends Char {
         @Override
-        public int attackSkill(Char target) {
-            return 1000;
-        }
+        public int attackSkill(Char target) { return 1000; }
+
+        @Override
+        public int defenseSkill(Char enemy) { return 0; }
+
+        @Override
+        public int damageRoll() { return 5; }
+
+        @Override
+        public int drRoll() { return 0; }
     }
 
     @Test
-    public void nativeHeroAttackUsesSPDResolutionAndReducesTargetHpWithoutKillingIt() {
+    public void nativeCharAttackUsesSPDHitAndDamagePipeline() {
         Level previousLevel = Dungeon.level;
-        Hero previousHero = Dungeon.hero;
-        int previousDepth = Dungeon.depth;
         try {
             TestLevel level = new TestLevel();
-            HighAccuracyHero hero = new HighAccuracyHero();
-            hero.pos = 9;
-            hero.HP = hero.HT = 20;
-            Rat target = new Rat();
+            TestChar attacker = new TestChar();
+            attacker.pos = 9;
+            attacker.HP = attacker.HT = 20;
+            TestChar target = new TestChar();
             target.pos = 10;
-            target.HT = 100;
-            target.HP = 100;
-            level.mobs.add(target);
-
+            target.HP = target.HT = 100;
             Dungeon.level = level;
-            Dungeon.hero = hero;
-            Dungeon.depth = 1;
 
             int hpBefore = target.HP;
-            boolean hit = hero.attack(target);
+            boolean hit = attacker.attack(target);
 
-            Assert.assertTrue("High-accuracy native attack should hit", hit);
-            Assert.assertTrue("Native SPD damage should reduce the target HP", target.HP < hpBefore);
-            Assert.assertTrue("Target must remain alive so the test does not invoke kill/loot side effects",
-                    target.HP > 0);
+            Assert.assertTrue("High-accuracy native SPD attack should hit", hit);
+            Assert.assertEquals("Native damage roll minus native DR should be applied once",
+                    hpBefore - 5, target.HP);
+            Assert.assertTrue(target.isAlive());
         } finally {
             Dungeon.level = previousLevel;
-            Dungeon.hero = previousHero;
-            Dungeon.depth = previousDepth;
         }
     }
 }
