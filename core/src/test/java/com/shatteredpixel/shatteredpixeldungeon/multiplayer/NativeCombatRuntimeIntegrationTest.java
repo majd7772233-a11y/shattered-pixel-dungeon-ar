@@ -181,6 +181,59 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void authoritativeMobDeathRemovesReplicaWithoutCallingDeathOrLootPipeline() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-death", "client-a", transport);
+
+        DeathCountingRat target = addDeathCountingRat(hero.pos + 1, 100);
+        String stableId = "stable-native-death-0001";
+        manager.registerServerEntityId(target.id(), stableId);
+        int heapsBefore = level.heaps.size();
+
+        String event = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
+                + "\"targetType\":\"MOB\",\"targetHp\":0,\"targetHt\":100,"
+                + "\"targetPosAfter\":" + target.pos + ",\"targetBuffs\":\"[]\","
+                + "\"damage\":100,\"hit\":true,\"engineResolved\":true}}]";
+        routeEventBatch(event, 2L);
+
+        Assert.assertFalse("Authoritative death must remove the local mob replica", level.mobs.contains(target));
+        Assert.assertEquals("A remote death must not invoke the local native death/reward pipeline", 0, target.deathCalls);
+        Assert.assertEquals("Loot is restored from the authority snapshot, not rolled again here", heapsBefore, level.heaps.size());
+        Assert.assertNull("The stale Actor-to-server identity mapping must be removed", manager.getServerEntityId(target.id()));
+        Assert.assertTrue("A death tombstone must request a full loot/world resync",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void discardedReactiveMobDamageRequestsResyncWithoutApplyingUntrustedScalarState() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-reactive-resync", "client-victim", transport);
+
+        Rat source = addRat(hero.pos + 1, 8);
+        source.HP = 8;
+        manager.registerServerEntityId(source.id(), "stable-reactive-source-0001");
+        int hpBeforeEvent = source.HP;
+
+        String event = "[{\"sequence\":3,\"depth\":1,\"eventType\":\"PLAYER_DAMAGED\",\"action\":{"
+                + "\"targetId\":\"client-victim\",\"targetPlayerId\":\"client-victim\",\"targetType\":\"PLAYER\","
+                + "\"targetHp\":18,\"targetHt\":20,\"targetState\":\"ALIVE\","
+                + "\"sourceType\":\"MOB\",\"sourceEntityId\":\"stable-reactive-source-0001\","
+                + "\"sourceMobHpBefore\":8,\"sourceMobHtBefore\":8,\"sourceMobHpAfter\":2,"
+                + "\"sourceMobHtAfter\":8,\"sourceMobShieldBefore\":0,\"sourceMobShieldAfter\":0,"
+                + "\"sourceMobPosBefore\":" + source.pos + ",\"sourceMobPosAfter\":" + source.pos + ","
+                + "\"sourceMobDamage\":6,\"sourceMobBuffsBefore\":\"[]\",\"sourceMobBuffs\":\"[]\","
+                + "\"sourceMobResyncRequired\":true,\"sourceMobBundleAfter\":null}}]";
+        routeEventBatch(event, 3L);
+
+        Assert.assertEquals("Untrusted non-publisher source Mob deltas must not be optimistically applied", hpBeforeEvent, source.HP);
+        Assert.assertTrue("A discarded reactive state must request publisher snapshot reconciliation",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
     public void acceptedCombatEventConvergesAcrossClientsWithDifferentLocalActorIds() throws Exception {
         final String stableMobId = "stable-native-mob-0001";
         MultiplayerManager manager = MultiplayerManager.getInstance();
@@ -261,6 +314,10 @@ public class NativeCombatRuntimeIntegrationTest {
         return addMob(new RetaliatingRat(), pos, hp);
     }
 
+    private DeathCountingRat addDeathCountingRat(int pos, int hp) {
+        return addMob(new DeathCountingRat(), pos, hp);
+    }
+
     private Rat addRat(int pos, int hp) {
         return addMob(new Rat(), pos, hp);
     }
@@ -280,6 +337,16 @@ public class NativeCombatRuntimeIntegrationTest {
         Actor.add(rat);
         rat.HP = rat.HT = hp;
         return rat;
+    }
+
+    private static final class DeathCountingRat extends Rat {
+        int deathCalls;
+
+        @Override
+        public void die(Object cause) {
+            deathCalls++;
+            super.die(cause);
+        }
     }
 
     private static final class DeterministicRat extends Rat {
@@ -338,11 +405,13 @@ public class NativeCombatRuntimeIntegrationTest {
 
     private static final class TestTransport implements NetworkTransport {
         private boolean connected;
+        final java.util.List<NetworkMessage> sent = new ArrayList<>();
+
         @Override public void connect(String endpoint, TransportCallback callback) {
             connected = true;
             if (callback != null) callback.onConnected();
         }
-        @Override public void send(NetworkMessage message) { }
+        @Override public void send(NetworkMessage message) { sent.add(message); }
         @Override public void disconnect() { connected = false; }
         @Override public boolean isConnected() { return connected; }
         @Override public String getTransportType() { return "TEST"; }

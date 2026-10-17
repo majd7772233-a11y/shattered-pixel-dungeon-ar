@@ -637,15 +637,18 @@ public final class MessageRouter {
                     if ("PLAYER_DAMAGED".equals(type)
                             && "MOB".equals(stringValue(action.get("sourceType"), ""))
                             && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
-                        applyMobEvent(type, action);
                         JsonValue sourceBundle = action.get("sourceMobBundleAfter");
                         JsonValue sourceResync = action.get("sourceMobResyncRequired");
                         boolean sourceResyncRequired = sourceResync != null && sourceResync.asBoolean();
-                        if (sourceResyncRequired
-                                || (sourceBundle != null && sourceBundle.isString() && !sourceBundle.asString().isEmpty())) {
-                            // Non-publisher incoming-damage simulations can alter reactive source-mob
-                            // state locally. Those values are not committed; reload the publisher's snapshot.
+                        boolean fullMobBundlePresent = sourceBundle != null && sourceBundle.isString()
+                                && !sourceBundle.asString().isEmpty();
+                        if (sourceResyncRequired || fullMobBundlePresent) {
+                            // Do not optimistically apply scalar HP/position/buff values when the
+                            // server discarded those reactive changes or a full native Mob bundle
+                            // proves scalar reconciliation incomplete. Wait for the publisher snapshot.
                             MultiplayerManager.getInstance().requestResync(seq);
+                        } else {
+                            applyMobEvent(type, action);
                         }
                     }
                 } else if ("CHAR_DIED".equals(type)) {
