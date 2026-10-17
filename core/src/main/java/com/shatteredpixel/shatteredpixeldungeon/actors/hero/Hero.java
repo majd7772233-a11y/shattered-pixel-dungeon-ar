@@ -565,7 +565,7 @@ public class Hero extends Char {
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
-		com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon attackWeapon =
+		com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon attackWeapon =
 				belongings == null ? null : belongings.attackingWeapon();
 		String attackWeaponMode = belongings != null && belongings.thrownWeapon != null ? "THROWN"
 				: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
