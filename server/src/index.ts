@@ -1787,7 +1787,7 @@ export class MatchRoom {
             const targetPosValid = Number.isInteger(targetPosAfter) && targetPosAfter >= 0 && targetPosAfter < levelSize
               && targetMoveDistance <= 8
               && (targetPosAfter === targetPosBefore || (this.isValidCombatTargetPosition(Number(targetPosAfter), this.currentDepth)
-                && this.isCombatDestinationFree(Number(targetPosAfter), this.currentDepth, "PLAYER", session.playerId)));
+                && this.isCombatDestinationFree(Number(targetPosAfter), this.currentDepth, "PLAYER", damageTargetId)));
             const previousHp = Number(playerRow?.hp);
             const previousHt = Number(playerRow?.ht);
             const noEffectOutcomeValid = isValidNativeMobNoEffectOutcome(data, {
