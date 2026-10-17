@@ -247,7 +247,12 @@
         "targetBuffsBefore",
         "secondaryMobDeltas",
         "attackerStateBefore",
-        "targetHeroStateBefore"
+        "targetHeroStateBefore",
+        "attackWeaponMode",
+        "attackWeaponBundle",
+        "damageMultiplier",
+        "damageBonus",
+        "accuracyMultiplier"
       ],
       "properties": {
         "targetEntityId": {
@@ -387,6 +392,39 @@
           "minLength": 1,
           "maxLength": 200000,
           "description": "Complete native Mob bundle captured after combat on the designated authority; required for living mob targets."
+        },
+        "attackWeaponMode": {
+          "type": "string",
+          "enum": [
+            "EQUIPPED",
+            "THROWN",
+            "ABILITY",
+            "UNARMED"
+          ],
+          "description": "Original SPD attacking-weapon context captured at the attack site."
+        },
+        "attackWeaponBundle": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "Serialized native item Bundle matched against the trusted restored attacker inventory for THROWN/ABILITY modes."
+        },
+        "damageMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Original native Hero.attack damage multiplier argument."
+        },
+        "damageBonus": {
+          "type": "number",
+          "minimum": -10000,
+          "maximum": 100000,
+          "description": "Original native Hero.attack flat damage bonus argument."
+        },
+        "accuracyMultiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Original native Hero.attack accuracy multiplier argument."
         }
       },
       "description": "Versioned native SPD combat result. Non-publisher mob attacks and all PvP attacks are resolved by the server-designated level publisher or target-player owner by executing the original Java combat pipeline; the Worker validates pending request identity, pre-state, geometry, result transitions, and replay protection. Only the authenticated level publisher may commit shared mob state and loot. The Worker does not independently reproduce SPD Java RNG.",
