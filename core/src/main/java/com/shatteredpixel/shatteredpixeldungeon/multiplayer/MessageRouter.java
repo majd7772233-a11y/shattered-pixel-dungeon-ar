@@ -165,7 +165,14 @@ public final class MessageRouter {
                         remote.ht = Math.max(1, intValue(action.get("targetHt"), remote.ht));
                         remote.pos = intValue(action.get("targetPosAfter"), remote.pos);
                         if (remote.heroInstance != null && !nativeHeroState.isEmpty() && !"null".equals(nativeHeroState)) {
+                            int oldPos = remote.heroInstance.pos;
                             WorldSnapshot.restoreRemoteHeroState(remote.heroInstance, nativeHeroState);
+                            remote.hp = remote.heroInstance.HP;
+                            remote.ht = remote.heroInstance.HT;
+                            remote.pos = remote.heroInstance.pos;
+                            if (remote.heroInstance.sprite != null && oldPos != remote.heroInstance.pos) {
+                                remote.heroInstance.sprite.move(oldPos, remote.heroInstance.pos);
+                            }
                         } else if (!nativeHeroState.isEmpty() && !"null".equals(nativeHeroState)) {
                             MultiplayerManager.getInstance().requestResync(message.sequence);
                         }
