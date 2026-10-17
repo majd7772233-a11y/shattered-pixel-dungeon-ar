@@ -389,7 +389,7 @@
           "description": "Complete native Mob bundle captured after combat on the designated authority; required for living mob targets."
         }
       },
-      "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs.",
+      "description": "Versioned native SPD combat result. Non-publisher mob attacks and all PvP attacks are resolved by the server-designated level publisher or target-player owner by executing the original Java combat pipeline; the Worker validates pending request identity, pre-state, geometry, result transitions, and replay protection. Only the authenticated level publisher may commit shared mob state and loot. The Worker does not independently reproduce SPD Java RNG.",
       "allOf": [
         {
           "if": {
@@ -863,7 +863,7 @@
     },
     "NativeMobDamagePayload": {
       "type": "object",
-      "description": "Native SPD Hero.damage result for damage from a mob, including defensive procs and source-mob state changes. Values are checked against the room's saved hero and mob pre-state; the Worker does not independently reproduce Java RNG or proc formulas.",
+      "description": "Native SPD Hero.damage result from a mob attack, captured by the damaged player's native engine. The Worker validates the player's own authoritative pre-state and attack geometry. Reactive source-mob HP/buff/position/bundle/loot changes are committed only when the sender is the authenticated level publisher; otherwise the shared mob remains unchanged and clients resync the authoritative level.",
       "required": [
         "combatSchemaVersion",
         "combatDepth",
@@ -1056,7 +1056,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200000,
-          "description": "Full native mob bundle after reactive damage/defensive procs; clients restore it through an authoritative snapshot."
+          "description": "Full native source-mob bundle after defensive procs. Shared source-mob changes and death loot are committed only from the authenticated level publisher; untrusted client-reported side effects are discarded."
         }
       }
     },
