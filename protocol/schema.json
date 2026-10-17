@@ -774,6 +774,14 @@
           ],
           "maxLength": 200000,
           "description": "Authoritative native Mob bundle after a player attack; peers request a full snapshot to restore this state exactly."
+        },
+        "sourceMobBundleAfter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000,
+          "description": "Full native source mob bundle after defensive procs when a mob damages a player."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks.",
