@@ -639,8 +639,12 @@ public final class MessageRouter {
                             && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
                         applyMobEvent(type, action);
                         JsonValue sourceBundle = action.get("sourceMobBundleAfter");
-                        if (sourceBundle != null && sourceBundle.isString() && !sourceBundle.asString().isEmpty()) {
-                            // Defensive procs may mutate the mob's full native state, not just HP.
+                        JsonValue sourceResync = action.get("sourceMobResyncRequired");
+                        boolean sourceResyncRequired = sourceResync != null && sourceResync.asBoolean();
+                        if (sourceResyncRequired
+                                || (sourceBundle != null && sourceBundle.isString() && !sourceBundle.asString().isEmpty())) {
+                            // Non-publisher incoming-damage simulations can alter reactive source-mob
+                            // state locally. Those values are not committed; reload the publisher's snapshot.
                             MultiplayerManager.getInstance().requestResync(seq);
                         }
                     }

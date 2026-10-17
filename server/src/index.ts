@@ -1412,6 +1412,10 @@ export class MatchRoom {
                 ? secondaryMobPayload.heaps === undefined
                 : isValidNativeLootSnapshot(secondaryMobPayload.heaps, combatLevel?.heaps,
                     secondaryDeathPositions, levelSize));
+            // An incomplete secondary side-effect must not cancel an otherwise valid player
+            // attack. It is deliberately not committed and instead forces a full publisher snapshot.
+            const secondaryMobResyncRequired = secondaryMobPayload == null || !secondaryLootValid
+              || secondaryMobPayload.deltas.length > 0;
             const authorityValid = !!pending && pending.targetType === "PLAYER"
               && String(pending.requestId) === String(data.combatRequestId)
               && Number.isFinite(Number(pending.createdAt)) && Date.now() - Number(pending.createdAt) <= 15000
@@ -1440,8 +1444,7 @@ export class MatchRoom {
               && (ranged ? this.hasLineOfSight(attackerPos, defenderPos, this.currentDepth) : this.isMeleeAdjacent(attackerPos, defenderPos, this.currentDepth))
               && (posAfter === posBefore || (this.isValidCombatTargetPosition(posAfter, this.currentDepth)
                 && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
-                  Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2))
-              && secondaryLootValid;
+                  Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2));
             if (authorityValid) {
               const newStatus = hpAfter > 0 ? "ALIVE"
                 : this.gameMode === "DEATHMATCH" ? "ALIVE"
@@ -1470,7 +1473,8 @@ export class MatchRoom {
               // Commit those shared-world mutations only if the defender is the designated
               // level publisher; otherwise retain server-owned mob state and force all peers
               // to resynchronize to the publisher's version.
-              if (secondaryMobAuthority && secondaryMobPayload.deltas.length > 0) {
+              if (secondaryMobAuthority && secondaryMobPayload != null
+                  && secondaryLootValid && secondaryMobPayload.deltas.length > 0) {
                 for (const delta of secondaryMobPayload.deltas) {
                   const mobIndex = (combatLevel.mobs as any[]).findIndex(
                     (mob: any) => String(mob?.entityId || "") === delta.entityId);
@@ -1497,9 +1501,9 @@ export class MatchRoom {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
                 if (secondaryDeathPositions.length > 0) {
-                  for (const heap of combatLevel.heaps) {
+                  for (const deadPos of secondaryDeathPositions) {
                     this.sql.exec("DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?",
-                      Number(heap.pos), this.currentDepth);
+                      deadPos, this.currentDepth);
                   }
                 }
               }
@@ -1515,7 +1519,7 @@ export class MatchRoom {
                 damage, hit: data.engineHit === true, attackKind: data.attackKind,
                 engineDistance: distance, engineActionCost: nativeCost,
                 secondaryMobDeltas: secondaryMobPayload,
-                secondaryMobResyncRequired: secondaryMobPayload.deltas.length > 0,
+                secondaryMobResyncRequired,
                 engineResolved: true
               };
               actionValid = true; actionCost = nativeCost;
@@ -1611,8 +1615,8 @@ export class MatchRoom {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + String(authorityPending.attackerId), mergedAttackerState as string);
                 this.clearPendingCombat(authorityPending);
-                if (allDeaths.length > 0) for (const heap of levelSnapshot.heaps) this.sql.exec(
-                  "DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?", Number(heap.pos), this.currentDepth);
+                if (allDeaths.length > 0) for (const deadPos of allDeaths) this.sql.exec(
+                  "DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?", deadPos, this.currentDepth);
                 eventType = "PLAYER_ATTACKED";
                 actionResultPayload = {
                   attackerId, attackerType: "PLAYER", targetId: data.targetEntityId, targetType: "MOB",
@@ -1686,9 +1690,9 @@ export class MatchRoom {
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
               if (deadPositions.length > 0) {
-                for (const heap of levelSnapshot.heaps) {
+                for (const deadPos of deadPositions) {
                   this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
-                    Number(heap.pos), this.currentDepth);
+                    deadPos, this.currentDepth);
                 }
               }
               eventType = "CHAR_DAMAGED";
@@ -1963,9 +1967,8 @@ export class MatchRoom {
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(sourceLevel));
                 if (committedSourceMobHp <= 0) {
-                  for (const heap of sourceLevel.heaps) {
-                    this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
-                  }
+                  this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
+                    committedSourceMobPos, this.currentDepth);
                 }
               }
               if (oldState !== "DEAD" && oldState !== "SPECTATOR" && (newState === "DEAD" || newState === "SPECTATOR")) {
@@ -2594,8 +2597,9 @@ export class MatchRoom {
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                         `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
                       if (allDeathPositions.length > 0) {
-                        for (const heap of combatLevel.heaps) {
-                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, Number(heap.pos), this.currentDepth);
+                        for (const deadPos of allDeathPositions) {
+                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
+                            deadPos, this.currentDepth);
                         }
                       }
                       eventType = "PLAYER_ATTACKED";
