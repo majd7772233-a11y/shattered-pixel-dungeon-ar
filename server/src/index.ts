@@ -611,9 +611,11 @@ export class MatchRoom {
     const trustedState = stateRow && typeof stateRow.value === "string" ? String(stateRow.value) : "";
     const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId).toArray()[0];
     if (!trustedState || !playerRow || !hasMatchingNativeHeroStateSnapshot(pending.attackerStateBefore, trustedState)) return null;
-    const ownAfter = typeof pending.attackerStateAfter === "string" ? pending.attackerStateAfter : "";
-    const blessedAnkhConsumed = hasValidBlessedAnkhConsumption(trustedState, ownAfter);
-    const selectedState = blessedAnkhConsumed ? ownAfter : String(authorityStateAfter || "");
+    const authoritativeAfter = typeof authorityStateAfter === "string" ? authorityStateAfter : "";
+    const blessedAnkhConsumed = hasValidBlessedAnkhConsumption(trustedState, authoritativeAfter);
+    // The target owner/level publisher's native simulation is the only post-state source.
+    // Never fall back to the attacker's optimistic post-state for Ankh or inventory changes.
+    const selectedState = authoritativeAfter;
     const buffs = nativeBuffSnapshotFromHeroState(selectedState);
     let parsed: any = null;
     try { parsed = JSON.parse(selectedState); } catch (_) { return null; }
