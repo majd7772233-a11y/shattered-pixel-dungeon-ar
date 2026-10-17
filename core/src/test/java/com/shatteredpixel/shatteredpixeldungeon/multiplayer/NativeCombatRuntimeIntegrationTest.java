@@ -118,6 +118,31 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void originalNativeZeroDamageHitPreservesHpAndMaxHp() {
+        hero.invisible = 1;
+        ZeroDamageRat target = addZeroDamageRat(hero.pos + 1, 100);
+
+        boolean hit = runNativeAttack(() -> hero.attack(target));
+
+        Assert.assertTrue("The native attack can hit even when native defense reduces damage to zero", hit);
+        Assert.assertEquals(100, target.HP);
+        Assert.assertEquals(100, target.HT);
+    }
+
+    @Test
+    public void originalNativeDefensiveRetaliationUsesTheRealHeroDamagePipeline() {
+        hero.invisible = 1;
+        RetaliatingRat target = addRetaliatingRat(hero.pos + 1, 100);
+
+        boolean hit = runNativeAttack(() -> hero.attack(target));
+
+        Assert.assertTrue(hit);
+        Assert.assertTrue("The primary native hit must damage its target", target.HP < 100);
+        Assert.assertTrue("A defensive retaliation must be applied to the actual attacking Hero", hero.HP < 20);
+        Assert.assertEquals(20, hero.HT);
+    }
+
+    @Test
     public void originalNativeMobAttackUsesTheHeroDamagePipeline() {
         hero.invisible = 0;
         Rat attacker = addRat(hero.pos + 1, 8);
@@ -228,6 +253,14 @@ public class NativeCombatRuntimeIntegrationTest {
         }
     }
 
+    private ZeroDamageRat addZeroDamageRat(int pos, int hp) {
+        return addMob(new ZeroDamageRat(), pos, hp);
+    }
+
+    private RetaliatingRat addRetaliatingRat(int pos, int hp) {
+        return addMob(new RetaliatingRat(), pos, hp);
+    }
+
     private Rat addRat(int pos, int hp) {
         return addMob(new Rat(), pos, hp);
     }
@@ -253,6 +286,41 @@ public class NativeCombatRuntimeIntegrationTest {
         @Override
         public int drRoll() {
             return 0;
+        }
+    }
+
+    private static final class ZeroDamageRat extends Rat {
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return 0;
+        }
+
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+
+        @Override
+        public int defenseProc(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy, int damage) {
+            return 0;
+        }
+    }
+
+    private static final class RetaliatingRat extends Rat {
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return 0;
+        }
+
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+
+        @Override
+        public int defenseProc(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy, int damage) {
+            if (damage > 0 && enemy.isAlive()) enemy.damage(2, this);
+            return damage;
         }
     }
 
