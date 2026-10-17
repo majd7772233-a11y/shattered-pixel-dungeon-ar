@@ -94,7 +94,7 @@ public class NativeCombatRuntimeIntegrationTest {
     @Test
     public void originalNativeHeroAttackAppliesRealHitAndDamage() {
         hero.invisible = 1;
-        Rat target = addRat(hero.pos + 1, 100);
+        DeterministicRat target = addDeterministicRat(hero.pos + 1, 100);
         target.defenseSkill = 2;
 
         boolean hit = runNativeAttack(() -> hero.attack(target));
@@ -108,8 +108,7 @@ public class NativeCombatRuntimeIntegrationTest {
     @Test
     public void originalNativeHeroAttackPreservesAnActualMiss() {
         hero.invisible = 0;
-        Rat target = addRat(hero.pos + 1, 100);
-        target.defenseSkill = Integer.MAX_VALUE;
+        EvasiveRat target = addEvasiveRat(hero.pos + 1, 100);
 
         boolean hit = hero.attack(target);
 
@@ -230,13 +229,43 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     private Rat addRat(int pos, int hp) {
-        Rat rat = new Rat();
+        return addMob(new Rat(), pos, hp);
+    }
+
+    private DeterministicRat addDeterministicRat(int pos, int hp) {
+        return addMob(new DeterministicRat(), pos, hp);
+    }
+
+    private EvasiveRat addEvasiveRat(int pos, int hp) {
+        return addMob(new EvasiveRat(), pos, hp);
+    }
+
+    private <T extends Rat> T addMob(T rat, int pos, int hp) {
         rat.pos = pos;
         rat.HP = rat.HT = hp;
         level.mobs.add(rat);
         Actor.add(rat);
         rat.HP = rat.HT = hp;
         return rat;
+    }
+
+    private static final class DeterministicRat extends Rat {
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+    }
+
+    private static final class EvasiveRat extends Rat {
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return com.shatteredpixel.shatteredpixeldungeon.actors.Char.INFINITE_EVASION;
+        }
+
+        @Override
+        public int drRoll() {
+            return 0;
+        }
     }
 
     private static final class TestTransport implements NetworkTransport {
