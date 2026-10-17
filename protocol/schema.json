@@ -381,6 +381,12 @@
           "type": "string",
           "maxLength": 200000,
           "description": "Trusted defender native hero state captured before attack."
+        },
+        "targetMobBundleAfter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000,
+          "description": "Complete native Mob bundle captured after combat on the designated authority; required for living mob targets."
         }
       },
       "description": "Client-resolved result from the original SPD Java engine. The room validates identity, depth, position, range, pre/post HP consistency and replay ordering; it does not claim to independently reproduce Java RNG or weapon/buff procs.",
@@ -409,7 +415,8 @@
             },
             "required": [
               "targetEntityId",
-              "targetHeroStateJson"
+              "targetHeroStateJson",
+              "targetMobBundleAfter"
             ]
           }
         },
@@ -759,6 +766,14 @@
           "type": "string",
           "maxLength": 100000,
           "description": "Native target buff bundles immediately before the validated combat action."
+        },
+        "targetMobBundleAfter": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200000,
+          "description": "Authoritative native Mob bundle after a player attack; peers request a full snapshot to restore this state exactly."
         }
       },
       "description": "Server-sequenced result from native SPD Java combat. The server validates sender/target identity, current depth and positions, legal geometry, pre/post HP, native buff bundle bounds, loot changes, action cost and request deduplication. The Worker does not reproduce SPD Java RNG or weapon/buff procs; client-resolved outcome trust remains limited to these checks.",
