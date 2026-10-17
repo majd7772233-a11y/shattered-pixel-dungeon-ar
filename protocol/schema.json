@@ -889,7 +889,8 @@
         "targetState",
         "damage",
         "effectiveDamage",
-        "engineDamageResult"
+        "engineDamageResult",
+        "sourceMobBundleAfter"
       ],
       "properties": {
         "combatSchemaVersion": {
@@ -1042,6 +1043,12 @@
           "type": "array",
           "maxItems": 1024,
           "description": "Full native heap snapshot when a defensive proc kills the source mob."
+        },
+        "sourceMobBundleAfter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000,
+          "description": "Full native mob bundle after reactive damage/defensive procs; clients restore it through an authoritative snapshot."
         }
       }
     },
