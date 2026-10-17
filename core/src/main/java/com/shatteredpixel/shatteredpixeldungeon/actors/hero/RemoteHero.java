@@ -1,5 +1,7 @@
 package com.shatteredpixel.shatteredpixeldungeon.actors.hero;
 
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+
 public class RemoteHero extends Hero {
 
     public RemoteHero() {
