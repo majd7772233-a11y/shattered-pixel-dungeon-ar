@@ -448,6 +448,15 @@ public final class MessageRouter {
 
                 if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
                     applyMobEvent(type, action);
+                    if ("CHAR_DAMAGED".equals(type)
+                            && "MOB".equals(stringValue(action.get("targetType"), ""))
+                            && action.get("targetMobBundleAfter") != null
+                            && action.get("targetMobBundleAfter").isString()
+                            && !action.get("targetMobBundleAfter").asString().isEmpty()) {
+                        // Periodic effects may change native AI/alert/cooldown state in addition
+                        // to the scalar combat fields; restore the publisher's complete snapshot.
+                        MultiplayerManager.getInstance().requestResync(seq);
+                    }
                 } else if ("PLAYER_MOVED".equals(type)) {
                     String playerId = stringValue(action.get("playerId"), message.senderId);
                     int pos = intValue(action.get("pos"), -1);
