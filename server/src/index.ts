@@ -1446,7 +1446,8 @@ export class MatchRoom {
                   targetMobBundleAfter: targetHp > 0 ? String(data.targetMobBundleAfter) : null,
                   hit: data.engineHit === true, damage, targetHp, targetHt,
                   attackKind: data.attackKind, engineDistance: distance, engineActionCost: nativeCost, targetBuffs: data.targetBuffs,
-                  attackerStateJson: payload.heroStateJson, secondaryMobDeltas: secondaryMobPayload, engineResolved: true
+                  attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
+                  secondaryMobDeltas: secondaryMobPayload, engineResolved: true
                 };
                 actionValid = true; actionCost = nativeCost;
               }
