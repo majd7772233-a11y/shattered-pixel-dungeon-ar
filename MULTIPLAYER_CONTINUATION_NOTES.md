@@ -175,3 +175,16 @@ The following code is present by the gameplay-code commit `657ce010edb03b55707d2
 - Schema and tests were updated for native mob bundle fields. Recent commits include `48f51f4`, `c84afe7`, `d9bc948`, `612b3fb`, `de68260`, `4b960de`, `cec1358`, `e86dde7`, `276e0c2`, `0507993`, `c63cc56`, `78b83b1`, `70c4778`, `59c6f3e`, `7c7de9e`, `71407f8`, `dd956dc`, `58423cb`, `7af5c55`, and `dac9707` (abbreviated SHAs).
 - **Phase 2 is not complete yet.** The mob-to-player damage path is still reported by the damaged player's local simulation without independent level-publisher resolution; unblessed-Ankh resurrection and complete PvP death/resurrection convergence lack end-to-end verification; comprehensive Java native combat integration tests and physical two-device convergence have not been performed. Do not mark Phase 2 complete or begin Phase 3 until those are resolved.
 - Continue on `multiplayer-framework-core-14118577486727081892`; do not merge to `main`.
+
+
+## Phase 2 continuation — authority routing and state reconciliation (2026-10-17)
+
+- Verified code SHA: `8ed14c7b891255ac8948be99c1b20d3cb822c957`.
+- CI run [39014294483](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39014294483) passed on that exact SHA: backend TypeScript build/tests and Android JVM tests/debug APK compilation.
+- Non-publisher mob attacks are routed to the designated level publisher; if no publisher is available, the Worker rejects the attack instead of falling through to client-reported damage. PvP outcomes are resolved by the target player's native simulation through a pending authority request.
+- Reactive source-mob HP/shield/buff/position/bundle/loot writes are committed only when the sender is the designated level publisher. Non-publisher side effects are discarded, the accepted target-hero state is merged from trusted state, and clients are told to resync the level.
+- The server now persists and broadcasts the authority-merged attacker state after mob and PvP combat, including accepted native inventory consumption and cooldown changes. Clients reconcile both attacker and target hero bundles; failed native event restoration requests an authoritative snapshot.
+- Legacy damage-only packets are no longer replayed through `Mob.damage()`, avoiding duplicate local armor, buff, death, reward, and loot processing. Mob combat and periodic `CHAR_DAMAGED` events request full authoritative snapshot reconciliation where scalar event replay is insufficient.
+- Added/expanded backend tests for target-buff pre-state binding, publisher-only reactive mob state ownership, inventory reconciliation, and Ankh counter protection. An attempted direct `Char.attack` JVM test could not initialize the full game-global combat runtime in the headless unit-test environment, so it was removed; no false claim of native end-to-end test coverage is made.
+- **Phase 2 is still in progress.** Remaining acceptance gaps are full game-runtime tests for native hit/miss, secondary/thorns/retaliation effects, player death/resurrection/Ankh convergence, multi-client state convergence, and physical two-device verification. Do not begin Phase 3 or mark Phase 2 complete until those are verified.
+- Continue on `multiplayer-framework-core-14118577486727081892`; do not merge to `main`.
