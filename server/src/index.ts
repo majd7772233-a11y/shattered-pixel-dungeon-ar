@@ -136,7 +136,7 @@ export function hasStrictNativeSourceMobState(data: any): boolean {
     && Number.isInteger(data.sourceMobShieldAfter) && data.sourceMobShieldAfter >= 0 && data.sourceMobShieldAfter <= 100000
     && Number.isInteger(data.sourceMobPosAfter)
     && Number.isInteger(data.sourceMobDamage) && typeof data.sourceMobBuffsBefore === "string"
-    && typeof data.sourceMobBuffs === "string";
+    && typeof data.sourceMobBuffs === "string" && isValidNativeMobBundle(data.sourceMobBundleAfter);
 }
 
 export function isValidNativeEnvironmentDamage(data: any, authoritative: any): boolean {
@@ -1655,7 +1655,8 @@ export class MatchRoom {
               && sourceMobHtAfter === sourceMobHtBefore
               && isValidNativeHpTransition(sourceMobHpBefore, sourceMobHpAfter, Number(data.sourceMobDamage))
               && sourceMobDestinationValid && sourceMobLootValid
-              && isValidNativeCombatBuffs(data.sourceMobBuffs);
+              && isValidNativeCombatBuffs(data.sourceMobBuffs)
+              && isValidNativeMobBundle(data.sourceMobBundleAfter);
             const newHeroStateValid = isValidNativeHeroStateJson(payload.heroStateJson, {
               hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter)
             });
@@ -1714,6 +1715,7 @@ export class MatchRoom {
               savedSourceMob.shielding = Number(data.sourceMobShieldAfter);
               savedSourceMob.pos = sourceMobPosAfter;
               savedSourceMob.buffs = JSON.parse(String(data.sourceMobBuffs));
+              if (sourceMobHpAfter > 0) savedSourceMob.serializedBundle = String(data.sourceMobBundleAfter);
               if (sourceMobHpAfter <= 0) sourceLevel.heaps = data.heaps;
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
@@ -1742,6 +1744,7 @@ export class MatchRoom {
                 sourceMobHpAfter, sourceMobHtAfter, sourceMobShieldAfter: Number(data.sourceMobShieldAfter),
                 sourceMobPosBefore, sourceMobPosAfter, sourceMobDamage: Number(data.sourceMobDamage),
                 sourceMobBuffsBefore: data.sourceMobBuffsBefore, sourceMobBuffs: data.sourceMobBuffs,
+                sourceMobBundleAfter: sourceMobHpAfter > 0 ? String(data.sourceMobBundleAfter) : null,
                 ...(sourceMobHpAfter <= 0 ? { heaps: data.heaps } : {}),
                 attackerStateJson: null, engineResolved: true
               };
