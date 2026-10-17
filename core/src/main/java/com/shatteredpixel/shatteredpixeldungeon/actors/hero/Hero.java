@@ -553,8 +553,9 @@ public class Hero extends Char {
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
 		MultiplayerManager manager = MultiplayerManager.getInstance();
 		boolean authoritySimulation = manager.isResolvingAuthorityCombat() && this instanceof RemoteHero;
-		if ((this == Dungeon.hero || authoritySimulation) && manager.isMultiplayerActive()
-				&& (enemy instanceof Mob || enemy instanceof RemoteHero)) {
+		if (NativeCombatAuthorityPolicy.shouldPublishAttackOutcome(manager.isMultiplayerActive(),
+				this == Dungeon.hero, authoritySimulation,
+				enemy instanceof Mob, enemy instanceof RemoteHero, enemy == Dungeon.hero)) {
 			String attackerPlayerId = manager.getLocalPlayerId();
 			if (authoritySimulation) {
 				for (RemotePlayer candidate : manager.getRemotePlayers().values()) {
