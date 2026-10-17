@@ -204,8 +204,24 @@ public class Hero extends Char {
 	public static final int MAX_LEVEL = 30;
 
 	private static boolean nativeAttackInProgress = false;
+	private boolean deferNativeCombatReport;
+	private String deferredNativeCombatAction;
+	private boolean deferredNativeCombatAuthority;
+	private String deferredNativeCombatTargetType;
 
 	public static boolean isNativeAttackInProgress() { return nativeAttackInProgress; }
+
+	private void sendNativeCombatReport(String action, boolean authoritySimulation, String targetType) {
+		if (action == null || action.isEmpty()) return;
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (authoritySimulation) {
+			manager.sendAuthorityAction(manager.getAuthorityCombatRequestId(),
+					"PLAYER".equals(targetType) ? NetworkActionType.SYNC_PLAYER_COMBAT : NetworkActionType.SYNC_MOB_STATE,
+					action, SPDLevelSnapshot.currentHeroStateJson(this));
+		} else {
+			manager.sendAction(NetworkActionType.ATTACK, action);
+		}
+	}
 
 	public static final int STARTING_STR = 10;
 	
@@ -500,6 +516,14 @@ public class Hero extends Char {
 	
 	public boolean shoot( Char enemy, MissileWeapon wep ) {
 
+		boolean previousDeferNativeCombatReport = deferNativeCombatReport;
+		if (!previousDeferNativeCombatReport) {
+			deferNativeCombatReport = true;
+			deferredNativeCombatAction = null;
+			deferredNativeCombatAuthority = false;
+			deferredNativeCombatTargetType = null;
+		}
+		try {
 		attackTarget = enemy;
 		boolean wasEnemy = enemy.alignment == Alignment.ENEMY
 				|| (enemy instanceof Mimic && enemy.alignment == Alignment.NEUTRAL);
@@ -521,6 +545,18 @@ public class Hero extends Char {
 
 		attackTarget = null;
 		return hit;
+		} finally {
+			if (!previousDeferNativeCombatReport) {
+				deferNativeCombatReport = false;
+				String action = deferredNativeCombatAction;
+				boolean authority = deferredNativeCombatAuthority;
+				String targetType = deferredNativeCombatTargetType;
+				deferredNativeCombatAction = null;
+				deferredNativeCombatAuthority = false;
+				deferredNativeCombatTargetType = null;
+				if (action != null) sendNativeCombatReport(action, authority, targetType);
+			}
+		}
 	}
 	
 	@Override
@@ -560,6 +596,8 @@ public class Hero extends Char {
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
 		MultiplayerManager manager = MultiplayerManager.getInstance();
 		boolean authoritySimulation = manager.isResolvingAuthorityCombat() && this instanceof RemoteHero;
+		String nativeCombatAction = null;
+		String nativeCombatTargetType = null;
 		if (NativeCombatAuthorityPolicy.shouldPublishAttackOutcome(manager.isMultiplayerActive(),
 				this == Dungeon.hero, authoritySimulation,
 				enemy instanceof Mob, enemy instanceof RemoteHero, enemy == Dungeon.hero)) {
@@ -638,13 +676,8 @@ public class Hero extends Char {
 					+ ",\"engineDistance\":" + Dungeon.level.distance(attackerPosBefore, targetPosBefore)
 					+ ",\"engineActionCost\":" + attackDelay()
 					+ extraLoot + "}";
-			if (authoritySimulation) {
-				manager.sendAuthorityAction(manager.getAuthorityCombatRequestId(),
-						"PLAYER".equals(targetType) ? NetworkActionType.SYNC_PLAYER_COMBAT : NetworkActionType.SYNC_MOB_STATE,
-						action, SPDLevelSnapshot.currentHeroStateJson(this));
-			} else {
-				manager.sendAction(NetworkActionType.ATTACK, action);
-			}
+			nativeCombatAction = action;
+			nativeCombatTargetType = targetType;
 		}
 		if (!(belongings.attackingWeapon() instanceof MissileWeapon)){
 			if (buff(Talent.PreciseAssaultTracker.class) != null){
@@ -652,6 +685,15 @@ public class Hero extends Char {
 			} else if (buff(Talent.LiquidAgilACCTracker.class) != null
 						&& buff(Talent.LiquidAgilACCTracker.class).uses <= 0){
 				buff(Talent.LiquidAgilACCTracker.class).detach();
+			}
+		}
+		if (nativeCombatAction != null) {
+			if (deferNativeCombatReport) {
+				deferredNativeCombatAction = nativeCombatAction;
+				deferredNativeCombatAuthority = authoritySimulation;
+				deferredNativeCombatTargetType = nativeCombatTargetType;
+			} else {
+				sendNativeCombatReport(nativeCombatAction, authoritySimulation, nativeCombatTargetType);
 			}
 		}
 		return result;
