@@ -1805,8 +1805,9 @@ public class Hero extends Char {
 	@Override
 	public void damage( int dmg, Object src ) {
 		MultiplayerManager activeManager = MultiplayerManager.getInstance();
+		boolean networkActive = activeManager.isMultiplayerActive();
 		// A mob's combat turn belongs to the level publisher; discard duplicate peer-side mob hits.
-		if (activeManager.isMultiplayerActive() && src instanceof Mob
+		if (networkActive && src instanceof Mob
 				&& (this == Dungeon.hero || this instanceof RemoteHero) && !activeManager.isLevelPublisher()) {
 			activeManager.requestResync(activeManager.getLastSequence());
 			return;
@@ -1822,11 +1823,11 @@ public class Hero extends Char {
 		}
 
 		// Capture the source before thorns/armor procs can damage or displace it.
-		int sourceMobHpBefore = src instanceof Mob ? ((Mob) src).HP : -1;
-		int sourceMobHtBefore = src instanceof Mob ? ((Mob) src).HT : -1;
-		int sourceMobShieldBefore = src instanceof Mob ? Math.max(0, ((Mob) src).shielding()) : -1;
-		int sourceMobPosBefore = src instanceof Mob ? ((Mob) src).pos : -1;
-		String sourceMobBuffsBefore = src instanceof Mob
+		int sourceMobHpBefore = networkActive && src instanceof Mob ? ((Mob) src).HP : -1;
+		int sourceMobHtBefore = networkActive && src instanceof Mob ? ((Mob) src).HT : -1;
+		int sourceMobShieldBefore = networkActive && src instanceof Mob ? Math.max(0, ((Mob) src).shielding()) : -1;
+		int sourceMobPosBefore = networkActive && src instanceof Mob ? ((Mob) src).pos : -1;
+		String sourceMobBuffsBefore = networkActive && src instanceof Mob
 				? SPDLevelSnapshot.currentCombatBuffsJson((Mob) src) : "[]";
 
 		//regular damage interrupt, triggers on any damage except specific mild DOT effects
@@ -1875,19 +1876,23 @@ public class Hero extends Char {
 		//we ceil this one to avoid letting the player easily take 0 dmg from tenacity early
 		dmg = (int)Math.ceil(dmg * RingOfTenacity.damageMultiplier( this ));
 
-		int targetHpBefore = HP;
-		int targetHtBefore = HT;
-		int targetPosBefore = pos;
-		int targetShieldBefore = shielding();
-		String targetBuffsBefore = SPDLevelSnapshot.currentCombatBuffsJson(this);
-		int ankhCountBefore = countAnkhs(false);
-		int blessedAnkhCountBefore = countAnkhs(true);
+		int targetHpBefore = networkActive ? HP : -1;
+		int targetHtBefore = networkActive ? HT : -1;
+		int targetPosBefore = networkActive ? pos : -1;
+		int targetShieldBefore = networkActive ? shielding() : 0;
+		String targetBuffsBefore = networkActive ? SPDLevelSnapshot.currentCombatBuffsJson(this) : "[]";
+		int ankhCountBefore = networkActive ? countAnkhs(false) : 0;
+		int blessedAnkhCountBefore = networkActive ? countAnkhs(true) : 0;
 		int sourcePosBefore = src instanceof Mob ? sourceMobPosBefore : (src instanceof Char ? ((Char) src).pos : -1);
-		int preHP = HP + targetShieldBefore;
-		if (src instanceof Hunger) preHP -= targetShieldBefore;
+		int preHP = networkActive ? HP + targetShieldBefore : HP;
+		if (networkActive && src instanceof Hunger) preHP -= targetShieldBefore;
 		super.damage( dmg, src );
 		boolean revivedByBlessedAnkh = multiplayerRevivedByBlessedAnkh;
 		multiplayerRevivedByBlessedAnkh = false;
+		// All native combat and Ankh behavior above is complete. The remaining work serializes
+		// state for multiplayer only; ordinary single-player damage must not bundle every buff,
+		// inventory item or attacking mob on each hit.
+		if (!networkActive) return;
 		int targetShieldAfter = shielding();
 		int ankhCountAfter = countAnkhs(false);
 		int blessedAnkhCountAfter = countAnkhs(true);

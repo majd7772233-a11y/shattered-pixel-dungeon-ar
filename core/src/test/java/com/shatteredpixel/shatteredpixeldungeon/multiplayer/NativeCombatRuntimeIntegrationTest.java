@@ -97,7 +97,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Rat target = addRat(hero.pos + 1, 100);
         target.defenseSkill = 2;
 
-        boolean hit = hero.attack(target);
+        boolean hit = runNativeAttack(() -> hero.attack(target));
 
         Assert.assertTrue("The native invisible/surprise hit must hit deterministically", hit);
         Assert.assertTrue("The native attack must lower target HP", target.HP < 100);
@@ -124,7 +124,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Rat attacker = addRat(hero.pos + 1, 8);
         attacker.invisible = 1;
 
-        boolean hit = attacker.attack(hero);
+        boolean hit = runNativeAttack(() -> attacker.attack(hero));
 
         Assert.assertTrue("The native invisible mob attack must hit", hit);
         Assert.assertTrue("Native Mob.attack -> Hero.damage must apply damage", hero.HP < 20);
@@ -154,6 +154,15 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(20, delta.htAfter);
         Assert.assertNotNull(delta.serializedBundleAfter);
         Assert.assertFalse(delta.serializedBundleAfter.isEmpty());
+    }
+
+    private static boolean runNativeAttack(java.util.function.BooleanSupplier operation) {
+        try {
+            return operation.getAsBoolean();
+        } catch (RuntimeException | Error failure) {
+            failure.printStackTrace(System.err);
+            throw failure;
+        }
     }
 
     private Rat addRat(int pos, int hp) {
