@@ -1620,6 +1620,8 @@ export class MatchRoom {
             const sourceMobHtBefore = Number(data?.sourceMobHtBefore);
             const sourceMobHpAfter = Number(data?.sourceMobHpAfter);
             const sourceMobHtAfter = Number(data?.sourceMobHtAfter);
+            const sourceMobShieldBefore = Number(data?.sourceMobShieldBefore);
+            const sourceMobShieldAfter = Number(data?.sourceMobShieldAfter);
             const sourceMobPosBefore = Number(data?.sourceMobPosBefore);
             const sourceMobPosAfter = Number(data?.sourceMobPosAfter);
             const sourceMobMoveDistance = width > 0
