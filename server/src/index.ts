@@ -1871,7 +1871,13 @@ export class MatchRoom {
             if (targetType === "MOB") {
               const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray()[0];
               const publisherId = String(publisherRow?.value || "");
-              if (publisherId && publisherId !== session.playerId) {
+              if (!publisherId) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "NATIVE_COMBAT_AUTHORITY_UNAVAILABLE" }) }));
+                return;
+              }
+              if (!isAuthorizedNativeMobOwner(session.playerId, publisherId)) {
                 const attackerStateBefore = payload.data?.attackerStateBefore;
                 const targetEntityId = payload.data?.targetEntityId;
                 const attackerRow = this.sql.exec(
