@@ -528,6 +528,12 @@ public class Hero extends Char {
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
 		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
+		com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon attackWeapon =
+				belongings == null ? null : belongings.attackingWeapon();
+		String attackWeaponMode = belongings != null && belongings.thrownWeapon != null ? "THROWN"
+				: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
+				: belongings != null && belongings.weapon() != null ? "EQUIPPED" : "UNARMED";
+		String attackWeaponBundle = attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
 		String attackerStateBefore = MultiplayerManager.getInstance().isMultiplayerActive()
 				? SPDLevelSnapshot.currentHeroStateJson(this) : "";
 		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
@@ -603,6 +609,11 @@ public class Hero extends Char {
 					+ ",\"attackerId\":" + new com.badlogic.gdx.utils.Json().toJson(attackerPlayerId)
 					+ ",\"attackerPos\":" + attackerPosBefore
 					+ ",\"attackerStateBefore\":" + new com.badlogic.gdx.utils.Json().toJson(attackerStateBefore)
+					+ ",\"attackWeaponMode\":\"" + attackWeaponMode + "\""
+					+ ",\"attackWeaponBundle\":" + new com.badlogic.gdx.utils.Json().toJson(attackWeaponBundle)
+					+ ",\"damageMultiplier\":" + dmgMulti
+					+ ",\"damageBonus\":" + dmgBonus
+					+ ",\"accuracyMultiplier\":" + accMulti
 					+ ",\"targetPos\":" + targetPosBefore
 					+ ",\"targetPosAfter\":" + enemy.pos
 					+ ",\"targetHpBefore\":" + targetHpBefore
