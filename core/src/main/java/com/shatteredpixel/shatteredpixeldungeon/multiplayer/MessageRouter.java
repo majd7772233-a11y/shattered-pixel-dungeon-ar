@@ -132,6 +132,24 @@ public final class MessageRouter {
             JsonValue action = payload.get("action");
             if (action == null || !action.isObject()) return;
 
+            // The native authority also resolves attacker-side procs, cooldown and reactive
+            // damage. Replace the attacker's optimistic state with that accepted native result.
+            String eventAttackerId = stringValue(action.get("attackerId"), null);
+            String attackerStateJson = stringValue(action.get("attackerStateJson"), "");
+            if (eventAttackerId != null
+                    && eventAttackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())
+                    && Dungeon.hero != null && !attackerStateJson.isEmpty() && !"null".equals(attackerStateJson)) {
+                int oldHeroPos = Dungeon.hero.pos;
+                WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerStateJson);
+                if (Dungeon.hero.sprite != null && oldHeroPos != Dungeon.hero.pos) {
+                    Dungeon.hero.sprite.move(oldHeroPos, Dungeon.hero.pos);
+                }
+                String attackerStatus = stringValue(action.get("attackerState"), "ALIVE");
+                if ("DEAD".equals(attackerStatus) || "SPECTATOR".equals(attackerStatus)) {
+                    applyPlayerDeath(eventAttackerId);
+                }
+            }
+
             if ("PLAYER_MOVED".equals(eventType)) {
                 String playerId = stringValue(action.get("playerId"), null);
                 int pos = intValue(action.get("pos"), -1);
