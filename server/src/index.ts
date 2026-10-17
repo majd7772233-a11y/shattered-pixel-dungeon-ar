@@ -1274,6 +1274,10 @@ export class MatchRoom {
             const mergedState = mergeNativeHeroState(trustedState, String(data.targetHeroStateJson || ""), {
               hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter
             }, String(data.targetBuffs || ""), true);
+            // The defender-authority client also simulates the attacker's native Hero instance.
+            // Persist its post-attack state (cooldowns, procs, inventory and reactive damage) so
+            // the attacker cannot keep its separate optimistic RNG result.
+            const mergedAttackerState = this.reconcileCombatAttackerState(pending, payload.heroStateJson);
             const authorityValid = !!pending && pending.targetType === "PLAYER"
               && String(pending.requestId) === String(data.combatRequestId)
               && Number.isFinite(Number(pending.createdAt)) && Date.now() - Number(pending.createdAt) <= 15000
@@ -1290,7 +1294,7 @@ export class MatchRoom {
               && shieldBefore === Number(trusted?.shielding) && targetBuffsValid
               && isValidNativeCombatBuffs(data.targetBuffs)
               && isValidNativeHeroStateJson(String(data.targetHeroStateJson || ""), { hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter })
-              && mergedState !== null && hpDeltaValid
+              && mergedState !== null && mergedAttackerState !== null && hpDeltaValid
               && Number.isInteger(hpAfter) && hpAfter >= 0 && Number.isInteger(htAfter) && htAfter >= 1 && hpAfter <= htAfter
               && Number.isInteger(posAfter) && posAfter >= 0 && posAfter < levelSize
               && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
@@ -1314,6 +1318,18 @@ export class MatchRoom {
               }
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + defenderId, mergedState);
+              const mergedAttacker = JSON.parse(mergedAttackerState as string);
+              const attackerStatus = Number(mergedAttacker.hp) > 0 ? "ALIVE"
+                : this.gameMode === "DEATHMATCH" ? "ALIVE"
+                  : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+              this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
+                Number(mergedAttacker.hp), Number(mergedAttacker.ht), Number(mergedAttacker.pos),
+                attackerStatus, attackerId);
+              this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "heroState:" + attackerId, mergedAttackerState as string);
+              if (String(attackerRow[0].state) === "ALIVE" && (attackerStatus === "DEAD" || attackerStatus === "SPECTATOR")) {
+                this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", attackerId);
+              }
               this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
               actionResultPayload = {
@@ -1322,6 +1338,7 @@ export class MatchRoom {
                 targetHp: hpAfter, targetHt: htAfter, targetShieldBefore: shieldBefore, targetShieldAfter: shieldAfter,
                 targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
                 targetHeroStateJson: mergedState, targetState: newStatus,
+                attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
                 damage, hit: data.engineHit === true, attackKind: data.attackKind,
                 engineDistance: distance, engineActionCost: nativeCost, engineResolved: true
               };
