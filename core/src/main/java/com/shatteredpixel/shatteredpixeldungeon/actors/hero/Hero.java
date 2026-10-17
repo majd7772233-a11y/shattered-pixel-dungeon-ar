@@ -578,24 +578,36 @@ public class Hero extends Char {
 	
 	@Override
 	public boolean attack(Char enemy, float dmgMulti, float dmgBonus, float accMulti) {
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		boolean authoritySimulation = manager.isResolvingAuthorityCombat() && this instanceof RemoteHero;
+		boolean shouldPublish = NativeCombatAuthorityPolicy.shouldPublishAttackOutcome(
+				manager.isMultiplayerActive(), this == Dungeon.hero, authoritySimulation,
+				enemy instanceof Mob, enemy instanceof RemoteHero, enemy == Dungeon.hero);
 		int targetHpBefore = enemy == null ? 0 : enemy.HP;
 		int targetHtBefore = enemy == null ? 0 : enemy.HT;
 		int targetPosBefore = enemy == null ? -1 : enemy.pos;
-		int targetShieldBefore = enemy == null ? 0 : enemy.shielding();
+		int targetShieldBefore = shouldPublish && enemy != null ? enemy.shielding() : 0;
 		com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon attackWeapon =
 				belongings == null ? null : belongings.attackingWeapon();
-		String attackWeaponMode = belongings != null && belongings.thrownWeapon != null ? "THROWN"
-				: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
-				: belongings != null && belongings.weapon() != null ? "EQUIPPED" : "UNARMED";
-		String attackWeaponBundle = attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
-		String attackerStateBefore = MultiplayerManager.getInstance().isMultiplayerActive()
-				? SPDLevelSnapshot.currentHeroStateJson(this) : "";
-		String targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
-		String targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
-		String targetMobBundleAfterJson = "null";
+		String attackWeaponMode = "";
+		String attackWeaponBundle = "";
+		String attackerStateBefore = "";
+		String targetBuffsBefore = "[]";
+		String targetHeroStateBefore = "";
 		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
-				enemy instanceof Mob ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy)
-						: java.util.Collections.emptyMap();
+				java.util.Collections.emptyMap();
+		if (shouldPublish) {
+			attackWeaponMode = belongings != null && belongings.thrownWeapon != null ? "THROWN"
+					: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
+					: belongings != null && belongings.weapon() != null ? "EQUIPPED" : "UNARMED";
+			attackWeaponBundle = attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
+			attackerStateBefore = SPDLevelSnapshot.currentHeroStateJson(this);
+			targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
+			targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
+			if (enemy instanceof Mob) {
+				secondaryMobStateBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy);
+			}
+		}
 		int attackerPosBefore = pos;
 		boolean previousNativeAttackInProgress = nativeAttackInProgress;
 		boolean result;
@@ -605,19 +617,16 @@ public class Hero extends Char {
 		} finally {
 			nativeAttackInProgress = previousNativeAttackInProgress;
 		}
-		String secondaryMobDeltas = enemy instanceof Mob
+		String secondaryMobDeltas = shouldPublish && enemy instanceof Mob
 				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(secondaryMobStateBefore, (Mob) enemy)
 				: "{\"complete\":true,\"deltas\":[]}";
-		int targetShieldAfter = enemy == null ? 0 : enemy.shielding();
+		int targetShieldAfter = shouldPublish && enemy != null ? enemy.shielding() : 0;
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.
 		// Never recompute hit chance, weapon damage, armor DR or procs on the TypeScript server.
-		MultiplayerManager manager = MultiplayerManager.getInstance();
-		boolean authoritySimulation = manager.isResolvingAuthorityCombat() && this instanceof RemoteHero;
 		String nativeCombatAction = null;
 		String nativeCombatTargetType = null;
-		if (NativeCombatAuthorityPolicy.shouldPublishAttackOutcome(manager.isMultiplayerActive(),
-				this == Dungeon.hero, authoritySimulation,
-				enemy instanceof Mob, enemy instanceof RemoteHero, enemy == Dungeon.hero)) {
+		if (shouldPublish) {
+			String targetMobBundleAfterJson = "null";
 			String attackerPlayerId = manager.getLocalPlayerId();
 			if (authoritySimulation) {
 				for (RemotePlayer candidate : manager.getRemotePlayers().values()) {
@@ -627,7 +636,7 @@ public class Hero extends Char {
 			String targetType;
 			String targetIdJson;
 			String targetEntityIdJson = "null";
-			boolean ranged = belongings.attackingWeapon() instanceof MissileWeapon
+			boolean ranged = attackWeapon instanceof MissileWeapon
 					|| Dungeon.level.distance(attackerPosBefore, targetPosBefore) > 1;
 			String extraLoot = "";
 			if (enemy instanceof Mob) {
