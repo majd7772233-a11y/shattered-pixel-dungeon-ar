@@ -21,6 +21,7 @@ public class NativeCombatEngineTest {
             Arrays.fill(map, Terrain.EMPTY);
             Arrays.fill(passable, true);
             Arrays.fill(solid, false);
+            heroFOV = new boolean[length()];
             mobs = new HashSet<>();
         }
 
