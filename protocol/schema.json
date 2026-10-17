@@ -1412,7 +1412,7 @@
     },
     "NativeUnblessedAnkhRevivalPayload": {
       "type": "object",
-      "description": "Native RESURRECT transition after choosing an unblessed Ankh. The server accepts it only from the dead player's own session, with the exact stored pre-death state, one unblessed Ankh consumed, unchanged blessed-Ankh count, restored native full HP, a legal spawn cell, and unchanged heaps apart from the native LostBackpack drop.",
+      "description": "Native RESURRECT transition after choosing an unblessed Ankh. The server accepts it only from the dead player's own session, with the exact stored pre-death state, one unblessed Ankh consumed, unchanged blessed-Ankh count, restored native full HP, a legal spawn cell, and unchanged heaps apart from the native LostBackpack drop. The heap diff is restricted to adding exactly one native LostBackpack at the death cell while preserving all previously present non-backpack items there.",
       "required": [
         "revivalKind",
         "combatDepth",
@@ -1507,7 +1507,8 @@
           "maxItems": 1024,
           "items": {
             "type": "object"
-          }
+          },
+          "description": "The complete native level heap snapshot after resurrection. The server permits only the expected LostBackpack addition at the death cell; all other heap/item state must remain unchanged."
         },
         "heroStateJson": {
           "type": "string",

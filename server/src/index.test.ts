@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -984,5 +984,40 @@ describe('Unblessed Ankh revival contract', () => {
   it('requires a dead pre-state and unchanged maximum HP', () => {
     expect(hasValidUnblessedAnkhConsumption({ ...previous(), hp: 1 }, revived())).toBe(false);
     expect(hasValidUnblessedAnkhConsumption(previous(), revived({ ht: 21, hp: 21 }))).toBe(false);
+  });
+});
+
+
+describe('Unblessed Ankh native LostBackpack loot contract', () => {
+  const oldHeap = {
+    pos: 42, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false,
+    items: [{ className: 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing',
+      quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'healing-potion-native-bundle' }]
+  };
+  const lostBackpack = {
+    className: 'com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack',
+    quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'native-lost-backpack-bundle'
+  };
+  const newHeap = { ...oldHeap, items: [...oldHeap.items, lostBackpack] };
+
+  it('allows exactly one native LostBackpack at the death cell while retaining existing items', () => {
+    expect(hasOnlyNativeLostBackpackAdded([newHeap], [oldHeap], 42)).toBe(true);
+    expect(hasOnlyNativeLostBackpackAdded([{ ...newHeap, items: [...newHeap.items].reverse() }], [oldHeap], 42)).toBe(true);
+  });
+
+  it('rejects fabricated loot, replacement of prior items, and more than one backpack', () => {
+    expect(hasOnlyNativeLostBackpackAdded([{ ...newHeap, items: [...newHeap.items, {
+      className: 'com.shatteredpixel.shatteredpixeldungeon.items.Ankh', quantity: 1, level: 0,
+      cursed: false, cursedKnown: false, serializedBundle: 'forged-ankh'
+    }] }], [oldHeap], 42)).toBe(false);
+    expect(hasOnlyNativeLostBackpackAdded([{ ...newHeap, items: [lostBackpack] }], [oldHeap], 42)).toBe(false);
+    expect(hasOnlyNativeLostBackpackAdded([{ ...newHeap, items: [...newHeap.items, lostBackpack] }], [oldHeap], 42)).toBe(false);
+    expect(hasOnlyNativeLostBackpackAdded([{ ...newHeap, items: [...newHeap.items, { ...lostBackpack, quantity: 2 }] }], [oldHeap], 42)).toBe(false);
+  });
+
+  it('rejects missing death-cell heap or malformed snapshots', () => {
+    expect(hasOnlyNativeLostBackpackAdded([], [oldHeap], 42)).toBe(false);
+    expect(hasOnlyNativeLostBackpackAdded([newHeap], null, 42)).toBe(false);
+    expect(hasOnlyNativeLostBackpackAdded([newHeap], [oldHeap], -1)).toBe(false);
   });
 });

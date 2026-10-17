@@ -472,6 +472,34 @@ function comparableHeap(heap: any): string {
 }
 
 /** A kill may change loot only at the dead mob's cell; all other heaps must remain byte-for-byte equivalent. */
+/** Resurrection must add the native LostBackpack at the death cell and not fabricate or replace other items. */
+export function hasOnlyNativeLostBackpackAdded(
+  nextHeapsValue: unknown, previousHeapsValue: unknown, deathPos: number
+): boolean {
+  if (!Array.isArray(nextHeapsValue) || !Array.isArray(previousHeapsValue)
+    || !Number.isInteger(deathPos) || deathPos < 0) return false;
+  const beforeHeap = previousHeapsValue.find((heap: any) => Number(heap?.pos) === deathPos);
+  const afterHeap = nextHeapsValue.find((heap: any) => Number(heap?.pos) === deathPos);
+  if (!afterHeap || !Array.isArray(afterHeap.items)) return false;
+  const isLostBackpack = (item: any) => typeof item?.className === "string"
+    && (item.className === "com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack"
+      || item.className === "LostBackpack");
+  const beforeItems = beforeHeap && Array.isArray(beforeHeap.items) ? beforeHeap.items : [];
+  const afterItems = afterHeap.items;
+  const beforeLost = beforeItems.filter(isLostBackpack);
+  const afterLost = afterItems.filter(isLostBackpack);
+  if (afterLost.length !== beforeLost.length + 1) return false;
+  if (!afterLost.every((item: any) => typeof item?.serializedBundle === "string"
+    && item.serializedBundle.length > 0 && item.serializedBundle.length <= 200000
+    && Number(item.quantity) === 1)) return false;
+  const signature = (item: any) => JSON.stringify({
+    className: item?.className, quantity: item?.quantity, level: item?.level,
+    cursed: item?.cursed, cursedKnown: item?.cursedKnown, serializedBundle: item?.serializedBundle
+  });
+  const sortedNonBackpacks = (items: any[]) => items.filter(item => !isLostBackpack(item)).map(signature).sort();
+  return JSON.stringify(sortedNonBackpacks(beforeItems)) === JSON.stringify(sortedNonBackpacks(afterItems));
+}
+
 export function isValidNativeLootSnapshot(value: unknown, previousHeaps: unknown, targetPos: number | number[], levelSize: number): boolean {
   const allowedPositions = new Set<number>(Array.isArray(targetPos) ? targetPos : [targetPos]);
   if (!Array.isArray(value) || value.length > 1024 || !Array.isArray(previousHeaps)
@@ -1977,7 +2005,7 @@ export class MatchRoom {
               && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)
               && levelSnapshot != null && isValidNativeLootSnapshot(
                 data.heaps, levelSnapshot.heaps, posBefore, levelSize
-              );
+              ) && hasOnlyNativeLostBackpackAdded(data.heaps, levelSnapshot.heaps, posBefore);
 
             const mergedJson = (blessedRevival || unblessedRevival)
               ? mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
