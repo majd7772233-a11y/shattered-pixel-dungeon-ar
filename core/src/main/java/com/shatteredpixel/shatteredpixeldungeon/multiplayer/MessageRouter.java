@@ -73,6 +73,11 @@ public final class MessageRouter {
             String targetEntityId = stringValue(payload.get("targetEntityId"), null);
             String targetPlayerId = stringValue(payload.get("targetPlayerId"), null);
             String attackerStateBefore = stringValue(payload.get("attackerStateBefore"), null);
+            String attackWeaponMode = stringValue(payload.get("attackWeaponMode"), "EQUIPPED");
+            String attackWeaponBundle = stringValue(payload.get("attackWeaponBundle"), "");
+            float damageMultiplier = floatValue(payload.get("damageMultiplier"), 1f);
+            float damageBonus = floatValue(payload.get("damageBonus"), 0f);
+            float accuracyMultiplier = floatValue(payload.get("accuracyMultiplier"), 1f);
             int attackerPos = intValue(payload.get("attackerPos"), -1);
             if (requestId == null || attackerId == null || attackerStateBefore == null
                     || attackerPos < 0 || attackerPos >= Dungeon.level.length()
@@ -112,11 +117,46 @@ public final class MessageRouter {
                     (com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero) remote.heroInstance;
             WorldSnapshot.restoreRemoteHeroState(remoteHero, attackerStateBefore);
             remoteHero.pos = attackerPos;
+            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon chosenWeapon = null;
+            if ("THROWN".equals(attackWeaponMode) || "ABILITY".equals(attackWeaponMode)) {
+                chosenWeapon = SPDLevelSnapshot.findOwnedAttackWeapon(remoteHero, attackWeaponBundle);
+                if (chosenWeapon == null || ("THROWN".equals(attackWeaponMode)
+                        && !(chosenWeapon instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon))) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+            } else if (!"EQUIPPED".equals(attackWeaponMode) && !"UNARMED".equals(attackWeaponMode)) {
+                manager.requestResync(manager.getLastSequence());
+                return;
+            } else if ("EQUIPPED".equals(attackWeaponMode)) {
+                com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon equipped =
+                        remoteHero.belongings == null ? null : remoteHero.belongings.weapon();
+                String equippedBundle = equipped == null ? "" : SPDLevelSnapshot.currentItemBundle(equipped);
+                if (!equippedBundle.equals(attackWeaponBundle)) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+            } else if ("UNARMED".equals(attackWeaponMode)
+                    && remoteHero.belongings != null && remoteHero.belongings.weapon() != null) {
+                manager.requestResync(manager.getLastSequence());
+                return;
+            }
+            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon previousThrown = remoteHero.belongings.thrownWeapon;
+            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon previousAbility = remoteHero.belongings.abilityWeapon;
             manager.beginAuthorityCombat(requestId);
             try {
-                // Resolve with native SPD combat on the target owner (PvP) or level publisher (mobs).
-                remoteHero.attack(target);
+                remoteHero.belongings.thrownWeapon = null;
+                remoteHero.belongings.abilityWeapon = null;
+                if ("THROWN".equals(attackWeaponMode)) {
+                    remoteHero.shoot(target,
+                            (com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon) chosenWeapon);
+                } else {
+                    if ("ABILITY".equals(attackWeaponMode)) remoteHero.belongings.abilityWeapon = chosenWeapon;
+                    remoteHero.attack(target, damageMultiplier, damageBonus, accuracyMultiplier);
+                }
             } finally {
+                remoteHero.belongings.thrownWeapon = previousThrown;
+                remoteHero.belongings.abilityWeapon = previousAbility;
                 manager.endAuthorityCombat();
             }
         } catch (RuntimeException error) {
