@@ -487,10 +487,13 @@ public final class MessageRouter {
                     if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)) {
                         JsonValue secondary = action.get("secondaryMobDeltas");
                         JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
-                        if (secondaryDeltas != null && secondaryDeltas.isArray() && secondaryDeltas.size > 0) {
-                            // Secondary weapon/talent/proc effects can change native buffs and
-                            // loot on multiple entities. Apply the authoritative full snapshot
-                            // rather than partially reproducing these native side effects.
+                        JsonValue nativeMobBundle = action.get("targetMobBundleAfter");
+                        if ((secondaryDeltas != null && secondaryDeltas.isArray() && secondaryDeltas.size > 0)
+                                || (nativeMobBundle != null && nativeMobBundle.isString()
+                                    && !nativeMobBundle.asString().isEmpty())) {
+                            // Combat can alter native AI state, alerting, cooldowns and proc state
+                            // beyond the HP fields. Reconcile the authoritative full snapshot
+                            // rather than applying a partial replica of the Java combat result.
                             MultiplayerManager.getInstance().requestResync(seq);
                         }
                     }
