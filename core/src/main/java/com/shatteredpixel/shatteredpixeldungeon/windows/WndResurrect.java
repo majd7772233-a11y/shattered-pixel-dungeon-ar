@@ -26,6 +26,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Statistics;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -123,6 +124,9 @@ public class WndResurrect extends Window {
 	}
 
 	private void resurrect( final Ankh ankh ){
+		if (MultiplayerManager.getInstance().isMultiplayerActive() && !ankh.isBlessed()) {
+			MultiplayerManager.getInstance().beginUnblessedAnkhRevival();
+		}
 		hide();
 
 		Statistics.ankhsUsed++;

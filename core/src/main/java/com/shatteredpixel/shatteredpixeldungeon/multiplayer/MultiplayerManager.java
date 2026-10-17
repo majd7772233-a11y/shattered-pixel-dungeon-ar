@@ -24,6 +24,11 @@ public class MultiplayerManager implements TransportCallback {
     private long lastResyncRequestedSequence = -1L;
     private String lastPublishedLevelKey;
     private Long authoritativeSeed;
+    private String pendingUnblessedAnkhBeforeHeroStateJson;
+    private String pendingUnblessedAnkhBeforeBuffsJson;
+    private int pendingUnblessedAnkhDepth = -1;
+    private int pendingUnblessedAnkhBranch = -1;
+    private boolean pendingUnblessedAnkhWasLevelLocked;
     private NetworkTransport activeTransport;
     private GameMode currentGameMode = new CoopMode();
 
@@ -66,6 +71,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
+        clearPendingUnblessedAnkhRevival();
         WorldSnapshot.clearAppliedSnapshot();
         this.activeTransport = transport;
         this.isMultiplayerActive = true;
@@ -98,6 +104,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
         this.authoritativeSeed = null;
+        clearPendingUnblessedAnkhRevival();
         WorldSnapshot.clearAppliedSnapshot();
     }
 
@@ -127,6 +134,80 @@ public class MultiplayerManager implements TransportCallback {
 
     public String getLocalPlayerId() {
         return localPlayerId;
+    }
+
+    /** Capture the server-committed dead state before the user confirms an unblessed Ankh. */
+    public void beginUnblessedAnkhRevival() {
+        clearPendingUnblessedAnkhRevival();
+        if (!isMultiplayerActive || Dungeon.hero == null || Dungeon.level == null) return;
+        try {
+            String stateJson = SPDLevelSnapshot.currentHeroStateJson();
+            JsonValue state = new JsonReader().parse(stateJson);
+            int ankhCount = state.getInt("ankhCount", 0);
+            int blessedCount = state.getInt("blessedAnkhCount", 0);
+            if (state.getInt("hp", 1) != 0 || ankhCount - blessedCount < 1) return;
+            pendingUnblessedAnkhBeforeHeroStateJson = stateJson;
+            pendingUnblessedAnkhBeforeBuffsJson = SPDLevelSnapshot.currentCombatBuffsJson(Dungeon.hero);
+            pendingUnblessedAnkhDepth = Dungeon.depth;
+            pendingUnblessedAnkhBranch = Dungeon.branch;
+            pendingUnblessedAnkhWasLevelLocked = Dungeon.level.locked;
+        } catch (RuntimeException ignored) {
+            clearPendingUnblessedAnkhRevival();
+        }
+    }
+
+    /** Commits the native RESURRECT result on the render thread after InterlevelScene finishes. */
+    public void finishPendingUnblessedAnkhRevival() {
+        String beforeJson = pendingUnblessedAnkhBeforeHeroStateJson;
+        String beforeBuffs = pendingUnblessedAnkhBeforeBuffsJson;
+        int beforeDepth = pendingUnblessedAnkhDepth;
+        int beforeBranch = pendingUnblessedAnkhBranch;
+        boolean wasLevelLocked = pendingUnblessedAnkhWasLevelLocked;
+        clearPendingUnblessedAnkhRevival();
+        if (beforeJson == null || beforeBuffs == null || !isMultiplayerActive
+                || Dungeon.hero == null || Dungeon.level == null) return;
+        try {
+            String afterJson = SPDLevelSnapshot.currentHeroStateJson();
+            JsonValue before = new JsonReader().parse(beforeJson);
+            JsonValue after = new JsonReader().parse(afterJson);
+            if (beforeDepth != Dungeon.depth || beforeBranch != Dungeon.branch
+                    || before.getInt("ankhCount", 0) - after.getInt("ankhCount", 0) != 1
+                    || before.getInt("blessedAnkhCount", 0) != after.getInt("blessedAnkhCount", 0)
+                    || after.getInt("hp", 0) <= 0 || after.getInt("hp", 0) != after.getInt("ht", 0)) {
+                requestResync(getLastSequence());
+                return;
+            }
+            java.util.Map<String, Object> data = new HashMap<>();
+            data.put("revivalKind", "UNBLESSED_ANKH");
+            data.put("combatDepth", Dungeon.depth);
+            data.put("targetHpBefore", before.getInt("hp", 0));
+            data.put("targetHtBefore", before.getInt("ht", 1));
+            data.put("targetHp", after.getInt("hp", 1));
+            data.put("targetHt", after.getInt("ht", 1));
+            data.put("targetPosBefore", before.getInt("pos", -1));
+            data.put("targetPosAfter", after.getInt("pos", -1));
+            data.put("targetShieldBefore", before.getInt("shielding", 0));
+            data.put("targetShieldAfter", after.getInt("shielding", 0));
+            data.put("targetBuffsBefore", beforeBuffs);
+            data.put("targetBuffs", SPDLevelSnapshot.currentCombatBuffsJson(Dungeon.hero));
+            data.put("ankhCountBefore", before.getInt("ankhCount", 0));
+            data.put("ankhCountAfter", after.getInt("ankhCount", 0));
+            data.put("blessedAnkhCountBefore", before.getInt("blessedAnkhCount", 0));
+            data.put("blessedAnkhCountAfter", after.getInt("blessedAnkhCount", 0));
+            data.put("heaps", new Json().fromJson(java.util.ArrayList.class, SPDLevelSnapshot.currentHeapsJson()));
+            data.put("levelWasLocked", wasLevelLocked);
+            sendAction(NetworkActionType.REVIVE, new Json().toJson(data), afterJson);
+        } catch (RuntimeException error) {
+            requestResync(getLastSequence());
+        }
+    }
+
+    private void clearPendingUnblessedAnkhRevival() {
+        pendingUnblessedAnkhBeforeHeroStateJson = null;
+        pendingUnblessedAnkhBeforeBuffsJson = null;
+        pendingUnblessedAnkhDepth = -1;
+        pendingUnblessedAnkhBranch = -1;
+        pendingUnblessedAnkhWasLevelLocked = false;
     }
 
     public String getSessionToken() {

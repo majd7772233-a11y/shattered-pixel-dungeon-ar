@@ -37,6 +37,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.artifacts.SkeletonKey;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Document;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.Chasm;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
@@ -606,6 +607,9 @@ public class InterlevelScene extends PixelScene {
 	}
 
 	private void afterLoading(){
+		if (mode == Mode.RESURRECT && MultiplayerManager.getInstance().isMultiplayerActive()) {
+			MultiplayerManager.getInstance().finishPendingUnblessedAnkhRevival();
+		}
 		if (btnContinue != null){
 			btnContinue.visible = true;
 			float alpha = btnContinue.alpha();

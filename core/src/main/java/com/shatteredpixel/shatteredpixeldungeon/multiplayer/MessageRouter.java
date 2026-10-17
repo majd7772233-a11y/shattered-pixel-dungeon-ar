@@ -7,6 +7,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
+import com.shatteredpixel.shatteredpixeldungeon.windows.WndResurrect;
 import com.watabou.noosa.Game;
 
 public final class MessageRouter {
@@ -770,7 +771,12 @@ public final class MessageRouter {
     private static void applyPlayerDeath(String playerId) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (playerId.equals(manager.getLocalPlayerId())) {
-            if (Dungeon.hero != null) Dungeon.hero.HP = 0;
+            if (Dungeon.hero != null) {
+                Dungeon.hero.HP = 0;
+                // Re-enter SPD's native death flow once so an unblessed Ankh opens its original
+                // item-selection window instead of leaving a permanently dead local Hero.
+                if (WndResurrect.instance == null) Dungeon.hero.die(null);
+            }
             return;
         }
         RemotePlayer remote = manager.getRemotePlayer(playerId);

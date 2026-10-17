@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -952,5 +952,37 @@ describe('Publisher-authoritative mob-to-player outcomes', () => {
     expect(hasValidBlessedAnkhConsumption(previous,rescued)).toBe(true);
     expect(hasValidBlessedAnkhConsumption(previous,{ ...rescued,hp:6 })).toBe(false);
     expect(hasValidBlessedAnkhConsumption(previous,{ ...rescued,ankhCount:1 })).toBe(false);
+  });
+});
+
+
+describe('Unblessed Ankh revival contract', () => {
+  const previous = () => ({
+    hp: 0, ht: 20, pos: 42, shielding: 0, cooldown: 0, buffCount: 0,
+    combatBundle: 'trusted-hero-class-equipment', inventoryBundle: 'inventory-with-unblessed-ankh',
+    ankhCount: 1, blessedAnkhCount: 0
+  });
+  const revived = (overrides: any = {}) => ({
+    hp: 20, ht: 20, pos: 57, shielding: 0, cooldown: 0, buffCount: 1,
+    combatBundle: 'trusted-hero-class-equipment', inventoryBundle: 'inventory-after-ankh-and-lost-backpack',
+    ankhCount: 0, blessedAnkhCount: 0, buff_0: 'native-LostInventory-bundle', buffCooldown_0: 1,
+    ...overrides
+  });
+
+  it('accepts consuming exactly one unblessed Ankh and restoring full native HP', () => {
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived())).toBe(true);
+  });
+
+  it('rejects a missing Ankh, blessed-Ankh substitution, and forged HP', () => {
+    expect(hasValidUnblessedAnkhConsumption({ ...previous(), ankhCount: 0 }, revived())).toBe(false);
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived({ ankhCount: 1 }))).toBe(false);
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived({ blessedAnkhCount: 1 }))).toBe(false);
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived({ hp: 19 }))).toBe(false);
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived({ inventoryBundle: previous().inventoryBundle }))).toBe(false);
+  });
+
+  it('requires a dead pre-state and unchanged maximum HP', () => {
+    expect(hasValidUnblessedAnkhConsumption({ ...previous(), hp: 1 }, revived())).toBe(false);
+    expect(hasValidUnblessedAnkhConsumption(previous(), revived({ ht: 21, hp: 21 }))).toBe(false);
   });
 });

@@ -370,6 +370,28 @@ export function hasValidBlessedAnkhConsumption(previousValue: unknown, reportedV
     && reported.inventoryBundle !== previous.inventoryBundle;
 }
 
+/** Validates exact consumption of one unblessed Ankh by the native RESURRECT flow. */
+export function hasValidUnblessedAnkhConsumption(previousValue: unknown, reportedValue: unknown): boolean {
+  let previous: any = previousValue, reported: any = reportedValue;
+  try {
+    if (typeof previous === "string") previous = JSON.parse(previous);
+    if (typeof reported === "string") reported = JSON.parse(reported);
+  } catch (_) { return false; }
+  if (!previous || typeof previous !== "object" || !reported || typeof reported !== "object") return false;
+  return Number.isInteger(previous.hp) && previous.hp === 0
+    && Number.isInteger(previous.ht) && previous.ht > 0
+    && Number.isInteger(previous.ankhCount) && Number.isInteger(previous.blessedAnkhCount)
+    && previous.ankhCount - previous.blessedAnkhCount > 0
+    && Number.isInteger(reported.ankhCount) && reported.ankhCount === previous.ankhCount - 1
+    && Number.isInteger(reported.blessedAnkhCount)
+    && reported.blessedAnkhCount === previous.blessedAnkhCount
+    && Number.isInteger(reported.ht) && reported.ht === previous.ht
+    && Number.isInteger(reported.hp) && reported.hp === reported.ht && reported.hp > 0
+    && typeof previous.inventoryBundle === "string" && previous.inventoryBundle.length > 0
+    && typeof reported.inventoryBundle === "string" && reported.inventoryBundle.length > 0
+    && reported.inventoryBundle !== previous.inventoryBundle;
+}
+
 export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, authoritativeValue: unknown): boolean {
   let reported: any = reportedValue, authoritative: any = authoritativeValue;
   try {
@@ -1904,47 +1926,95 @@ export class MatchRoom {
                 ? JSON.parse(payload.heroStateJson) : null;
             } catch (_) { previousHeroState = null; reportedHeroState = null; }
             const hp = Number(data.targetHp), ht = Number(data.targetHt), pos = Number(data.targetPosAfter);
+            const hpBefore = Number(data.targetHpBefore), htBefore = Number(data.targetHtBefore);
+            const posBefore = Number(data.targetPosBefore);
             const shieldBefore = Number(data.targetShieldBefore), shieldAfter = Number(data.targetShieldAfter);
             const targetBuffs = data.targetBuffs;
-            const mergedJson = mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
-              { hp, ht, pos, shielding: shieldAfter }, targetBuffs);
-            const validRevival = !!playerRow && String(playerRow.state) === "ALIVE"
-              && Number(data.targetHpBefore) === Number(playerRow.hp)
-              && Number(data.targetHtBefore) === Number(playerRow.ht) && Number(data.targetPosBefore) === Number(playerRow.pos)
-              && hp > 0 && Number.isInteger(hp) && Number.isInteger(ht) && ht === Number(playerRow.ht)
-              && hp === Math.floor(ht / 4) && pos === Number(playerRow.pos)
+            const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
+            const levelSize = Number(levelRow?.width || 0) * Number(levelRow?.height || 0);
+            const levelSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+              `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try {
+              levelSnapshot = levelSnapshotRow && typeof levelSnapshotRow.value === "string"
+                ? JSON.parse(String(levelSnapshotRow.value)) : null;
+            } catch (_) { levelSnapshot = null; }
+
+            const commonStateValid = !!playerRow && previousHeroState != null && reportedHeroState != null
+              && Number(data.combatDepth) === this.currentDepth
+              && Number.isInteger(hp) && hp > 0 && Number.isInteger(ht) && ht > 0
+              && Number.isInteger(pos) && pos >= 0 && pos < levelSize
               && Number.isInteger(shieldBefore) && shieldBefore >= 0 && shieldBefore <= 100000
               && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
-              && previousHeroState != null && Number(previousHeroState.hp) === Number(playerRow.hp)
-              && Number(previousHeroState.ht) === Number(playerRow.ht) && Number(previousHeroState.pos) === Number(playerRow.pos)
+              && Number.isInteger(hpBefore) && Number.isInteger(htBefore) && Number.isInteger(posBefore)
+              && htBefore === Number(playerRow.ht) && posBefore === Number(playerRow.pos)
+              && Number(previousHeroState.ht) === Number(playerRow.ht)
+              && Number(previousHeroState.pos) === Number(playerRow.pos)
               && Number(previousHeroState.shielding) === shieldBefore
               && hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, previousHeroState)
               && isValidNativeCombatBuffs(targetBuffs)
-              && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shieldAfter })
+              && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shieldAfter });
+
+            const blessedRevival = commonStateValid && String(playerRow.state) === "ALIVE"
+              && hpBefore === Number(playerRow.hp) && Number(previousHeroState.hp) === Number(playerRow.hp)
+              && hp === Math.floor(ht / 4) && pos === Number(playerRow.pos)
               && hasValidBlessedAnkhConsumption(previousHeroRow?.value, payload.heroStateJson)
               && Number(data.ankhCountBefore) === Number(previousHeroState.ankhCount)
               && Number(data.ankhCountAfter) === Number(reportedHeroState?.ankhCount)
               && Number(data.blessedAnkhCountBefore) === Number(previousHeroState.blessedAnkhCount)
+              && Number(data.blessedAnkhCountAfter) === Number(reportedHeroState?.blessedAnkhCount);
+
+            const unblessedRevival = data.revivalKind === "UNBLESSED_ANKH"
+              && data.levelWasLocked !== true
+              && commonStateValid && String(playerRow.state) === "DEAD"
+              && Number(playerRow.hp) === 0 && Number(previousHeroState.hp) === 0 && hpBefore === 0
+              && hp === ht && Number(data.ankhCountBefore) === Number(previousHeroState.ankhCount)
+              && Number(data.ankhCountAfter) === Number(reportedHeroState?.ankhCount)
+              && Number(data.blessedAnkhCountBefore) === Number(previousHeroState.blessedAnkhCount)
               && Number(data.blessedAnkhCountAfter) === Number(reportedHeroState?.blessedAnkhCount)
-              && mergedJson != null;
+              && hasValidUnblessedAnkhConsumption(previousHeroRow?.value, payload.heroStateJson)
+              && this.isValidCombatTargetPosition(pos, this.currentDepth)
+              && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)
+              && levelSnapshot != null && isValidNativeLootSnapshot(
+                data.heaps, levelSnapshot.heaps, posBefore, levelSize
+              );
+
+            const mergedJson = (blessedRevival || unblessedRevival)
+              ? mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
+                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false)
+              : null;
+            const validRevival = (blessedRevival || unblessedRevival) && mergedJson != null;
             if (validRevival) {
               const merged: any = JSON.parse(mergedJson as string);
               merged.inventoryBundle = reportedHeroState.inventoryBundle;
               merged.ankhCount = reportedHeroState.ankhCount;
               merged.blessedAnkhCount = reportedHeroState.blessedAnkhCount;
+              merged.cooldown = reportedHeroState.cooldown;
               const storedHeroState = JSON.stringify(merged);
               this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = 'ALIVE' WHERE player_id = ?`,
                 hp, ht, pos, session.playerId);
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `heroState:${session.playerId}`, storedHeroState);
+              if (unblessedRevival) {
+                levelSnapshot.heaps = data.heaps;
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                  `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
+                this.sql.exec(`DELETE FROM claimed_items WHERE depth = ? AND item_pos = ?`,
+                  this.currentDepth, posBefore);
+              }
               eventType = "PLAYER_REVIVED";
-              actionResultPayload = { playerId: session.playerId, hp, ht, pos, shielding: shieldAfter,
-                targetBuffs, heroStateJson: storedHeroState, ankhCount: reportedHeroState.ankhCount,
-                blessedAnkhCount: reportedHeroState.blessedAnkhCount };
+              actionResultPayload = {
+                playerId: session.playerId, hp, ht, pos, shielding: shieldAfter,
+                targetBuffs, heroStateJson: storedHeroState,
+                ankhCount: reportedHeroState.ankhCount,
+                blessedAnkhCount: reportedHeroState.blessedAnkhCount,
+                revivalKind: unblessedRevival ? "UNBLESSED_ANKH" : "BLESSED_ANKH",
+                ...(unblessedRevival ? { heaps: data.heaps } : {})
+              };
               actionValid = true;
               actionCost = 0;
-            }
           } else if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {

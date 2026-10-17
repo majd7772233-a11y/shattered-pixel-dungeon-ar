@@ -1112,7 +1112,7 @@
     },
     "NativeBlessedAnkhRevivalPayload": {
       "type": "object",
-      "description": "Native blessed-Ankh revival produced by Hero.die; server requires a trusted prior blessed Ankh, exact one-item consumption, unchanged max HP/position, and native quarter-health post-state.",
+      "description": "Native blessed-Ankh revival produced by Hero.die; server requires a trusted prior blessed Ankh, exact one-item consumption, unchanged max HP/position, and native quarter-health post-state. The interactive unblessed-Ankh branch is specified separately by NativeUnblessedAnkhRevivalPayload.",
       "required": [
         "targetHpBefore",
         "targetHtBefore",
@@ -1409,6 +1409,112 @@
           }
         }
       ]
+    },
+    "NativeUnblessedAnkhRevivalPayload": {
+      "type": "object",
+      "description": "Native RESURRECT transition after choosing an unblessed Ankh. The server accepts it only from the dead player's own session, with the exact stored pre-death state, one unblessed Ankh consumed, unchanged blessed-Ankh count, restored native full HP, a legal spawn cell, and unchanged heaps apart from the native LostBackpack drop.",
+      "required": [
+        "revivalKind",
+        "combatDepth",
+        "targetHpBefore",
+        "targetHtBefore",
+        "targetHp",
+        "targetHt",
+        "targetPosBefore",
+        "targetPosAfter",
+        "targetShieldBefore",
+        "targetShieldAfter",
+        "targetBuffsBefore",
+        "targetBuffs",
+        "ankhCountBefore",
+        "ankhCountAfter",
+        "blessedAnkhCountBefore",
+        "blessedAnkhCountAfter",
+        "heaps",
+        "heroStateJson"
+      ],
+      "properties": {
+        "revivalKind": {
+          "type": "string",
+          "const": "UNBLESSED_ANKH"
+        },
+        "combatDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "targetHpBefore": {
+          "type": "integer",
+          "const": 0
+        },
+        "targetHtBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetHp": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Must equal targetHt, matching native Hero.resurrect()."
+        },
+        "targetHt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "targetPosBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetPosAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targetShieldBefore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetShieldAfter": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "targetBuffsBefore": {
+          "type": "string",
+          "maxLength": 100000
+        },
+        "targetBuffs": {
+          "type": "string",
+          "maxLength": 200000
+        },
+        "ankhCountBefore": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ankhCountAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blessedAnkhCountBefore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blessedAnkhCountAfter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "heaps": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "object"
+          }
+        },
+        "heroStateJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      }
     }
   }
 }
