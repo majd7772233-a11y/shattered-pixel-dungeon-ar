@@ -604,9 +604,10 @@ public class Hero extends Char {
 			attackerStateBefore = SPDLevelSnapshot.currentHeroStateJson(this);
 			targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 			targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
-			if (enemy instanceof Mob) {
-				secondaryMobStateBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture((Mob) enemy);
-			}
+			// Secondary procs (life-link, thorns and similar native effects) can touch any
+			// mob, even when the direct target is a remote hero. Capture the whole shared mob set.
+			secondaryMobStateBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.capture(
+					enemy instanceof Mob ? (Mob) enemy : null);
 		}
 		int attackerPosBefore = pos;
 		boolean previousNativeAttackInProgress = nativeAttackInProgress;
@@ -617,8 +618,9 @@ public class Hero extends Char {
 		} finally {
 			nativeAttackInProgress = previousNativeAttackInProgress;
 		}
-		String secondaryMobDeltas = shouldPublish && enemy instanceof Mob
-				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(secondaryMobStateBefore, (Mob) enemy)
+		String secondaryMobDeltas = shouldPublish
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(
+						secondaryMobStateBefore, enemy instanceof Mob ? (Mob) enemy : null)
 				: "{\"complete\":true,\"deltas\":[]}";
 		int targetShieldAfter = shouldPublish && enemy != null ? enemy.shielding() : 0;
 		// Multiplayer replication carries the outcome produced by SPD's real combat pipeline.

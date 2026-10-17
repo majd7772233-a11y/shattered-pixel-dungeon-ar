@@ -1390,6 +1390,28 @@ export class MatchRoom {
             // Persist its post-attack state (cooldowns, procs, inventory and reactive damage) so
             // the attacker cannot keep its separate optimistic RNG result.
             const mergedAttackerState = this.reconcileCombatAttackerState(pending, payload.heroStateJson);
+            const levelPublisherRow = this.sql.exec(
+              "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
+            const secondaryMobAuthority = String(levelPublisherRow?.value || "") === session.playerId;
+            const combatLevelRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+              `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let combatLevel: any = null;
+            try {
+              combatLevel = combatLevelRow && typeof combatLevelRow.value === "string"
+                ? JSON.parse(String(combatLevelRow.value)) : null;
+            } catch (_) { combatLevel = null; }
+            // The authority owner is not necessarily the shared-level publisher. Validate the
+            // complete secondary result in either case; only the publisher may commit shared mobs.
+            const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(
+              data.secondaryMobDeltas, combatLevel?.mobs, levelSize, width, true);
+            const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
+              .filter((delta: any) => Number(delta.hpAfter) === 0)
+              .map((delta: any) => Number(delta.posAfter));
+            const secondaryLootValid = secondaryMobPayload != null
+              && (secondaryDeathPositions.length === 0
+                ? secondaryMobPayload.heaps === undefined
+                : isValidNativeLootSnapshot(secondaryMobPayload.heaps, combatLevel?.heaps,
+                    secondaryDeathPositions, levelSize));
             const authorityValid = !!pending && pending.targetType === "PLAYER"
               && String(pending.requestId) === String(data.combatRequestId)
               && Number.isFinite(Number(pending.createdAt)) && Date.now() - Number(pending.createdAt) <= 15000
@@ -1418,7 +1440,8 @@ export class MatchRoom {
               && (ranged ? this.hasLineOfSight(attackerPos, defenderPos, this.currentDepth) : this.isMeleeAdjacent(attackerPos, defenderPos, this.currentDepth))
               && (posAfter === posBefore || (this.isValidCombatTargetPosition(posAfter, this.currentDepth)
                 && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
-                  Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2));
+                  Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2))
+              && secondaryLootValid;
             if (authorityValid) {
               const newStatus = hpAfter > 0 ? "ALIVE"
                 : this.gameMode === "DEATHMATCH" ? "ALIVE"
@@ -1443,6 +1466,43 @@ export class MatchRoom {
               if (String(attackerRow[0].state) === "ALIVE" && (attackerStatus === "DEAD" || attackerStatus === "SPECTATOR")) {
                 this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", attackerId);
               }
+              // A PvP combat may trigger secondary mob effects (for example LifeLink).
+              // Commit those shared-world mutations only if the defender is the designated
+              // level publisher; otherwise retain server-owned mob state and force all peers
+              // to resynchronize to the publisher's version.
+              if (secondaryMobAuthority && secondaryMobPayload.deltas.length > 0) {
+                for (const delta of secondaryMobPayload.deltas) {
+                  const mobIndex = (combatLevel.mobs as any[]).findIndex(
+                    (mob: any) => String(mob?.entityId || "") === delta.entityId);
+                  if (mobIndex < 0) throw new Error("Secondary PvP combat mob missing from snapshot");
+                  const savedSecondary = combatLevel.mobs[mobIndex];
+                  const secondaryMobId = Number(savedSecondary.mobId);
+                  savedSecondary.hp = Number(delta.hpAfter);
+                  savedSecondary.ht = Number(delta.htAfter);
+                  savedSecondary.pos = Number(delta.posAfter);
+                  savedSecondary.shielding = Number(delta.shieldAfter);
+                  savedSecondary.buffs = JSON.parse(String(delta.buffsAfter));
+                  savedSecondary.serializedBundle = String(delta.serializedBundleAfter);
+                  this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?",
+                    Number(delta.hpAfter), Number(delta.posAfter), secondaryMobId, this.currentDepth);
+                  if (Number(delta.hpAfter) <= 0) {
+                    combatLevel.mobs.splice(mobIndex, 1);
+                    this.sql.exec("DELETE FROM mobs WHERE mob_id = ? AND depth = ?",
+                      secondaryMobId, this.currentDepth);
+                  }
+                }
+                if (secondaryDeathPositions.length > 0) {
+                  combatLevel.heaps = secondaryMobPayload.heaps;
+                }
+                this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                  `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
+                if (secondaryDeathPositions.length > 0) {
+                  for (const heap of combatLevel.heaps) {
+                    this.sql.exec("DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?",
+                      Number(heap.pos), this.currentDepth);
+                  }
+                }
+              }
               this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
               actionResultPayload = {
@@ -1453,7 +1513,10 @@ export class MatchRoom {
                 targetHeroStateJson: mergedState, targetState: newStatus,
                 attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
                 damage, hit: data.engineHit === true, attackKind: data.attackKind,
-                engineDistance: distance, engineActionCost: nativeCost, engineResolved: true
+                engineDistance: distance, engineActionCost: nativeCost,
+                secondaryMobDeltas: secondaryMobPayload,
+                secondaryMobResyncRequired: secondaryMobPayload.deltas.length > 0,
+                engineResolved: true
               };
               actionValid = true; actionCost = nativeCost;
             }

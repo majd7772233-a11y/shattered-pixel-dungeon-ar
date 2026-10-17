@@ -614,18 +614,25 @@ public final class MessageRouter {
                     } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
                         applyMobEvent(type, action);
                     }
-                    if ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)) {
-                        JsonValue secondary = action.get("secondaryMobDeltas");
-                        JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
-                        JsonValue nativeMobBundle = action.get("targetMobBundleAfter");
-                        if ((secondaryDeltas != null && secondaryDeltas.isArray() && secondaryDeltas.size > 0)
-                                || (nativeMobBundle != null && nativeMobBundle.isString()
-                                    && !nativeMobBundle.asString().isEmpty())) {
-                            // Combat can alter native AI state, alerting, cooldowns and proc state
-                            // beyond the HP fields. Reconcile the authoritative full snapshot
-                            // rather than applying a partial replica of the Java combat result.
-                            MultiplayerManager.getInstance().requestResync(seq);
-                        }
+                    JsonValue secondary = action.get("secondaryMobDeltas");
+                    if (secondary != null && secondary.isString()) {
+                        try { secondary = new JsonReader().parse(secondary.asString()); }
+                        catch (RuntimeException malformedDelta) { secondary = null; }
+                    }
+                    JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
+                    JsonValue nativeMobBundle = action.get("targetMobBundleAfter");
+                    JsonValue secondaryResync = action.get("secondaryMobResyncRequired");
+                    boolean secondaryResyncRequired = secondaryResync != null && secondaryResync.asBoolean();
+                    boolean hasSecondaryMobChanges = secondaryDeltas != null
+                            && secondaryDeltas.isArray() && secondaryDeltas.size > 0;
+                    if (secondaryResyncRequired || hasSecondaryMobChanges
+                            || ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)
+                                && nativeMobBundle != null && nativeMobBundle.isString()
+                                && !nativeMobBundle.asString().isEmpty())) {
+                        // Apply direct mob changes only from the shared-level owner. Secondary
+                        // effects from another player's PvP simulation are not shared authority;
+                        // refresh the exact server-committed state instead of partially replaying.
+                        MultiplayerManager.getInstance().requestResync(seq);
                     }
                     if ("PLAYER_DAMAGED".equals(type)
                             && "MOB".equals(stringValue(action.get("sourceType"), ""))
