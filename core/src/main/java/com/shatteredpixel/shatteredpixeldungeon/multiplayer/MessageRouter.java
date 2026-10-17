@@ -117,7 +117,7 @@ public final class MessageRouter {
                     (com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero) remote.heroInstance;
             WorldSnapshot.restoreRemoteHeroState(remoteHero, attackerStateBefore);
             remoteHero.pos = attackerPos;
-            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon chosenWeapon = null;
+            com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon chosenWeapon = null;
             if ("THROWN".equals(attackWeaponMode) || "ABILITY".equals(attackWeaponMode)) {
                 chosenWeapon = SPDLevelSnapshot.findOwnedAttackWeapon(remoteHero, attackWeaponBundle);
                 if (chosenWeapon == null || ("THROWN".equals(attackWeaponMode)
@@ -129,7 +129,7 @@ public final class MessageRouter {
                 manager.requestResync(manager.getLastSequence());
                 return;
             } else if ("EQUIPPED".equals(attackWeaponMode)) {
-                com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon equipped =
+                com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon equipped =
                         remoteHero.belongings == null ? null : remoteHero.belongings.weapon();
                 String equippedBundle = equipped == null ? "" : SPDLevelSnapshot.currentItemBundle(equipped);
                 if (!equippedBundle.equals(attackWeaponBundle)) {
@@ -141,8 +141,8 @@ public final class MessageRouter {
                 manager.requestResync(manager.getLastSequence());
                 return;
             }
-            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon previousThrown = remoteHero.belongings.thrownWeapon;
-            com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon previousAbility = remoteHero.belongings.abilityWeapon;
+            com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon previousThrown = remoteHero.belongings.thrownWeapon;
+            com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon previousAbility = remoteHero.belongings.abilityWeapon;
             manager.beginAuthorityCombat(requestId);
             try {
                 remoteHero.belongings.thrownWeapon = null;
