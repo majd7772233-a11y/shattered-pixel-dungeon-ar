@@ -327,13 +327,13 @@ public final class SPDLevelSnapshot {
     }
 
     /** Resolves only a weapon already present in the attacker's trusted restored belongings. */
-    public static com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon findOwnedAttackWeapon(
+    public static com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon findOwnedAttackWeapon(
             com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero, String serializedBundle) {
         if (hero == null || hero.belongings == null || serializedBundle == null || serializedBundle.isEmpty()) return null;
         for (Item item : hero.belongings.getAllItems(Item.class)) {
-            if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon
+            if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon
                     && serializedBundle.equals(currentItemBundle(item))) {
-                return (com.shatteredpixel.shatteredpixeldungeon.items.weapon.KindOfWeapon) item;
+                return (com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon) item;
             }
         }
         return null;
