@@ -136,13 +136,33 @@ public final class MessageRouter {
             // damage. Replace the attacker's optimistic state with that accepted native result.
             String eventAttackerId = stringValue(action.get("attackerId"), null);
             String attackerStateJson = stringValue(action.get("attackerStateJson"), "");
-            if (eventAttackerId != null
-                    && eventAttackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())
-                    && Dungeon.hero != null && !attackerStateJson.isEmpty() && !"null".equals(attackerStateJson)) {
-                int oldHeroPos = Dungeon.hero.pos;
-                WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerStateJson);
-                if (Dungeon.hero.sprite != null && oldHeroPos != Dungeon.hero.pos) {
-                    Dungeon.hero.sprite.move(oldHeroPos, Dungeon.hero.pos);
+            if (eventAttackerId != null && !attackerStateJson.isEmpty() && !"null".equals(attackerStateJson)) {
+                MultiplayerManager manager = MultiplayerManager.getInstance();
+                if (eventAttackerId.equals(manager.getLocalPlayerId()) && Dungeon.hero != null) {
+                    int oldHeroPos = Dungeon.hero.pos;
+                    WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerStateJson);
+                    if (Dungeon.hero.sprite != null && oldHeroPos != Dungeon.hero.pos) {
+                        Dungeon.hero.sprite.move(oldHeroPos, Dungeon.hero.pos);
+                    }
+                } else {
+                    RemotePlayer remoteAttacker = manager.getRemotePlayer(eventAttackerId);
+                    if (remoteAttacker == null) {
+                        remoteAttacker = new RemotePlayer(eventAttackerId, "Player", "WARRIOR");
+                        RemotePlayerActionReceiver.setupRemoteHeroInstance(remoteAttacker);
+                        manager.addRemotePlayer(remoteAttacker);
+                    }
+                    if (remoteAttacker.heroInstance != null) {
+                        int oldHeroPos = remoteAttacker.heroInstance.pos;
+                        WorldSnapshot.restoreRemoteHeroState(remoteAttacker.heroInstance, attackerStateJson);
+                        remoteAttacker.hp = remoteAttacker.heroInstance.HP;
+                        remoteAttacker.ht = remoteAttacker.heroInstance.HT;
+                        remoteAttacker.pos = remoteAttacker.heroInstance.pos;
+                        if (remoteAttacker.heroInstance.sprite != null && oldHeroPos != remoteAttacker.heroInstance.pos) {
+                            remoteAttacker.heroInstance.sprite.move(oldHeroPos, remoteAttacker.heroInstance.pos);
+                        }
+                    } else {
+                        manager.requestResync(message.sequence);
+                    }
                 }
                 String attackerStatus = stringValue(action.get("attackerState"), "ALIVE");
                 if ("DEAD".equals(attackerStatus) || "SPECTATOR".equals(attackerStatus)) {
