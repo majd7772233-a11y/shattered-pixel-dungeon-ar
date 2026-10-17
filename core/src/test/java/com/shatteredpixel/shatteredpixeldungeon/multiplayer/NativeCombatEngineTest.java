@@ -2,6 +2,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import org.junit.Assert;
@@ -59,6 +60,7 @@ public class NativeCombatEngineTest {
             target.HP = target.HT = 100;
             Dungeon.level = level;
             Dungeon.hero = new com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero();
+            Talent.initClassTalents(Dungeon.hero);
 
             int hpBefore = target.HP;
             boolean hit = attacker.attack(target);
