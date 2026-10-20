@@ -726,7 +726,7 @@ public abstract class Mob extends Char {
 		if (payloadJson == null || target == null) return;
 		try {
 			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json wireJson = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatJson.strictWriter();
 			java.util.Map<String, Object> next = json.fromJson(java.util.HashMap.class, payloadJson);
 			if (pendingMultiplayerHeroDamageJson != null) {
 				java.util.Map<String, Object> previous = json.fromJson(java.util.HashMap.class, pendingMultiplayerHeroDamageJson);
@@ -754,7 +754,7 @@ public abstract class Mob extends Char {
 		pendingMultiplayerDamageTarget = null;
 		try {
 			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json wireJson = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatJson.strictWriter();
 			java.util.Map<String, Object> data = json.fromJson(java.util.HashMap.class, encoded);
 			java.util.Map<String, Object> targetState = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
@@ -819,7 +819,7 @@ public abstract class Mob extends Char {
 		}
 		try {
 			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json wireJson = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatJson.strictWriter();
 			String buffs = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson((Hero) target);
 			java.util.Map<String, Object> state = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
@@ -876,37 +876,6 @@ public abstract class Mob extends Char {
 	 * Default MINIMAL output plus type names turns Map entries into non-JSON objects
 	 * such as {damage:{class:java.lang.Integer,value:2}}, which the Worker cannot parse.
 	 */
-	private static com.badlogic.gdx.utils.Json multiplayerWireJson() {
-		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json(
-				com.badlogic.gdx.utils.JsonWriter.OutputType.json);
-		json.setTypeName(null);
-		// LibGDX's default Map writer treats heterogeneous values as unknown Objects.
-		// That emits typed wrapper objects (or recurses forever when typeName is null).
-		// Give every map entry its real runtime type instead, preserving JSON primitives.
-		json.setSerializer(java.util.HashMap.class,
-				new com.badlogic.gdx.utils.Json.Serializer<java.util.HashMap>() {
-			@Override
-			public void write(com.badlogic.gdx.utils.Json json, java.util.HashMap object, Class knownType) {
-				json.writeObjectStart();
-				for (Object rawEntry : object.entrySet()) {
-					java.util.Map.Entry entry = (java.util.Map.Entry) rawEntry;
-					String key = String.valueOf(entry.getKey());
-					Object value = entry.getValue();
-					if (value == null) json.writeValue(key, (Object) null);
-					else json.writeValue(key, value, value.getClass());
-				}
-				json.writeObjectEnd();
-			}
-
-			@Override
-			public java.util.HashMap read(com.badlogic.gdx.utils.Json json,
-					com.badlogic.gdx.utils.JsonValue jsonData, Class type) {
-				throw new UnsupportedOperationException("Native combat wire serializer is write-only");
-			}
-		});
-		return json;
-	}
-
 	private static int number(Object value, int fallback) {
 		if (value instanceof Number) return ((Number) value).intValue();
 		try { return Integer.parseInt(String.valueOf(value)); } catch (RuntimeException ignored) { return fallback; }
@@ -1089,7 +1058,7 @@ public abstract class Mob extends Char {
 				manager.requestResync(manager.getLastSequence());
 				return;
 			}
-			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json json = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatJson.strictWriter();
 			String outcome = "{\"combatSchemaVersion\":1"
 					+ ",\"combatDepth\":" + Dungeon.depth
 					+ ",\"entityId\":" + json.toJson(serverEntityId)
