@@ -893,7 +893,7 @@ public abstract class Mob extends Char {
 					java.util.Map.Entry entry = (java.util.Map.Entry) rawEntry;
 					String key = String.valueOf(entry.getKey());
 					Object value = entry.getValue();
-					if (value == null) json.writeValue(key, null);
+					if (value == null) json.writeValue(key, null, Object.class);
 					else json.writeValue(key, value, value.getClass());
 				}
 				json.writeObjectEnd();
