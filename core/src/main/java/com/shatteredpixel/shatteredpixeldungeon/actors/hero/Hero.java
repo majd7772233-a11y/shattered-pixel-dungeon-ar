@@ -2529,10 +2529,15 @@ public class Hero extends Char {
 				PotionOfHealing.cure(this);
 				Buff.prolong(this, Invulnerability.class, Invulnerability.DURATION);
 
-				SpellSprite.show(this, SpellSprite.ANKH);
-				GameScene.flash(0x80FFFF40);
-				Sample.INSTANCE.play(Assets.Sounds.TELEPORT);
-				GLog.w(Messages.get(this, "revive"));
+				// Native combat tests and reconciliation can run without a rendered sprite.
+				// Keep presentation when available, but never let a missing sprite abort the
+				// actual Ankh consumption, HP restore, or multiplayer result publication.
+				if (sprite != null) {
+					SpellSprite.show(this, SpellSprite.ANKH);
+					GameScene.flash(0x80FFFF40);
+					Sample.INSTANCE.play(Assets.Sounds.TELEPORT);
+					GLog.w(Messages.get(this, "revive"));
+				}
 				Statistics.ankhsUsed++;
 				Catalog.countUse(Ankh.class);
 
