@@ -1962,7 +1962,8 @@ public class Hero extends Char {
 		}
 
 		if ((this == Dungeon.hero || this instanceof RemoteHero) && src instanceof Mob
-				&& activeManager.isMultiplayerActive() && activeManager.isLevelPublisher()) {
+				&& activeManager.isMultiplayerActive() && activeManager.isLevelPublisher()
+				&& !isNativeAttackInProgress()) {
 			String targetPlayerId = this == Dungeon.hero ? activeManager.getLocalPlayerId() : null;
 			if (this instanceof RemoteHero) {
 				for (com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer candidate : activeManager.getRemotePlayers().values()) {
