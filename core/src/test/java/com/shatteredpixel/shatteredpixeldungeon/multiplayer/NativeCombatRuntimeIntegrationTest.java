@@ -159,6 +159,112 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(20, hero.HT);
     }
 
+
+    @Test
+    public void publisherMobAttackEmitsFullNativeMobToPlayerOutcome() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-publisher-mob-hit", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"native-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue("The SESSION handshake must establish the mob combat publisher", manager.isLevelPublisher());
+
+        Rat attacker = addRat(hero.pos + 1, 8);
+        attacker.invisible = 1;
+        String stableSourceId = "native-source-mob-0001";
+        manager.registerServerEntityId(attacker.id(), stableSourceId);
+        int hpBefore = hero.HP;
+
+        boolean hit = runNativeAttack(() -> attacker.attack(hero));
+        Assert.assertTrue("The native invisible mob attack must hit", hit);
+        Assert.assertTrue("The original SPD Hero.damage pipeline must apply the hit", hero.HP < hpBefore);
+        Assert.assertTrue("The mob must flush its queued native outcome after the simulated turn",
+                attacker.flushMultiplayerHeroDamageReport(attacker.attackDelay()));
+
+        NetworkMessage report = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
+                        && message.payloadJson.contains("\"sourceType\":\"MOB\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The publisher must submit a native mob-to-player outcome", report);
+        JsonValue envelope = new JsonReader().parse(report.payloadJson);
+        JsonValue data = envelope.get("data");
+        Assert.assertNotNull(data);
+        Assert.assertEquals(stableSourceId, data.getString("sourceEntityId"));
+        Assert.assertEquals(hpBefore, data.getInt("targetHpBefore"));
+        Assert.assertEquals(hero.HP, data.getInt("targetHp"));
+        Assert.assertEquals(20, data.getInt("targetHt"));
+        Assert.assertEquals(8, data.getInt("sourceMobHpBefore"));
+        Assert.assertEquals(8, data.getInt("sourceMobHpAfter"));
+        Assert.assertTrue(data.getBoolean("engineDamageResult"));
+        Assert.assertTrue(data.getFloat("sourceActionCost") > 0f);
+        Assert.assertTrue(data.getString("sourceMobBundleAfter").length() > 0);
+        Assert.assertTrue(data.getString("targetBuffsBefore").length() > 0);
+    }
+
+    @Test
+    public void targetOwnerExecutesRealNativePvpAttackAndReturnsPendingAuthorityResult() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-native-pvp", "client-defender", transport);
+
+        hero.alignment = com.shatteredpixel.shatteredpixeldungeon.actors.Char.Alignment.ENEMY;
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero remoteHero =
+                new com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero();
+        remoteHero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(remoteHero);
+        remoteHero.pos = hero.pos + 1;
+        remoteHero.HP = remoteHero.HT = 20;
+        remoteHero.invisible = 1;
+        remoteHero.damageInterrupt = false;
+        Actor.add(remoteHero);
+
+        RemotePlayer remoteAttacker = new RemotePlayer("client-attacker", "Attacker", "WARRIOR");
+        remoteAttacker.heroInstance = remoteHero;
+        remoteAttacker.hp = remoteHero.HP;
+        remoteAttacker.ht = remoteHero.HT;
+        remoteAttacker.pos = remoteHero.pos;
+        manager.addRemotePlayer(remoteAttacker);
+
+        String requestId = "native-pvp-request-0001";
+        int defenderHpBefore = hero.HP;
+        manager.beginAuthorityCombat(requestId);
+        boolean hit;
+        try {
+            hit = runNativeAttack(() -> remoteHero.attack(hero));
+        } finally {
+            manager.endAuthorityCombat();
+        }
+
+        Assert.assertTrue("The defender must execute SPD's original native Hero.attack pipeline", hit);
+        Assert.assertTrue("The native PvP hit must damage the local defending Hero", hero.HP < defenderHpBefore);
+        NetworkMessage report = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && requestId.equals(message.requestId)
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The exact pending authority request must receive a native result", report);
+
+        JsonValue envelope = new JsonReader().parse(report.payloadJson);
+        JsonValue data = envelope.get("data");
+        Assert.assertNotNull(data);
+        Assert.assertEquals(requestId, data.getString("combatRequestId"));
+        Assert.assertEquals("PLAYER", data.getString("targetType"));
+        Assert.assertEquals("client-defender", data.getString("targetId"));
+        Assert.assertEquals(defenderHpBefore, data.getInt("targetHpBefore"));
+        Assert.assertEquals(hero.HP, data.getInt("targetHp"));
+        Assert.assertTrue(data.getBoolean("engineHit"));
+        Assert.assertTrue(data.getFloat("engineActionCost") > 0f);
+        Assert.assertTrue(data.getString("targetHeroStateBefore").length() > 0);
+        Assert.assertTrue(data.getString("targetHeroStateJson").length() > 0);
+        Assert.assertFalse("Authority mode must always be released", manager.isResolvingAuthorityCombat());
+    }
+
     @Test
     public void nativeSecondaryMobDeltaRetainsStableIdentityAndFullBundle() {
         Rat directTarget = addRat(hero.pos + 1, 100);
