@@ -725,7 +725,7 @@ public abstract class Mob extends Char {
 	public void queueMultiplayerHeroDamageReport(String payloadJson, Hero target) {
 		if (payloadJson == null || target == null) return;
 		try {
-			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
 			java.util.Map<String, Object> next = json.fromJson(java.util.HashMap.class, payloadJson);
 			if (pendingMultiplayerHeroDamageJson != null) {
 				java.util.Map<String, Object> previous = json.fromJson(java.util.HashMap.class, pendingMultiplayerHeroDamageJson);
@@ -752,7 +752,7 @@ public abstract class Mob extends Char {
 		pendingMultiplayerHeroDamageJson = null;
 		pendingMultiplayerDamageTarget = null;
 		try {
-			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
 			java.util.Map<String, Object> data = json.fromJson(java.util.HashMap.class, encoded);
 			java.util.Map<String, Object> targetState = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
@@ -817,7 +817,7 @@ public abstract class Mob extends Char {
 			return;
 		}
 		try {
-			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
 			String buffs = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson((Hero) target);
 			java.util.Map<String, Object> state = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
@@ -869,6 +869,18 @@ public abstract class Mob extends Char {
 		}
 	}
 	
+	/**
+	 * Use strict JSON and suppress LibGDX's runtime type tags for raw Map payloads.
+	 * Default MINIMAL output plus type names turns Map entries into non-JSON objects
+	 * such as {damage:{class:java.lang.Integer,value:2}}, which the Worker cannot parse.
+	 */
+	private static com.badlogic.gdx.utils.Json multiplayerWireJson() {
+		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+		json.setOutputType(com.badlogic.gdx.utils.JsonWriter.OutputType.json);
+		json.setTypeName(null);
+		return json;
+	}
+
 	private static int number(Object value, int fallback) {
 		if (value instanceof Number) return ((Number) value).intValue();
 		try { return Integer.parseInt(String.valueOf(value)); } catch (RuntimeException ignored) { return fallback; }
@@ -1051,7 +1063,7 @@ public abstract class Mob extends Char {
 				manager.requestResync(manager.getLastSequence());
 				return;
 			}
-			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
 			String outcome = "{\"combatSchemaVersion\":1"
 					+ ",\"combatDepth\":" + Dungeon.depth
 					+ ",\"entityId\":" + json.toJson(serverEntityId)
