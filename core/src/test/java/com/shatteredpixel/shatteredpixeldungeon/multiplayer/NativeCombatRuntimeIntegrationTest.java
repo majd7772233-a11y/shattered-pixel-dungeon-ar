@@ -9,6 +9,7 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
@@ -159,6 +160,66 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(20, hero.HT);
     }
 
+
+    @Test
+    public void nonPublisherDoesNotApplyPeriodicMobDamageOptimistically() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-non-publisher-periodic", "client-peer", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-peer\\",\\"sessionToken\\":\\"periodic-peer-token\\","
+                        + "\\"isLevelPublisher\\":false,\\"sequence\\":1,\\"seed\\":123456,\\"depth\\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertFalse(manager.isLevelPublisher());
+
+        Rat target = addRat(hero.pos + 1, 20);
+        int hpBefore = target.HP;
+        target.damage(4, new PeriodicDamageBuff());
+
+        Assert.assertEquals("Only the publisher may apply shared periodic mob HP changes", hpBefore, target.HP);
+        Assert.assertFalse("A non-publisher must not publish an untrusted periodic delta",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\"action\\":\\"SYNC_MOB_STATE\\"")));
+    }
+
+    @Test
+    public void publisherAppliesAndPublishesNativePeriodicMobDamage() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-publisher-periodic", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"periodic-publisher-token\\","
+                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1,\\"seed\\":123456,\\"depth\\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        Rat target = addRat(hero.pos + 1, 20);
+        manager.registerServerEntityId(target.id(), "periodic-mob-entity-0001");
+        int hpBefore = target.HP;
+        target.damage(4, new PeriodicDamageBuff());
+
+        Assert.assertTrue("The native publisher must apply the real periodic Mob.damage pipeline", target.HP < hpBefore);
+        NetworkMessage report = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\"action\\":\\"SYNC_MOB_STATE\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The publisher must persist the native periodic result", report);
+        JsonValue data = new JsonReader().parse(report.payloadJson).get("data");
+        Assert.assertEquals("periodic-mob-entity-0001", data.getString("entityId"));
+        Assert.assertEquals(hpBefore, data.getInt("hpBefore"));
+        Assert.assertEquals(target.HP, data.getInt("hpAfter"));
+        Assert.assertEquals(20, data.getInt("htAfter"));
+        Assert.assertEquals(target.pos, data.getInt("posAfter"));
+        Assert.assertTrue(data.getBoolean("engineDamageResult"));
+        Assert.assertTrue(data.getString("serializedBundleAfter").length() > 0);
+    }
+
+    private static final class PeriodicDamageBuff extends Buff {
+    }
 
     @Test
     public void publisherMobAttackEmitsFullNativeMobToPlayerOutcome() throws Exception {
