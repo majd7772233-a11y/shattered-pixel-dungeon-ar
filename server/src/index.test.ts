@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -512,7 +512,7 @@ describe('Native mob damage wire contract', () => {
     sourceMobHpBefore: 10, sourceMobHtBefore: 10, sourceMobShieldBefore: 0, sourceMobPosBefore: 10,
     sourceMobHpAfter: 8, sourceMobHtAfter: 10, sourceMobShieldAfter: 0, sourceMobPosAfter: 10, sourceMobDamage: 2,
     sourceMobBuffsBefore: '[]', sourceMobBuffs: '[]', sourceMobBundleAfter: 'native-mob-state-after',
-    targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4,
+    targetHpBefore: 12, targetHtBefore: 12, targetHp: 8, targetHt: 12, damage: 4, effectiveDamage: 4,
     targetPosBefore: 11, targetPosAfter: 11, targetShieldBefore: 0, targetShieldAfter: 0,
     engineDamageResult: true, targetBuffsBefore: '[]', targetBuffs: '[]'
   });
@@ -817,6 +817,28 @@ describe('Authoritative native hero pre-state', () => {
     ankhCount: 0, blessedAnkhCount: 0,
     buff_0: 'native-buff', buffCooldown_0: 2
   });
+  it('merges real native attacker retaliation and inventory changes only from a matching pre-state', () => {
+    const before = heroState();
+    const after = { ...before, hp: 16, shielding: 0, cooldown: 2, inventoryBundle: 'native-inventory-after-throw' };
+    const row = { hp: 20, ht: 20, pos: 12, state: 'ALIVE' };
+    const merged = mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before), JSON.stringify(after), row);
+    expect(merged).not.toBeNull();
+    const parsed = JSON.parse(String(merged));
+    expect(parsed.hp).toBe(16);
+    expect(parsed.shielding).toBe(0);
+    expect(parsed.cooldown).toBe(2);
+    expect(parsed.inventoryBundle).toBe('native-inventory-after-throw');
+
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify({ ...before, hp: 19 }),
+      JSON.stringify(after), row)).toBeNull();
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify({ ...after, pos: 13 }), row)).toBeNull();
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify({ ...after, hp: 21 }), row)).toBeNull();
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify(after), { ...row, state: 'DEAD' })).toBeNull();
+  });
+
   it('matches complete trusted hero state including equipment, shield, cooldown and native buffs', () => {
     const state = heroState();
     expect(hasMatchingNativeHeroStateSnapshot(state, state)).toBe(true);
