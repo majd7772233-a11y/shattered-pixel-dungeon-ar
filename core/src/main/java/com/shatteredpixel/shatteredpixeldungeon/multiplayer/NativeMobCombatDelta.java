@@ -6,7 +6,6 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,15 +30,15 @@ public final class NativeMobCombatDelta {
 
     public static final class Delta {
         public String entityId;
-        public int hpBefore;
-        public int htBefore;
-        public int posBefore;
-        public int shieldBefore;
+        public int hpBefore = -1;
+        public int htBefore = -1;
+        public int posBefore = -1;
+        public int shieldBefore = -1;
         public String buffsBefore;
-        public int hpAfter;
-        public int htAfter;
-        public int posAfter;
-        public int shieldAfter;
+        public int hpAfter = -1;
+        public int htAfter = -1;
+        public int posAfter = -1;
+        public int shieldAfter = -1;
         public String buffsAfter;
         public String serializedBundleAfter;
     }
@@ -47,7 +46,7 @@ public final class NativeMobCombatDelta {
     public static final class Payload {
         // Keep the prototype default false so libGDX JSON emits the authoritative true value.
         public boolean complete;
-        public List<Delta> deltas = new ArrayList<>();
+        public List<Delta> deltas;
         public String heaps;
     }
 
@@ -73,9 +72,10 @@ public final class NativeMobCombatDelta {
 
     public static String changedSince(Map<Integer, State> before, Mob excludedTarget) {
         Payload payload = new Payload();
-        // libGDX omits fields equal to their prototype default; explicitly set true so the
-        // wire payload always contains `complete: true` when all native side effects were captured.
+        // Use non-default sentinels/instances so libGDX writes the complete wire shape, including
+        // zero-valued HP/shield fields and an explicit empty delta list.
         payload.complete = true;
+        payload.deltas = new ArrayList<>();
         Map<Integer, State> after = capture(excludedTarget);
         for (Map.Entry<Integer, State> entry : before.entrySet()) {
             State oldState = entry.getValue();
@@ -136,37 +136,7 @@ public final class NativeMobCombatDelta {
             for (Delta delta : payload.deltas) if (delta.hpAfter <= 0) secondaryDeath = true;
             if (secondaryDeath) payload.heaps = SPDLevelSnapshot.currentHeapsJson();
         }
-        return new Json().toJson(toWirePayload(payload));
-    }
-
-    /**
-     * Serialize the wire shape explicitly. libGDX's reflection/prototype optimization omits
-     * primitive fields equal to their defaults (notably zero shield values), which the server
-     * must distinguish from missing/invalid fields. Omit heaps when no secondary death occurred.
-     */
-    private static Map<String, Object> toWirePayload(Payload payload) {
-        Map<String, Object> wire = new LinkedHashMap<>();
-        wire.put("complete", payload.complete);
-        List<Map<String, Object>> deltas = new ArrayList<>();
-        for (Delta delta : payload.deltas) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("entityId", delta.entityId);
-            row.put("hpBefore", delta.hpBefore);
-            row.put("htBefore", delta.htBefore);
-            row.put("posBefore", delta.posBefore);
-            row.put("shieldBefore", delta.shieldBefore);
-            row.put("buffsBefore", delta.buffsBefore);
-            row.put("hpAfter", delta.hpAfter);
-            row.put("htAfter", delta.htAfter);
-            row.put("posAfter", delta.posAfter);
-            row.put("shieldAfter", delta.shieldAfter);
-            row.put("buffsAfter", delta.buffsAfter);
-            row.put("serializedBundleAfter", delta.serializedBundleAfter);
-            deltas.add(row);
-        }
-        wire.put("deltas", deltas);
-        if (payload.heaps != null) wire.put("heaps", payload.heaps);
-        return wire;
+        return new Json().toJson(payload);
     }
 
     private static boolean sameCombatState(State a, State b) {
