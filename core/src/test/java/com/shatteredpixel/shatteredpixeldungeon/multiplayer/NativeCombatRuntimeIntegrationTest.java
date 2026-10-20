@@ -10,6 +10,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
@@ -137,6 +138,49 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void publisherAttackReplicatesNativeShieldOnlyHit() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-shield-only", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"shield-only-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        hero.invisible = 1;
+        DeterministicRat target = addDeterministicRat(hero.pos + 1, 100);
+        target.defenseSkill = 0;
+        manager.registerServerEntityId(target.id(), "native-shielded-mob-0001");
+        Barrier barrier = Buff.affect(target, Barrier.class);
+        Assert.assertNotNull("The target must receive its real native shield buff", barrier);
+        barrier.setShield(40);
+        int hpBefore = target.HP;
+        Assert.assertEquals(40, target.shielding());
+
+        boolean hit = runNativeAttack(() -> hero.attack(target));
+
+        Assert.assertTrue("The attack is a native hit even though the shield absorbs all HP damage", hit);
+        Assert.assertEquals("Shield-only damage must not be incorrectly subtracted from HP", hpBefore, target.HP);
+        Assert.assertEquals(100, target.HT);
+        Assert.assertTrue("The native damage pipeline must consume part of the Barrier", target.shielding() < 40);
+        NetworkMessage attack = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\"action\":\"ATTACK\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("A shield-only hit must still publish its native combat outcome", attack);
+        JsonValue data = new JsonReader().parse(attack.payloadJson).get("data");
+        Assert.assertTrue(data.getBoolean("engineHit"));
+        Assert.assertEquals(0, data.getInt("damage"));
+        Assert.assertEquals(hpBefore, data.getInt("targetHp"));
+        Assert.assertEquals(40, data.getInt("targetShieldBefore"));
+        Assert.assertEquals(target.shielding(), data.getInt("targetShieldAfter"));
+        Assert.assertNotEquals("[]", data.getString("targetBuffs"));
+    }
+
+    @Test
     public void originalNativeDefensiveRetaliationUsesTheRealHeroDamagePipeline() {
         hero.invisible = 1;
         RetaliatingRat target = addRetaliatingRat(hero.pos + 1, 100);
@@ -204,12 +248,7 @@ public class NativeCombatRuntimeIntegrationTest {
         ankh.bless();
         hero.belongings.backpack.items.add(ankh);
 
-        try {
-            hero.damage(100, new Object());
-        } catch (RuntimeException error) {
-            error.printStackTrace();
-            throw error;
-        }
+        hero.damage(100, new Object());
 
         Assert.assertEquals("A blessed Ankh must preserve the native quarter-health revival", 5, hero.HP);
         Assert.assertFalse("The native revival must consume exactly the blessed Ankh",
@@ -497,12 +536,7 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.beginAuthorityCombat(requestId);
         boolean hit;
         try {
-            try {
-                hit = runNativeAttack(() -> remoteHero.attack(defender));
-            } catch (RuntimeException error) {
-                error.printStackTrace();
-                throw error;
-            }
+            hit = runNativeAttack(() -> remoteHero.attack(defender));
         } finally {
             manager.endAuthorityCombat();
         }
@@ -529,6 +563,49 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(5, parsedAttacker.getInt("hp"));
         Assert.assertEquals(0, parsedAttacker.getInt("ankhCount"));
         Assert.assertFalse("Authority mode must always be released", manager.isResolvingAuthorityCombat());
+    }
+
+    @Test
+    public void publisherAttackCapturesNativeSecondaryMobDamageProc() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-native-secondary-proc", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"secondary-proc-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        hero.invisible = 1;
+        CollateralRat target = addMob(new CollateralRat(), hero.pos + 1, 100);
+        target.defenseSkill = 0;
+        Rat secondary = addRat(hero.pos + 2, 20);
+        target.secondary = secondary;
+        manager.registerServerEntityId(target.id(), "native-secondary-proc-target-0001");
+        manager.registerServerEntityId(secondary.id(), "native-secondary-proc-mob-0001");
+
+        boolean hit = runNativeAttack(() -> hero.attack(target));
+
+        Assert.assertTrue("The native primary attack must hit", hit);
+        Assert.assertEquals("The defender's native proc must damage the adjacent secondary mob", 17, secondary.HP);
+        NetworkMessage attack = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\"action\":\"ATTACK\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull(attack);
+        JsonValue data = new JsonReader().parse(attack.payloadJson).get("data");
+        JsonValue secondaryPayload = new JsonReader().parse(data.getString("secondaryMobDeltas"));
+        Assert.assertTrue("A fully identified native secondary mutation must not be marked incomplete",
+                secondaryPayload.getBoolean("complete"));
+        JsonValue deltas = secondaryPayload.get("deltas");
+        Assert.assertEquals(1, deltas.size);
+        Assert.assertEquals("native-secondary-proc-mob-0001", deltas.get(0).getString("entityId"));
+        Assert.assertEquals(20, deltas.get(0).getInt("hpBefore"));
+        Assert.assertEquals(17, deltas.get(0).getInt("hpAfter"));
+        Assert.assertTrue("The secondary delta must preserve the complete native mob bundle",
+                deltas.get(0).getString("serializedBundleAfter").length() > 0);
     }
 
     @Test
@@ -776,6 +853,31 @@ public class NativeCombatRuntimeIntegrationTest {
         public void die(Object cause) {
             deathCalls++;
             super.die(cause);
+        }
+    }
+
+    private static final class CollateralRat extends Rat {
+        Rat secondary;
+
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return 0;
+        }
+
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+
+        @Override
+        public int defenseProc(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy, int damage) {
+            int nativeDamage = super.defenseProc(enemy, damage);
+            if (damage > 0 && secondary != null && secondary.isAlive()) {
+                // Exercise a secondary native Char.damage proc during the primary attack,
+                // exactly when Hero.attack captures its shared-mob before/after state.
+                secondary.damage(3, this);
+            }
+            return nativeDamage;
         }
     }
 
