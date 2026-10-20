@@ -47,6 +47,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SoulMark;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
@@ -1093,6 +1094,20 @@ public abstract class Mob extends Char {
 	}
 	
 	
+	/**
+	 * Resolves reward ownership for this kill. During delegated native combat the publisher
+	 * executes SPD's real engine for a RemoteHero, not for Dungeon.hero.
+	 */
+	private Hero multiplayerCombatRewardHero() {
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+		if (manager.isMultiplayerActive() && manager.isResolvingAuthorityCombat()) {
+			Hero nativeAttacker = Hero.getNativeAttackSource();
+			if (nativeAttacker instanceof RemoteHero && nativeAttacker.isAlive()) return nativeAttacker;
+		}
+		return Dungeon.hero;
+	}
+
 	@Override
 	public void destroy() {
 		
@@ -1105,35 +1120,31 @@ public abstract class Mob extends Char {
 			GameScene.updateFog(pos, 2);
 		}
 
-		if (Dungeon.hero.isAlive()) {
-			
-			if (alignment == Alignment.ENEMY) {
-				Statistics.enemiesSlain++;
-				Badges.validateMonstersSlain();
-				Statistics.qualifiedForNoKilling = false;
-				Bestiary.setSeen(getClass());
-				Bestiary.countEncounter(getClass());
+		if (Dungeon.hero.isAlive() && alignment == Alignment.ENEMY) {
+			// Match-level statistics remain attached to the active world owner.
+			Statistics.enemiesSlain++;
+			Badges.validateMonstersSlain();
+			Statistics.qualifiedForNoKilling = false;
+			Bestiary.setSeen(getClass());
+			Bestiary.countEncounter(getClass());
+			AscensionChallenge.processEnemyKill(this);
+		}
 
-				AscensionChallenge.processEnemyKill(this);
-				
-				int exp = Dungeon.hero.lvl <= maxLvl ? EXP : 0;
-
-				//during ascent, under-levelled enemies grant 10 xp each until level 30
-				// after this enemy kills which reduce the amulet curse still grant 10 effective xp
-				// for the purposes of on-exp effects, see AscensionChallenge.processEnemyKill
-				if (Dungeon.hero.buff(AscensionChallenge.class) != null &&
-						exp == 0 && maxLvl > 0 && EXP > 0 && Dungeon.hero.lvl < Hero.MAX_LEVEL){
-					exp = Math.round(10 * spawningWeight());
-				}
-
-				if (exp > 0) {
-					Dungeon.hero.sprite.showStatusWithIcon(CharSprite.POSITIVE, Integer.toString(exp), FloatingText.EXPERIENCE);
-				}
-				Dungeon.hero.earnExp(exp, getClass());
-
-				if (Dungeon.hero.subClass == HeroSubClass.MONK){
-					Buff.affect(Dungeon.hero, MonkEnergy.class).gainEnergy(this);
-				}
+		// Award XP/level-ups/class kill rewards to the actual native attacker. In particular,
+		// never award a delegated client's kill to the host/publisher's hero.
+		Hero rewardHero = multiplayerCombatRewardHero();
+		if (alignment == Alignment.ENEMY && rewardHero != null && rewardHero.isAlive()) {
+			int exp = rewardHero.lvl <= maxLvl ? EXP : 0;
+			if (rewardHero.buff(AscensionChallenge.class) != null &&
+					exp == 0 && maxLvl > 0 && EXP > 0 && rewardHero.lvl < Hero.MAX_LEVEL) {
+				exp = Math.round(10 * spawningWeight());
+			}
+			if (exp > 0 && rewardHero.sprite != null) {
+				rewardHero.sprite.showStatusWithIcon(CharSprite.POSITIVE, Integer.toString(exp), FloatingText.EXPERIENCE);
+			}
+			rewardHero.earnExp(exp, getClass());
+			if (rewardHero.subClass == HeroSubClass.MONK) {
+				Buff.affect(rewardHero, MonkEnergy.class).gainEnergy(this);
 			}
 		}
 	}
@@ -1155,16 +1166,17 @@ public abstract class Mob extends Char {
 
 			rollToDropLoot();
 
-			if (cause == Dungeon.hero || cause instanceof Weapon || cause instanceof Weapon.Enchantment){
-				if (Dungeon.hero.hasTalent(Talent.LETHAL_MOMENTUM)
-						&& Random.Float() < 0.34f + 0.33f* Dungeon.hero.pointsInTalent(Talent.LETHAL_MOMENTUM)){
-					Buff.affect(Dungeon.hero, Talent.LethalMomentumTracker.class, 0f);
+			Hero rewardHero = multiplayerCombatRewardHero();
+			if (cause == rewardHero || cause instanceof Weapon || cause instanceof Weapon.Enchantment){
+				if (rewardHero.hasTalent(Talent.LETHAL_MOMENTUM)
+						&& Random.Float() < 0.34f + 0.33f* rewardHero.pointsInTalent(Talent.LETHAL_MOMENTUM)){
+					Buff.affect(rewardHero, Talent.LethalMomentumTracker.class, 0f);
 				}
-				if (Dungeon.hero.heroClass != HeroClass.DUELIST
-						&& Dungeon.hero.hasTalent(Talent.LETHAL_HASTE)
-						&& Dungeon.hero.buff(Talent.LethalHasteCooldown.class) == null){
-					Buff.affect(Dungeon.hero, Talent.LethalHasteCooldown.class, 100f);
-					Buff.affect(Dungeon.hero, GreaterHaste.class).set(2 + 2*Dungeon.hero.pointsInTalent(Talent.LETHAL_HASTE));
+				if (rewardHero.heroClass != HeroClass.DUELIST
+						&& rewardHero.hasTalent(Talent.LETHAL_HASTE)
+						&& rewardHero.buff(Talent.LethalHasteCooldown.class) == null){
+					Buff.affect(rewardHero, Talent.LethalHasteCooldown.class, 100f);
+					Buff.affect(rewardHero, GreaterHaste.class).set(2 + 2*rewardHero.pointsInTalent(Talent.LETHAL_HASTE));
 				}
 			}
 
@@ -1193,17 +1205,18 @@ public abstract class Mob extends Char {
 	}
 
 	public float lootChance(){
+		Hero rewardHero = multiplayerCombatRewardHero();
 		float lootChance = this.lootChance;
 
-		float dropBonus = RingOfWealth.dropChanceMultiplier( Dungeon.hero );
+		float dropBonus = RingOfWealth.dropChanceMultiplier( rewardHero );
 
-		Talent.BountyHunterTracker bhTracker = Dungeon.hero.buff(Talent.BountyHunterTracker.class);
+		Talent.BountyHunterTracker bhTracker = rewardHero.buff(Talent.BountyHunterTracker.class);
 		if (bhTracker != null){
-			Preparation prep = Dungeon.hero.buff(Preparation.class);
+			Preparation prep = rewardHero.buff(Preparation.class);
 			if (prep != null){
 				// 2/4/8/16% per prep level, multiplied by talent points
 				float bhBonus = 0.02f * (float)Math.pow(2, prep.attackLevel()-1);
-				bhBonus *= Dungeon.hero.pointsInTalent(Talent.BOUNTY_HUNTER);
+				bhBonus *= rewardHero.pointsInTalent(Talent.BOUNTY_HUNTER);
 				dropBonus += bhBonus;
 			}
 		}
@@ -1214,7 +1227,8 @@ public abstract class Mob extends Char {
 	}
 	
 	public void rollToDropLoot(){
-		if (Dungeon.hero.lvl > maxLvl + 2) return;
+		Hero rewardHero = multiplayerCombatRewardHero();
+		if (rewardHero.lvl > maxLvl + 2) return;
 
 		MasterThievesArmband.StolenTracker stolen = buff(MasterThievesArmband.StolenTracker.class);
 		if (stolen == null || !stolen.itemWasStolen()) {
@@ -1227,11 +1241,11 @@ public abstract class Mob extends Char {
 		}
 		
 		//ring of wealth logic
-		if (Ring.getBuffedBonus(Dungeon.hero, RingOfWealth.Wealth.class) > 0) {
+		if (Ring.getBuffedBonus(rewardHero, RingOfWealth.Wealth.class) > 0) {
 			int rolls = 1;
 			if (properties.contains(Property.BOSS)) rolls = 15;
 			else if (properties.contains(Property.MINIBOSS)) rolls = 5;
-			ArrayList<Item> bonus = RingOfWealth.tryForBonusDrop(Dungeon.hero, rolls);
+			ArrayList<Item> bonus = RingOfWealth.tryForBonusDrop(rewardHero, rolls);
 			if (bonus != null && !bonus.isEmpty()) {
 				for (Item b : bonus) Dungeon.level.drop(b, pos).sprite.drop();
 				RingOfWealth.showFlareForBonusDrop(sprite);
@@ -1246,8 +1260,8 @@ public abstract class Mob extends Char {
 
 		//soul eater talent
 		if (buff(SoulMark.class) != null &&
-				Random.Int(10) < Dungeon.hero.pointsInTalent(Talent.SOUL_EATER)){
-			Talent.onFoodEaten(Dungeon.hero, 0, null);
+				Random.Int(10) < rewardHero.pointsInTalent(Talent.SOUL_EATER)){
+			Talent.onFoodEaten(rewardHero, 0, null);
 		}
 
 	}
