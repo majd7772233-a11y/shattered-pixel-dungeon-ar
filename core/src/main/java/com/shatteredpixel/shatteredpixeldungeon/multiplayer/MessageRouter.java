@@ -539,7 +539,12 @@ public final class MessageRouter {
 
             for (JsonValue event = events.child; event != null; event = event.next) {
                 long seq = longValue(event.get("sequence"), message.sequence);
-                MultiplayerManager.getInstance().updateLastSequence(seq);
+                MultiplayerManager manager = MultiplayerManager.getInstance();
+                // ACTION_ACCEPTED and event delivery may report the same sequence, and delayed
+                // batches can arrive after a newer combat snapshot. Never apply either twice or
+                // let an older HP/death/loot result roll back the newer world state.
+                if (seq <= manager.getLastSequence()) continue;
+                manager.updateLastSequence(seq);
                 String type = stringValue(event.get("eventType"), stringValue(event.get("event_type"), ""));
                 JsonValue action = event.get("action");
                 if (action == null) {
