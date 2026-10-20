@@ -403,6 +403,80 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativePvpRetaliationConsumesRemoteBlessedAnkhAndReportsRevivedAttacker() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-native-pvp-ankh", "client-defender", transport);
+
+        Actor.remove(hero);
+        FatalRetaliatingHero defender = new FatalRetaliatingHero();
+        defender.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(defender);
+        defender.pos = 5 * level.width() + 5;
+        defender.HP = defender.HT = 20;
+        defender.damageInterrupt = false;
+        defender.alignment = com.shatteredpixel.shatteredpixeldungeon.actors.Char.Alignment.ENEMY;
+        defender.fatalRetaliation = true;
+        Arrays.fill(level.heroFOV, false);
+        hero = defender;
+        Dungeon.hero = defender;
+        Actor.add(defender);
+
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero remoteHero =
+                new com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero();
+        remoteHero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(remoteHero);
+        remoteHero.pos = defender.pos + 1;
+        remoteHero.HP = remoteHero.HT = 20;
+        remoteHero.invisible = 1;
+        remoteHero.damageInterrupt = false;
+        com.shatteredpixel.shatteredpixeldungeon.items.Ankh ankh =
+                new com.shatteredpixel.shatteredpixeldungeon.items.Ankh();
+        ankh.bless();
+        remoteHero.belongings.backpack.items.add(ankh);
+        Actor.add(remoteHero);
+
+        RemotePlayer remoteAttacker = new RemotePlayer("client-attacker", "Attacker", "WARRIOR");
+        remoteAttacker.heroInstance = remoteHero;
+        remoteAttacker.hp = remoteHero.HP;
+        remoteAttacker.ht = remoteHero.HT;
+        remoteAttacker.pos = remoteHero.pos;
+        manager.addRemotePlayer(remoteAttacker);
+
+        String requestId = "native-pvp-ankh-request-0001";
+        manager.beginAuthorityCombat(requestId);
+        boolean hit;
+        try {
+            hit = runNativeAttack(() -> remoteHero.attack(defender));
+        } finally {
+            manager.endAuthorityCombat();
+        }
+
+        Assert.assertTrue("The native PvP attack must hit before triggering defender retaliation", hit);
+        Assert.assertEquals("The original remote Hero death pipeline must restore one quarter HP",
+                5, remoteHero.HP);
+        Assert.assertEquals("The native blessed Ankh must be consumed exactly once",
+                0, remoteHero.belongings.getAllItems(com.shatteredpixel.shatteredpixeldungeon.items.Ankh.class).size());
+        Assert.assertNotNull("The native Ankh pipeline must add its invulnerability buff",
+                remoteHero.buff(com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability.class));
+
+        NetworkMessage report = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && requestId.equals(message.requestId)
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\"action\\":\\"SYNC_PLAYER_COMBAT\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The authority combat result must be emitted after Ankh resolution", report);
+        JsonValue envelope = new JsonReader().parse(report.payloadJson);
+        String attackerState = envelope.getString("heroStateJson", "");
+        Assert.assertFalse("The authority must serialize the post-Ankh attacker state", attackerState.isEmpty());
+        JsonValue parsedAttacker = new JsonReader().parse(attackerState);
+        Assert.assertEquals(5, parsedAttacker.getInt("hp"));
+        Assert.assertEquals(0, parsedAttacker.getInt("ankhCount"));
+        Assert.assertFalse("Authority mode must always be released", manager.isResolvingAuthorityCombat());
+    }
+
+    @Test
     public void nativeSecondaryMobDeltaRetainsStableIdentityAndFullBundle() {
         Rat directTarget = addRat(hero.pos + 1, 100);
         Rat secondary = addRat(hero.pos + 2, 20);
@@ -671,6 +745,30 @@ public class NativeCombatRuntimeIntegrationTest {
         @Override
         public int defenseProc(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy, int damage) {
             return 0;
+        }
+    }
+
+    private static final class FatalRetaliatingHero extends Hero {
+        boolean fatalRetaliation;
+
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return 0;
+        }
+
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+
+        @Override
+        public int defenseProc(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy, int damage) {
+            int result = super.defenseProc(enemy, damage);
+            if (fatalRetaliation && damage > 0
+                    && enemy instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero) {
+                enemy.damage(100, this);
+            }
+            return result;
         }
     }
 
