@@ -836,6 +836,8 @@ describe('Authoritative native hero pre-state', () => {
     expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
       JSON.stringify({ ...after, hp: 21 }), row)).toBeNull();
     expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify({ ...after, ht: 100, hp: 16 }), row)).toBeNull();
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
       JSON.stringify(after), { ...row, state: 'DEAD' })).toBeNull();
   });
 
