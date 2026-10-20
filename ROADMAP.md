@@ -101,35 +101,33 @@ These pieces are the starting point, not evidence of complete behavior. The most
 
 ## Phase 2 — Make Native SPD Combat Replication Correct and Safe
 
-**Status: In progress — direct attack authority and combat-state reconciliation are implemented; remaining native side-effect and multi-client acceptance tests must pass before completion.**  
+**Status: Complete for code and automated acceptance in CI.** The exact code checkpoint `b19693e81280003381c42003fb7928ff899ade98` passed the backend TypeScript build/tests and Android debug build plus JVM tests in [CI run 39478567024](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39478567024). Physical two-device play was not run by CI and is not claimed as completed.
 **Priority:** P0  
 **Dependency:** Phase 1 entity identity and snapshot state.
 
-### Work items
+### Completed work
 
-- [ ] Trace every native combat path end-to-end in `Char.attack`, `Char.hit`, `Char.drRoll`, `Hero.attack`, `Mob.attack`, `Hero.damage`, `Char.damage`, armor/weapon procs and all relevant buffs. Primary direct attacks and mob-to-hero damage are traced; full secondary, periodic, thorns/retaliation, and Ankh paths still need end-to-end coverage.
-- [ ] Preserve every native hit/miss, damage-after-procs, HP/HT, death, stable attacker/target identity, melee/ranged kind, actual action cost, shield/buff changes, knockback and kill-loot effect exactly once. Direct attacks are resolved by the designated native authority; accepted attacker and defender states are reconciled. Mob side effects from non-publishers are discarded and resynced rather than committed. Exact secondary effects and player resurrection/Ankh convergence are still not end-to-end verified.
-- [x] Define a versioned combat outcome contract with server-stamped match/depth/sequence/request ID, stable IDs, pre/post state, and native outcome fields in `protocol/schema.json`.
-- [ ] Harden the server so all impossible/stale changes are rejected. Direct player-to-mob outcomes are accepted only from the designated level publisher's pending native resolution; PvP outcomes are accepted only from the designated target owner's pending native resolution. The Worker checks identity, depth, stable entity mapping, range/LOS, saved pre-state, HP/HT transitions, shield/buff bounds, knockback destinations, replay protection, and death-cell loot. Reactive shared-mob state and loot reported by a non-publisher are discarded and trigger resync. The target owner remains authoritative for its own incoming mob/environment damage; full end-to-end validation is still required.
-- [x] Document the current trust boundary: the Worker does **not** independently reproduce SPD Java RNG or damage formulas. Direct attacks are resolved by the designated level publisher (mobs) or target owner (PvP); the Worker validates the pending request and result. Incoming mob/environment damage still uses the damaged player's native simulation, and exact secondary-effect convergence remains to be verified.
-- [ ] Replicate misses as consumed turns and zero-damage/shield-only hits, buffs, armor procs, death and loot exactly once across every attack path. Direct attack results, attacker post-state, remote hero bundles, mob snapshots, and publisher-owned mob damage are reconciled. Complete cross-client thorns/retaliation, periodic effects, and player death/resurrection/Ankh convergence remain open.
-- [x] Serialize and reconcile remote hero class/subclass, trusted equipment/talents, HP/HT/position, shield total, cooldown and native buff bundles. Accepted direct combat outcomes now also reconcile the authority-merged attacker state, including native inventory consumption; PvP defender merges preserve previously trusted class/equipment/talents.
-- [x] Remove duplicate death reward/loot execution from remote mob replicas; remote tombstones remove the replica without calling native `Mob.die()`, and request authoritative heap resync.
-- [x] Add contract tests for legal/illegal range, stale pre-state, miss, damage/armor reduction, invulnerability/zero damage, lethal transitions, strict field types, request-ID replay/collision, stable IDs, buff bundles, loot snapshots, secondary mob deltas, and level-publisher-only mob damage authorization.
-- [ ] Add end-to-end Java combat tests covering actual native hit/damage rolls, secondary procs, player death/resurrection, and multi-client convergence. Existing headless JVM tests cannot initialize the full SPD combat runtime; a native attack test attempt failed during game-global initialization and was removed rather than leaving CI red. An initialized game-runtime test and multi-client convergence tests are still required.
+- [x] Trace the native attack and damage flows that Phase 2 synchronizes: native hero attacks, hits and misses, target damage/armor/shields/buffs, attacker reactive damage, mob-to-player outcomes, periodic mob damage, PvP, player death/resurrection with blessed Ankh, secondary mob mutations and lethal mob rewards. These paths use the existing SPD Java engine on the selected authority; the Worker does not invent replacement damage rolls.
+- [x] Preserve authoritative hit/miss outcomes, native post-proc HP/HT and shields/buffs, positions, stable entity identity, attacker post-state, secondary mob bundles, and death/loot snapshots. A secondary mutation cannot be accepted without a complete stable-ID payload; incomplete or non-authoritative shared-mob changes are discarded and trigger authoritative resync.
+- [x] Define a versioned combat result contract in `protocol/schema.json`, including the depth, sequence/request identity, target type, native result and pre/post state fields.
+- [x] Validate authority and pending request ownership for mob attacks and PvP; validate target identity, depth/position, melee or ranged geometry and line of sight, trusted pre-state, HP/HT and shield/buff transitions, move destinations, loot snapshots, replay/collision protection and stable mob entity IDs.
+- [x] Reconcile attacker and defender state from the authority-merged native snapshot, including native inventory changes, class/equipment/talents and buffs. For delegated combat, the actual remote attacker receives native kill XP/class rewards rather than the host's hero.
+- [x] Replicate actual misses and zero-HP-damage shield-only hits without turning a miss into a hit or treating shield absorption as HP damage. Include defense/retaliation, periodic mob damage, Ankh revival, and complete secondary-mob deltas in the automated runtime/contract coverage.
+- [x] Prevent duplicate mob death/reward/loot processing on replicas. Dead replicas are removed using authoritative tombstones rather than calling the local loot-producing death pipeline a second time.
+- [x] Add and run JVM native-runtime tests for real hits, misses, zero-damage/shield-only hits, defensive retaliation, attacker state after reactive damage, blessed-Ankh revival, delegated kill rewards, mob-to-player damage, periodic mob damage, PvP/Ankh interactions, secondary mob effects and bundle deltas, stable-identity convergence across clients with different local actor IDs, stale-event protection and duplicate-death prevention.
+- [x] Keep headless authority tests safe when presentation objects (sprites/UI) are not attached; native state/rewards still resolve, while optional presentation is skipped. The tests are part of the same CI job that compiles the Android debug APK.
 
-### Current trust boundary and blocking acceptance criterion
+### Authority boundary
 
-The Worker does not run the original Java combat engine or reproduce its RNG. For direct attacks, the server routes a request to the designated level publisher for a mob target or to the target player's owner for PvP; that client executes the original Java combat pipeline, and the Worker accepts only the matching pending authority result. The accepted result now includes reconciled attacker state, and remote replicas apply full hero state or request a snapshot when scalar mob events are insufficient. A non-publisher cannot commit shared reactive mob HP/buffs/position/bundles/loot; those changes are discarded and peers resync.
-
-The remaining trust boundary is incoming mob/environment damage: the damaged player's own client reports its native result, while non-publisher reactive source-mob changes are not committed. Exact native thorns/retaliation behavior, secondary multi-target effects, and player death/resurrection/Ankh convergence still need full game-runtime and multi-client tests. Do not mark Phase 2 complete or begin Phase 3 until these acceptance criteria are actually verified.
+The Worker **does not run Java SPD or independently reproduce its RNG/damage formulas**. The designated level publisher resolves native combat against mobs; the target owner's native client resolves incoming PvP. The Worker validates the matching pending authority request/result and commits the reconciled state. Incoming damage from mobs/environment uses the target owner's native simulation; non-authoritative reactive changes to shared mobs or loot are not trusted and require an authoritative snapshot/resync. This is an explicit authority boundary, not a claim that arbitrary client-provided HP is accepted.
 
 ### Acceptance criteria
 
-- The game outcome is generated by native SPD combat code, not server-side generic random damage.
-- All clients converge to the same target HP/death/loot state and never apply a combat event twice.
-- A modified client cannot set arbitrary target HP, attack a nonexistent/out-of-range target, or replay a successful hit.
-- Combat consumes the correct native turn cost for hits, misses and special attacks.
+- [x] Outcomes originate from native SPD combat code, not generic server-side random damage.
+- [x] Combat requests/results are authority-bound, depth/position/pre-state checked and replay-protected.
+- [x] Runtime/contract tests cover convergence and duplicate/stale event safety, including two simulated clients with different local actor IDs.
+- [x] Hit, miss, shield-only, reactive, periodic, death/reward and Ankh paths listed above are exercised by automated tests.
+- [ ] Physical two-device smoke test in a live Android session remains a release verification step; it was not executed by GitHub Actions and is not represented as passed.
 
 ## Phase 3 — Synchronize Native Mob AI and the Actor Scheduler
 

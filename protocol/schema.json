@@ -375,7 +375,7 @@
         "secondaryMobDeltas": {
           "type": "string",
           "maxLength": 200000,
-          "description": "JSON-encoded complete native secondary-mob combat delta list; includes stable identities, exact pre/post HP/HT/position/shield/buffs and a bounded heap snapshot for any secondary death."
+          "description": "JSON-encoded object with an explicit boolean complete flag, a deltas array, and optional heaps snapshot for secondary deaths. Every delta has a stable entityId, explicit pre/post HP/HT/position/shield/buffs fields (including numeric zero values), and serializedBundleAfter. Incomplete or missing fields require authoritative resync; never infer omitted zero-valued fields."
         },
         "attackerStateBefore": {
           "type": "string",
