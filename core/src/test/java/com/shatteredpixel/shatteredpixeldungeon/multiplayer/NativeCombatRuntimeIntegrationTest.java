@@ -190,14 +190,6 @@ public class NativeCombatRuntimeIntegrationTest {
                         && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
                         && message.payloadJson.contains("\"sourceType\":\"MOB\""))
                 .findFirst().orElse(null);
-        if (report == null) {
-            for (NetworkMessage sent : transport.sent) {
-                System.err.println("NATIVE_COMBAT_DEBUG type=" + sent.messageType
-                        + " requestId=" + sent.requestId + " payload="
-                        + (sent.payloadJson == null ? "" : sent.payloadJson.substring(0,
-                                Math.min(500, sent.payloadJson.length()))));
-            }
-        }
         Assert.assertNotNull("The publisher must submit a native mob-to-player outcome", report);
         JsonValue envelope = new JsonReader().parse(report.payloadJson);
         JsonValue data = envelope.get("data");

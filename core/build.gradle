@@ -11,10 +11,3 @@ dependencies {
     testRuntimeOnly "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
 }
 
-tasks.withType(Test).configureEach {
-    testLogging {
-        events "failed"
-        exceptionFormat "full"
-        showStandardStreams = true
-    }
-}
