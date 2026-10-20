@@ -291,6 +291,8 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.addRemotePlayer(remoteAttacker);
 
         ExperienceRat target = addMob(new ExperienceRat(), remoteHero.pos + 1, 1);
+        // Keep the kill log off the headless UI path; this test exercises combat/rewards, not i18n resources.
+        level.heroFOV[target.pos] = true;
         target.defenseSkill = 0;
         int publisherExpBefore = hero.exp;
         int attackerExpBefore = remoteHero.exp;
