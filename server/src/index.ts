@@ -336,6 +336,45 @@ preserveInventory = true): string | null {
   return JSON.stringify(merged);
 }
 
+/**
+ * Accepts the designated native combat authority's post-attack state for the attacking
+ * player only when its supplied pre-state exactly matches the last trusted player snapshot.
+ * This captures real native retaliation, life-steal, consumed throwing weapons, buffs and
+ * cooldowns that occur inside Hero.attack(), instead of silently discarding them because
+ * they changed the attacker's HP during the same action.
+ */
+export function mergeNativeCombatAttackerState(
+  trustedValue: unknown,
+  beforeValue: unknown,
+  afterValue: unknown,
+  playerRow: any
+): string | null {
+  if (typeof trustedValue !== "string" || typeof beforeValue !== "string"
+    || typeof afterValue !== "string" || !playerRow || String(playerRow.state) !== "ALIVE") return null;
+  let trusted: any, before: any, after: any;
+  try {
+    trusted = JSON.parse(trustedValue);
+    before = JSON.parse(beforeValue);
+    after = JSON.parse(afterValue);
+  } catch (_) { return null; }
+  if (!hasMatchingNativeHeroStateSnapshot(beforeValue, trustedValue)
+    || !Number.isInteger(playerRow.hp) || !Number.isInteger(playerRow.ht) || !Number.isInteger(playerRow.pos)
+    || Number(before.hp) !== Number(playerRow.hp)
+    || Number(before.ht) !== Number(playerRow.ht)
+    || Number(before.pos) !== Number(playerRow.pos)
+    || Number(after.hp) < 0 || Number(after.ht) < 1
+    || Number(after.hp) > Number(after.ht)
+    || Number(after.pos) !== Number(playerRow.pos)
+    || !Number.isInteger(after.hp) || !Number.isInteger(after.ht)
+    || !Number.isInteger(after.pos) || !Number.isInteger(after.shielding)
+    || after.shielding < 0 || after.shielding > 100000) return null;
+  const buffs = nativeBuffSnapshotFromHeroState(afterValue);
+  if (buffs == null) return null;
+  return mergeNativeHeroState(trustedValue, afterValue, {
+    hp: Number(after.hp), ht: Number(after.ht), pos: Number(after.pos), shielding: Number(after.shielding)
+  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false);
+}
+
 export function isValidNativeCombatBuffs(value: unknown): boolean {
   if (typeof value !== "string" || value.length > 200000) return false;
   let buffs: any;
@@ -2383,7 +2422,16 @@ export class MatchRoom {
               targetId = resolveServerMobIdByEntityId(savedLevel, targetEntityId);
             }
 
-            const attackerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
+            const attackerRow = this.sql.exec(`SELECT pos,hp,ht,state FROM players WHERE player_id = ?`, session.playerId).toArray();
+            const attackerStateRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `heroState:${session.playerId}`).toArray()[0];
+            const trustedAttackerStateJson = attackerStateRow && typeof attackerStateRow.value === "string"
+              ? String(attackerStateRow.value) : "";
+            const attackerStateBeforeJson = typeof payload.data?.attackerStateBefore === "string"
+              ? payload.data.attackerStateBefore : "";
+            const mergedAttackerState = attackerRow.length > 0
+              ? mergeNativeCombatAttackerState(trustedAttackerStateJson, attackerStateBeforeJson,
+                  payload.heroStateJson, attackerRow[0])
+              : null;
             if (attackerRow.length > 0) {
               const attackerPos = Number(attackerRow[0].pos);
 
@@ -2568,6 +2616,7 @@ export class MatchRoom {
                         payload.data?.targetBuffsBefore, payload.data?.targetBuffs,
                         mobPos, targetPosAfter)
                       && validLootSnapshot
+                      && mergedAttackerState != null
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
                       && (ranged
@@ -2628,6 +2677,23 @@ export class MatchRoom {
                             deadPos, this.currentDepth);
                         }
                       }
+                      // A direct native attack can also damage/heal the attacker via thorns,
+                      // life-link, weapon procs, or consume a thrown weapon. Persist that exact
+                      // post-state in the same commit as the target's result; the generic action
+                      // state refresh intentionally refuses changed HP and would otherwise drop it.
+                      const attackerAfter = JSON.parse(String(mergedAttackerState));
+                      const attackerHpAfter = Number(attackerAfter.hp);
+                      const attackerHtAfter = Number(attackerAfter.ht);
+                      const attackerStateAfter = attackerHpAfter > 0 ? "ALIVE"
+                        : this.gameMode === "DEATHMATCH" ? "ALIVE"
+                          : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+                      this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
+                        attackerHpAfter, attackerHtAfter, Number(attackerAfter.pos), attackerStateAfter, session.playerId);
+                      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        `heroState:${session.playerId}`, String(mergedAttackerState));
+                      if (String(attackerRow[0].state) === "ALIVE" && attackerStateAfter !== "ALIVE") {
+                        this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", session.playerId);
+                      }
                       eventType = "PLAYER_ATTACKED";
                       actionResultPayload = {
                         attackerId: session.playerId, attackerType: "PLAYER", targetId: targetEntityId, targetType: "MOB",
@@ -2640,7 +2706,7 @@ export class MatchRoom {
                         targetMobBundleAfter: newHp > 0 ? String(payload.data?.targetMobBundleAfter) : null,
                         hit: payload.data?.engineHit === true, damage: rawDmg, targetHp: newHp,
                         targetHt, attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
-                        targetBuffs: payload.data.targetBuffs, attackerStateJson: payload.heroStateJson,
+                        targetBuffs: payload.data.targetBuffs, attackerStateJson: String(mergedAttackerState),
                         secondaryMobDeltas: secondaryMobPayload,
                         engineResolved: true
                       };
