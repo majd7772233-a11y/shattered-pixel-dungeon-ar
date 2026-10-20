@@ -793,6 +793,7 @@ public abstract class Mob extends Char {
 					json.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
 			return true;
 		} catch (RuntimeException error) {
+			error.printStackTrace(System.err);
 			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
 			manager.requestResync(manager.getLastSequence());
