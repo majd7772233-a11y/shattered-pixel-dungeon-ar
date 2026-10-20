@@ -44,7 +44,8 @@ public final class NativeMobCombatDelta {
     }
 
     public static final class Payload {
-        public boolean complete = true;
+        // Keep the prototype default false so libGDX JSON emits the authoritative true value.
+        public boolean complete;
         public List<Delta> deltas = new ArrayList<>();
         public String heaps;
     }
@@ -71,6 +72,9 @@ public final class NativeMobCombatDelta {
 
     public static String changedSince(Map<Integer, State> before, Mob excludedTarget) {
         Payload payload = new Payload();
+        // libGDX omits fields equal to their prototype default; explicitly set true so the
+        // wire payload always contains `complete: true` when all native side effects were captured.
+        payload.complete = true;
         Map<Integer, State> after = capture(excludedTarget);
         for (Map.Entry<Integer, State> entry : before.entrySet()) {
             State oldState = entry.getValue();
