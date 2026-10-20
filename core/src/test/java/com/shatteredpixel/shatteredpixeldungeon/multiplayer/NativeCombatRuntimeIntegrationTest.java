@@ -291,6 +291,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.level = level;
         hero = new Hero();
         hero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(hero);
         hero.pos = 5 * level.width() + 5;
         hero.HP = hero.HT = 20;
         hero.damageInterrupt = false;
