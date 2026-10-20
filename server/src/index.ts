@@ -783,29 +783,26 @@ export class MatchRoom {
     this.initDatabase();
   }
 
-  private reconcileCombatAttackerState(pending: any, authorityStateAfter: unknown): string | null {
+  private reconcileCombatAttackerState(
+    pending: any,
+    authorityStateAfter: unknown,
+    allowNativeMaxHpIncrease: boolean = false
+  ): string | null {
     if (!pending || typeof pending.attackerId !== "string" || typeof pending.attackerStateBefore !== "string") return null;
     const playerId = pending.attackerId;
     const stateRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId).toArray()[0];
     const trustedState = stateRow && typeof stateRow.value === "string" ? String(stateRow.value) : "";
     const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId).toArray()[0];
-    if (!trustedState || !playerRow || !hasMatchingNativeHeroStateSnapshot(pending.attackerStateBefore, trustedState)) return null;
-    const authoritativeAfter = typeof authorityStateAfter === "string" ? authorityStateAfter : "";
-    const blessedAnkhConsumed = hasValidBlessedAnkhConsumption(trustedState, authoritativeAfter);
-    // The target owner/level publisher's native simulation is the only post-state source.
-    // Never fall back to the attacker's optimistic post-state for Ankh or inventory changes.
-    const selectedState = authoritativeAfter;
-    const buffs = nativeBuffSnapshotFromHeroState(selectedState);
-    let parsed: any = null;
-    try { parsed = JSON.parse(selectedState); } catch (_) { return null; }
-    if (buffs == null || !isValidNativeHeroStateJson(selectedState, {
-      hp: Number(parsed?.hp), ht: Number(parsed?.ht), pos: Number(parsed?.pos), shielding: Number(parsed?.shielding)
-    })) return null;
-    if (Number(parsed.ht) < 1 || Number(parsed.hp) < 0 || Number(parsed.hp) > Number(parsed.ht)
-      || Number(parsed.pos) !== Number(playerRow.pos)) return null;
-    return mergeNativeHeroState(trustedState, selectedState, {
-      hp: Number(parsed.hp), ht: Number(parsed.ht), pos: Number(parsed.pos), shielding: Number(parsed.shielding)
-    }, buffs, blessedAnkhConsumed, false, false);
+    if (!trustedState || !playerRow) return null;
+    // Use the same exact pre-state checks and bounded native transition rules for delegated
+    // results and attacks published directly by this player's own client.
+    return mergeNativeCombatAttackerState(
+      trustedState,
+      pending.attackerStateBefore,
+      authorityStateAfter,
+      playerRow,
+      allowNativeMaxHpIncrease
+    );
   }
 
   private clearPendingCombat(pending: any) {
@@ -1623,7 +1620,8 @@ export class MatchRoom {
               const validLoot = secondaryMobPayload != null && (allDeaths.length === 0
                 ? data.heaps === undefined && secondaryMobPayload.heaps === undefined
                 : isValidNativeLootSnapshot(lootSnapshot, levelSnapshot?.heaps, allDeaths, levelSize));
-              const mergedAttackerState = this.reconcileCombatAttackerState(authorityPending, payload.heroStateJson);
+              const mergedAttackerState = this.reconcileCombatAttackerState(
+                authorityPending, payload.heroStateJson, allDeaths.length > 0);
               const targetBuffPreStateMatches = !!savedMob && hasMatchingNativeBuffSnapshot(data.targetBuffsBefore, savedMob.buffs);
               const targetShieldPreStateMatches = !!savedMob && hasMatchingNativeMobShieldSnapshot(data.targetShieldBefore, data.targetShieldAfter, savedMob.shielding);
               const targetMobBundleValid = targetHp <= 0 || isValidNativeMobBundle(data.targetMobBundleAfter);
