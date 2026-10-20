@@ -203,7 +203,12 @@ public class NativeCombatRuntimeIntegrationTest {
         ankh.bless();
         hero.belongings.backpack.items.add(ankh);
 
-        hero.damage(100, new Object());
+        try {
+            hero.damage(100, new Object());
+        } catch (RuntimeException error) {
+            error.printStackTrace();
+            throw error;
+        }
 
         Assert.assertEquals("A blessed Ankh must preserve the native quarter-health revival", 5, hero.HP);
         Assert.assertFalse("The native revival must consume exactly the blessed Ankh",
@@ -447,7 +452,12 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.beginAuthorityCombat(requestId);
         boolean hit;
         try {
-            hit = runNativeAttack(() -> remoteHero.attack(defender));
+            try {
+                hit = runNativeAttack(() -> remoteHero.attack(defender));
+            } catch (RuntimeException error) {
+                error.printStackTrace();
+                throw error;
+            }
         } finally {
             manager.endAuthorityCombat();
         }
