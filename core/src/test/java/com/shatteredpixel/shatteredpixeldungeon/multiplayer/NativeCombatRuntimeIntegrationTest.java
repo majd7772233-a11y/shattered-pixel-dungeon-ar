@@ -154,8 +154,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-attacker-retaliation", "client-publisher", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\\\"playerId\\\":\\\"client-publisher\\\",\\\"sessionToken\\\":\\\"retaliation-token\\\","
-                        + "\\\"isLevelPublisher\\\":true,\\\"sequence\\\":1,\\\"seed\\\":123456,\\\"depth\\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"retaliation-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
         Assert.assertTrue(manager.isLevelPublisher());
@@ -172,7 +172,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage attack = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\\"action\\\":\\\"ATTACK\\\""))
+                        && message.payloadJson.contains("\"action\":\"ATTACK\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The native attack result must be sent after all defense procs", attack);
         JsonValue envelope = new JsonReader().parse(attack.payloadJson);
@@ -190,8 +190,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-blessed-ankh", "client-publisher", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\\\"playerId\\\":\\\"client-publisher\\\",\\\"sessionToken\\\":\\\"ankh-token\\\","
-                        + "\\\"isLevelPublisher\\\":true,\\\"sequence\\\":1,\\\"seed\\\":123456,\\\"depth\\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"ankh-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
         Assert.assertTrue(manager.isLevelPublisher());
@@ -209,7 +209,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage revive = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\\"action\\\":\\\"REVIVE\\\""))
+                        && message.payloadJson.contains("\"action\":\"REVIVE\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The native blessed-Ankh outcome must be sent to the room authority", revive);
         JsonValue data = new JsonReader().parse(revive.payloadJson).get("data");
