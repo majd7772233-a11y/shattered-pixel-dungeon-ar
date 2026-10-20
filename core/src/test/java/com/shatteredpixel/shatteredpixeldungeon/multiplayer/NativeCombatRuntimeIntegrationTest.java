@@ -14,6 +14,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
+import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
@@ -145,6 +146,79 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue("The primary native hit must damage its target", target.HP < 100);
         Assert.assertTrue("A defensive retaliation must be applied to the actual attacking Hero", hero.HP < 20);
         Assert.assertEquals(20, hero.HT);
+    }
+
+    @Test
+    public void publisherAttackIncludesNativeRetaliationInAttackerPostState() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-attacker-retaliation", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\\\"playerId\\\":\\\"client-publisher\\\",\\\"sessionToken\\\":\\\"retaliation-token\\\","
+                        + "\\\"isLevelPublisher\\\":true,\\\"sequence\\\":1,\\\"seed\\\":123456,\\\"depth\\\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        hero.invisible = 1;
+        RetaliatingRat target = addRetaliatingRat(hero.pos + 1, 100);
+        manager.registerServerEntityId(target.id(), "native-retaliating-mob-0001");
+        int hpBefore = hero.HP;
+
+        boolean hit = runNativeAttack(() -> hero.attack(target));
+
+        Assert.assertTrue("The real native attack must trigger the defender's retaliation", hit);
+        Assert.assertTrue("Retaliation must run through native Hero.damage", hero.HP < hpBefore);
+        NetworkMessage attack = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\\"action\\\":\\\"ATTACK\\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The native attack result must be sent after all defense procs", attack);
+        JsonValue envelope = new JsonReader().parse(attack.payloadJson);
+        JsonValue data = envelope.get("data");
+        Assert.assertEquals(hpBefore,
+                new JsonReader().parse(data.getString("attackerStateBefore")).getInt("hp"));
+        JsonValue afterState = new JsonReader().parse(envelope.getString("heroStateJson"));
+        Assert.assertEquals("The post-state must include native retaliation damage", hero.HP, afterState.getInt("hp"));
+        Assert.assertTrue(afterState.getInt("hp") < hpBefore);
+    }
+
+    @Test
+    public void publisherBlessedAnkhRevivalPublishesTheExactNativePostState() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-blessed-ankh", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\\\"playerId\\\":\\\"client-publisher\\\",\\\"sessionToken\\\":\\\"ankh-token\\\","
+                        + "\\\"isLevelPublisher\\\":true,\\\"sequence\\\":1,\\\"seed\\\":123456,\\\"depth\\\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        hero.HP = 3;
+        Ankh ankh = new Ankh();
+        ankh.bless();
+        hero.belongings.backpack.items.add(ankh);
+
+        hero.damage(100, new Object());
+
+        Assert.assertEquals("A blessed Ankh must preserve the native quarter-health revival", 5, hero.HP);
+        Assert.assertFalse("The native revival must consume exactly the blessed Ankh",
+                hero.belongings.backpack.items.contains(ankh));
+        NetworkMessage revive = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\\"action\\\":\\\"REVIVE\\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The native blessed-Ankh outcome must be sent to the room authority", revive);
+        JsonValue data = new JsonReader().parse(revive.payloadJson).get("data");
+        Assert.assertEquals(3, data.getInt("targetHpBefore"));
+        Assert.assertEquals(5, data.getInt("targetHp"));
+        Assert.assertEquals(1, data.getInt("ankhCountBefore"));
+        Assert.assertEquals(0, data.getInt("ankhCountAfter"));
+        Assert.assertEquals(1, data.getInt("blessedAnkhCountBefore"));
+        Assert.assertEquals(0, data.getInt("blessedAnkhCountAfter"));
     }
 
     @Test
