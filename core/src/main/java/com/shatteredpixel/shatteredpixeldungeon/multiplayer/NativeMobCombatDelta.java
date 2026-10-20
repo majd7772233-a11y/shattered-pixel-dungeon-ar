@@ -6,6 +6,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -135,7 +136,37 @@ public final class NativeMobCombatDelta {
             for (Delta delta : payload.deltas) if (delta.hpAfter <= 0) secondaryDeath = true;
             if (secondaryDeath) payload.heaps = SPDLevelSnapshot.currentHeapsJson();
         }
-        return new Json().toJson(payload);
+        return new Json().toJson(toWirePayload(payload));
+    }
+
+    /**
+     * Serialize the wire shape explicitly. libGDX's reflection/prototype optimization omits
+     * primitive fields equal to their defaults (notably zero shield values), which the server
+     * must distinguish from missing/invalid fields. Omit heaps when no secondary death occurred.
+     */
+    private static Map<String, Object> toWirePayload(Payload payload) {
+        Map<String, Object> wire = new LinkedHashMap<>();
+        wire.put("complete", payload.complete);
+        List<Map<String, Object>> deltas = new ArrayList<>();
+        for (Delta delta : payload.deltas) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("entityId", delta.entityId);
+            row.put("hpBefore", delta.hpBefore);
+            row.put("htBefore", delta.htBefore);
+            row.put("posBefore", delta.posBefore);
+            row.put("shieldBefore", delta.shieldBefore);
+            row.put("buffsBefore", delta.buffsBefore);
+            row.put("hpAfter", delta.hpAfter);
+            row.put("htAfter", delta.htAfter);
+            row.put("posAfter", delta.posAfter);
+            row.put("shieldAfter", delta.shieldAfter);
+            row.put("buffsAfter", delta.buffsAfter);
+            row.put("serializedBundleAfter", delta.serializedBundleAfter);
+            deltas.add(row);
+        }
+        wire.put("deltas", deltas);
+        if (payload.heaps != null) wire.put("heaps", payload.heaps);
+        return wire;
     }
 
     private static boolean sameCombatState(State a, State b) {

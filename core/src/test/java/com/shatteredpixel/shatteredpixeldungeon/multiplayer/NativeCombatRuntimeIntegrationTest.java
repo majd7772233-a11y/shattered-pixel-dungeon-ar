@@ -611,7 +611,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(1, deltas.size);
         Assert.assertEquals("native-secondary-proc-mob-0001", deltas.get(0).getString("entityId"));
         Assert.assertEquals(20, deltas.get(0).getInt("hpBefore"));
+        Assert.assertEquals(20, deltas.get(0).getInt("htBefore"));
+        Assert.assertEquals(0, deltas.get(0).getInt("shieldBefore"));
         Assert.assertEquals(17, deltas.get(0).getInt("hpAfter"));
+        Assert.assertEquals(20, deltas.get(0).getInt("htAfter"));
+        Assert.assertEquals(0, deltas.get(0).getInt("shieldAfter"));
         Assert.assertTrue("The secondary delta must preserve the complete native mob bundle",
                 deltas.get(0).getString("serializedBundleAfter").length() > 0);
     }
