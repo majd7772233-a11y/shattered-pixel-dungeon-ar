@@ -1695,7 +1695,9 @@ public class GameScene extends PixelScene {
 	}
 	
 	public static void resetKeyHold(){
-		cellSelector.resetKeyHold();
+		// Combat, death and resurrection can be resolved by a native headless authority
+		// before GameScene initializes its selector. There is no UI key-hold to reset then.
+		if (cellSelector != null) cellSelector.resetKeyHold();
 	}
 
 	public static void examineCell( Integer cell ) {
