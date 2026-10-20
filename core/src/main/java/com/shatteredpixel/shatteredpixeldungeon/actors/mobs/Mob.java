@@ -725,7 +725,8 @@ public abstract class Mob extends Char {
 	public void queueMultiplayerHeroDamageReport(String payloadJson, Hero target) {
 		if (payloadJson == null || target == null) return;
 		try {
-			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
 			java.util.Map<String, Object> next = json.fromJson(java.util.HashMap.class, payloadJson);
 			if (pendingMultiplayerHeroDamageJson != null) {
 				java.util.Map<String, Object> previous = json.fromJson(java.util.HashMap.class, pendingMultiplayerHeroDamageJson);
@@ -736,7 +737,7 @@ public abstract class Mob extends Char {
 					if (previous.containsKey(key)) next.put(key, previous.get(key));
 				}
 			}
-			pendingMultiplayerHeroDamageJson = json.toJson(next);
+			pendingMultiplayerHeroDamageJson = wireJson.toJson(next);
 			pendingMultiplayerDamageTarget = target;
 		} catch (RuntimeException ignored) {
 			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
@@ -752,7 +753,8 @@ public abstract class Mob extends Char {
 		pendingMultiplayerHeroDamageJson = null;
 		pendingMultiplayerDamageTarget = null;
 		try {
-			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
 			java.util.Map<String, Object> data = json.fromJson(java.util.HashMap.class, encoded);
 			java.util.Map<String, Object> targetState = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
@@ -790,7 +792,7 @@ public abstract class Mob extends Char {
 			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
 			manager.sendAction(com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType.SYNC_HERO_STATE,
-					json.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
+					wireJson.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(target));
 			return true;
 		} catch (RuntimeException error) {
 			error.printStackTrace(System.err);
@@ -817,7 +819,8 @@ public abstract class Mob extends Char {
 			return;
 		}
 		try {
-			com.badlogic.gdx.utils.Json json = multiplayerWireJson();
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			com.badlogic.gdx.utils.Json wireJson = multiplayerWireJson();
 			String buffs = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentCombatBuffsJson((Hero) target);
 			java.util.Map<String, Object> state = json.fromJson(java.util.HashMap.class,
 					com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
@@ -863,7 +866,7 @@ public abstract class Mob extends Char {
 			data.put("engineHit", hit);
 			data.put("engineDamageResult", true);
 			manager.sendAction(com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType.SYNC_HERO_STATE,
-					json.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
+					wireJson.toJson(data), com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson((Hero) target));
 		} catch (RuntimeException error) {
 			manager.requestResync(manager.getLastSequence());
 		}
@@ -875,9 +878,33 @@ public abstract class Mob extends Char {
 	 * such as {damage:{class:java.lang.Integer,value:2}}, which the Worker cannot parse.
 	 */
 	private static com.badlogic.gdx.utils.Json multiplayerWireJson() {
-		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-		json.setOutputType(com.badlogic.gdx.utils.JsonWriter.OutputType.json);
+		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json(
+				com.badlogic.gdx.utils.JsonWriter.OutputType.json);
 		json.setTypeName(null);
+		// LibGDX's default Map writer treats heterogeneous values as unknown Objects.
+		// That emits typed wrapper objects (or recurses forever when typeName is null).
+		// Give every map entry its real runtime type instead, preserving JSON primitives.
+		json.setSerializer(java.util.HashMap.class,
+				new com.badlogic.gdx.utils.Json.Serializer<java.util.HashMap>() {
+			@Override
+			public void write(com.badlogic.gdx.utils.Json json, java.util.HashMap object, Class knownType) {
+				json.writeObjectStart();
+				for (Object rawEntry : object.entrySet()) {
+					java.util.Map.Entry entry = (java.util.Map.Entry) rawEntry;
+					String key = String.valueOf(entry.getKey());
+					Object value = entry.getValue();
+					if (value == null) json.writeValue(key, null);
+					else json.writeValue(key, value, value.getClass());
+				}
+				json.writeObjectEnd();
+			}
+
+			@Override
+			public java.util.HashMap read(com.badlogic.gdx.utils.Json json,
+					com.badlogic.gdx.utils.JsonValue jsonData, Class type) {
+				throw new UnsupportedOperationException("Native combat wire serializer is write-only");
+			}
+		});
 		return json;
 	}
 
