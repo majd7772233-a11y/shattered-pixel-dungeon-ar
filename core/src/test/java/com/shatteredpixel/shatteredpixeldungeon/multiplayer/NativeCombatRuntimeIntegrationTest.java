@@ -464,7 +464,7 @@ public class NativeCombatRuntimeIntegrationTest {
                 .filter(message -> message.messageType == MessageType.ACTION
                         && requestId.equals(message.requestId)
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\"action\\":\\"SYNC_PLAYER_COMBAT\\""))
+                        && message.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The authority combat result must be emitted after Ankh resolution", report);
         JsonValue envelope = new JsonReader().parse(report.payloadJson);
