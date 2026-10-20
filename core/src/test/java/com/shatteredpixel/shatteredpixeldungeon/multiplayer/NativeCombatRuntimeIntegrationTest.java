@@ -11,6 +11,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
@@ -77,6 +78,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.level = level;
         hero = new Hero();
         hero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(hero);
         hero.pos = 5 * level.width() + 5;
         hero.HP = hero.HT = 20;
         hero.damageInterrupt = false;
