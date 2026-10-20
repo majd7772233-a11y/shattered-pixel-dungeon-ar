@@ -446,7 +446,10 @@ public class NativeCombatRuntimeIntegrationTest {
 
     private static final class TestLevel extends Level {
         private TestLevel() {
-            setSize(12, 12);
+            // Use the game's standard 32x32 pathfinding dimensions. Native combat publication
+            // invokes Level.distance after the real attack; the smaller ad-hoc map left the
+            // static PathFinder distance table at a different size under headless libGDX.
+            setSize(32, 32);
             transitions = new ArrayList<>();
             mobs = new HashSet<>();
             heaps = new SparseArray<Heap>();
