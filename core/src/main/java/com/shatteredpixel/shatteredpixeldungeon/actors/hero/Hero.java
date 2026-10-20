@@ -2485,7 +2485,9 @@ public class Hero extends Char {
 
 		}
 		
-		BuffIndicator.refreshHero();
+		// Headless/remote combat can add native buffs before a hero sprite or UI exists.
+		// The buff itself is authoritative game state; refresh the indicator only when renderable.
+		if (sprite != null) BuffIndicator.refreshHero();
 
 		return added;
 	}
@@ -2493,7 +2495,7 @@ public class Hero extends Char {
 	@Override
 	public boolean remove( Buff buff ) {
 		if (super.remove( buff )) {
-			BuffIndicator.refreshHero();
+			if (sprite != null) BuffIndicator.refreshHero();
 			return true;
 		}
 		return false;
