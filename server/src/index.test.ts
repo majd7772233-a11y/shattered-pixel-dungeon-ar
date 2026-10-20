@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -696,6 +696,19 @@ describe('Native environmental and periodic damage validation', () => {
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetHp: 13, damage: -1 }, authoritative)).toBe(false);
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetShieldAfter: 4 }, authoritative)).toBe(false);
     expect(isValidNativeEnvironmentDamage({ ...valid(), targetPosAfter: 400 }, authoritative)).toBe(false);
+  });
+
+  it('checks native effective damage against both HP and shield deltas', () => {
+    expect(isValidNativeDamageAccounting(12, 3, 10, 1, 4)).toBe(true);
+    expect(isValidNativeDamageAccounting(12, 3, 12, 0, 3)).toBe(true);
+    expect(isValidNativeDamageAccounting(12, 3, 12, 0, 999)).toBe(false);
+    expect(isValidNativeDamageAccounting(12, 3, 10, 1, 2)).toBe(false);
+    expect(isValidNativeDamageAccounting(12, 3, 10, 4, 1)).toBe(false);
+  });
+
+  it('preserves the native Hunger accounting exception without trusting arbitrary values', () => {
+    expect(isValidNativeDamageAccounting(12, 3, 10, 1, 2, true)).toBe(true);
+    expect(isValidNativeDamageAccounting(12, 3, 10, 1, 4, true)).toBe(false);
   });
 });
 
