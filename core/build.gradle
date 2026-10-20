@@ -11,3 +11,11 @@ dependencies {
     testRuntimeOnly "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-desktop"
 }
 
+// Keep complete failure traces in CI output for headless native-engine integration tests.
+tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+    testLogging {
+        events "failed"
+        exceptionFormat "full"
+    }
+}
+
