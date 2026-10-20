@@ -1012,6 +1012,17 @@ public abstract class Mob extends Char {
 				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.ClericSpell;
 		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
 				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+		boolean nativeWorldTickSource = src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob
+				|| src instanceof com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
+		// Periodic/buff/blob/trap damage to shared mobs belongs to the level publisher. Other
+		// clients must not run a second local HP/death/loot mutation for the same world tick.
+		// Keep native effects inside a Hero.attack() transaction enabled: the publisher reruns
+		// those exact effects as part of the designated combat resolution.
+		if (manager.isMultiplayerActive() && !manager.isLevelPublisher()
+				&& nativeWorldTickSource && !Hero.isNativeAttackInProgress()) {
+			return;
+		}
 		boolean capturePeriodicState = nativePeriodicSource && manager.isMultiplayerActive()
 				&& manager.isLevelPublisher() && !Hero.isNativeAttackInProgress();
 		String serverEntityId = capturePeriodicState ? manager.getServerEntityId(id()) : null;
