@@ -196,7 +196,7 @@ public class MultiplayerManager implements TransportCallback {
             data.put("blessedAnkhCountAfter", after.getInt("blessedAnkhCount", 0));
             data.put("heaps", new Json().fromJson(java.util.ArrayList.class, SPDLevelSnapshot.currentHeapsJson()));
             data.put("levelWasLocked", wasLevelLocked);
-            sendAction(NetworkActionType.REVIVE, new Json().toJson(data), afterJson);
+            sendAction(NetworkActionType.REVIVE, NativeCombatJson.strictWriter().toJson(data), afterJson);
         } catch (RuntimeException error) {
             requestResync(getLastSequence());
         }
