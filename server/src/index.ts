@@ -347,7 +347,8 @@ export function mergeNativeCombatAttackerState(
   trustedValue: unknown,
   beforeValue: unknown,
   afterValue: unknown,
-  playerRow: any
+  playerRow: any,
+  allowNativeMaxHpIncrease: boolean = false
 ): string | null {
   if (typeof trustedValue !== "string" || typeof beforeValue !== "string"
     || typeof afterValue !== "string" || !playerRow || String(playerRow.state) !== "ALIVE") return null;
@@ -359,17 +360,20 @@ export function mergeNativeCombatAttackerState(
   } catch (_) { return null; }
   if (!hasMatchingNativeHeroStateSnapshot(beforeValue, trustedValue)
     || !Number.isInteger(playerRow.hp) || !Number.isInteger(playerRow.ht) || !Number.isInteger(playerRow.pos)
+    || !Number.isInteger(before.hp) || !Number.isInteger(before.ht) || !Number.isInteger(before.pos)
     || Number(before.hp) !== Number(playerRow.hp)
     || Number(before.ht) !== Number(playerRow.ht)
     || Number(before.pos) !== Number(playerRow.pos)
+    || !Number.isInteger(after.hp) || !Number.isInteger(after.ht) || !Number.isInteger(after.pos)
+    || !Number.isInteger(after.shielding)
     || Number(after.hp) < 0 || Number(after.ht) < 1
-    // Attacking cannot grant or forge maximum HP; it must match both the trusted pre-state
-    // and the room's authoritative player row.
-    || Number(after.ht) !== Number(before.ht) || Number(after.ht) !== Number(playerRow.ht)
+    // Native kills/secondary deaths can award XP and raise HT. Restrict increases to those
+    // outcomes and cap a one-action change; small decreases may occur when temporary HT expires.
+    || (Number(after.ht) > Number(before.ht)
+      && (!allowNativeMaxHpIncrease || Number(after.ht) - Number(before.ht) > 150))
+    || Number(before.ht) - Number(after.ht) > 150
     || Number(after.hp) > Number(after.ht)
     || Number(after.pos) !== Number(playerRow.pos)
-    || !Number.isInteger(after.hp) || !Number.isInteger(after.ht)
-    || !Number.isInteger(after.pos) || !Number.isInteger(after.shielding)
     || after.shielding < 0 || after.shielding > 100000) return null;
   const buffs = nativeBuffSnapshotFromHeroState(afterValue);
   if (buffs == null) return null;
@@ -2431,10 +2435,6 @@ export class MatchRoom {
               ? String(attackerStateRow.value) : "";
             const attackerStateBeforeJson = typeof payload.data?.attackerStateBefore === "string"
               ? payload.data.attackerStateBefore : "";
-            const mergedAttackerState = attackerRow.length > 0
-              ? mergeNativeCombatAttackerState(trustedAttackerStateJson, attackerStateBeforeJson,
-                  payload.heroStateJson, attackerRow[0])
-              : null;
             if (attackerRow.length > 0) {
               const attackerPos = Number(attackerRow[0].pos);
 
@@ -2602,6 +2602,10 @@ export class MatchRoom {
                       ...(targetHp <= 0 ? [targetPosAfter] : []),
                       ...secondaryDeathPositions
                     ];
+                    const mergedAttackerState = attackerRow.length > 0
+                      ? mergeNativeCombatAttackerState(trustedAttackerStateJson, attackerStateBeforeJson,
+                          payload.heroStateJson, attackerRow[0], allDeathPositions.length > 0)
+                      : null;
                     const lootSnapshot = targetHp <= 0 ? payload.data?.heaps
                       : secondaryDeathPositions.length > 0 ? secondaryMobPayload?.heaps : undefined;
                     const validLootSnapshot = secondaryMobPayload != null
