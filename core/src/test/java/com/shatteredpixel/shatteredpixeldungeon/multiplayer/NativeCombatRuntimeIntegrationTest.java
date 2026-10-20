@@ -22,6 +22,7 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
+import com.watabou.noosa.Game;
 import com.watabou.utils.Random;
 import com.watabou.utils.SparseArray;
 import org.junit.After;
@@ -46,6 +47,8 @@ public class NativeCombatRuntimeIntegrationTest {
 
     @BeforeClass
     public static void startHeadlessLibGdx() throws Exception {
+        // Mob death awards may initialize debug-only catalog badges in headless integration tests.
+        if (Game.version == null) Game.version = "test";
         CountDownLatch ready = new CountDownLatch(1);
         HeadlessApplicationConfiguration config = new HeadlessApplicationConfiguration();
         application = new HeadlessApplication(new ApplicationAdapter() {
@@ -599,8 +602,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull(attack);
         JsonValue data = new JsonReader().parse(attack.payloadJson).get("data");
         JsonValue secondaryPayload = new JsonReader().parse(data.getString("secondaryMobDeltas"));
+        JsonValue completeFlag = secondaryPayload.get("complete");
+        Assert.assertNotNull("Native secondary payload must contain the completeness flag: " + secondaryPayload,
+                completeFlag);
         Assert.assertTrue("A fully identified native secondary mutation must not be marked incomplete",
-                secondaryPayload.getBoolean("complete"));
+                completeFlag.asBoolean());
         JsonValue deltas = secondaryPayload.get("deltas");
         Assert.assertEquals(1, deltas.size);
         Assert.assertEquals("native-secondary-proc-mob-0001", deltas.get(0).getString("entityId"));
