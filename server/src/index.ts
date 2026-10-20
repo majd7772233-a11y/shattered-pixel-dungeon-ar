@@ -363,6 +363,9 @@ export function mergeNativeCombatAttackerState(
     || Number(before.ht) !== Number(playerRow.ht)
     || Number(before.pos) !== Number(playerRow.pos)
     || Number(after.hp) < 0 || Number(after.ht) < 1
+    // Attacking cannot grant or forge maximum HP; it must match both the trusted pre-state
+    // and the room's authoritative player row.
+    || Number(after.ht) !== Number(before.ht) || Number(after.ht) !== Number(playerRow.ht)
     || Number(after.hp) > Number(after.ht)
     || Number(after.pos) !== Number(playerRow.pos)
     || !Number.isInteger(after.hp) || !Number.isInteger(after.ht)
