@@ -1098,7 +1098,9 @@ public abstract class Char extends Actor {
 	
 	public void die( Object src ) {
 		destroy();
-		if (src != Chasm.class) {
+		// Headless authority combat and remote replicas may resolve native death before a sprite
+		// is attached. Death state/rewards still run; presentation is optional.
+		if (src != Chasm.class && sprite != null) {
 			sprite.die();
 			if (!flying && Dungeon.level != null && sprite instanceof MobSprite && Dungeon.level.map[pos] == Terrain.CHASM){
 				((MobSprite) sprite).fall();
