@@ -405,6 +405,34 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void staleCombatEventCannotRollBackNewerMobState() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-stale-event", "client-a", transport);
+
+        Rat target = addRat(hero.pos + 1, 100);
+        String stableId = "stable-sequence-mob-0001";
+        manager.registerServerEntityId(target.id(), stableId);
+
+        String newerEvent = "[{\\"sequence\\":2,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
+                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
+                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":60,\\"targetHt\\":100,"
+                + "\\"targetPosAfter\\":" + target.pos + ",\\"damage\\":40,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        routeEventBatch(newerEvent, 2L);
+        Assert.assertEquals(60, target.HP);
+        Assert.assertEquals(2L, manager.getLastSequence());
+
+        String staleEvent = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
+                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
+                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":90,\\"targetHt\\":100,"
+                + "\\"targetPosAfter\\":" + target.pos + ",\\"damage\\":10,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        routeEventBatch(staleEvent, 1L);
+
+        Assert.assertEquals("An older combat event must not restore stale HP", 60, target.HP);
+        Assert.assertEquals("Sequence tracking must remain monotonic", 2L, manager.getLastSequence());
+    }
+
+    @Test
     public void acceptedCombatEventConvergesAcrossClientsWithDifferentLocalActorIds() throws Exception {
         final String stableMobId = "stable-native-mob-0001";
         MultiplayerManager manager = MultiplayerManager.getInstance();
