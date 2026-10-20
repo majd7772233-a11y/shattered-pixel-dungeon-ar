@@ -100,6 +100,28 @@ export function isValidNativeHpTransition(previousHp: number, targetHp: number, 
     && reportedDamage === previousHp - targetHp;
 }
 
+/** Checks the actual native effective-damage accounting, including shield absorption.
+ * Hunger is intentionally handled separately because Hero.damage excludes shielding
+ * from its damage metric for that native source. */
+export function isValidNativeDamageAccounting(
+  hpBefore: unknown,
+  shieldBefore: unknown,
+  hpAfter: unknown,
+  shieldAfter: unknown,
+  effectiveDamage: unknown,
+  ignoresShield: boolean = false
+): boolean {
+  if (!Number.isInteger(hpBefore) || Number(hpBefore) < 0
+    || !Number.isInteger(shieldBefore) || Number(shieldBefore) < 0 || Number(shieldBefore) > 100000
+    || !Number.isInteger(hpAfter) || Number(hpAfter) < 0 || Number(hpAfter) > Number(hpBefore)
+    || !Number.isInteger(shieldAfter) || Number(shieldAfter) < 0 || Number(shieldAfter) > Number(shieldBefore)
+    || !Number.isInteger(effectiveDamage) || Number(effectiveDamage) < 0) return false;
+  const expected = ignoresShield
+    ? Number(hpBefore) - Number(hpAfter)
+    : Number(hpBefore) + Number(shieldBefore) - Number(hpAfter) - Number(shieldAfter);
+  return expected >= 0 && Number(effectiveDamage) === expected;
+}
+
 export function isValidNativeCombatRequestId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{8,80}$/.test(value);
 }
@@ -188,7 +210,8 @@ export function isValidNativeEnvironmentDamage(data: any, authoritative: any): b
     && Number.isInteger(data.targetHt) && ht === htBefore
     && Number.isInteger(data.targetHp) && hp >= 0 && hp <= hpBefore
     && Number.isInteger(data.damage) && isValidNativeHpTransition(hpBefore, hp, damage)
-    && Number.isInteger(data.effectiveDamage) && data.effectiveDamage >= 0
+    && isValidNativeDamageAccounting(hpBefore, shieldBefore, hp, shieldAfter, data.effectiveDamage,
+      data.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger")
     && data.targetState === (hp > 0 ? "ALIVE" : "DEAD")
     && hasMatchingNativeHeroBuffSnapshot(buffsBefore, authoritative.heroState)
     && isValidNativeCombatBuffs(buffsAfter)
@@ -241,6 +264,7 @@ export function hasStrictNativeDamageFields(data: any): boolean {
     && data.sourceActionCost > 0 && data.sourceActionCost <= 10
     && Number.isInteger(data.targetHpBefore) && Number.isInteger(data.targetHtBefore)
     && Number.isInteger(data.targetHp) && Number.isInteger(data.targetHt) && Number.isInteger(data.damage)
+    && Number.isInteger(data.effectiveDamage) && data.effectiveDamage >= 0
     && Number.isInteger(data.targetPosBefore) && Number.isInteger(data.targetPosAfter)
     && Number.isInteger(data.targetShieldBefore) && Number.isInteger(data.targetShieldAfter)
     && typeof data.engineDamageResult === "boolean" && data.engineDamageResult === true
@@ -1928,6 +1952,8 @@ export class MatchRoom {
               && (ankhRescue
                 ? hp > 0 && hp === Math.floor(ht / 4) && damage === 0
                 : isValidNativeHpTransition(previousHp, hp, damage))
+              && (ankhRescue || isValidNativeDamageAccounting(
+                previousHp, targetShieldBefore, hp, targetShieldAfter, data.effectiveDamage))
               && (targetHeroCombatChanged || sourceMobReportedChanged || noEffectOutcomeValid)
               && newHeroStateValid && mergedDamagedHeroStateJson != null
               && isValidNativeCombatBuffs(data.targetBuffs)
