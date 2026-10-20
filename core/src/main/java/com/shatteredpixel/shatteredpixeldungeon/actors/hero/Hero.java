@@ -204,12 +204,16 @@ public class Hero extends Char {
 	public static final int MAX_LEVEL = 30;
 
 	private static boolean nativeAttackInProgress = false;
+	private static Hero nativeAttackSource;
 	private boolean deferNativeCombatReport;
 	private String deferredNativeCombatAction;
 	private boolean deferredNativeCombatAuthority;
 	private String deferredNativeCombatTargetType;
 
 	public static boolean isNativeAttackInProgress() { return nativeAttackInProgress; }
+
+	/** Current native attacker while its attack and synchronous damage/death pipeline execute. */
+	public static Hero getNativeAttackSource() { return nativeAttackSource; }
 
 	private void sendNativeCombatReport(String action, boolean authoritySimulation, String targetType) {
 		if (action == null || action.isEmpty()) return;
@@ -611,12 +615,15 @@ public class Hero extends Char {
 		}
 		int attackerPosBefore = pos;
 		boolean previousNativeAttackInProgress = nativeAttackInProgress;
+		Hero previousNativeAttackSource = nativeAttackSource;
 		boolean result;
+		nativeAttackSource = this;
 		nativeAttackInProgress = true;
 		try {
 			result = super.attack(enemy, dmgMulti, dmgBonus, accMulti);
 		} finally {
 			nativeAttackInProgress = previousNativeAttackInProgress;
+			nativeAttackSource = previousNativeAttackSource;
 		}
 		String secondaryMobDeltas = shouldPublish
 				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.changedSince(
