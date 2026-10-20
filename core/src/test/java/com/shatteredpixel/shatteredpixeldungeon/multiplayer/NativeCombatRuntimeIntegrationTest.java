@@ -414,18 +414,18 @@ public class NativeCombatRuntimeIntegrationTest {
         String stableId = "stable-sequence-mob-0001";
         manager.registerServerEntityId(target.id(), stableId);
 
-        String newerEvent = "[{\\"sequence\\":2,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
-                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
-                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":60,\\"targetHt\\":100,"
-                + "\\"targetPosAfter\\":" + target.pos + ",\\"damage\\":40,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        String newerEvent = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
+                + "\"targetType\":\"MOB\",\"targetHp\":60,\"targetHt\":100,"
+                + "\"targetPosAfter\":" + target.pos + ",\"damage\":40,\"hit\":true,\"engineResolved\":true}}]";
         routeEventBatch(newerEvent, 2L);
         Assert.assertEquals(60, target.HP);
         Assert.assertEquals(2L, manager.getLastSequence());
 
-        String staleEvent = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
-                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
-                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":90,\\"targetHt\\":100,"
-                + "\\"targetPosAfter\\":" + target.pos + ",\\"damage\\":10,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        String staleEvent = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
+                + "\"targetType\":\"MOB\",\"targetHp\":90,\"targetHt\":100,"
+                + "\"targetPosAfter\":" + target.pos + ",\"damage\":10,\"hit\":true,\"engineResolved\":true}}]";
         routeEventBatch(staleEvent, 1L);
 
         Assert.assertEquals("An older combat event must not restore stale HP", 60, target.HP);
