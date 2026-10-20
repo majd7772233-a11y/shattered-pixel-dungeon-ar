@@ -12,6 +12,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
@@ -226,6 +227,50 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(0, data.getInt("ankhCountAfter"));
         Assert.assertEquals(1, data.getInt("blessedAnkhCountBefore"));
         Assert.assertEquals(0, data.getInt("blessedAnkhCountAfter"));
+    }
+
+    @Test
+    public void delegatedNativeMobKillAwardsExperienceToTheRemoteAttacker() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-delegated-xp", "client-publisher", transport);
+
+        RemoteHero remoteHero = new RemoteHero();
+        remoteHero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(remoteHero);
+        remoteHero.pos = hero.pos + level.width() + 1;
+        remoteHero.HP = remoteHero.HT = 20;
+        remoteHero.invisible = 1;
+        remoteHero.damageInterrupt = false;
+        Actor.add(remoteHero);
+
+        RemotePlayer remoteAttacker = new RemotePlayer("client-attacker", "Attacker", "WARRIOR");
+        remoteAttacker.heroInstance = remoteHero;
+        remoteAttacker.hp = remoteHero.HP;
+        remoteAttacker.ht = remoteHero.HT;
+        remoteAttacker.pos = remoteHero.pos;
+        manager.addRemotePlayer(remoteAttacker);
+
+        ExperienceRat target = addMob(new ExperienceRat(), remoteHero.pos + 1, 1);
+        target.defenseSkill = 0;
+        int publisherExpBefore = hero.exp;
+        int attackerExpBefore = remoteHero.exp;
+
+        manager.beginAuthorityCombat("native-delegated-xp-0001");
+        boolean hit;
+        try {
+            hit = runNativeAttack(() -> remoteHero.attack(target));
+        } finally {
+            manager.endAuthorityCombat();
+        }
+
+        Assert.assertTrue("The delegated native attack must hit", hit);
+        Assert.assertFalse("The native mob must be killed", target.isAlive());
+        Assert.assertTrue("The actual remote attacker must receive native XP", remoteHero.exp > attackerExpBefore);
+        Assert.assertEquals("The publisher must not receive another player's kill XP",
+                publisherExpBefore, hero.exp);
+        Assert.assertNull("The native attacker context must be cleared after the action",
+                Hero.getNativeAttackSource());
     }
 
     @Test
@@ -735,6 +780,22 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     private static final class DeterministicRat extends Rat {
+        @Override
+        public int drRoll() {
+            return 0;
+        }
+    }
+
+    private static final class ExperienceRat extends Rat {
+        {
+            lootChance = 0f;
+        }
+
+        @Override
+        public int defenseSkill(com.shatteredpixel.shatteredpixeldungeon.actors.Char enemy) {
+            return 0;
+        }
+
         @Override
         public int drRoll() {
             return 0;
