@@ -167,8 +167,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-non-publisher-periodic", "client-peer", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-peer\\",\\"sessionToken\\":\\"periodic-peer-token\\","
-                        + "\\"isLevelPublisher\\":false,\\"sequence\\":1,\\"seed\\":123456,\\"depth\\":1}");
+                "{\"playerId\":\"client-peer\",\"sessionToken\":\"periodic-peer-token\","
+                        + "\"isLevelPublisher\":false,\"sequence\":1,\"seed\":123456,\"depth\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
         Assert.assertFalse(manager.isLevelPublisher());
@@ -181,7 +181,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertFalse("A non-publisher must not publish an untrusted periodic delta",
                 transport.sent.stream().anyMatch(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\"action\\":\\"SYNC_MOB_STATE\\"")));
+                        && message.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"")));
     }
 
     @Test
@@ -190,8 +190,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-publisher-periodic", "client-publisher", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"periodic-publisher-token\\","
-                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1,\\"seed\\":123456,\\"depth\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"periodic-publisher-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"seed\":123456,\"depth\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
         Assert.assertTrue(manager.isLevelPublisher());
@@ -205,7 +205,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage report = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\"action\\":\\"SYNC_MOB_STATE\\""))
+                        && message.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The publisher must persist the native periodic result", report);
         JsonValue data = new JsonReader().parse(report.payloadJson).get("data");
