@@ -182,6 +182,8 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue afterState = new JsonReader().parse(envelope.getString("heroStateJson"));
         Assert.assertEquals("The post-state must include native retaliation damage", hero.HP, afterState.getInt("hp"));
         Assert.assertTrue(afterState.getInt("hp") < hpBefore);
+        Assert.assertFalse("Retaliation inside Hero.attack must be part of the attack snapshot, not queued as a future Mob turn",
+                target.flushMultiplayerHeroDamageReport(1f));
     }
 
     @Test
