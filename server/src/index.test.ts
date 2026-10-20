@@ -835,8 +835,15 @@ describe('Authoritative native hero pre-state', () => {
       JSON.stringify({ ...after, pos: 13 }), row)).toBeNull();
     expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
       JSON.stringify({ ...after, hp: 21 }), row)).toBeNull();
+    const levelUp = { ...after, hp: 20, ht: 25 };
     expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
-      JSON.stringify({ ...after, ht: 100, hp: 16 }), row)).toBeNull();
+      JSON.stringify(levelUp), row)).toBeNull();
+    const mergedLevelUp = mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify(levelUp), row, true);
+    expect(mergedLevelUp).not.toBeNull();
+    expect(JSON.parse(String(mergedLevelUp)).ht).toBe(25);
+    expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
+      JSON.stringify({ ...levelUp, ht: 171 }), row, true)).toBeNull();
     expect(mergeNativeCombatAttackerState(JSON.stringify(before), JSON.stringify(before),
       JSON.stringify(after), { ...row, state: 'DEAD' })).toBeNull();
   });
