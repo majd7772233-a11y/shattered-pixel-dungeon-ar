@@ -169,6 +169,9 @@ export function isValidNativeWorldTurnSnapshot(
   const entityIds = new Set<string>();
   for (const mob of next.mobs) {
     const id = String(mob?.entityId || "");
+    // Newly spawned native mobs have not received a server ID yet. They are assigned one
+    // after validation and included in the ACK, so the publisher can bind it for the next turn.
+    if (id.length === 0) continue;
     if (id.length < 8 || id.length > 80 || entityIds.has(id)) return false;
     entityIds.add(id);
   }
@@ -1444,7 +1447,7 @@ export class MatchRoom {
           Number.isSafeInteger(Number(previousSnapshot.nativeWorldTurnCounter))
             ? Number(previousSnapshot.nativeWorldTurnCounter) : 0);
         const isNativeWorldTurn = level.nativeWorldTick === true;
-        if (isNativeWorldTurn && !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, depth)) {
+        if (isNativeWorldTurn && !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, this.currentDepth)) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_OR_REPLAYED_NATIVE_WORLD_TURN" }) }));
           return;

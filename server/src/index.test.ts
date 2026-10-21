@@ -206,6 +206,17 @@ describe('Native level snapshot contract', () => {
     expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeActorClock: Number.NaN }), 0, 1)).toBe(false);
   });
 
+  it("accepts a newly spawned native Mob without an ID so the server can assign it atomically", () => {
+    const previous = previousNativeMobSnapshot();
+    const next = nextNativeMobTurn();
+    next.mobs.push({
+      mobId: 27, name: "Skeleton", pos: 18, hp: 7, ht: 7, shielding: 0,
+      serializedBundle: "native-skeleton-bundle", buffs: [], baseSpeed: 1, effectiveSpeed: 1,
+      cooldown: 0, targetCell: -1, targetType: "NONE", targetEntityId: ""
+    });
+    expect(isValidNativeWorldTurnSnapshot(previous, next, 0, 1)).toBe(true);
+  });
+
   it("rejects malformed native timing and target fields before any room state is written", () => {
     const previous = previousNativeMobSnapshot();
     expect(hasCompleteNativeLevelSnapshot(nextNativeMobTurn({
