@@ -351,7 +351,8 @@ public class NativeCombatRuntimeIntegrationTest {
         level.blobs.put(ToxicGas.class, staleGas);
         Actor.add(staleGas);
 
-        Assert.assertTrue("All native item/trap/plant/blob bundles must be validated before apply",
+        Assert.assertTrue("All native item/trap/plant/blob bundles must be validated before apply: "
+                        + WorldSnapshot.lastRollbackCaptureDiagnostic(),
                 WorldSnapshot.validateForRestore(snapshot));
         Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
 

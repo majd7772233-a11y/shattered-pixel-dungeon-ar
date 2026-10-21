@@ -479,8 +479,8 @@ public class WorldSnapshot {
                 }
             }
             if (!validateForRestore(baseline)) {
-                lastRollbackCaptureDiagnostic = "validateForRestore branch #" + lastValidationRejectCounter
-                    + " (complete=" + baseline.completeWorldSnapshot
+                lastRollbackCaptureDiagnostic = "validateForRestore rejected by "
+                    + lastRollbackCaptureDiagnostic + " (complete=" + baseline.completeWorldSnapshot
                     + ", level=" + (Dungeon.level != null)
                     + ", depth=" + baseline.depth + "/" + Dungeon.depth
                     + ", branch=" + baseline.branch + "/" + Dungeon.branch
