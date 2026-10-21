@@ -61,6 +61,7 @@ export function resolveServerMobIdByEntityId(levelSnapshot: any, entityId: unkno
 
 
 /** Validates one native SPD movement step against the trusted source cell, terrain and occupancy. */
+/** Validates one native SPD movement step against the complete trusted terrain and occupancy. */
 export function isValidNativeMoveIntent(
   fromValue: unknown, toValue: unknown, widthValue: unknown, heightValue: unknown,
   tilesValue: unknown, occupiedPositionsValue: unknown = []
@@ -72,26 +73,30 @@ export function isValidNativeMoveIntent(
     || !Array.isArray(tilesValue) || !Array.isArray(occupiedPositionsValue)) return false;
   const width = widthValue, height = heightValue, size = width * height;
   const from = fromValue, to = toValue;
-  if (from < 0 || from >= size || to < 0 || to >= size || from === to) return false;
+  if (from < 0 || from >= size || to < 0 || to >= size || from === to || tilesValue.length !== size) return false;
   const tileByPos = new Map<number, any>();
   for (const tile of tilesValue as any[]) {
-    if (!Number.isInteger(tile?.pos) || tile.pos < 0 || tile.pos >= size || tileByPos.has(tile.pos)) return false;
+    if (!Number.isInteger(tile?.pos) || tile.pos < 0 || tile.pos >= size || tileByPos.has(tile.pos)
+      || typeof tile?.passable !== "boolean" || typeof tile?.solid !== "boolean"
+      || typeof tile?.pit !== "boolean" || (tile?.avoid !== undefined && typeof tile.avoid !== "boolean")) return false;
     tileByPos.set(tile.pos, tile);
   }
+  // Do not infer missing cells as floor: each native position must occur exactly once.
+  if (tileByPos.size !== size) return false;
   const walkable = (pos: number) => {
     const tile = tileByPos.get(pos);
-    return !!tile && tile.passable === true && (tile.solid === false || Number(tile.terrain) === 5) && tile.pit === false;
+    // SPD's Hero.getCloser() allows passable OR avoid terrain. Closed doors are passable
+    // despite their solid flag; pits are handled by the native fall transition, not a normal move.
+    return !!tile && tile.pit === false && (tile.passable === true || tile.avoid === true);
   };
-  if (!tileByPos.has(from) || !walkable(to)) return false;
+  if (!walkable(from) || !walkable(to)) return false;
   const dx = (to % width) - (from % width);
   const dy = Math.floor(to / width) - Math.floor(from / width);
   if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) return false;
-  if (dx !== 0 && dy !== 0) {
-    const sideA = from + (dx > 0 ? 1 : -1);
-    const sideB = from + (dy > 0 ? width : -width);
-    if (!walkable(sideA) || !walkable(sideB)) return false;
-  }
-  return !(occupiedPositionsValue as any[]).some(pos => typeof pos === "number" && Number.isInteger(pos) && pos === to);
+  // Keep SPD's native diagonal rule: checking the destination is enough; do not add
+  // a separate two-side corner rule which the original Hero.getCloser() does not use.
+  return !(occupiedPositionsValue as any[]).some(pos =>
+    typeof pos === "number" && Number.isInteger(pos) && pos === to);
 }
 
 /** Resolves only a matching, unlocked, branch-zero regular transition from the trusted source snapshot. */
@@ -2924,11 +2929,12 @@ export class MatchRoom {
                 `levelSnapshot:${this.currentDepth}`).toArray()[0];
               let currentLevelSnapshot: any = null;
               try { currentLevelSnapshot = levelSnapshotRow ? JSON.parse(String(levelSnapshotRow.value)) : null; } catch (_) {}
-              const tileRows = this.sql.exec("SELECT pos,terrain,passable,solid,pit FROM level_tiles WHERE depth = ?", this.currentDepth).toArray()
-                .map((tile: any) => ({ pos: Number(tile.pos), terrain: Number(tile.terrain),
-                  passable: Number(tile.passable) === 1, solid: Number(tile.solid) === 1, pit: Number(tile.pit) === 1 }));
+              const tileRows = Array.isArray(currentLevelSnapshot?.tiles) ? currentLevelSnapshot.tiles.map((tile: any) => ({
+                pos: Number(tile.pos), terrain: Number(tile.terrain), passable: tile.passable === true,
+                solid: tile.solid === true, pit: tile.pit === true, avoid: tile.avoid === true
+              })) : [];
               const occupiedPlayers = this.sql.exec(
-                `SELECT pos FROM players WHERE player_id <> ? AND state = 'ALIVE' AND connected = 1`, session.playerId
+                `SELECT pos FROM players WHERE player_id <> ? AND state = 'ALIVE'`, session.playerId
               ).toArray().map((row: any) => Number(row.pos));
               const occupiedMobs = this.sql.exec(
                 `SELECT pos FROM mobs WHERE depth = ? AND hp > 0`, this.currentDepth
@@ -3746,7 +3752,10 @@ export class MatchRoom {
     if (destination.length !== 1) return;
     const newPos = Number(destination[0].pos);
     const size = Number(level.width) * Number(level.height);
-    if (newPos < 0 || newPos >= size) return;
+    const destinationTile = Array.isArray(level.tiles)
+      ? level.tiles.find((tile: any) => tile?.pos === newPos) : null;
+    if (newPos < 0 || newPos >= size || !destinationTile || destinationTile.passable !== true
+        || destinationTile.solid !== false || destinationTile.pit !== false) return;
 
     const connected = this.sql.exec("SELECT player_id FROM players WHERE state = 'ALIVE' AND connected = 1").toArray();
     const readyStates: Array<{playerId: string; heroStateJson: string; hero: any}> = [];
