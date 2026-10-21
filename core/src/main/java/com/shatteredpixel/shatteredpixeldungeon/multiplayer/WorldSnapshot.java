@@ -417,6 +417,12 @@ public class WorldSnapshot {
                         "secret", "avoid", "water", "discoverable", "openSpace"}) {
                     Object value = tile.get(flag);
                     if (value instanceof Boolean) tile.put(flag, (Boolean) value ? 1 : 0);
+                    else if (!(value instanceof Number)
+                            || (((Number) value).intValue() != 0 && ((Number) value).intValue() != 1)) {
+                        // libGDX omits primitive false fields when serializing the current level.
+                        // A missing flag in this local-only export means false, not malformed input.
+                        tile.put(flag, 0);
+                    }
                 }
             }
             baseline.transitions = objectRows(source.get("transitions"));
@@ -531,6 +537,8 @@ public class WorldSnapshot {
             lastAppliedSnapshot = baseline;
         }
 
+        WorldSnapshot rollbackBackup = lastAppliedSnapshot;
+        try {
         boolean dimensionsChanged = Dungeon.level.width() != snapshot.levelWidth
                 || Dungeon.level.height() != snapshot.levelHeight;
         if (dimensionsChanged) {
@@ -544,7 +552,9 @@ public class WorldSnapshot {
 
         if (Dungeon.level != null) {
             Dungeon.level.locked = snapshot.levelLocked;
-            if (!Dungeon.level.restoreMultiplayerFeeling(snapshot.levelFeeling)) return false;
+            if (!Dungeon.level.restoreMultiplayerFeeling(snapshot.levelFeeling)) {
+                throw new IllegalStateException("Native level feeling restore failed after snapshot preflight");
+            }
             java.util.Arrays.fill(Dungeon.level.visited, false);
             java.util.Arrays.fill(Dungeon.level.mapped, false);
             for (Integer pos : snapshot.visitedPositions) Dungeon.level.visited[pos] = true;
@@ -928,5 +938,14 @@ public class WorldSnapshot {
             Game.switchScene(GameScene.class);
         }
         return true;
+        } catch (RuntimeException restoreError) {
+            if (!rollback && rollbackBackup != null && rollbackBackup != snapshot) {
+                lastAppliedSnapshot = rollbackBackup;
+                if (!rollbackToLastApplied()) {
+                    GLog.w("Failed to restore previous world after snapshot exception.");
+                }
+            }
+            throw restoreError;
+        }
     }
 }

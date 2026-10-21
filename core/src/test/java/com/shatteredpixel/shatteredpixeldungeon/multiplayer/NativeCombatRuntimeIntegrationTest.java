@@ -165,6 +165,49 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void firstSnapshotFailureAfterResizeRollsBackToLocalNativeWorld() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-first-rollback", "client-publisher", new TestTransport());
+        Rat localMob = addRat(hero.pos + 1, 13);
+        int oldWidth = level.width();
+        int oldHeight = level.height();
+        int oldPosition = localMob.pos;
+        int oldTerrain = level.map[oldPosition];
+
+        Rat authoritativeMob = new Rat();
+        authoritativeMob.pos = hero.pos + 1;
+        authoritativeMob.HP = 27;
+        authoritativeMob.HT = 30;
+        WorldSnapshot incoming = makeSnapshotWithMob(1L, authoritativeMob, "rollback-authoritative-mob-0001");
+        resizeSnapshotTiles(incoming, 28, 28);
+        Assert.assertTrue("The test must inject failure only after a valid snapshot passes preflight",
+                WorldSnapshot.validateForRestore(incoming));
+
+        ((TestLevel) level).failNextFeelingRestore = true;
+        try {
+            WorldSnapshot.restoreWorld(incoming);
+            Assert.fail("Injected native feeling failure should abort and roll back the snapshot");
+        } catch (IllegalStateException expected) {
+            Assert.assertTrue(expected.getMessage().contains("feeling restore failed"));
+        }
+
+        Assert.assertEquals("The original floor width must be restored", oldWidth, level.width());
+        Assert.assertEquals(oldHeight, level.height());
+        Assert.assertTrue("Original native mob must still exist after rollback", level.mobs.contains(localMob));
+        Assert.assertSame(localMob, Actor.findById(localMob.id()));
+        Assert.assertEquals(13, localMob.HP);
+        Assert.assertEquals(oldPosition, localMob.pos);
+        Assert.assertEquals(oldTerrain, level.map[oldPosition]);
+        Assert.assertEquals(1, level.mobs.size());
+        Assert.assertTrue("The rollback baseline must remain available for the resync path",
+                WorldSnapshot.rollbackToLastApplied());
+        Assert.assertEquals(oldWidth, level.width());
+        Assert.assertEquals(oldHeight, level.height());
+        Assert.assertTrue(level.mobs.contains(localMob));
+        Assert.assertEquals(1, level.mobs.size());
+    }
+
+    @Test
     public void snapshotPreflightRejectsMalformedHeroBuffBeforeChangingLiveWorld() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-preflight", "client-publisher", new TestTransport());
@@ -1364,6 +1407,8 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     private static final class TestLevel extends Level {
+        private boolean failNextFeelingRestore;
+
         private TestLevel() {
             // Use the game's standard 32x32 pathfinding dimensions. Native combat publication
             // invokes Level.distance after the real attack; the smaller ad-hoc map left the
@@ -1388,6 +1433,15 @@ public class NativeCombatRuntimeIntegrationTest {
         @Override
         protected boolean build() {
             return true;
+        }
+
+        @Override
+        public boolean restoreMultiplayerFeeling(String name) {
+            if (failNextFeelingRestore) {
+                failNextFeelingRestore = false;
+                return false;
+            }
+            return super.restoreMultiplayerFeeling(name);
         }
 
         @Override
