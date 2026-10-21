@@ -295,24 +295,34 @@ public class NativeCombatRuntimeIntegrationTest {
         targetPlayer.hp = targetHero.HP;
         targetPlayer.ht = targetHero.HT;
         targetPlayer.heroInstance = targetHero;
+        manager.addRemotePlayer(targetPlayer);
+        Actor.add(targetHero);
+
+        // Capture while the publisher still resolves the target; the wire snapshot must retain
+        // the stable player identity even if the receiver constructs its player list later.
         mob.restoreMultiplayerAiState("Hunting", mob.multiplayerBaseSpeed(), mob.defenseSkill,
                 1.75f, targetHero.pos, true, true, "PLAYER", targetPlayer.playerId);
-
         WorldSnapshot snapshot = makeSnapshotWithMob(1L, mob, entityId);
-        Mob restoredMob = findMobByServerId(manager, entityId);
-        Assert.assertNotNull(restoredMob);
-        Assert.assertNull("An unresolved PLAYER ID must not bind a stale Actor", restoredMob.multiplayerEnemy());
+        Assert.assertEquals("PLAYER", snapshot.mobs.get(0).get("targetType"));
+        Assert.assertEquals(targetPlayer.playerId, snapshot.mobs.get(0).get("targetEntityId"));
 
-        // This is the post-player-restore reconciliation stage used by restoreWorld().
+        // Simulate the receiver's earlier Mob pass before it has constructed this player's Hero.
+        manager.removeRemotePlayer(targetPlayer.playerId);
+        Actor.remove(targetHero);
+        WorldSnapshot.restoreNativeMobAiState(snapshot);
+        Assert.assertNull("The first pass cannot bind a Player instance that does not yet exist",
+                mob.multiplayerEnemy());
+
+        // restoreWorld calls this reconciliation after it has restored all player replicas.
         manager.addRemotePlayer(targetPlayer);
         Actor.add(targetHero);
         WorldSnapshot.restoreNativeMobAiState(snapshot);
 
         Assert.assertSame("Mob target must resolve after the remote Hero exists in the Actor graph",
-                targetHero, restoredMob.multiplayerEnemy());
-        Assert.assertEquals("PLAYER", restoredMob.multiplayerTargetType());
-        Assert.assertEquals(targetPlayer.playerId, restoredMob.multiplayerTargetEntityId());
-        Assert.assertEquals(1.75f, restoredMob.cooldown(), 0.02f);
+                targetHero, mob.multiplayerEnemy());
+        Assert.assertEquals("PLAYER", mob.multiplayerTargetType());
+        Assert.assertEquals(targetPlayer.playerId, mob.multiplayerTargetEntityId());
+        Assert.assertEquals(1.75f, mob.cooldown(), 0.02f);
     }
 
     @Test
