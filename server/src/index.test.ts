@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1263,5 +1263,50 @@ describe('Unblessed Ankh native LostBackpack loot contract', () => {
     expect(hasOnlyNativeLostBackpackAdded([], [oldHeap], 42)).toBe(false);
     expect(hasOnlyNativeLostBackpackAdded([newHeap], null, 42)).toBe(false);
     expect(hasOnlyNativeLostBackpackAdded([newHeap], [oldHeap], -1)).toBe(false);
+  });
+});
+
+
+describe('Authoritative native movement and floor transition validation', () => {
+  const makeTiles = () => Array.from({ length: 64 }, (_, pos) => ({
+    pos, passable: true, solid: false, pit: false
+  }));
+
+  it('accepts adjacent cardinal and clear diagonal native steps', () => {
+    const tiles = makeTiles();
+    expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
+    expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(true);
+  });
+
+  it('rejects stale, non-adjacent, occupied, blocked and pit destinations', () => {
+    const tiles = makeTiles();
+    expect(isValidNativeMoveIntent(-1, 10, 8, 8, tiles, [])).toBe(false);
+    expect(isValidNativeMoveIntent(9, 26, 8, 8, tiles, [])).toBe(false);
+    expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [10])).toBe(false);
+    tiles[10].pit = true;
+    expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(false);
+    tiles[10].pit = false;
+    tiles[10].solid = true;
+    expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(false);
+    tiles[10].solid = false;
+    tiles[17].passable = false;
+    expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(false);
+  });
+
+  it('resolves only the matching unlocked regular transition on the current floor', () => {
+    const level = { depth: 4, branch: 0, locked: false, transitions: [
+      { pos: 23, type: 'REGULAR_EXIT', targetDepth: 5, targetBranch: 0, targetType: 'REGULAR_ENTRANCE' }
+    ]};
+    const data = { depth: 4, from: 23, to: 23, stairsPos: 23 };
+    expect(resolveNativeTransitionIntent(level, 4, 23, data)).toEqual({
+      fromDepth: 4, depth: 5, transitionPos: 23, transitionType: 'REGULAR_EXIT',
+      targetType: 'REGULAR_ENTRANCE', targetBranch: 0
+    });
+    expect(resolveNativeTransitionIntent({ ...level, locked: true }, 4, 23, data)).toBeNull();
+    expect(resolveNativeTransitionIntent(level, 3, 23, data)).toBeNull();
+    expect(resolveNativeTransitionIntent(level, 4, 22, data)).toBeNull();
+    expect(resolveNativeTransitionIntent({ ...level, transitions: [
+      { pos: 23, type: 'BRANCH_EXIT', targetDepth: 5, targetBranch: 1, targetType: 'BRANCH_ENTRANCE' }
+    ]}, 4, 23, data)).toBeNull();
   });
 });

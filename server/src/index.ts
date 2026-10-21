@@ -59,6 +59,67 @@ export function resolveServerMobIdByEntityId(levelSnapshot: any, entityId: unkno
   return Number(mob.mobId);
 }
 
+
+/** Validates one native SPD movement step against the trusted source cell, terrain and occupancy. */
+export function isValidNativeMoveIntent(
+  fromValue: unknown, toValue: unknown, widthValue: unknown, heightValue: unknown,
+  tilesValue: unknown, occupiedPositionsValue: unknown = []
+): boolean {
+  if (typeof fromValue !== "number" || !Number.isInteger(fromValue)
+    || typeof toValue !== "number" || !Number.isInteger(toValue)
+    || typeof widthValue !== "number" || !Number.isInteger(widthValue) || widthValue < 8 || widthValue > 100
+    || typeof heightValue !== "number" || !Number.isInteger(heightValue) || heightValue < 8 || heightValue > 100
+    || !Array.isArray(tilesValue) || !Array.isArray(occupiedPositionsValue)) return false;
+  const width = widthValue, height = heightValue, size = width * height;
+  const from = fromValue, to = toValue;
+  if (from < 0 || from >= size || to < 0 || to >= size || from === to) return false;
+  const tileByPos = new Map<number, any>();
+  for (const tile of tilesValue as any[]) {
+    if (!Number.isInteger(tile?.pos) || tile.pos < 0 || tile.pos >= size || tileByPos.has(tile.pos)) return false;
+    tileByPos.set(tile.pos, tile);
+  }
+  const walkable = (pos: number) => {
+    const tile = tileByPos.get(pos);
+    return !!tile && tile.passable === true && tile.solid === false && tile.pit === false;
+  };
+  if (!tileByPos.has(from) || !walkable(to)) return false;
+  const dx = (to % width) - (from % width);
+  const dy = Math.floor(to / width) - Math.floor(from / width);
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) return false;
+  if (dx !== 0 && dy !== 0) {
+    const sideA = from + (dx > 0 ? 1 : -1);
+    const sideB = from + (dy > 0 ? width : -width);
+    if (!walkable(sideA) || !walkable(sideB)) return false;
+  }
+  return !(occupiedPositionsValue as any[]).some(pos => typeof pos === "number" && Number.isInteger(pos) && pos === to);
+}
+
+/** Resolves only a matching, unlocked, branch-zero regular transition from the trusted source snapshot. */
+export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: unknown,
+  currentPos: unknown, data: any): {
+    fromDepth: number; depth: number; transitionPos: number; transitionType: string;
+    targetType: string; targetBranch: number
+  } | null {
+  if (!levelSnapshot || typeof currentDepth !== "number" || !Number.isInteger(currentDepth)
+    || typeof currentPos !== "number" || !Number.isInteger(currentPos)
+    || levelSnapshot.depth !== currentDepth || levelSnapshot.branch !== 0 || levelSnapshot.locked === true
+    || data?.depth !== currentDepth || data?.from !== currentPos
+    || data?.to !== currentPos || data?.stairsPos !== currentPos
+    || !Array.isArray(levelSnapshot.transitions)) return null;
+  const transition = levelSnapshot.transitions.find((item: any) => item?.pos === currentPos);
+  if (!transition || !["REGULAR_EXIT", "REGULAR_ENTRANCE"].includes(String(transition.type))) return null;
+  const targetDepth = transition.targetDepth;
+  const targetBranch = transition.targetBranch;
+  const targetType = String(transition.targetType || "");
+  if (typeof targetDepth !== "number" || !Number.isInteger(targetDepth) || targetDepth < 1 || targetDepth > 100
+    || targetBranch !== 0
+    || (transition.type === "REGULAR_EXIT" && (targetDepth !== currentDepth + 1 || targetType !== "REGULAR_ENTRANCE"))
+    || (transition.type === "REGULAR_ENTRANCE" && (targetDepth !== currentDepth - 1 || targetType !== "REGULAR_EXIT"))
+    || !["REGULAR_ENTRANCE", "REGULAR_EXIT"].includes(targetType)) return null;
+  return { fromDepth: currentDepth, depth: targetDepth, transitionPos: currentPos,
+    transitionType: String(transition.type), targetType, targetBranch: 0 };
+}
+
 /** Rejects partial/legacy level payloads before any room state is replaced. */
 export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   if (!level || typeof level !== "object"
