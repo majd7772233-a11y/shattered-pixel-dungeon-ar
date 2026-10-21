@@ -7,14 +7,16 @@ Updated: 2026-10-21 (UTC)
 - Repository: https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar
 - Working branch: `multiplayer-framework-core-14118577486727081892`
 - Do not merge to `main` or switch branches as part of this continuation.
-- Verified code checkpoint: `8dde21303ac836c177457767d4c8e7c7e3ba7838`
-- CI run for that exact code checkpoint: [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) — success. Backend TypeScript build/tests and `./gradlew test assembleDebug` (JVM tests and Android debug APK) both passed.
+- Latest verified code checkpoint: `c1d009cc99bf093754987a38e35e98ef42e895b5`
+- CI run for that exact code checkpoint: [39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374) — success. Backend TypeScript build/tests and `./gradlew test assembleDebug` (JVM tests and Android debug APK) both passed.
+- A documentation-only follow-up updates the Phase 1 roadmap checkpoint; it does not change the tested code SHA.
 - A docs-only commit may follow this code checkpoint; verify the code SHA and latest run when making later changes.
 
 ## Phase 1 — lossless world snapshot / restoration
 
 **Implementation and automated acceptance: complete.** Verified paths:
 - A stable server mob identity never falls back to an unrelated local Actor/class/position match; absent stable mobs reconstruct from native bundles and are registered with the local scheduler.
+- When a stable server ID already maps to a local native Mob, the full native bundle (including subclass-specific fields) is restored into the existing object while preserving device-local `Actor.id()` and scheduler registration. Regression test: `matchedStableMobRestoresSubclassBundleStateWithoutChangingLocalActorId`.
 - Active-floor dimension differences are supported for the same depth/branch by replacing native level geometry/flag arrays and recreating the render scene only after successful apply.
 - Full native round trips are exercised for ordered multi-item heaps, heap state flags, traps, plants and timed blobs; repeated application does not duplicate them and stale local objects are removed.
 - A test forces failure after level resizing, and verifies restore returns to the local native rollback baseline before propagating the error for resync.
