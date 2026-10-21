@@ -1173,6 +1173,9 @@ public class NativeCombatRuntimeIntegrationTest {
             customTiles = new ArrayList<>();
             customWalls = new ArrayList<>();
             Arrays.fill(map, Terrain.EMPTY);
+            // Production level generation initializes this exploration flag array before
+            // exporting a complete snapshot; the minimal headless fixture must do the same.
+            discoverable = new boolean[length];
             buildFlagMaps();
             Arrays.fill(heroFOV, false);
         }
