@@ -1303,7 +1303,7 @@ describe('Authoritative native movement and floor transition validation', () => 
     const tiles = makeTiles();
     expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
     expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(true);
-    tiles[10] = { ...tiles[10], terrain: 5, passable: true, solid: true, pit: false };
+    tiles[10] = { pos: 10, passable: true, solid: true, pit: false };
     expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
   });
 
