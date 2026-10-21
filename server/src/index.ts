@@ -78,11 +78,118 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
     || typeof level.heroStateJson !== "string" || level.heroStateJson.length > 200000
     || typeof level.nativeLevelMetadataBundle !== "string"
     || level.nativeLevelMetadataBundle.length === 0 || level.nativeLevelMetadataBundle.length > 200000) return false;
+
   const bundle = (value: any) => typeof value === "string" && value.length > 0 && value.length <= 200000;
-  if (!level.mobs.every((mob: any) => bundle(mob?.serializedBundle)
-    && Number.isInteger(mob?.shielding) && Number(mob.shielding) >= 0 && Number(mob.shielding) <= 100000
-    && Array.isArray(mob?.buffs) && mob.buffs.length <= 256
-    && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
+  const inBounds = (value: any) => Number.isInteger(value) && value >= 0 && value < size;
+  const uniquePositionRows = (rows: any[]) => {
+    const seen = new Set<number>();
+    for (const row of rows) {
+      const pos = row?.pos;
+      if (!inBounds(pos) || seen.has(pos)) return false;
+      seen.add(pos);
+    }
+    return true;
+  };
+  const uniqueCells = (cells: any[]) => {
+    const seen = new Set<number>();
+    for (const pos of cells) {
+      if (!inBounds(pos) || seen.has(pos)) return false;
+      seen.add(pos);
+    }
+    return true;
+  };
+
+  // Reject repeated cells before a snapshot can be persisted. Its length alone does not prove
+  // that the tile array covers the full level: a repeated tile may conceal a missing cell.
+  const tileFlags = ["passable", "solid", "pit", "losBlocking", "flammable", "secret",
+    "avoid", "water", "discoverable", "openSpace"];
+  const tilePositions = new Set<number>();
+  for (const tile of level.tiles) {
+    if (!inBounds(tile?.pos) || tilePositions.has(tile.pos)
+      || !Number.isInteger(tile?.terrain) || tile.terrain < 0 || tile.terrain > 255
+      || tileFlags.some((flag) => typeof tile?.[flag] !== "boolean")) return false;
+    tilePositions.add(tile.pos);
+  }
+  if (tilePositions.size !== size
+    || !uniqueCells(level.visitedPositions)
+    || !uniqueCells(level.mappedPositions)) return false;
+
+  const transitionTypes = ["SURFACE", "REGULAR_ENTRANCE", "REGULAR_EXIT", "BRANCH_ENTRANCE", "BRANCH_EXIT"];
+  for (const transition of level.transitions) {
+    const type = String(transition?.type ?? "");
+    const targetType = String(transition?.targetType ?? "");
+    const targetDepth = transition?.targetDepth;
+    const targetBranch = transition?.targetBranch;
+    if (!inBounds(transition?.pos) || !transitionTypes.includes(type)
+      || (targetType !== "" && !transitionTypes.includes(targetType))
+      || !Number.isInteger(targetDepth) || targetDepth < (type === "SURFACE" ? 0 : 1) || targetDepth > 100
+      || !Number.isInteger(targetBranch) || targetBranch < 0 || targetBranch > 32) return false;
+  }
+
+  // These are single-valued native maps. Duplicate positions produce snapshots that Android
+  // rejects during preflight, so the server must reject them before any SQL replacement.
+  if (!uniquePositionRows(level.heaps) || !uniquePositionRows(level.traps) || !uniquePositionRows(level.plants)) return false;
+  const heapTypes = ["HEAP", "FOR_SALE", "CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST", "TOMB", "SKELETON", "REMAINS"];
+  for (const heap of level.heaps) {
+    if (!heapTypes.includes(String(heap?.type)) || !Array.isArray(heap?.items) || heap.items.length > 512
+      || typeof heap?.seen !== "boolean" || typeof heap?.haunted !== "boolean"
+      || typeof heap?.hidden !== "boolean" || typeof heap?.autoExplored !== "boolean") return false;
+    for (const item of heap.items) {
+      if (!bundle(item?.serializedBundle) || !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > 100000
+        || !Number.isInteger(item?.level) || item.level < -100 || item.level > 10000
+        || typeof item?.cursed !== "boolean" || typeof item?.cursedKnown !== "boolean") return false;
+    }
+  }
+  for (const trap of level.traps) {
+    if (!bundle(trap?.serializedBundle) || typeof trap?.active !== "boolean"
+      || typeof trap?.visible !== "boolean" || typeof trap?.reclaimed !== "boolean"
+      || !Number.isInteger(trap?.color) || !Number.isInteger(trap?.shape)) return false;
+  }
+  for (const plant of level.plants) {
+    if (!bundle(plant?.serializedBundle) || typeof plant?.className !== "string" || plant.className.length === 0) return false;
+  }
+
+  const blobTypes = new Set<string>();
+  for (const blob of level.blobs) {
+    const className = String(blob?.className ?? "");
+    if (className.length === 0 || blobTypes.has(className) || !bundle(blob?.serializedBundle)
+      || !Number.isFinite(blob?.cooldown) || blob.cooldown < 0 || blob.cooldown > 100000) return false;
+    blobTypes.add(className);
+  }
+
+  // All fields consumed by native Mob reconciliation are part of the full v1 snapshot, not
+  // optional fields that may be omitted on non-Actor-turn publications.
+  const mobIds = new Set<number>();
+  const mobPositions = new Set<number>();
+  const entityIds = new Set<string>();
+  for (const mob of level.mobs) {
+    const entityId = mob?.entityId;
+    if (!Number.isInteger(mob?.mobId) || mob.mobId < 0 || mobIds.has(mob.mobId)
+      || !inBounds(mob?.pos) || mobPositions.has(mob.pos)
+      || !Number.isInteger(mob?.hp) || mob.hp < 0
+      || !Number.isInteger(mob?.ht) || mob.ht < 1 || mob.hp > mob.ht
+      || typeof mob?.name !== "string" || mob.name.length === 0
+      || typeof mob?.entityId !== "string" || entityId.length > 80
+      || (entityId.length > 0 && (entityId.length < 8 || entityIds.has(entityId)))
+      || !Number.isInteger(mob?.shielding) || mob.shielding < 0 || mob.shielding > 100000
+      || typeof mob?.state !== "string" || mob.state.length > 80
+      || !Number.isInteger(mob?.defenseSkill)
+      || !Number.isFinite(mob?.baseSpeed) || mob.baseSpeed <= 0 || mob.baseSpeed > 100
+      || !Number.isFinite(mob?.effectiveSpeed) || mob.effectiveSpeed <= 0 || mob.effectiveSpeed > 1000
+      || !Number.isFinite(mob?.cooldown) || mob.cooldown < 0 || mob.cooldown > 100000
+      || !Number.isInteger(mob?.targetCell) || mob.targetCell < -1 || mob.targetCell >= size
+      || !["NONE", "MOB", "PLAYER"].includes(String(mob?.targetType))
+      || typeof mob?.targetEntityId !== "string" || mob.targetEntityId.length > 128
+      || ((mob.targetType === "MOB" || mob.targetType === "PLAYER") && mob.targetEntityId.length < 8)
+      || typeof mob?.enemySeen !== "boolean" || typeof mob?.alerted !== "boolean"
+      || !bundle(mob?.serializedBundle) || !Array.isArray(mob?.buffs) || mob.buffs.length > 256
+      || mob.buffs.some((buff: any) => !bundle(buff?.serializedBundle)
+        || !Number.isFinite(buff?.cooldown) || buff.cooldown < 0 || buff.cooldown > 100000)) return false;
+    mobIds.add(mob.mobId);
+    mobPositions.add(mob.pos);
+    if (entityId.length > 0) entityIds.add(entityId);
+  }
+
   if (level.nativeWorldTick === true) {
     if (!Number.isSafeInteger(level.nativeWorldTurnCounter) || level.nativeWorldTurnCounter < 1
       || !Number.isFinite(level.nativeActorClock) || level.nativeActorClock < 0 || level.nativeActorClock > 1e9
@@ -96,29 +203,9 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
     if ((level.nativeWorldActorKind === "MOB" || level.nativeWorldActorKind === "MOB_BUFF")
       && (level.nativeWorldActorEntityId.length < 8 || level.nativeMobEntityId !== level.nativeWorldActorEntityId
         || level.nativeMobActorId < 0)) return false;
-    for (const mob of level.mobs) {
-      const baseSpeed = Number(mob?.baseSpeed);
-      const effectiveSpeed = Number(mob?.effectiveSpeed);
-      const cooldown = Number(mob?.cooldown ?? 0);
-      const targetCell = Number(mob?.targetCell ?? -1);
-      const targetType = String(mob?.targetType ?? "NONE");
-      const targetEntityId = String(mob?.targetEntityId ?? "");
-      if (!Number.isFinite(baseSpeed) || baseSpeed <= 0 || baseSpeed > 1000
-        || !Number.isFinite(effectiveSpeed) || effectiveSpeed <= 0 || effectiveSpeed > 1000
-        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
-        || !Number.isInteger(targetCell) || targetCell < -1 || targetCell >= size
-        || !["NONE", "MOB", "PLAYER"].includes(targetType) || targetEntityId.length > 128
-        || ((targetType === "MOB" || targetType === "PLAYER") && targetEntityId.length < 8)) return false;
-    }
   }
-  if (!level.heaps.every((heap: any) => Array.isArray(heap?.items) && heap.items.length <= 512
-    && heap.items.every((item: any) => bundle(item?.serializedBundle)))) return false;
-  if (!level.traps.every((trap: any) => bundle(trap?.serializedBundle))
-    || !level.plants.every((plant: any) => bundle(plant?.serializedBundle))
-    || !level.blobs.every((blob: any) => bundle(blob?.serializedBundle))) return false;
   return true;
 }
-
 /**
  * Accepts only a fresh full snapshot emitted by the native Java Actor scheduler, after validating
  * that its actor existed in the previous authoritative world. TypeScript deliberately does not
