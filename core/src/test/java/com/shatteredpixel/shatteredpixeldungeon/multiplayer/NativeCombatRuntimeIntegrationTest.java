@@ -111,6 +111,88 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void sharedNativeActorTurnsRunOnlyOnTheLevelPublisher() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        Mob mob = addRat(hero.pos + 1, 18);
+        ToxicGas blob = new ToxicGas();
+        Buff mobBuff = new Buff();
+        mobBuff.target = mob;
+
+        manager.startSession("native-turn-non-publisher", "client-guest", new TestTransport());
+        NetworkMessage guestSession = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-guest\",\"sessionToken\":\"guest-turn-token\","
+                        + "\"isLevelPublisher\":false,\"sequence\":1}");
+        guestSession.sequence = 1L;
+        manager.onMessageReceived(guestSession);
+        Assert.assertFalse(manager.isLevelPublisher());
+        Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mob));
+        Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(blob));
+        Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mobBuff));
+        Assert.assertFalse("A local Hero turn must remain local", Actor.shouldSkipMultiplayerSharedActor(hero));
+        Assert.assertTrue(Actor.isMultiplayerSharedActor(mob));
+        Assert.assertTrue(Actor.isMultiplayerSharedActor(blob));
+        Assert.assertTrue(Actor.isMultiplayerSharedActor(mobBuff));
+
+        manager.endSession();
+        manager.startSession("native-turn-publisher", "client-publisher", new TestTransport());
+        NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"publisher-turn-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        publisherSession.sequence = 1L;
+        manager.onMessageReceived(publisherSession);
+        Assert.assertTrue(manager.isLevelPublisher());
+        Assert.assertFalse("The publisher must execute native Mob.act", Actor.shouldSkipMultiplayerSharedActor(mob));
+        Assert.assertFalse("The publisher must execute native Blob.act", Actor.shouldSkipMultiplayerSharedActor(blob));
+        Assert.assertFalse("The publisher must execute native Mob buff ticks", Actor.shouldSkipMultiplayerSharedActor(mobBuff));
+    }
+
+    @Test
+    public void nativeMobTurnSnapshotIncludesEffectiveSpeedAndStableEnemyIdentity() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-mob-ai-snapshot", "client-publisher", new TestTransport());
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"native-ai-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertTrue(manager.isLevelPublisher());
+
+        Rat target = addRat(hero.pos + 1, 20);
+        Rat acting = addRat(hero.pos + 2, 20);
+        manager.registerServerEntityId(target.id(), "stable-target-mob-0001");
+        manager.registerServerEntityId(acting.id(), "stable-acting-mob-0001");
+        Buff.affect(acting, com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple.class);
+        acting.restoreMultiplayerAiState("Hunting", acting.multiplayerBaseSpeed(), acting.defenseSkill,
+                Math.max(0f, acting.cooldown()), target.pos, true, true, "MOB", "stable-target-mob-0001");
+
+        Assert.assertSame(target, acting.multiplayerEnemy());
+        Assert.assertEquals("MOB", acting.multiplayerTargetType());
+        Assert.assertEquals("stable-target-mob-0001", acting.multiplayerTargetEntityId());
+        Assert.assertTrue(acting.multiplayerEffectiveSpeed() > 0f);
+        Assert.assertTrue(acting.multiplayerEffectiveSpeed() < acting.multiplayerBaseSpeed());
+
+        String encoded = SPDLevelSnapshot.currentNativeWorldTurnJson(acting, 7L);
+        Assert.assertNotNull(encoded);
+        JsonValue root = new JsonReader().parse(encoded);
+        Assert.assertTrue(root.getBoolean("nativeWorldTick"));
+        Assert.assertEquals(7L, root.getLong("nativeWorldTurnCounter"));
+        Assert.assertEquals("MOB", root.getString("nativeWorldActorKind"));
+        Assert.assertEquals("stable-acting-mob-0001", root.getString("nativeWorldActorEntityId"));
+        JsonValue mobRows = root.get("mobs");
+        JsonValue nativeRow = null;
+        for (JsonValue row = mobRows.child; row != null; row = row.next) {
+            if ("stable-acting-mob-0001".equals(row.getString("entityId", ""))) nativeRow = row;
+        }
+        Assert.assertNotNull(nativeRow);
+        Assert.assertTrue(nativeRow.getFloat("effectiveSpeed") > 0f);
+        Assert.assertEquals(target.pos, nativeRow.getInt("targetCell"));
+        Assert.assertEquals("MOB", nativeRow.getString("targetType"));
+        Assert.assertEquals("stable-target-mob-0001", nativeRow.getString("targetEntityId"));
+        Assert.assertTrue(nativeRow.getBoolean("enemySeen"));
+        Assert.assertTrue(nativeRow.getBoolean("alerted"));
+    }
+
+    @Test
     public void worldSnapshotReconstructsMissingStableMobAndRepeatedRestoreIsIdempotent() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-reconnect", "client-publisher", new TestTransport());
@@ -1434,7 +1516,13 @@ public class NativeCombatRuntimeIntegrationTest {
         row.put("serializedBundle", SPDLevelSnapshot.currentMobBundle(mob));
         row.put("defenseSkill", mob.defenseSkill);
         row.put("baseSpeed", mob.multiplayerBaseSpeed());
+        row.put("effectiveSpeed", mob.multiplayerEffectiveSpeed());
         row.put("cooldown", Math.max(0f, mob.cooldown()));
+        row.put("targetCell", mob.multiplayerTargetCell());
+        row.put("targetType", mob.multiplayerTargetType());
+        row.put("targetEntityId", mob.multiplayerTargetEntityId());
+        row.put("enemySeen", mob.multiplayerEnemySeen());
+        row.put("alerted", mob.multiplayerAlerted());
         ArrayList<Map<String, Object>> buffs = new ArrayList<>();
         for (Buff buff : mob.buffs()) {
             Bundle bundle = new Bundle();

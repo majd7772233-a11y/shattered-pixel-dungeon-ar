@@ -439,7 +439,13 @@ public final class MessageRouter {
                         row.put("state", stringValue(mob.get("state"), ""));
                         row.put("defenseSkill", intValue(mob.get("defenseSkill"), 0));
                         row.put("baseSpeed", floatValue(mob.get("baseSpeed"), 1f));
+                        row.put("effectiveSpeed", floatValue(mob.get("effectiveSpeed"), floatValue(mob.get("baseSpeed"), 1f)));
                         row.put("cooldown", floatValue(mob.get("cooldown"), 0f));
+                        row.put("targetCell", intValue(mob.get("targetCell"), -1));
+                        row.put("targetType", stringValue(mob.get("targetType"), "NONE"));
+                        row.put("targetEntityId", stringValue(mob.get("targetEntityId"), ""));
+                        row.put("enemySeen", intFlag(mob.get("enemySeen")));
+                        row.put("alerted", intFlag(mob.get("alerted")));
                         row.put("serializedBundle", stringValue(mob.get("serializedBundle"), ""));
                         java.util.List<java.util.Map<String, Object>> mobBuffs = new java.util.ArrayList<>();
                         readObjectArray(mob.get("buffs"), mobBuffs);
