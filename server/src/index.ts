@@ -1481,23 +1481,26 @@ export class MatchRoom {
       }
 
       if (msg.messageType === "LEVEL_DATA") {
+        const level = JSON.parse(msg.payloadJson || "{}");
+        const isNativeWorldMutation = level.nativeWorldMutation === true;
         const authority = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray();
-        if (!authority.length || String(authority[0].value) !== session.playerId) {
+        const isLevelPublisher = authority.length > 0 && String(authority[0].value) === session.playerId;
+        if (!isLevelPublisher && !isNativeWorldMutation) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "LEVEL_PUBLISHER_ONLY" }) }));
           return;
         }
-        const level = JSON.parse(msg.payloadJson || "{}");
         const width = Number(level.width), height = Number(level.height), depth = Number(level.depth);
         const tiles = level.tiles, transitions = level.transitions;
         const heaps = level.heaps, traps = level.traps, blobs = level.blobs, plants = level.plants;
-        const mobs = level.mobs;
+        let mobs = level.mobs;
         const visitedPositions = level.visitedPositions, mappedPositions = level.mappedPositions;
         const size = width * height;
         const validBundle = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 200000;
         const boundedArray = (value: unknown, max: number) => Array.isArray(value) && value.length <= max;
         const validPos = (p: number) => Number.isInteger(p) && p >= 0 && p < size;
         if (!hasCompleteNativeLevelSnapshot(level) || Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
+          || depth !== this.currentDepth
           || !Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
           || width > 100 || height > 100 || !Array.isArray(tiles) || tiles.length !== size
           || !boundedArray(transitions, 128) || !boundedArray(heaps, size)
@@ -1598,6 +1601,12 @@ export class MatchRoom {
           Number.isSafeInteger(Number(previousSnapshot.nativeWorldTurnCounter))
             ? Number(previousSnapshot.nativeWorldTurnCounter) : 0);
         const isNativeWorldTurn = level.nativeWorldTick === true;
+        if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0
+            && isNativeWorldTurn) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));
+          return;
+        }
         if (isNativeWorldTurn && !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, this.currentDepth)) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_OR_REPLAYED_NATIVE_WORLD_TURN" }) }));
@@ -1607,6 +1616,19 @@ export class MatchRoom {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "UNMARKED_NATIVE_WORLD_TURN" }) }));
           return;
+        }
+        const transitionPendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+        let transitionPending: any = null;
+        if (transitionPendingRow) {
+          try { transitionPending = JSON.parse(String(transitionPendingRow.value)); } catch (_) {}
+          if (!transitionPending || transitionPending.depth !== depth || transitionPending.snapshotReady === true
+              || !Array.isArray(transitions)
+              || transitions.filter((transition: any) => String(transition?.type) === String(transitionPending.targetType)
+                && Number.isInteger(transition?.pos)).length !== 1) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_TRANSITION_DESTINATION_SNAPSHOT" }) }));
+            return;
+          }
         }
         assignStableEntityIds(mobs, Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : []);
         level.mobs = mobs;
@@ -1659,6 +1681,16 @@ export class MatchRoom {
           this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
             this.currentSequence, session.playerId, "NATIVE_WORLD_TURN", JSON.stringify(actorEvent));
         }
+        const transitionPendingNow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+        if (transitionPendingNow && !isNativeWorldTurn) {
+          let pending: any = null;
+          try { pending = JSON.parse(String(transitionPendingNow.value)); } catch (_) {}
+          if (pending && pending.depth === depth && pending.snapshotReady !== true) {
+            pending.snapshotReady = true;
+            this.sql.exec("UPDATE room_meta SET value = ? WHERE key = 'transitionPending'", JSON.stringify(pending));
+          }
+        }
+
         const ackTurnRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeWorldTurnCounter").toArray()[0];
         const ackTurnCounter = Math.max(0, Number(ackTurnRow?.value) || Number(level.nativeWorldTurnCounter) || 0);
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
@@ -1688,10 +1720,47 @@ export class MatchRoom {
             peer.send(message);
           }
         }
+        if (transitionPendingNow && !isNativeWorldTurn) this.tryFinalizeLevelTransition();
+        return;
+      }
+
+      if (msg.messageType === "LEVEL_READY") {
+        const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+        if (!pendingRow) return;
+        try {
+          const pending = JSON.parse(String(pendingRow.value));
+          const ready = JSON.parse(msg.payloadJson || "{}");
+          const heroStateJson = ready.heroStateJson;
+          const hero = typeof heroStateJson === "string" ? JSON.parse(heroStateJson) : null;
+          if (!pending || ready.depth !== pending.depth || ready.branch !== 0
+              || typeof ready.seed !== "number" || !Number.isFinite(ready.seed)
+              || !hero || !Number.isInteger(hero.hp) || hero.hp < 0
+              || !Number.isInteger(hero.ht) || hero.ht < 1 || hero.hp > hero.ht
+              || !Number.isInteger(hero.pos) || !Number.isInteger(hero.shielding) || hero.shielding < 0
+              || !isValidNativeHeroStateJson(heroStateJson, {
+                hp: hero.hp, ht: hero.ht, pos: hero.pos, shielding: hero.shielding
+              })) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_LEVEL_READY" }) }));
+            return;
+          }
+          this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            `transitionReady:${session.playerId}`,
+            JSON.stringify({ depth: ready.depth, branch: ready.branch, seed: ready.seed, heroStateJson }));
+          this.tryFinalizeLevelTransition();
+        } catch (_) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_LEVEL_READY" }) }));
+        }
         return;
       }
 
       if (msg.messageType === "ACTION") {
+        if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));
+          return;
+        }
         if (this.gameStatus === "ENDED") {
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
@@ -2540,54 +2609,59 @@ export class MatchRoom {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
               const currentPos = Number(playerRow[0].pos);
+              const data = payload.data || {};
               const levelRow = this.sql.exec(`SELECT width, height FROM levels WHERE depth = ?`, this.currentDepth).toArray();
-              const mapWidth = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
-              const mapHeight = levelRow.length > 0 ? Number(levelRow[0].height) : 32;
-              const dx = Math.abs((currentPos % mapWidth) - (targetPos % mapWidth));
-              const dy = Math.abs(Math.floor(currentPos / mapWidth) - Math.floor(targetPos / mapWidth));
-              const inBounds = targetPos < mapWidth * mapHeight;
-              const adjacent = dx <= 1 && dy <= 1 && (dx !== 0 || dy !== 0);
-              let cornerBlocked = false;
-              if (dx === 1 && dy === 1) {
-                const sideA = currentPos + (targetPos % mapWidth > currentPos % mapWidth ? 1 : -1);
-                const sideB = currentPos + (Math.floor(targetPos / mapWidth) > Math.floor(currentPos / mapWidth) ? mapWidth : -mapWidth);
-                const sideRows = this.sql.exec(`SELECT passable, solid FROM level_tiles WHERE depth = ? AND pos IN (?, ?)`, this.currentDepth, sideA, sideB).toArray();
-                cornerBlocked = sideRows.length !== 2 || sideRows.some((tile: any) => Number(tile.passable) !== 1 || Number(tile.solid) === 1);
-              }
-              const tileRow = inBounds ? this.sql.exec(`SELECT passable, solid, pit FROM level_tiles WHERE depth = ? AND pos = ?`, this.currentDepth, targetPos).toArray() : [];
-              if (adjacent && inBounds && !cornerBlocked && tileRow.length > 0
-                  && Number(tileRow[0].passable) === 1 && Number(tileRow[0].solid) === 0
-                  && Number(tileRow[0].pit) === 0) {
+              const mapWidth = Number(levelRow[0]?.width) || 0;
+              const mapHeight = Number(levelRow[0]?.height) || 0;
+              const levelSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+                `levelSnapshot:${this.currentDepth}`).toArray()[0];
+              let currentLevelSnapshot: any = null;
+              try { currentLevelSnapshot = levelSnapshotRow ? JSON.parse(String(levelSnapshotRow.value)) : null; } catch (_) {}
+              const tileRows = this.sql.exec(`SELECT pos,passable,solid,pit FROM level_tiles WHERE depth = ?`, this.currentDepth).toArray()
+                .map((tile: any) => ({ pos: Number(tile.pos), passable: Number(tile.passable) === 1,
+                  solid: Number(tile.solid) === 1, pit: Number(tile.pit) === 1 }));
+              const occupiedPlayers = this.sql.exec(
+                `SELECT pos FROM players WHERE player_id <> ? AND state = 'ALIVE' AND connected = 1`, session.playerId
+              ).toArray().map((row: any) => Number(row.pos));
+              const occupiedMobs = this.sql.exec(
+                `SELECT pos FROM mobs WHERE depth = ? AND hp > 0`, this.currentDepth
+              ).toArray().map((row: any) => Number(row.pos));
+              if (!this.sql.exec(`SELECT value FROM room_meta WHERE key = 'transitionPending'`).toArray().length
+                  && currentLevelSnapshot && data.depth === this.currentDepth && data.from === currentPos
+                  && data.to === targetPos && isValidNativeMoveIntent(data.from, data.to, mapWidth, mapHeight, tileRows,
+                    occupiedPlayers.concat(occupiedMobs))) {
                 this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
                 eventType = "PLAYER_MOVED";
-                actionResultPayload = { playerId: session.playerId, pos: targetPos };
+                actionResultPayload = { playerId: session.playerId, pos: targetPos, from: currentPos, depth: this.currentDepth };
                 actionValid = true;
                 const nativeMoveCost = Number(payload.data?.engineActionCost);
                 actionCost = Number.isFinite(nativeMoveCost) ? Math.max(0.05, Math.min(10, nativeMoveCost)) : 1.0;
               }
             }
           } else if (actionStr === "LVL_TRANSITION") {
-            const playerRow = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, session.playerId).toArray();
-            if (playerRow.length > 0) {
+            const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
+            const pendingRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'transitionPending'`).toArray();
+            const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray();
+            const sourceSnapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+              `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let sourceSnapshot: any = null;
+            try { sourceSnapshot = sourceSnapshotRow ? JSON.parse(String(sourceSnapshotRow.value)) : null; } catch (_) {}
+            const activePublisher = publisherRow.length > 0
+              && this.sql.exec(`SELECT player_id FROM players WHERE player_id = ? AND connected = 1`, String(publisherRow[0]?.value)).toArray().length > 0;
+            if (!pendingRow.length && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && activePublisher) {
               const currentPos = Number(playerRow[0].pos);
-              const transRow = this.sql.exec(`SELECT target_depth FROM level_transitions WHERE depth = ? AND pos = ? AND type = 'EXIT'`, this.currentDepth, currentPos).toArray();
-              if (transRow.length > 0) {
-                const targetDepth = Number(transRow[0].target_depth);
-                this.currentDepth = targetDepth;
-                this.sql.exec(`UPDATE room_meta SET value = ? WHERE key = 'depth'`, this.currentDepth.toString());
-
-                this.ensureLevelGenerated(this.currentDepth);
-
-                const newEntranceRow = this.sql.exec(`SELECT entrance_pos FROM levels WHERE depth = ?`, this.currentDepth).toArray();
-                const newPos = newEntranceRow.length > 0 ? Number(newEntranceRow[0].entrance_pos) : 100;
-                if (this.gameMode === "COOP_DUNGEON" || this.gameMode === "SURVIVAL") {
-                  this.sql.exec(`UPDATE players SET pos = ? WHERE state = 'ALIVE'`, newPos);
-                } else {
-                  this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, newPos, session.playerId);
-                }
-
+              const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, payload.data || {});
+              if (transition) {
+                const pending = { ...transition, initiatorId: session.playerId,
+                  publisherId: String(publisherRow[0].value), snapshotReady: false, startedAt: Date.now() };
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES ('transitionPending',?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`, JSON.stringify(pending));
+                this.sql.exec(`DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'`);
+                this.currentDepth = transition.depth;
+                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES ('depth',?)
+                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(this.currentDepth));
                 eventType = "LEVEL_TRANSITION";
-                actionResultPayload = { depth: this.currentDepth, newPos };
+                actionResultPayload = { ...transition, playerId: session.playerId };
                 actionValid = true;
                 actionCost = 1.0;
               }
@@ -3295,6 +3369,81 @@ export class MatchRoom {
         payloadJson: JSON.stringify({ error: (e as Error).message })
       }));
     }
+  }
+
+
+  private broadcastCurrentSnapshot(excludePlayerId: string | null = null) {
+    const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
+    const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray().map((player: any) => {
+      const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
+      return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+    });
+    const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
+    const claims = this.sql.exec("SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?", this.currentDepth).toArray();
+    const snapshotPayload = {
+      sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
+      players, mobs: liveMobs, claims, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
+    };
+    const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
+      sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
+    for (const peer of this.state.getWebSockets()) {
+      const peerSession = peer.deserializeAttachment() as SessionData | null;
+      if (!peerSession || (excludePlayerId != null && peerSession.playerId === excludePlayerId)) continue;
+      peer.send(message);
+    }
+  }
+
+  private tryFinalizeLevelTransition() {
+    const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+    if (!pendingRow) return;
+    let pending: any = null;
+    try { pending = JSON.parse(String(pendingRow.value)); } catch (_) { return; }
+    if (!pending || pending.snapshotReady !== true || pending.depth !== this.currentDepth || pending.targetBranch !== 0) return;
+
+    const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${pending.depth}`).toArray()[0];
+    let level: any = null;
+    try { level = savedRow ? JSON.parse(String(savedRow.value)) : null; } catch (_) { return; }
+    if (!level || level.depth !== pending.depth || level.branch !== 0 || !Array.isArray(level.transitions)) return;
+    const destination = level.transitions.filter((transition: any) =>
+      String(transition?.type) === String(pending.targetType) && Number.isInteger(transition?.pos));
+    if (destination.length !== 1) return;
+    const newPos = Number(destination[0].pos);
+    const size = Number(level.width) * Number(level.height);
+    if (newPos < 0 || newPos >= size) return;
+
+    const connected = this.sql.exec("SELECT player_id FROM players WHERE state = 'ALIVE' AND connected = 1").toArray();
+    const readyStates: Array<{playerId: string; heroStateJson: string; hero: any}> = [];
+    for (const player of connected) {
+      const playerId = String(player.player_id);
+      const readyRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `transitionReady:${playerId}`).toArray()[0];
+      if (!readyRow || typeof readyRow.value !== "string") return;
+      let ready: any = null;
+      try { ready = JSON.parse(String(readyRow.value)); } catch (_) { return; }
+      if (!ready || ready.depth !== pending.depth || ready.branch !== 0 || Number(ready.seed) !== Number(level.seed)
+          || typeof ready.heroStateJson !== "string") return;
+      let hero: any = null;
+      try { hero = JSON.parse(ready.heroStateJson); } catch (_) { return; }
+      if (!hero || hero.pos !== newPos || !Number.isInteger(hero.hp) || hero.hp < 0
+          || !Number.isInteger(hero.ht) || hero.ht < 1 || hero.hp > hero.ht
+          || !Number.isInteger(hero.shielding) || hero.shielding < 0
+          || !isValidNativeHeroStateJson(ready.heroStateJson, {
+            hp: hero.hp, ht: hero.ht, pos: hero.pos, shielding: hero.shielding
+          })) return;
+      readyStates.push({ playerId, heroStateJson: ready.heroStateJson, hero });
+    }
+
+    // Commit player and native hero state only after each connected living peer has generated
+    // the same real SPD destination floor. No action can proceed while this barrier exists.
+    for (const ready of readyStates) {
+      this.sql.exec("UPDATE players SET pos = ?, hp = ?, ht = ?, state = ? WHERE player_id = ?",
+        newPos, ready.hero.hp, ready.hero.ht, ready.hero.hp > 0 ? "ALIVE" : "DEAD", ready.playerId);
+      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        `heroState:${ready.playerId}`, ready.heroStateJson);
+    }
+
+    this.sql.exec("DELETE FROM room_meta WHERE key = 'transitionPending'");
+    this.sql.exec("DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'");
+    this.broadcastCurrentSnapshot(null);
   }
 
   private getCurrentLevelSnapshot() {
