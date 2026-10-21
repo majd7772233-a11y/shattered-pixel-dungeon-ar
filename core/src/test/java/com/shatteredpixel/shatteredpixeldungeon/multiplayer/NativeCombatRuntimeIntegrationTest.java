@@ -1731,7 +1731,7 @@ public class NativeCombatRuntimeIntegrationTest {
         void setTestFieldOfView(boolean[] fov) { fieldOfView = fov; }
         boolean moveToward(int target) { return getCloser(target); }
         boolean moveAway(int target) { return getFurther(target); }
-        @Override public void move(int step) { pos = step; }
+        @Override public void move(int step, boolean travelling) { pos = step; }
     }
 
     private static final class QueuedAttackRat extends Rat {
