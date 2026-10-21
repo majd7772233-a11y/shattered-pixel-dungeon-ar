@@ -67,7 +67,17 @@
         "ht",
         "serializedBundle",
         "buffs",
-        "shielding"
+        "shielding",
+        "state",
+        "defenseSkill",
+        "baseSpeed",
+        "effectiveSpeed",
+        "cooldown",
+        "targetCell",
+        "targetType",
+        "targetEntityId",
+        "enemySeen",
+        "alerted"
       ],
       "properties": {
         "mobId": {
@@ -110,6 +120,56 @@
           "minimum": 0,
           "maximum": 100000,
           "description": "Native derived shield total captured with mob HP/HT and buff pre-state."
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Native SPD AI state after this full snapshot."
+        },
+        "defenseSkill": {
+          "type": "integer",
+          "description": "Native SPD defense skill captured from the Mob."
+        },
+        "baseSpeed": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "effectiveSpeed": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Native effective speed after active modifiers."
+        },
+        "cooldown": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Remaining native Actor cooldown."
+        },
+        "targetCell": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Native AI target cell; -1 when absent."
+        },
+        "targetType": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "MOB",
+            "PLAYER"
+          ]
+        },
+        "targetEntityId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Stable target ID; empty only when targetType is NONE."
+        },
+        "enemySeen": {
+          "type": "boolean"
+        },
+        "alerted": {
+          "type": "boolean"
         }
       }
     },
