@@ -399,6 +399,7 @@ public final class MessageRouter {
                 snapshot.levelLocked = level.get("locked") != null && level.get("locked").asBoolean();
                 snapshot.levelFeeling = stringValue(level.get("feeling"), "");
                 snapshot.nativeLevelMetadataBundle = stringValue(level.get("nativeLevelMetadataBundle"), "");
+                snapshot.nativeWorldTurnCounter = Math.max(0L, longValue(level.get("nativeWorldTurnCounter"), 0L));
                 readIntegerArray(level.get("visitedPositions"), snapshot.visitedPositions);
                 readIntegerArray(level.get("mappedPositions"), snapshot.mappedPositions);
                 JsonValue tiles = level.get("tiles");
@@ -517,6 +518,7 @@ public final class MessageRouter {
                 try {
                     if (WorldSnapshot.restoreWorld(snapshot)) {
                         manager.markSnapshotApplied(snapshot.sequence);
+                        manager.synchronizeNativeWorldTurnCounter(snapshot.nativeWorldTurnCounter);
                     } else {
                         WorldSnapshot.rollbackToLastApplied();
                         manager.requestResync(snapshot.sequence);

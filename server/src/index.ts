@@ -285,7 +285,7 @@ export function isValidNativeWorldTurnSnapshot(
   if (!previous || !Array.isArray(previous.mobs) || !Array.isArray(previous.blobs)
     || !hasCompleteNativeLevelSnapshot(next) || next.nativeWorldTick !== true
     || !Number.isSafeInteger(last) || last < 0
-    || !Number.isSafeInteger(next.nativeWorldTurnCounter) || next.nativeWorldTurnCounter <= last
+    || !Number.isSafeInteger(next.nativeWorldTurnCounter) || next.nativeWorldTurnCounter !== last + 1
     || Number(next.depth) !== expectedDepth || Number(previous.depth) !== expectedDepth
     || Number(previous.width) !== Number(next.width) || Number(previous.height) !== Number(next.height)
     || Number(previous.branch) !== Number(next.branch) || Number(previous.seed) !== Number(next.seed)) return false;
@@ -3463,8 +3463,12 @@ export class MatchRoom {
       (Array.isArray(original.tiles) ? original.tiles : []).map((tile: any) => [Number(tile.pos), tile])
     );
     const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
+    const acceptedTurnRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, "nativeWorldTurnCounter").toArray()[0];
+    const acceptedTurn = Math.max(0, Number.isSafeInteger(Number(acceptedTurnRow?.value))
+      ? Number(acceptedTurnRow.value) : 0);
     return {
       ...originalWorld,
+      nativeWorldTurnCounter: acceptedTurn,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
       tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray().map((tile: any) => {

@@ -299,7 +299,15 @@ public abstract class Actor implements Bundlable {
                 && !manager.isLevelPublisher();
     }
 
-	public static void process() {
+    /** Only publish shared state after the original native action has resolved. */
+    public static boolean shouldPublishMultiplayerSharedActorResult(Actor actor) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (!manager.isMultiplayerActive() || !manager.isLevelPublisher()
+                || !isMultiplayerSharedActor(actor)) return false;
+        return !(actor instanceof Mob) || !((Mob) actor).multiplayerAttackAwaitingCompletion();
+    }
+
+    public static void process() {
 		
 		boolean doNext;
 		boolean interrupted = false;
@@ -351,11 +359,9 @@ public abstract class Actor implements Bundlable {
 					current = null;
 				} else {
 					doNext = acting.act();
-					if (MultiplayerManager.getInstance().isMultiplayerActive()
-							&& MultiplayerManager.getInstance().isLevelPublisher()
-							&& isMultiplayerSharedActor(acting)) {
-						MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
-					}
+                    if (shouldPublishMultiplayerSharedActorResult(acting)) {
+                        MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
+                    }
 					if (doNext && (Dungeon.hero == null || !Dungeon.hero.isAlive())) {
 						doNext = false;
 						current = null;

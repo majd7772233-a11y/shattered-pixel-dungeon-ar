@@ -115,6 +115,10 @@ public class MultiplayerManager implements TransportCallback {
 
     public boolean isLevelPublisher() { return levelPublisher; }
 
+    public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
+        if (acceptedTurn >= 0L) nativeWorldTurnCounter = acceptedTurn;
+    }
+
     public boolean isResolvingAuthorityCombat() { return resolvingAuthorityCombat; }
 
     public String getAuthorityCombatRequestId() { return authorityCombatRequestId; }
@@ -309,8 +313,9 @@ public class MultiplayerManager implements TransportCallback {
             JsonValue payload = new JsonReader().parse(message.payloadJson);
             JsonValue turnCounter = payload == null ? null : payload.get("nativeWorldTurnCounter");
             if (turnCounter != null && turnCounter.isNumber() && turnCounter.asLong() >= 0L) {
-                nativeWorldTurnCounter = Math.max(nativeWorldTurnCounter, turnCounter.asLong());
+                nativeWorldTurnCounter = turnCounter.asLong();
             }
+            if (message.requestId != null) pendingActions.remove(message.requestId);
             JsonValue entities = payload == null ? null : payload.get("entities");
             if (entities == null || !entities.isArray()) return;
             for (JsonValue entity = entities.child; entity != null; entity = entity.next) {
@@ -399,6 +404,7 @@ public class MultiplayerManager implements TransportCallback {
         message.requestId = UUID.randomUUID().toString();
         message.payloadJson = snapshot;
         nativeWorldTurnCounter = nextCounter;
+        pendingActions.put(message.requestId, message);
         activeTransport.send(message);
     }
 
@@ -454,15 +460,21 @@ public class MultiplayerManager implements TransportCallback {
             pendingActions.remove(message.requestId);
         } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
             NetworkMessage rejected = pendingActions.remove(message.requestId);
-            if (rejected != null && rejected.payloadJson != null
+            boolean rejectedNativeTurn = false;
+            if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA
+                    && rejected.payloadJson != null) {
+                try {
+                    JsonValue rejectedSnapshot = new JsonReader().parse(rejected.payloadJson);
+                    JsonValue tick = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldTick");
+                    rejectedNativeTurn = tick != null && tick.asBoolean();
+                } catch (RuntimeException ignored) {}
+            }
+            if (rejectedNativeTurn || (rejected != null && rejected.payloadJson != null
                     && (rejected.payloadJson.contains("\"action\":\"ATTACK\"")
                         || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"")
                         || rejected.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\"")
-                    || rejected.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
-                    || rejected.payloadJson.contains("\"action\":\"REVIVE\""))) {
-                // Native combat may already have applied secondary procs locally. If the
-                // authoritative server rejects an incomplete/stale delta, restore the exact
-                // server world instead of leaving this device in a speculative state.
+                        || rejected.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
+                        || rejected.payloadJson.contains("\"action\":\"REVIVE\"")))) {
                 requestResync(message.sequence);
             }
         }

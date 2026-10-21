@@ -120,6 +120,7 @@ public abstract class Mob extends Char {
 
 	private String pendingMultiplayerHeroDamageJson;
 	private Hero pendingMultiplayerDamageTarget;
+	private boolean multiplayerAttackAwaitingCompletion;
 	
 	public Class<? extends CharSprite> spriteClass;
 	
@@ -249,6 +250,11 @@ public abstract class Mob extends Char {
     public boolean multiplayerEnemySeen() { return enemySeen; }
     public boolean multiplayerAlerted() { return alerted; }
     public Char multiplayerEnemy() { return enemy; }
+
+    /** True while native SPD attack effects await their original completion callback. */
+    public boolean multiplayerAttackAwaitingCompletion() {
+        return multiplayerAttackAwaitingCompletion;
+    }
 
     /**
      * Removes a disconnected remote Hero from native AI targeting immediately. Keep the last
@@ -773,12 +779,14 @@ public abstract class Mob extends Char {
 	}
 	
 	protected boolean doAttack( Char enemy ) {
-		
-		if (sprite != null && (sprite.visible || enemy.sprite.visible)) {
-			sprite.attack( enemy.pos );
-			return false;
-			
-		} else {
+        
+        if (sprite != null && (sprite.visible || (enemy != null && enemy.sprite != null && enemy.sprite.visible))) {
+            // Native damage/retaliation/action cost resolve in onAttackComplete, not when the animation is scheduled.
+            multiplayerAttackAwaitingCompletion = true;
+            sprite.attack( enemy.pos );
+            return false;
+            
+        } else {
 			boolean hit = attack( enemy );
 			Invisibility.dispel(this);
 			float nativeActionCost = attackDelay();
@@ -789,16 +797,23 @@ public abstract class Mob extends Char {
 		}
 	}
 	
-	@Override
-	public void onAttackComplete() {
-		boolean hit = attack( enemy );
-		Invisibility.dispel(this);
-		float nativeActionCost = attackDelay();
-		spend(nativeActionCost);
-		boolean reported = flushMultiplayerHeroDamageReport(nativeActionCost);
-		if (!reported) reportNativePlayerNoEffect(enemy, hit, nativeActionCost);
-		super.onAttackComplete();
-	}
+    @Override
+    public void onAttackComplete() {
+        boolean publishResolvedWorldTurn = multiplayerAttackAwaitingCompletion;
+        multiplayerAttackAwaitingCompletion = false;
+        boolean hit = attack( enemy );
+        Invisibility.dispel(this);
+        float nativeActionCost = attackDelay();
+        spend(nativeActionCost);
+        boolean reported = flushMultiplayerHeroDamageReport(nativeActionCost);
+        if (!reported) reportNativePlayerNoEffect(enemy, hit, nativeActionCost);
+        super.onAttackComplete();
+
+        if (publishResolvedWorldTurn) {
+            com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance()
+                    .publishNativeWorldActorResult(this);
+        }
+    }
 
 	/** Queue target damage changes until the native mob action has finished all procs. */
 	public void queueMultiplayerHeroDamageReport(String payloadJson, Hero target) {
