@@ -14,9 +14,9 @@ When the user says “yalla phase N” or asks to finish a phase, implement the 
 - **Primary objective:** real multiplayer gameplay between two or more devices. Players should share a coherent match and world, perform actions, fight native mobs/other players, collect and drop items, preserve inventory and temporary effects, move between floors, and recover from disconnects without duplicated/lost actions.
 - **Target transports represented in code:** Internet/WebSocket, LAN, and Bluetooth. Do not advertise any transport as working until it is actually wired and verified.
 - **Internet Worker endpoint currently hardcoded in setup:** `https://spd-multiplayer.majd7772233.workers.dev/room/{roomName}/websocket`.
-- **Branch head before the current documentation refresh:** `d335e3917d3038bbc9043be6b18cfb9b0abd191c`.
-- **Latest validated gameplay code:** `8dde21303ac836c177457767d4c8e7c7e3ba7838`; CI run [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) passed both backend and Android jobs.
-- **Roadmap:** read `ROADMAP.md` before starting a task. Phase 1 and Phase 2 are complete for automated acceptance; Phase 3 is next.
+- **Latest previously verified native snapshot/combat baseline:** `c1d009cc99bf093754987a38e35e98ef42e895b5`; CI run [39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374) passed backend tests and Android JVM/debug APK checks.
+- **Current consistency-hardening checkpoint:** `81ed967088aedbfc1bcc65773a8cb5dd0774c087`; exact-SHA CI [39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671) was queued at last check. Do not treat this latest fix as validated until its workflow result is checked.
+- **Roadmap:** read `ROADMAP.md` before starting a task. Phase 2 remains complete against its current automated acceptance baseline. Phase 1's previous baseline passed, but a server-versus-Android snapshot validation mismatch was found in re-audit; the fix is committed and Phase 1 is awaiting the current run. Phase 3 must not start until this gate is green.
 
 ## 2. Non-Negotiable Product and Engineering Rules
 
@@ -245,3 +245,13 @@ Do not mark Phase 1/2/3 complete. Still required: validate the entire snapshot b
 - Native mob-to-hero damage and PvP attacks now include and validate target buff pre-state against saved authoritative hero/mob state; protocol schema now describes the native mob damage payload and conditional combat outcome fields.
 - Phase 2 must remain open: the Worker does not independently run SPD Java combat RNG/damage/proc logic, so internally consistent forged damage is still possible; secondary/periodic effects and PvP death/Ankh convergence lack end-to-end verification. No physical two-device test was performed.
 - Continue implementation and tests directly; do not report Phase 2 complete merely because CI is green or scaffolding exists.
+
+
+## 2026-10-21 Phase 1 consistency-audit log
+
+- Re-read `ROADMAP.md` and this notebook, then compared `server/src/index.ts` native snapshot admission with Android `WorldSnapshot.validateForRestore()` and the `NativeLevelSnapshot` protocol definition.
+- Confirmed a real interoperability defect: server validation did not uniformly reject duplicate positions/identity collisions and omitted Mob runtime fields that Android restore requires. Such a snapshot could be persisted by the Worker and subsequently rejected by Android, causing unnecessary resynchronization.
+- Hardened server validation before persistence; added regression tests for duplicate tile/exploration cells, heap/trap/plant positions, Mob local IDs/positions/stable IDs, duplicate blob classes, out-of-range values and incomplete native scheduler fields. Updated protocol schema requirements to match actual native snapshot fields.
+- Commits: `1a5d4c537ee3c2e8b6da88c126310e1499ff42c4` (validator), `39f7441b39874988b3b4293defc48f65ec4745cf` (tests), `81ed967088aedbfc1bcc65773a8cb5dd0774c087` (protocol schema).
+- CI run [39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671) targeted current SHA `81ed967088aedbfc1bcc65773a8cb5dd0774c087` and was queued at last check. Recheck actual outcome before closing Phase 1.
+- No real two-device Android session has been executed by this workflow. Keep that as a Phase 10 release gate.
