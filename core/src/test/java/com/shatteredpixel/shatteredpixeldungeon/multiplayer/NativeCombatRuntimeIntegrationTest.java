@@ -438,6 +438,45 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void specialNativeMobCallbackPublishesDeferredEffectOnlyAfterNext() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-special-callback-commit", "client-publisher", transport);
+        NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"special-owner-token\\","
+                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+        publisherSession.sequence = 1L;
+        manager.onMessageReceived(publisherSession);
+
+        Rat mob = addRat(hero.pos + 1, 20);
+        manager.registerServerEntityId(mob.id(), "stable-special-callback-mob-0001");
+        int initialHp = mob.HP;
+
+        // Some SPD special attacks (for example rock projectiles) return false from act()
+        // and apply gameplay effects inside a later projectile callback without using doAttack().
+        Actor.deferMultiplayerSharedActorResult(mob);
+        mob.HP -= 2;
+        Assert.assertEquals("A callback-driven Mob turn must not publish before its native callback",
+                0L, transport.sent.stream().filter(m -> m.messageType == MessageType.LEVEL_DATA).count());
+
+        // Matches source.next() at the end of the original projectile callback.
+        mob.next();
+
+        Assert.assertEquals(1L, transport.sent.stream().filter(m -> m.messageType == MessageType.LEVEL_DATA).count());
+        NetworkMessage committed = transport.sent.stream()
+                .filter(m -> m.messageType == MessageType.LEVEL_DATA).findFirst().orElse(null);
+        Assert.assertNotNull(committed);
+        JsonValue root = new JsonReader().parse(committed.payloadJson);
+        Assert.assertTrue(root.getBoolean("nativeWorldTick"));
+        JsonValue row = null;
+        for (JsonValue candidate = root.get("mobs").child; candidate != null; candidate = candidate.next) {
+            if ("stable-special-callback-mob-0001".equals(candidate.getString("entityId", ""))) row = candidate;
+        }
+        Assert.assertNotNull(row);
+        Assert.assertEquals(initialHp - 2, row.getInt("hp"));
+    }
+
+    @Test
     public void worldSnapshotReconstructsMissingStableMobAndRepeatedRestoreIsIdempotent() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-reconnect", "client-publisher", new TestTransport());
