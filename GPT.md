@@ -14,8 +14,9 @@ When the user says “yalla phase N” or asks to finish a phase, implement the 
 - **Primary objective:** real multiplayer gameplay between two or more devices. Players should share a coherent match and world, perform actions, fight native mobs/other players, collect and drop items, preserve inventory and temporary effects, move between floors, and recover from disconnects without duplicated/lost actions.
 - **Target transports represented in code:** Internet/WebSocket, LAN, and Bluetooth. Do not advertise any transport as working until it is actually wired and verified.
 - **Internet Worker endpoint currently hardcoded in setup:** `https://spd-multiplayer.majd7772233.workers.dev/room/{roomName}/websocket`.
-- **Current audited commit when these notes were written:** `657ce010edb03b55707d2b6d496abbb07b36fa7a`.
-- **Roadmap:** read `ROADMAP.md` before starting a task. Its Phase 1 is the next completion phase from the current code state.
+- **Branch head before the current documentation refresh:** `d335e3917d3038bbc9043be6b18cfb9b0abd191c`.
+- **Latest validated gameplay code:** `8dde21303ac836c177457767d4c8e7c7e3ba7838`; CI run [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) passed both backend and Android jobs.
+- **Roadmap:** read `ROADMAP.md` before starting a task. Phase 1 and Phase 2 are complete for automated acceptance; Phase 3 is next.
 
 ## 2. Non-Negotiable Product and Engineering Rules
 
@@ -91,79 +92,69 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - `.github/workflows/multiplayer-ci.yml`: on relevant pushes, runs backend dependency install/typecheck/tests and Android `assembleDebug`. Docs-only commits may not trigger it because of the path filters.
 - `.github/workflows/deploy-server.yml`, `.github/workflows/release.yml`: inspect before changing deployment/release behavior.
 
-## 4. Current System Behavior and What Is Already Present
+## 4. Current Verified State and Implemented Architecture
 
-At audit commit `657ce010edb03b55707d2b6d496abbb07b36fa7a`:
+### Exact branch and CI state
+- Repository: https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar
+- Branch: multiplayer-framework-core-14118577486727081892. Never merge into main without explicit instruction.
+- Branch HEAD before this documentation refresh: d335e3917d3038bbc9043be6b18cfb9b0abd191c.
+- Latest validated gameplay code SHA: 8dde21303ac836c177457767d4c8e7c7e3ba7838.
+- Workflow [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) passed on that exact code SHA.
+- Passed job 1: Backend typecheck and tests — Node 20, npm ci, TypeScript build and Vitest.
+- Passed job 2: Android debug APK compile — Java 17, Gradle JVM tests and Android debug APK.
+- Markdown-only edits may not trigger CI because workflow path filters target code/protocol/Gradle/workflow paths. Do not claim a code change has CI evidence unless the exact SHA was tested.
+- Current repository tree contained 2,185 entries. Critical multiplayer code, native engine entry points, protocol/server tests and CI were reviewed. Do not claim every line of the full tree was read; review every affected file and caller in detail before editing.
 
-- The title screen has a multiplayer button and leads to a transport selector.
-- Setup can select Internet, LAN or Bluetooth and starts a manager session; however, startup does not wait for a robust room-ready/world-ready handshake.
-- `MultiplayerManager` sends action payloads with the hero-state bundle, handles session tokens/sequence values, accepts the authoritative seed and publishes a native level snapshot.
-- `GameScene.create()` calls `publishCurrentLevel()`.
-- `SPDLevelSnapshot` exports tile geometry and collision flags, transitions, mobs and their serialized bundles/buffs/cooldowns, heap contents/items, traps, blobs, plants, and hero state including combat bundle, inventory, HP/HT/position, buffs and cooldown.
-- `WorldSnapshot` already tries to apply tiles/transitions, create missing mobs, remove stale mobs without re-awarding their loot, restore mob buffs/timing, rebuild native heaps/items, traps, plants, blobs, hero state, remote players and claimed items.
-- Native Java attack code reports hit/damage/HP results for local hero attacks against mobs/remote heroes. The server validates some range and state fields, persists HP and emits events.
-- Hero damage synchronization exists to report the native post-damage HP/HT.
-- Server has basic movement/pathfinding, a simplified mob movement loop, level snapshot storage, action/event sequencing and reconnect snapshot/event replay.
-- CI passed for the audit baseline commit. This means only that the workflow's current tests and debug compilation passed.
+### Phase status
+- Phase 1, lossless native world snapshot/restoration: **complete for implementation and automated acceptance**.
+- Phase 2, native SPD combat replication: **complete for implementation and automated acceptance**.
+- Phase 3, native Mob AI and Actor scheduler: **next whole phase; open**.
+- Phases 4–10 remain open. See ROADMAP.md for the entire indivisible phase scope and completion gates.
+- No physical two-device match has been performed by CI; this must not be implied by the green workflow.
 
-Do not redo these features blindly. Read their current implementations, identify the missing acceptance criteria, and complete them.
+### Verified Phase 1 facts
+- SPDLevelSnapshot exports schema/depth/branch/seed/dimensions/entrance/exit, tile and collision flags, transitions/exploration state, native metadata, stable Mob identities/bundles/state/buffs/cooldowns, heaps/items/heap flags, traps, plants, timed blobs and hero/inventory/combat/buff state.
+- WorldSnapshot preflights full snapshots and bounds values/bundles before live state mutation. Full snapshots use explicit empty arrays to remove stale objects. Restore/reconcile occurs on the render/game thread.
+- Stable server entity IDs are distinct from local Actor IDs. Missing Mobs are rebuilt from serialized native bundles and registered with the Actor scheduler; stale Mobs are removed without rerunning local loot/reward death logic.
+- Ordered heaps preserve item state/order without merge-causing drop semantics. Custom tile/wall visuals and native Level metadata are restored. FOV recomputation must not invent visited cells.
+- Same-active-depth/branch dimensions can be replaced using the proper native Level type. A forced mid-restore failure verifies rollback. The rollback baseline is captured from live native objects instead of a JSON round trip that may omit primitive zero defaults.
+- Runtime test names include worldSnapshotReconstructsMissingStableMobAndRepeatedRestoreIsIdempotent, firstSnapshotFailureAfterResizeRollsBackToLocalNativeWorld, sameSnapshotConvergesAcrossTwoLocallyDifferentGeneratedWorlds, snapshotPreflightRejectsMalformedHeroBuffBeforeChangingLiveWorld and worldSnapshotRestoresNativeHeapTrapPlantAndTimedBlobIdempotently.
+- MultiplayerLevelMetadataTest covers custom tile/wall Bundle round-trip, empty metadata, idempotent visual application and invalid respawner metadata.
 
-## 5. Known Gaps / Defects to Track
+### Verified Phase 2 facts and trust boundary
+- Native runtime coverage includes hit/miss, zero damage, shield-only hits, actual defense/retaliation, attacker post-state, blessed Ankh, delegated kill XP attribution, periodic Mob damage, Mob-to-player outcomes, native PvP/Ankh, secondary Mob procs with stable IDs/full bundles, stale events, duplicate-death prevention and convergence across different local Actor IDs.
+- NativeMobCombatDelta must keep explicit complete/deltas and zero-valued HP/HT/position/shield fields. libGDX prototype/default optimization can omit primitive zeros; map-based JSON serialization was rejected because type metadata broke decode.
+- Worker is TypeScript/Cloudflare and cannot directly execute the Java SPD engine. A designated level-publisher native SPD engine resolves Mob combat; the PvP target owner resolves incoming PvP. Worker validates authority/request/identity/depth/geometry/trusted pre-state/native transitions/bundles/loot/replay, then persists and broadcasts.
+- Client-sent engineResult=true is not proof of an honest engine. Do not call this cheat-proof. Phase 3 must decide whether a single elected Java publisher is the accepted trust model or a server-side JVM/native engine is needed for stronger integrity.
+- Do not call native Mob.die() on a replica just to set its state; that can duplicate loot/reward. Use the authoritative tombstone/removal path.
 
-### Snapshot and world reconstruction
+## 5. Open Risks and Work After Phase 2
 
-- Full snapshot restoration must be validated as a contract; many restoration branches currently catch errors and continue, which can make two clients silently diverge.
-- Mob matching by native actor ID/class-name fallback is not stable enough across devices or same-class mobs. Introduce stable network entity IDs.
-- Ensure complete snapshots distinguish missing fields from intentionally empty collections, and reapply the same snapshot idempotently.
-- Audit all gameplay-relevant level state beyond tiles/transitions/heaps/traps/blobs/plants: exploration/visited/mapped/fog, level lock/feeling, custom tiles/walls, respawner and inter-level state as applicable.
-- Verify every native bundle survives the JSON/protocol path and that class loading is restricted/validated. Constructor fallbacks must not silently replace unique items or special mob states.
-- Ensure render-thread updates and actor scheduler state are correct after restoring objects, especially blobs, buffs, mobs and heaps.
-- Ensure death tombstones and kill-generated loot are exactly-once.
+### Phase 3 — native Mob AI and scheduler
+Existing TypeScript Mob-turn/path logic is not original SPD Mob.act(). Audit Actor/Char/Mob, Mob subclasses, buffs, target memory, FOV, action costs, native effective speed, cooldown, delayed actions and server turn logic. Pick one native authority; no client may independently advance the same Mob. If stronger trust needs server-side Java, implement/document that rather than pretending TS matches. Test special attacks, sleeping/fleeing/passive states, obstacles, both co-op targets, buffs/DOT/time-stop, scheduler ties, publisher disconnect and handoff without two active authorities.
 
-### Combat and AI
+### Phase 4 — movement and floor lifecycle
+Trace every native action from input/dispatcher to server and back. A level transition requires branch/depth/seed, native destination generation, LEVEL_DATA acknowledgment and world-ready gate. Synchronize doors, terrain, traps, plants, quest/key effects and recover during reconnect/floor load. Never show a placeholder map as real state.
 
-- Native player attack results are reported, but a client-controlled `engineResult` flag is not cryptographic proof of a valid engine result. Validate impossible HP transitions, target identity, duplicate/replayed events and attacker/target state.
-- Do not add server-side random combat to “match SPD”; original SPD combat depends on native stats, RNG, weapon/armor mechanics, buffs, talents, challenges and subclass behavior.
-- `MatchRoom.processMobTurns()` is simplified TypeScript pathing/target selection, not native `Mob.act()`. It does not fully implement mob-specific AI, attacks, special abilities or actual actor scheduler ordering.
-- The server's `getNativeMobTurnDelay()` currently derives delay from `baseSpeed` and a reciprocal approximation; it omits effective speed modifiers and actor-specific turn costs.
-- Choose one authority for mob turns. Local native simulation plus server generic simulation can create duplicate or conflicting actions.
-- Misses, zero-damage attacks, native effects, shield changes, buffs, death and drops must all be represented as exact outcomes.
+### Phase 5 — items/effects
+Stable item/heap IDs must survive moves/snapshots/reconnect. Claims include room and depth. Pickup/drop/consume/equip/shop/throw, partial heaps, buff duration/expiry, shields, DOTs, Ankh/LostBackpack/death drops/reward stats must be transactional and exactly-once.
 
-### Event routing and actions
+### Phase 6 — transports
+InternetTransport, LANTransport and BluetoothTransport need real verification. LAN host must not accidentally run the ordinary client path. Bluetooth needs actual Android provider wiring and permissions or must display unavailable. Setup must wait for room and world readiness.
 
-- `MessageRouter` and `RemotePlayerActionReceiver` overlap. The legacy receiver uses substring matching and can remove an entire heap on pickup; a single item picked up must not make other items disappear.
-- `NetworkActionBridge` maps actions such as BUY, INTERACT, UNLOCK, MINE, ALCHEMY, USE_ITEM, USE_ABILITY and REVIVE, but the server's explicit ACTION handler currently covers only a subset (including MOVE, LVL_TRANSITION, ATTACK, WAIT, PICKUP, OPEN_CHEST and SYNC_HERO_STATE). Unhandled actions must not appear functional.
-- The server validates native combat fields but still relies on client-reported results; add state-transition checks, replay protection and authority design.
-- Action rejection/timeout/prediction rollback and pending action cleanup need to be consistent.
-- Sequence gaps should trigger event replay only when the entire contiguous range is present; otherwise request/apply a full snapshot.
-- All messages must be parsed structurally and bounded by schema/size/count/range limits.
+### Phase 7 — modes/lifecycle
+Mode descriptors require server-enforced capacity/teams/target rules, score/win, death/spectator/respawn/revive, match-end and host/publisher departure semantics. Test simultaneous events and reconnect in each advertised mode.
 
-### Transport and session lifecycle
+### Phase 8 — protocol/recovery
+MessageRouter is the target typed path. RemotePlayerActionReceiver legacy substring parsing overlaps and must be migrated with equivalent tests before removal. Verify schema against Java enums and Worker handlers; sequence gaps, duplicate/replay, stale snapshots, reconnect tokens, event retention, Durable Object restart/migrations, authority handoff and transaction boundaries need direct tests.
 
-- `MultiplayerSetupScene.startMultiplayerSession()` switches to HeroSelect immediately after `startSession`, not after a confirmed connection/session/world-ready state.
-- LAN host code starts a local server and then invokes the ordinary connect path using a loopback endpoint. This needs a correct host-authority path and physical-device verification.
-- `BluetoothTransport` depends on an injected `NativeBluetoothProvider`. Without a provider, current paths can report connected without a real link. Wire a real Android implementation or disable the option honestly.
-- Internet transport is a custom socket/WebSocket implementation; verify its protocol details against the Cloudflare Durable Object endpoint.
-- Handle disconnect cleanup, reconnect token identity, host/publisher handoff, room lifetime and restart/recovery.
-- The level publisher is a client. Ensure a disconnected publisher cannot leave the room without a valid world snapshot/authority.
+### Phase 9 — truthful UX
+Audit TitleScene, MultiplayerTransportScene and MultiplayerSetupScene as one flow. Show authentic connect/auth/sync/world-ready/retry/disconnect states. Arabic/RTL and English, room code/address validation, cancel/leave cleanup, accessibility and no false-success states are required.
 
-### Level lifecycle, persistence and mode rules
+### Phase 10 — physical-device and release gate
+No physical two-device test is currently claimed. Run and record real devices, Android versions, app SHA, Worker deployment and outcomes for every supported transport/mode; verify reconnect/resync, movement, Mob AI, combat, items/effects, floor changes, death/revival, publisher loss and server restart where supported. Exact-SHA CI and deployed Worker smoke test are required. Do not infer deployment correctness from compilation.
 
-- Server initializes a fallback rectangular placeholder level and dummy mobs before native `LEVEL_DATA` arrives. Never treat this fallback as playable authoritative SPD content.
-- `LEVEL_DATA` currently validates branch 0 only; keep that limitation explicit until other branches are truly supported.
-- Snapshot replacement and multi-table actions need atomic persistence/transactions.
-- `claimed_items` is keyed by `item_pos` as its primary key despite also storing `depth`; identical positions on different floors can collide. Use stable depth-aware heap/item IDs and migrate existing data safely.
-- Complete level transitions must transfer the native level and player state together; do not switch clients on depth-only events.
-- Game mode classes describe intended rules but server/session enforcement for ready/start, death, revive, respawn, spectators, score and match end needs end-to-end tests.
 
-### UI and testing
-
-- The multiplayer UI exists but needs robust host/join/ready/connect/sync/retry/leave/error states. A button and a scene are not proof of a working flow.
-- Localization keys and Arabic/RTL layout must be checked for every new UI string.
-- Backend tests are currently shallow. Add tests against the actual Durable Object/action state and snapshot handling, then a physical two-device matrix.
-- Keep unsupported transports disabled/clearly unavailable instead of displaying false success.
-
-The complete phase-by-phase execution list and acceptance criteria are in `ROADMAP.md`. Keep that file as the authoritative task checklist and this file as implementation context.
 
 ## 6. Recommended Work Method
 
@@ -192,6 +183,17 @@ The project is not done when it compiles or when two clients merely connect. Don
 - The roadmap has no unresolved P0 items and known limitations are documented honestly.
 
 ## 8. Append-Only Working Log (Keep This Section Open)
+
+### 2026-10-21 — Current state supersedes older checkpoints
+
+- Branch head before this documentation update: d335e3917d3038bbc9043be6b18cfb9b0abd191c. The current validated gameplay code is 8dde21303ac836c177457767d4c8e7c7e3ba7838.
+- CI run 39557655189 passed on the exact gameplay SHA. Backend build/tests and Android JVM tests/debug APK compilation both passed.
+- Phase 1 automated acceptance is complete: stable-ID Mob reconstruction, stale cleanup, idempotency, rollback after forced resize failure, native heap/trap/plant/timed-blob restore and independent-world convergence are tested.
+- Phase 2 implementation and automated acceptance are complete: native hit/miss/shield/retaliation/Ankh/reward/Mob-to-player/periodic/PvP/secondary-Mob paths are covered by runtime and backend contract tests.
+- Next whole phase is Phase 3, native Mob AI and Actor scheduler from one authority. Phases 3–10 remain open.
+- No physical two-device run is claimed. Phase 10 must record it.
+- Historical dated entries below preserve previous checkpoints; do not use their old phase status as current status.
+
 
 ### 2026-10-16 — Baseline audit and roadmap creation
 

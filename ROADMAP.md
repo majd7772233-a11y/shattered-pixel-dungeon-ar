@@ -1,76 +1,54 @@
 # Multiplayer Completion Roadmap
 
-> **Scope:** Complete the multiplayer implementation in this repository without replacing or approximating Shattered Pixel Dungeon's original Java gameplay rules.
+> Canonical execution plan for completing the multiplayer implementation. Written in English so future conversations can continue without reconstructing context.
 >
-> **Audited branch:** `multiplayer-framework-core-14118577486727081892`
->
-> **Audit baseline:** `657ce010edb03b55707d2b6d496abbb07b36fa7a`
->
-> **Baseline CI:** GitHub Actions run `38759441278` completed successfully for that exact commit (backend typecheck/tests and Android debug APK compilation). This confirms compilation and the current automated checks only; it does **not** prove a two-device match works end-to-end.
->
-> **Important:** This roadmap starts from the current code state. It does not ask future work to recreate features already present. Each phase includes the unfinished work and concrete acceptance criteria.
+> Repository: majd7772233-a11y/shattered-pixel-dungeon-ar  
+> Working branch: multiplayer-framework-core-14118577486727081892  
+> Branch head before this documentation refresh: d335e3917d3038bbc9043be6b18cfb9b0abd191c  
+> Latest validated gameplay-code SHA: 8dde21303ac836c177457767d4c8e7c7e3ba7838  
+> CI for that exact code SHA: [run 39557655189 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189)
 
 ## Product Goal and Definition of Done
 
-Deliver real multiplayer Shattered Pixel Dungeon gameplay on two or more devices. Players must enter the same match, start the same run, see a consistent world, act concurrently without duplicated or lost turns, and remain synchronized through combat, loot, temporary effects, level transitions, death/revival, disconnects and reconnects.
+Deliver genuine multiplayer Shattered Pixel Dungeon gameplay on two or more Android devices. Players must enter the same real match and share a coherent native SPD run through actions, Mob turns, combat, inventory and loot, timed effects, death/revival, floor transitions, disconnects, reconnects and authority changes.
 
-The original SPD Java engine remains the source of gameplay truth: its level generation, hit chance, defense, weapon/armor calculations, buffs, item effects, mob-specific AI, actor cooldowns and game rules must not be re-created with generic TypeScript approximations. The server is responsible for session coordination, ordering, validation, persistence and distributing trusted state changes. Where gameplay is authoritative on a device, the protocol must validate and reconcile its results without allowing clients to submit arbitrary outcomes.
+The original Java/libGDX SPD engine remains the gameplay reference: level generation, hit/damage calculations, native Mob AI, actor scheduling, buffs, item effects and progression must not be replaced with simplified TypeScript approximations. The Worker/Durable Object coordinates sessions, validates transitions, persists state and sequences/distributes events. A designated native authority resolves gameplay the Worker cannot execute.
 
-A phase is complete only when all of its tasks and acceptance criteria are satisfied, the affected paths have been reviewed, relevant tests pass, and the result is committed on this branch. A feature is not complete merely because a class, enum, button, event name or placeholder implementation exists.
+“Done” means the full acceptance gate has passed for every phase, exact-code CI is green, and final real-device/deployment tests have been recorded. Compilation or a successful room connection alone is not project completion.
 
-## Current Baseline: Implemented Pieces (Not Equivalent to Finished Multiplayer)
+## Atomic-Phase Rule — No Partial Phases
 
-The current branch already contains:
+A numbered phase is **one indivisible milestone**, not a collection of separately completable parts. Its full scope, dependencies, implementation, schema, tests, cross-file integration and completion criteria must be finished before the phase is marked complete.
 
-- A multiplayer entry point in `TitleScene`, a transport selector in `MultiplayerTransportScene`, and a setup screen in `MultiplayerSetupScene`.
-- Transport abstractions and implementations for Internet/WebSocket, LAN, and a Bluetooth provider interface.
-- `MultiplayerManager`, protocol message types, action mapping, event routing, and a Cloudflare Durable Object room server in `server/src/index.ts`.
-- A seed handoff intended to align runs before level generation.
-- `SPDLevelSnapshot`, which exports a level produced by the actual Java SPD engine: tile geometry, transitions, mobs, heap items, traps, blobs, plants, and a hero-state bundle.
-- `WorldSnapshot` and `MessageRouter` code for restoring/reconciling map tiles, transitions, mobs, heaps/dropped items, traps, blobs, plants, player HP/positions, hero inventory/combat data, and temporary buffs.
-- Native combat-result reporting from the Java engine for player attacks, and a hero-damage synchronization action.
-- Server-side sequencing, persisted event rows, reconnect attempts, level-snapshot storage, movement/pathfinding helpers, and a basic automated CI workflow.
+- Never mark a phase complete with an unchecked requirement, known dependent defect, missing test or unverified integration path.
+- Never push a missing requirement into the next phase merely to close the current one.
+- A new class, schema field or test alone is not completion. Trace the whole path: native action → protocol → server validation/persistence → sequenced event → client reconciliation → reconnect/snapshot.
+- Fix all failures revealed by CI and rerun against the exact final code SHA before reporting.
+- Do not claim physical-device testing unless it really happened. CI cannot run a physical two-device session.
+- Work on the named branch. Never merge into main unless explicitly instructed.
+- Update ROADMAP.md and GPT.md whenever implementation, phase status, architecture, risks or verification changes.
 
-These pieces are the starting point, not evidence of complete behavior. The most important remaining problem is that the current system still mixes local SPD simulation with a simplified server-side simulation, and several transport, event-reconciliation and validation paths can disagree.
+## Current Verified Status
 
-## Audit Findings and Known Risks
+- **Phase 1 — Lossless native snapshots/restoration: complete for implementation and automated acceptance.** Tests cover stable-ID Mob reconstruction, stale-object removal, idempotent reapply, same-depth/branch dimension replacement, rollback after a forced mid-restore failure, native heap/trap/plant/timed-blob round trips and convergence of independently generated local worlds.
+- **Phase 2 — Native combat replication: complete for implementation and automated acceptance.** Tests cover native hits/misses, shield-only outcomes, retaliation/attacker post-state, blessed Ankh, delegated kill rewards, periodic Mob damage, Mob-to-player damage, PvP, secondary stable-ID Mob deltas and replay/stale-event handling.
+- **Verified integrated code:** 8dde21303ac836c177457767d4c8e7c7e3ba7838. **CI:** [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189), both backend and Android jobs passed. Branch head d335e3917d3038bbc9043be6b18cfb9b0abd191c is a later checkpoint/documentation commit.
+- **No physical two-device match has been performed by CI.** Phase 10 retains this as a required release verification step.
+- **Phase 3 is next.** Phases 3–10 remain open. Phase 1/2 success does not establish native Mob scheduler parity, complete floor/interactions, transactional inventory, working transports, enforced modes or release readiness.
 
-### P0 — Must be resolved before calling the game playable
+## Architecture Reference
 
-1. **Snapshots are not yet a proven lossless reconstruction contract.** The exporter carries many dynamic objects, but restore paths need a single schema/versioned reconciliation pass, explicit handling for absent/empty collections, identity stability, actor scheduling, map metadata and unsupported object types. A missing/invalid bundle is often swallowed and skipped, which can silently produce a different world.
-2. **Mob identity is fragile.** Snapshot reconciliation first relies on local actor IDs and then class-name fallback. Actor IDs are local scheduler identities, not guaranteed cross-device persistent IDs; two same-class mobs can be matched to the wrong entity. Dead-mob tombstones and loot creation must be deterministic and idempotent.
-3. **The server's mob logic is not the original SPD AI.** `MatchRoom.processMobTurns()` uses generic target selection and pathfinding. It does not execute each native mob's `Mob.act()`, subclass abilities, special attacks, fleeing/passive/sleeping behavior, buffs, field-of-view rules, damage logic or all turn costs. In adjacent range it advances a cooldown but does not resolve a native mob attack. The current `1 / baseSpeed` approximation omits effective speed modifiers and actor-specific costs.
-4. **Native combat results still require trust-boundary hardening.** Java now reports native hit/damage/HP and the server validates target/range fields, but a client-provided `engineResult` flag is not proof that the result came from an honest engine. The server must reject impossible HP/damage transitions, duplicate outcomes, stale targets, forged target IDs and replayed actions. Do not replace SPD's combat formulas with server RNG to solve this.
-5. **The event receive paths overlap.** `MessageRouter` applies structured `EVENT_BATCH`/accepted actions, while `RemotePlayerActionReceiver` still uses substring checks and legacy parsing. The latter can remove a whole heap when another player picks up one item, apply events twice, or parse an unrelated number as a position/HP. There must be one typed, sequence-aware event application path.
-6. **Multiplayer action coverage is incomplete.** The server currently has explicit handling for core actions such as movement, level transition, attacks, wait, pickup, chest opening and hero-state synchronization. The action bridge also maps buying, interacting, unlocking, mining, alchemy, item use, abilities and revive, but mapping an action does not mean the server implements or reconciles it.
-7. **Transport setup can claim success too early.** `MultiplayerSetupScene` starts the game scene immediately after calling `startSession`, rather than waiting for a validated session/match-ready result. LAN host setup starts a server and then also invokes the normal connect flow using a loopback endpoint; this needs a real host-authority path and two-device verification. Bluetooth depends on an injected `NativeBluetoothProvider`; when it is absent, the current implementation can report a connected state without a real Bluetooth link.
-8. **Level authority and transitions need a single lifecycle.** The server creates a fallback rectangular placeholder level before it receives native `LEVEL_DATA`; a match must not present that placeholder as a real SPD floor. The level publisher is tied to a client, the snapshot replacement path needs atomic validation/storage, and publisher disconnect/depth transition must not strand the room or leave clients on different floors.
-9. **Persistence and loot claims need stronger keys and transactions.** `claimed_items` uses `item_pos` as its primary key while also storing depth, so identical cell positions on different floors can collide. Item removal, inventory state, heap contents and kill-generated loot must commit atomically and be idempotent.
-10. **Automated tests are too shallow for the risk.** `server/src/index.test.ts` mainly tests standalone message examples and toy arithmetic/pathing. It does not instantiate the room and test real actions, snapshots, authority, duplicate requests, two players, reconnects, or complete SPD serialization/restoration. Current CI success is a compile/check baseline, not end-to-end proof.
+- Native engine: Actor.java, Char.java, Hero.java, Mob.java, Level.java, Dungeon.java, GameScene.java.
+- Snapshot/reconciliation: multiplayer/SPDLevelSnapshot.java and multiplayer/WorldSnapshot.java.
+- Session/event/routing: multiplayer/MultiplayerManager.java and multiplayer/MessageRouter.java.
+- Legacy overlapping receiver to audit/migrate: multiplayer/RemotePlayerActionReceiver.java.
+- Native transport/action bridge: NetworkMessage.java, MessageType.java, NetworkActionType.java, NetworkActionBridge.java, MultiplayerActionDispatcher.java, InternetTransport.java, LANTransport.java and BluetoothTransport.java.
+- Native combat contracts: NativeCombatAuthorityPolicy.java, NativeCombatJson.java and NativeMobCombatDelta.java.
+- Worker/Durable Object room: server/src/index.ts. Backend tests: server/src/index.test.ts. Protocol: protocol/schema.json.
+- CI: .github/workflows/multiplayer-ci.yml. It runs Node 20 npm build/tests and Java 17 Gradle JVM tests plus Android debug APK compilation.
+- Mode descriptors: CoopMode.java, PvPMode.java, DeathmatchMode.java and SurvivalMode.java need actual server/client enforcement; class existence is not proof that a mode works.
 
-### P1 — Important gameplay consistency and player-visible correctness
-
-- Verify that map dimensions, terrain, transitions, heaps, traps, plants, blobs and all actor positions are applied before a snapshot is considered ready. Rebuild/recreate visuals on the render thread and recompute pathfinding/FOV as required by the original engine.
-- Audit level fields beyond tile flags: visited/mapped/fog state, level lock/feeling/branch-specific metadata, custom tiles/walls, respawner state and inter-level transfer state. Explicitly serialize anything that affects visible or playable behavior; document any intentionally local-only data.
-- Restore each native item using its bundle and preserve quantity, curse state, level, unique properties, container contents, equipment/quickslots and ownership. Class-constructor fallback is best-effort only and must not silently replace a special item with a different one.
-- Ensure every player has a native state bundle for class/subclass, talents, strength/level/experience, equipment, buffs and cooldowns. Reconcile hero position, HP/HT, death state and action readiness without replacing the local scheduler identity accidentally.
-- Prevent a local client from continuing to execute authoritative mob turns while the server independently moves the same mobs. Establish exactly one authority model and make it explicit in code.
-- Implement action idempotency and ordering consistently: request IDs, sequence numbers, duplicate replay, rejected actions, out-of-order events, stale depth and snapshot fallback.
-- Verify shared-world co-op versus arena/deathmatch semantics: friendly fire, player visibility/FOV, death, spectator state, kill/score counters, respawn/revive and match-end conditions.
-- Ensure room capacity, ready/start flow, late join, disconnected players, host departure and match teardown behave predictably.
-- Improve errors and UI states: connecting, creating/joining, waiting for the other device, failed connection, invalid room/IP, missing Bluetooth provider/permissions, host discovery, retry, leave and resync. Never silently proceed into a false-success game.
-- Bring `protocol/schema.json` into agreement with actual message types and payloads, including `LEVEL_DATA` and all event payloads. Validate payloads on both sides with explicit size/range limits.
-- Review network implementation details: WebSocket handshake/framing, message-size limits, timeouts, keepalive, TLS, disconnect cleanup and callbacks must be tested on the target Android versions.
-
-### P2 — Release quality
-
-- Add repeatable integration tests and a documented manual two-device matrix for Internet, LAN and Bluetooth (Bluetooth only after a real provider is wired).
-- Add structured diagnostics for rejected actions, snapshot parse/restore failures, sequence gaps, authority changes and disconnect reasons. Avoid empty catch blocks that hide a broken state.
-- Confirm the deployed Worker URL/configuration matches the endpoint in `MultiplayerSetupScene`; document deployment and room lifecycle without requiring Wrangler CLI on Android.
-- Verify Android permissions, min/target SDK implications, device sleep/background behavior, reconnect after network changes, and release build behavior.
-- Remove dead/duplicate legacy handlers and obsolete placeholder logic only after replacement paths are covered by tests.
-
----
+The detailed phase requirements and acceptance gates below are the authoritative work plan. Keep them in sync with GPT.md.
 
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
@@ -312,57 +290,15 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Update this file and `GPT.md` when a finding changes, a phase is completed, or new blockers are discovered.
 - Keep the roadmap tied to code. If an item turns out to be already implemented, verify it against its acceptance criteria and mark it accordingly instead of rewriting it.
 
-## Audit Notes
+## Current Audit and Verification Log
 
-- This is a code-based gap assessment of the current multiplayer implementation and its key integration points, protocol, backend, tests and CI. It is not a claim that all 2,174 repository tree entries were manually read line-by-line in a single pass; phase execution must continue the file-by-file review for every affected subsystem.
-- The current automated workflow passing is a useful baseline, but the current backend tests do not exercise a real Durable Object match or physical two-device play.
+### 2026-10-21 — Synchronized phase state and execution rules
 
-
----
-
-## 2026-10-16 Phase 2 continuation — NOT complete
-
-- Latest combat-code checkpoint: `e911d7a7e76f85a1c3a7b10675715f2ee62d1ef1`; validation workflow [38937930225](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38937930225) was still running when this checkpoint was recorded. Recheck the exact SHA and both jobs before reporting.
-- Tightened native mob-to-hero damage validation by capturing `targetBuffsBefore` in `Hero.damage`, validating it against the saved authoritative hero bundle, and requiring it in the native damage contract.
-- Tightened PvP attack validation by comparing the attack's target buff pre-state against the defender's saved hero state.
-- Added `targetBuffsBefore` to server-broadcast combat outcomes and corrected `NativeCombatOutcomeEvent` schema requirements so source-mob state is conditionally required only for mob-sourced outcomes. Added explicit `NativeMobDamagePayload` schema and target-type conditionals for attack payloads.
-- Added backend tests for matching/mismatched/malformed saved hero buff state and missing native pre-state fields.
-- Phase 2 remains **In progress**. The Worker still does not execute original SPD Java attack/damage RNG or proc logic, so a modified client can submit a plausible, internally consistent in-range damage value. Full secondary/periodic-effect and PvP death/Ankh convergence tests are still not complete. Do not claim cheat-proof combat or physical two-device verification.
-
-## 2026-10-16 Continuation checkpoint — NOT a phase completion
-
-- The current user request continues **Phase 1 (complete snapshot/world reconstruction), Phase 2 (native combat replication), and Phase 3 (native mob AI/Actor scheduler)**. Existing scaffolding is not sufficient to mark these phases complete.
-- See `MULTIPLAYER_CONTINUATION_NOTES.md` for the precise resume prompt, current branch/commit, implementation already present, code paths to inspect, outstanding defects and required verification.
-- Current branch head before this documentation update: `ba97f1b71605bec2e5642355fe0fcbc1add08f68`; latest gameplay-code commit: `657ce010edb03b55707d2b6d496abbb07b36fa7a`.
-- Last known green CI: run `38759441278` for the exact gameplay-code commit `657ce010edb03b55707d2b6d496abbb07b36fa7a`. Recheck Actions for newer runs and verify the exact head SHA before reporting status. This is not evidence of real two-device play.
-- Current known implementation includes native snapshot export/restore scaffolding for mobs/buffs, heaps/items, traps/plants/blobs, hero inventory/combat state, and native hero combat/damage replication. Remaining P0 gaps include stable entity/item IDs, idempotent full-snapshot semantics, safe exact bundle restoration, depth-aware durable item ownership, complete inventory/drop/effect lifecycle, replay/forgery validation, and native effective timing/AI rather than generic TypeScript approximations.
-- **Do not check off Phase 1, 2, or 3** until each phase's listed work items, acceptance criteria and automated tests have been verified. Continue on `multiplayer-framework-core-14118577486727081892`; do not merge into the default branch.
-
-
-## 2026-10-16 implementation checkpoint — work in progress
-
-- Current gameplay code commit under validation: `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`.
-- Workflow run: [Multiplayer Branch Validation #127](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38809893294). At the time of this note it is **pending**, so no result is claimed.
-- `WorldSnapshot.java`: removed constructor-default fallback creation for missing native mob/item/trap/plant/blob bundles. Snapshot restoration failures from previously empty catch blocks now emit game diagnostics. This avoids silently substituting default objects, but strict restoration, preflight validation, resync-on-failure and cross-device stable entity IDs remain unfinished.
-- `server/src/index.ts`: native combat reports are now rejected if target HP increases or reported damage does not equal the HP delta. The SPD combat formula remains in Java; this validation does not prove the client result itself is authentic.
-- `server/src/index.test.ts`: added tests for accepted hit/miss HP transitions, impossible healing, mismatched damage and invalid numeric values. These tests require the pending workflow to confirm execution.
-- Phase 1, Phase 2 and Phase 3 remain **in progress**. Native mob AI/scheduler parity, full snapshot reconstruction, stable entity/item identity, durable inventory/loot ownership, replay-resistant authority and real-device verification are not complete.
-
-
-## Verification correction — 2026-10-16
-
-- A first Android compilation of the strict-bundle/logging changes failed because five catch clauses still listed `ReflectiveOperationException` after constructor fallback code had been removed. This failure was inspected from Actions logs, and the obsolete checked exception types were removed in commit `63da31501485255c4ebae7b9f6bd04f4ae511fdb`.
-- The new validation run for that fix is [38810085987](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38810085987), pending at the time of this update. Do not report the Android build as passing until that exact run completes.
-- The earlier backend job passed on code SHA `25955a6d8e21f1947a4ac5c7afe7d3971cc76c4c`, including TypeScript build and tests; that is not a passing full-workflow result for the latest code SHA.
-
-
-## Phase 2 continuation checkpoint — authoritative native state bundles (2026-10-17)
-
-- Verified code checkpoint: `dac97070ee6f11410604a61afb5aeade8873f446` on `multiplayer-framework-core-14118577486727081892`.
-- Exact validation run [38984614970](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/38984614970) completed successfully: backend TypeScript build/tests and Android JVM tests/debug APK compilation passed on that SHA.
-- Native combat requests now execute on the SPD game/render thread. Accepted combat event batches, accepted actions, and remote action messages are also serialized onto that thread instead of mutating native actors from transport callbacks.
-- PvP target damage and blessed-Ankh results stay within the single native combat transaction; standalone environment-damage/REVIVE messages are suppressed during that attack to prevent duplicate or out-of-order state commits.
-- Mob combat now captures and bounds complete native mob bundles for the primary target, secondary mob effects, periodic damage, and reactive source-mob changes from defensive procs. The server persists accepted bundles and peers request a full authoritative snapshot rather than pretending scalar HP/buff updates reproduce native AI state.
-- Added backend tests for bounded native mob bundles and required post-state bundles in secondary and mob-to-player damage payloads. Protocol schemas now describe target/source mob bundles.
-- **Phase 2 remains In progress.** The mob-to-player damage path still originates from the damaged player's local native simulation and is not independently resolved/confirmed by the level publisher; unblessed-Ankh resurrection and full PvP death/resurrection convergence are not end-to-end verified; comprehensive native Java combat integration tests and physical two-device convergence are still outstanding. Do not mark Phase 2 complete or start Phase 3 until these blockers are closed.
-- Keep work on this branch; do not merge into `main`.
+- Current branch head before this documentation refresh: d335e3917d3038bbc9043be6b18cfb9b0abd191c.
+- Latest validated gameplay code: 8dde21303ac836c177457767d4c8e7c7e3ba7838.
+- Workflow run [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) succeeded for that exact gameplay SHA: backend TypeScript build/tests and Android JVM tests/debug APK build both passed.
+- Phase 1 automated acceptance is complete, including cross-generation convergence and rollback-after-resize. Phase 2 native combat implementation/automated acceptance is complete. The whole project is not yet finished.
+- Next whole phase: Phase 3, native Mob AI and Actor scheduling from one authority.
+- No physical two-device run is claimed. Phase 10 must record real device/Worker test evidence.
+- Repository tree contained 2,185 entries during this audit. Critical multiplayer code, native engine entry points, protocol, server tests and CI were reviewed; this is not a claim that every character of every file was manually inspected. Each file affected by a future phase must be reviewed with its callers/tests.
+- Older dated checkpoints have been removed because they contradicted current verified phase status. Preserve future updates as dated entries, but never leave obsolete “current” instructions at the end of the file.
