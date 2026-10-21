@@ -205,7 +205,7 @@ public class WorldSnapshot {
     public static boolean validateForRestore(WorldSnapshot snapshot) {
         if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
         if (snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
-                || snapshot.levelWidth != Dungeon.level.width() || snapshot.levelHeight != Dungeon.level.height()
+                || snapshot.depth != Dungeon.depth || snapshot.branch != Dungeon.branch
                 || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
                 || snapshot.levelWidth > 100 || snapshot.levelHeight > 100
                 || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return false;
@@ -400,6 +400,13 @@ public class WorldSnapshot {
         if (!manager.isMultiplayerActive()
                 || (!rollback && snapshot.sequence < manager.getLastSequence())) return false;
 
+        boolean dimensionsChanged = Dungeon.level.width() != snapshot.levelWidth
+                || Dungeon.level.height() != snapshot.levelHeight;
+        if (dimensionsChanged) {
+            // The active depth/branch is unchanged, so its native Level subclass remains valid.
+            // Replace all parallel geometry/flag arrays before restoring the authoritative tiles.
+            Dungeon.level.setSize(snapshot.levelWidth, snapshot.levelHeight);
+        }
         Dungeon.depth = snapshot.depth;
         Dungeon.branch = snapshot.branch;
         if (snapshot.dungeonSeed != 0L) Dungeon.seed = snapshot.dungeonSeed;
@@ -435,7 +442,7 @@ public class WorldSnapshot {
                 Dungeon.level.water[pos] = number(tile.get("water"), 0) != 0;
                 Dungeon.level.discoverable[pos] = number(tile.get("discoverable"), 0) != 0;
                 Dungeon.level.openSpace[pos] = number(tile.get("openSpace"), 0) != 0;
-                GameScene.updateMap(pos);
+                if (!dimensionsChanged) GameScene.updateMap(pos);
             }
         }
 
@@ -521,7 +528,7 @@ public class WorldSnapshot {
                                     number(data.get("defenseSkill"), matched.defenseSkill),
                                     floatNumber(data.get("cooldown"), 0f));
                             Dungeon.level.mobs.add(matched);
-                            GameScene.add(matched);
+                            if (!dimensionsChanged) GameScene.add(matched);
                             // GameScene normally registers actors while placing their sprites.
                             // During initial reconnect/headless restoration there may be no scene;
                             // still register the reconstructed native mob with the Actor scheduler.
@@ -552,7 +559,7 @@ public class WorldSnapshot {
                                 floatNumber(data.get("baseSpeed"), matched.multiplayerBaseSpeed()),
                                 number(data.get("defenseSkill"), matched.defenseSkill),
                                 floatNumber(data.get("cooldown"), 0f));
-                        if (matched.sprite != null && oldPos != pos) matched.sprite.place(pos);
+                        if (!dimensionsChanged && matched.sprite != null && oldPos != pos) matched.sprite.place(pos);
                     }
                 }
                 if (matched != null) {
@@ -611,7 +618,7 @@ public class WorldSnapshot {
                     }
                 }
                 Dungeon.level.heaps.put(pos, heap);
-                GameScene.updateMap(pos);
+                if (!dimensionsChanged) GameScene.updateMap(pos);
             }
             for (int pos : Dungeon.level.heaps.keyArray()) {
                 if (!authoritativeHeapPositions.contains(pos)) {
@@ -645,7 +652,7 @@ public class WorldSnapshot {
                     trap.color = number(data.get("color"), trap.color);
                     trap.shape = number(data.get("shape"), trap.shape);
                     Dungeon.level.traps.put(pos, trap);
-                    GameScene.updateMap(pos);
+                    if (!dimensionsChanged) GameScene.updateMap(pos);
                 } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
             }
         }
@@ -665,7 +672,7 @@ public class WorldSnapshot {
                     }
                     plant.pos = pos;
                     Dungeon.level.plants.put(pos, plant);
-                    GameScene.updateMap(pos);
+                    if (!dimensionsChanged) GameScene.updateMap(pos);
                 } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
             }
         }
@@ -697,7 +704,7 @@ public class WorldSnapshot {
                 GLog.w("Rejected native level metadata during restore.");
                 return false;
             }
-            GameScene.refreshMultiplayerCustomVisuals();
+            if (!dimensionsChanged) GameScene.refreshMultiplayerCustomVisuals();
         }
 
         // Remove heaps already claimed by the authoritative server.
@@ -755,7 +762,7 @@ public class WorldSnapshot {
                         Actor.add(remote.heroInstance);
 
                         final RemotePlayer playerForRender = remote;
-                        Game.runOnRenderThread(() -> {
+                        if (!dimensionsChanged) Game.runOnRenderThread(() -> {
                             if (playerForRender.heroInstance != null && playerForRender.heroInstance.sprite == null) {
                                 HeroSprite sprite = new HeroSprite();
                                 sprite.link(playerForRender.heroInstance);
@@ -768,7 +775,7 @@ public class WorldSnapshot {
                     } else {
                         remote.heroInstance.pos = remote.pos;
                         remote.heroInstance.HP = remote.hp;
-                        if (remote.heroInstance.sprite != null) {
+                        if (!dimensionsChanged && remote.heroInstance.sprite != null) {
                             remote.heroInstance.sprite.place(remote.pos);
                         }
                     }
@@ -780,10 +787,15 @@ public class WorldSnapshot {
         // are in place; do not call Dungeon.observe(), which would invent extra visited cells.
         if (Dungeon.level != null && Dungeon.hero != null) {
             Dungeon.level.updateFieldOfView(Dungeon.hero, Dungeon.level.heroFOV);
-            for (int pos = 0; pos < Dungeon.level.length(); pos++) GameScene.updateMap(pos);
+            for (int pos = 0; pos < Dungeon.level.length(); pos++) if (!dimensionsChanged) GameScene.updateMap(pos);
         }
 
         lastAppliedSnapshot = snapshot;
+        // The current scene owns tilemaps built for the former dimensions. Recreate it only
+        // after the authoritative world is fully applied; rollback can then resize back too.
+        if (dimensionsChanged && GameScene.hasActiveScene()) {
+            Game.switchScene(GameScene.class);
+        }
         return true;
     }
 }

@@ -327,6 +327,7 @@ public abstract class Level implements Bundlable {
 		
 		visited     = new boolean[length];
 		mapped      = new boolean[length];
+		discoverable = new boolean[length];
 		
 		heroFOV     = new boolean[length];
 		

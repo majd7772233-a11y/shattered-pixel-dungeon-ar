@@ -121,6 +121,7 @@ public class NativeCombatRuntimeIntegrationTest {
         authoritativeMob.HT = 30;
         authoritativeMob.defenseSkill = 3;
         WorldSnapshot snapshot = makeSnapshotWithMob(1L, authoritativeMob, "stable-native-mob-0001");
+        resizeSnapshotTiles(snapshot, 28, 28);
 
         Assert.assertTrue("Complete authoritative snapshot must pass structural/native validation",
                 WorldSnapshot.validateForRestore(snapshot));
@@ -129,6 +130,8 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Mob restored = findMobByServerId(manager, "stable-native-mob-0001");
         Assert.assertNotNull(restored);
+        Assert.assertEquals("Authoritative snapshot must resize the locally generated level", 28, level.width());
+        Assert.assertEquals(28, level.height());
         Assert.assertNotSame("Stable server identity must not bind to an unrelated same-class local mob",
                 localWrongMob, restored);
         Assert.assertEquals(27, restored.HP);
@@ -1122,6 +1125,31 @@ public class NativeCombatRuntimeIntegrationTest {
         snapshot.mobs.clear();
         if (authoritativeMob != null) snapshot.mobs.add(snapshotMob(authoritativeMob, entityId));
         return snapshot;
+    }
+
+    private void resizeSnapshotTiles(WorldSnapshot snapshot, int width, int height) {
+        int oldWidth = snapshot.levelWidth;
+        int oldHeight = snapshot.levelHeight;
+        Assert.assertTrue(width > 0 && width <= oldWidth);
+        Assert.assertTrue(height > 0 && height <= oldHeight);
+        ArrayList<Map<String, Object>> resized = new ArrayList<>();
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                Map<String, Object> tile = new HashMap<>(snapshot.tiles.get(y * oldWidth + x));
+                tile.put("pos", y * width + x);
+                if (x == 0 || y == 0 || x == width - 1 || y == height - 1) {
+                    tile.put("passable", 0);
+                    tile.put("avoid", 0);
+                    tile.put("solid", 1);
+                    tile.put("losBlocking", 1);
+                    tile.put("openSpace", 0);
+                }
+                resized.add(tile);
+            }
+        }
+        snapshot.levelWidth = width;
+        snapshot.levelHeight = height;
+        snapshot.tiles = resized;
     }
 
     private Map<String, Object> snapshotMob(Mob mob, String entityId) {

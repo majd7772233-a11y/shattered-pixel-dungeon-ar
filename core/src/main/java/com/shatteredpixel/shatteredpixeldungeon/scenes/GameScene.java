@@ -750,6 +750,7 @@ public class GameScene extends PixelScene {
 
 		if (!invVisible) toggleInvPane();
 		fadeIn();
+		refreshRemotePlayerSprites();
 
 		//re-show WndResurrect if needed
 		if (!Dungeon.hero.isAlive()){
@@ -1177,6 +1178,25 @@ public class GameScene extends PixelScene {
 	
 	public static void add( Mob mob ) {
 		add( mob, 0);
+	}
+
+	/** True while a live GameScene owns render layers and tilemaps. */
+	public static boolean hasActiveScene() {
+		return scene != null;
+	}
+
+	/** Recreate remote hero sprites after the GameScene has been rebuilt. */
+	public static void refreshRemotePlayerSprites() {
+		if (scene == null) return;
+		for (com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer player
+				: MultiplayerManager.getInstance().getRemotePlayers().values()) {
+			if (player == null || player.heroInstance == null) continue;
+			HeroSprite sprite = new HeroSprite();
+			sprite.link(player.heroInstance);
+			scene.add(sprite);
+			player.heroInstance.sprite = sprite;
+			sprite.place(player.pos);
+		}
 	}
 
 	/** Adds a remote player's visual without registering it as a local game mob. */
