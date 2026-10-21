@@ -171,7 +171,7 @@ describe('Native level snapshot contract', () => {
     previous.mobs = [{
       mobId: 11, entityId: "stable-native-mob-0001", name: "Rat", pos: 10,
       hp: 10, ht: 10, shielding: 0, serializedBundle: "native-rat-bundle", buffs: [],
-      state: "Hunting", baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      state: "Hunting", defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
       targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false
     }];
     return previous;
