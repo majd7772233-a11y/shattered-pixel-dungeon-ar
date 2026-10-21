@@ -698,6 +698,32 @@ export function parseAndValidateNativeSecondaryMobDeltas(
   return { complete: true, deltas: payload.deltas, ...(deathPositions.size ? { heaps: payload.heaps } : {}) };
 }
 
+/**
+ * Removes validated native deaths from a stored level snapshot without running local reward logic.
+ * Validate the full ID list first so malformed input cannot partially mutate the snapshot.
+ */
+export function removeDeadNativeMobsFromSnapshot(levelSnapshot: any, entityIds: unknown): number[] | null {
+  if (!levelSnapshot || !Array.isArray(levelSnapshot.mobs)
+    || !Array.isArray(entityIds) || entityIds.length > 512) return null;
+  const seen = new Set<string>();
+  const removals: Array<{ index: number; mobId: number }> = [];
+  for (const value of entityIds) {
+    if (typeof value !== "string" || value.length < 8 || value.length > 80 || seen.has(value)) return null;
+    seen.add(value);
+    const matches: number[] = [];
+    for (let i = 0; i < levelSnapshot.mobs.length; i++) {
+      if (String(levelSnapshot.mobs[i]?.entityId || "") === value) matches.push(i);
+    }
+    if (matches.length !== 1) return null;
+    const index = matches[0], mob = levelSnapshot.mobs[index], mobId = Number(mob?.mobId);
+    if (Number(mob?.hp) !== 0 || !Number.isInteger(mobId) || mobId < 0) return null;
+    removals.push({ index, mobId });
+  }
+  removals.sort((a, b) => b.index - a.index);
+  for (const removal of removals) levelSnapshot.mobs.splice(removal.index, 1);
+  return removals.map(removal => removal.mobId);
+}
+
 export function isValidNativeCombatEvent(event: any): boolean {
   const previousHp = Number(event?.previousHp);
   const previousHt = Number(event?.previousHt);
@@ -1554,8 +1580,8 @@ export class MatchRoom {
                   savedSecondary.shielding = Number(delta.shieldAfter);
                   savedSecondary.buffs = JSON.parse(String(delta.buffsAfter));
                   savedSecondary.serializedBundle = String(delta.serializedBundleAfter);
-                  this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?",
-                    Number(delta.hpAfter), Number(delta.posAfter), secondaryMobId, this.currentDepth);
+                  this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?",
+                    Number(delta.hpAfter), Number(delta.htAfter), Number(delta.posAfter), secondaryMobId, this.currentDepth);
                   if (Number(delta.hpAfter) <= 0) {
                     combatLevel.mobs.splice(mobIndex, 1);
                     this.sql.exec("DELETE FROM mobs WHERE mob_id = ? AND depth = ?",
@@ -1662,7 +1688,7 @@ export class MatchRoom {
                 savedMob.shielding = Number(data.targetShieldAfter); savedMob.buffs = JSON.parse(String(data.targetBuffs));
                 if (targetHp > 0) savedMob.serializedBundle = String(data.targetMobBundleAfter);
                 if (allDeaths.length > 0) levelSnapshot.heaps = lootSnapshot;
-                this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?", targetHp, targetPosAfter, mobId, this.currentDepth);
+                this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?", targetHp, targetHt, targetPosAfter, mobId, this.currentDepth);
                 for (const delta of secondaryMobPayload.deltas) {
                   const secondaryId = resolveServerMobIdByEntityId(levelSnapshot, delta.entityId);
                   const secondary = levelSnapshot.mobs.find((mob: any) => Number(mob.mobId) === Number(secondaryId));
@@ -1670,7 +1696,17 @@ export class MatchRoom {
                   secondary.hp = delta.hpAfter; secondary.ht = delta.htAfter; secondary.pos = delta.posAfter;
                   secondary.shielding = delta.shieldAfter; secondary.buffs = JSON.parse(delta.buffsAfter);
                   secondary.serializedBundle = delta.serializedBundleAfter;
-                  this.sql.exec("UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?", delta.hpAfter, delta.posAfter, secondaryId, this.currentDepth);
+                  this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?", delta.hpAfter, delta.htAfter, delta.posAfter, secondaryId, this.currentDepth);
+                }
+                const deadMobEntityIds = [
+                  ...(targetHp === 0 ? [String(data.targetEntityId)] : []),
+                  ...secondaryMobPayload.deltas.filter((delta: any) => Number(delta.hpAfter) === 0)
+                    .map((delta: any) => String(delta.entityId))
+                ];
+                const deletedMobIds = removeDeadNativeMobsFromSnapshot(levelSnapshot, deadMobEntityIds);
+                if (deletedMobIds == null) throw new Error("Validated dead native mob identity disappeared");
+                for (const deadMobId of deletedMobIds) {
+                  this.sql.exec("DELETE FROM mobs WHERE mob_id = ? AND depth = ?", deadMobId, this.currentDepth);
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "levelSnapshot:" + this.currentDepth, JSON.stringify(levelSnapshot));
@@ -1752,8 +1788,16 @@ export class MatchRoom {
               savedMob.buffs = JSON.parse(String(data.buffsAfter));
               if (Number(data.hpAfter) > 0) savedMob.serializedBundle = String(data.serializedBundleAfter);
               if (deadPositions.length > 0) levelSnapshot.heaps = data.heaps;
-              this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
-                savedMob.hp, savedMob.pos, mobId, this.currentDepth);
+              if (Number(data.hpAfter) === 0) {
+                const deletedMobIds = removeDeadNativeMobsFromSnapshot(levelSnapshot, [String(data.entityId)]);
+                if (deletedMobIds == null) throw new Error("Validated dead native mob identity disappeared");
+                for (const deadMobId of deletedMobIds) {
+                  this.sql.exec(`DELETE FROM mobs WHERE mob_id = ? AND depth = ?`, deadMobId, this.currentDepth);
+                }
+              } else {
+                this.sql.exec(`UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                  savedMob.hp, savedMob.ht, savedMob.pos, mobId, this.currentDepth);
+              }
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
@@ -2024,15 +2068,23 @@ export class MatchRoom {
               const committedSourceMobPos = sourceMobAuthority ? sourceMobPosAfter : Number(savedSourceMob.pos);
               const committedSourceMobBuffs = sourceMobAuthority ? data.sourceMobBuffs : JSON.stringify(savedSourceMob.buffs);
               if (sourceMobAuthority) {
-                this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
-                  committedSourceMobHp, committedSourceMobPos, sourceMobId, this.currentDepth);
                 savedSourceMob.hp = committedSourceMobHp;
                 savedSourceMob.ht = committedSourceMobHt;
                 savedSourceMob.shielding = committedSourceMobShield;
                 savedSourceMob.pos = committedSourceMobPos;
                 savedSourceMob.buffs = JSON.parse(String(committedSourceMobBuffs));
-                if (committedSourceMobHp > 0) savedSourceMob.serializedBundle = String(data.sourceMobBundleAfter);
-                if (committedSourceMobHp <= 0) sourceLevel.heaps = data.heaps;
+                if (committedSourceMobHp > 0) {
+                  savedSourceMob.serializedBundle = String(data.sourceMobBundleAfter);
+                  this.sql.exec(`UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                    committedSourceMobHp, committedSourceMobHt, committedSourceMobPos, sourceMobId, this.currentDepth);
+                } else {
+                  sourceLevel.heaps = data.heaps;
+                  const deletedMobIds = removeDeadNativeMobsFromSnapshot(sourceLevel, [String(data.sourceEntityId)]);
+                  if (deletedMobIds == null) throw new Error("Validated dead source mob identity disappeared");
+                  for (const deadMobId of deletedMobIds) {
+                    this.sql.exec(`DELETE FROM mobs WHERE mob_id = ? AND depth = ?`, deadMobId, this.currentDepth);
+                  }
+                }
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(sourceLevel));
@@ -2647,8 +2699,8 @@ export class MatchRoom {
                     if (validNativeTarget) {
                       const newHp = targetHp;
                       const rawDmg = reportedDamage;
-                      this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
-                        newHp, targetPosAfter, targetId, this.currentDepth);
+                      this.sql.exec(`UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                        newHp, targetHt, targetPosAfter, targetId, this.currentDepth);
                       const savedMob = (Array.isArray(combatLevel?.mobs) ? combatLevel.mobs : [])
                         .find((mob: any) => Number(mob?.mobId) === Number(targetId));
                       if (!savedMob) throw new Error("Accepted combat target missing from native snapshot");
@@ -2670,8 +2722,18 @@ export class MatchRoom {
                         secondaryMob.shielding = delta.shieldAfter;
                         secondaryMob.buffs = JSON.parse(delta.buffsAfter);
                          secondaryMob.serializedBundle = delta.serializedBundleAfter;
-                        this.sql.exec(`UPDATE mobs SET hp = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
-                          delta.hpAfter, delta.posAfter, secondaryMobId, this.currentDepth);
+                        this.sql.exec(`UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?`,
+                          delta.hpAfter, delta.htAfter, delta.posAfter, secondaryMobId, this.currentDepth);
+                      }
+                      const deadMobEntityIds = [
+                        ...(newHp === 0 ? [String(targetEntityId)] : []),
+                        ...secondaryMobPayload.deltas.filter((delta: any) => Number(delta.hpAfter) === 0)
+                          .map((delta: any) => String(delta.entityId))
+                      ];
+                      const deletedMobIds = removeDeadNativeMobsFromSnapshot(combatLevel, deadMobEntityIds);
+                      if (deletedMobIds == null) throw new Error("Validated dead native mob identity disappeared");
+                      for (const deadMobId of deletedMobIds) {
+                        this.sql.exec(`DELETE FROM mobs WHERE mob_id = ? AND depth = ?`, deadMobId, this.currentDepth);
                       }
                       this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,

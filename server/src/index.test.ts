@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -781,6 +781,37 @@ describe('Native secondary mob combat deltas', () => {
   });
 });
 
+
+describe("Dead native mob snapshot reconciliation", () => {
+  it("removes validated dead mobs by stable identity and returns database IDs", () => {
+    const snapshot = { mobs: [
+      { entityId: "dead-native-mob-0001", mobId: 7, hp: 0 },
+      { entityId: "living-native-mob-0002", mobId: 8, hp: 4 },
+      { entityId: "dead-native-mob-0003", mobId: 9, hp: 0 }
+    ] };
+    expect(removeDeadNativeMobsFromSnapshot(snapshot,
+      ["dead-native-mob-0001", "dead-native-mob-0003"])).toEqual([9, 7]);
+    expect(snapshot.mobs).toEqual([
+      { entityId: "living-native-mob-0002", mobId: 8, hp: 4 }
+    ]);
+  });
+
+  it("rejects unknown, duplicate, and living targets without partial mutation", () => {
+    const original = { mobs: [
+      { entityId: "dead-native-mob-0001", mobId: 7, hp: 0 },
+      { entityId: "living-native-mob-0002", mobId: 8, hp: 4 }
+    ] };
+    for (const ids of [
+      ["missing-native-mob-0003"],
+      ["dead-native-mob-0001", "dead-native-mob-0001"],
+      ["living-native-mob-0002"]
+    ]) {
+      const snapshot = JSON.parse(JSON.stringify(original));
+      expect(removeDeadNativeMobsFromSnapshot(snapshot, ids)).toBeNull();
+      expect(snapshot).toEqual(original);
+    }
+  });
+});
 
 describe('Native mob bundle validation', () => {
   it('accepts only non-empty bounded native bundles', () => {
