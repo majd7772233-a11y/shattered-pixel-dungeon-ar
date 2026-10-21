@@ -806,6 +806,17 @@ public class WorldSnapshot {
                 }
                 if (matched != null) {
                     int oldPos = matched.pos;
+                    String encodedMob = String.valueOf(data.get("serializedBundle"));
+                    Bundle enclosingMobBundle = readBundle(encodedMob);
+                    Bundle nativeMobBundle = enclosingMobBundle == null ? null : enclosingMobBundle.getBundle("mob");
+                    String nativeMobClass = nativeMobBundle == null ? "" : nativeMobBundle.getString("__className");
+                    if (nativeMobClass.isEmpty() || !matched.getClass().getName().equals(nativeMobClass)) {
+                        throw new IllegalStateException("Stable mob identity resolved to a different native class: " + entityId);
+                    }
+                    // Preserve local Actor identity but restore subclass-specific native fields too.
+                    // Existing matches must not be reduced to HP/position/AI fields alone.
+                    for (Buff oldBuff : new java.util.ArrayList<>(matched.buffs())) oldBuff.detach();
+                    matched.restoreFromBundlePreservingRuntimeIdentity(nativeMobBundle);
                     matched.HT = Math.max(1, ht);
                     if (hp <= 0) {
                         // An authoritative dead-mob tombstone is not a local kill. Calling

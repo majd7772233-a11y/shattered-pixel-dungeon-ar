@@ -248,6 +248,47 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void matchedStableMobRestoresSubclassBundleStateWithoutChangingLocalActorId() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-native-subclass-state", "client-publisher", new TestTransport());
+
+        BundledStateRat localMob = (BundledStateRat) addMob(new BundledStateRat(), hero.pos + 1, 9);
+        localMob.nativePhase = 3;
+        int localActorId = localMob.id();
+        String entityId = "stable-native-bundle-state-0001";
+        manager.registerServerEntityId(localActorId, entityId);
+
+        BundledStateRat authoritativeMob = new BundledStateRat();
+        authoritativeMob.pos = localMob.pos;
+        authoritativeMob.HP = 17;
+        authoritativeMob.HT = 25;
+        authoritativeMob.nativePhase = 91;
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, authoritativeMob, entityId);
+
+        Assert.assertTrue("Complete native bundle must pass snapshot preflight", WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
+
+        Mob restored = findMobByServerId(manager, entityId);
+        Assert.assertSame("A stable mapped entity should keep its local actor instance", localMob, restored);
+        Assert.assertEquals("Subclass-specific data from the native Mob bundle must be restored", 91,
+                ((BundledStateRat) restored).nativePhase);
+        Assert.assertEquals(17, restored.HP);
+        Assert.assertEquals(25, restored.HT);
+        Assert.assertEquals(localActorId, restored.id());
+        Assert.assertSame("Native bundle restore must keep the scheduler registry keyed by the local ID",
+                restored, Actor.findById(localActorId));
+
+        ((BundledStateRat) restored).nativePhase = -1;
+        Assert.assertTrue("Repeated native restore must reapply the same authoritative subclass state",
+                WorldSnapshot.restoreWorld(snapshot));
+        Assert.assertSame(localMob, findMobByServerId(manager, entityId));
+        Assert.assertEquals(91, ((BundledStateRat) localMob).nativePhase);
+        Assert.assertEquals(localActorId, localMob.id());
+        Assert.assertSame(localMob, Actor.findById(localActorId));
+        Assert.assertEquals(1, level.mobs.size());
+    }
+
+    @Test
     public void firstSnapshotFailureAfterResizeRollsBackToLocalNativeWorld() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-first-rollback", "client-publisher", new TestTransport());
@@ -1325,6 +1366,24 @@ public class NativeCombatRuntimeIntegrationTest {
                 secondary.damage(3, this);
             }
             return nativeDamage;
+        }
+    }
+
+    private static final class BundledStateRat extends Rat {
+        int nativePhase;
+
+        @Override
+        public void storeInBundle(Bundle bundle) {
+            super.storeInBundle(bundle);
+            bundle.put("multiplayerNativePhase", nativePhase);
+        }
+
+        @Override
+        public void restoreFromBundle(Bundle bundle) {
+            super.restoreFromBundle(bundle);
+            if (bundle.contains("multiplayerNativePhase")) {
+                nativePhase = bundle.getInt("multiplayerNativePhase");
+            }
         }
     }
 

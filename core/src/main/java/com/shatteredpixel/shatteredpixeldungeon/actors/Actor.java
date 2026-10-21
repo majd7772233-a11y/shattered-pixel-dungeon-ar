@@ -43,6 +43,9 @@ public abstract class Actor implements Bundlable {
 
 	private int id = 0;
 
+	// True only while a multiplayer snapshot restores native object state into this local actor.
+	private boolean preserveRuntimeIdentityOnRestore;
+
 	//default priority values for general actor categories
 	//note that some specific actors pick more specific values
 	//e.g. a buff acting before all normal buffs might have priority BUFF_PRIO + 1
@@ -127,14 +130,45 @@ public abstract class Actor implements Bundlable {
 		bundle.put( ID, id );
 	}
 
+	/**
+	 * Restores native fields from an authoritative bundle while retaining this device's Actor ID.
+	 * Snapshot entity identity belongs to the server; scheduler IDs remain local. Keeping the
+	 * existing registry entry in place also prevents an incoming buff from stealing this ID.
+	 */
+	public final void restoreFromBundlePreservingRuntimeIdentity(Bundle bundle) {
+		if (bundle == null) throw new IllegalArgumentException("Missing native actor bundle");
+		synchronized (Actor.class) {
+			int localId = id();
+			Actor registered = ids.get(localId);
+			if (all.contains(this) && registered != this) {
+				throw new IllegalStateException("Local Actor registry lost the actor being restored");
+			}
+			preserveRuntimeIdentityOnRestore = true;
+			try {
+				restoreFromBundle(bundle);
+			} finally {
+				preserveRuntimeIdentityOnRestore = false;
+				id = localId;
+				if (all.contains(this)) {
+					Actor mapped = ids.get(localId);
+					if (mapped == null) ids.put(localId, this);
+					else if (mapped != this) throw new IllegalStateException("Local Actor ID was reassigned during native restore");
+					if (this instanceof Char) chars.add((Char)this);
+				}
+			}
+		}
+	}
+
 	@Override
 	public void restoreFromBundle( Bundle bundle ) {
 		time = bundle.getFloat( TIME );
-		int incomingID = bundle.getInt( ID );
-		if (Actor.findById(incomingID) == null){
-			id = incomingID;
-		} else {
-			id = nextID++;
+		if (!preserveRuntimeIdentityOnRestore) {
+			int incomingID = bundle.getInt( ID );
+			if (Actor.findById(incomingID) == null){
+				id = incomingID;
+			} else {
+				id = nextID++;
+			}
 		}
 	}
 
