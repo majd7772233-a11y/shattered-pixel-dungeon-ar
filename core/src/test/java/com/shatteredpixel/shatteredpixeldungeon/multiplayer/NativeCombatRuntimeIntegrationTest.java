@@ -443,8 +443,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("native-special-callback-commit", "client-publisher", transport);
         NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"special-owner-token\\","
-                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"special-owner-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
         publisherSession.sequence = 1L;
         manager.onMessageReceived(publisherSession);
 
