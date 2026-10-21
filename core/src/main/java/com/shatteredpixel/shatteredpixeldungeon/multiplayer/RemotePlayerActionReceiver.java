@@ -2,6 +2,9 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
@@ -16,6 +19,13 @@ public class RemotePlayerActionReceiver {
 
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (!manager.isMultiplayerActive()) return;
+
+        // Disconnection is a native Actor-graph change, not a decorative leave notice. Remove
+        // the remote Hero before any further Mob snapshot can serialize a stale PLAYER target.
+        if (message.messageType == MessageType.PLAYER_LEFT) {
+            handlePlayerLeft(message, manager);
+            return;
+        }
 
         // Typed EVENT_BATCH combat/world events belong exclusively to MessageRouter.
         // Never parse a malformed batch with substring heuristics.
@@ -107,6 +117,45 @@ public class RemotePlayerActionReceiver {
                 }
             }
         }
+    }
+
+    private static void handlePlayerLeft(NetworkMessage message, MultiplayerManager manager) {
+        String playerId = message.senderId;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            JsonValue idValue = payload == null ? null : payload.get("playerId");
+            if (idValue != null && idValue.isString()) playerId = idValue.asString();
+        } catch (RuntimeException ignored) {
+            // The server sender ID remains the fallback for a malformed leave envelope.
+        }
+        if (playerId == null || playerId.isEmpty()
+                || playerId.equals(manager.getLocalPlayerId())) return;
+
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            manager.removeRemotePlayer(playerId);
+            return;
+        }
+
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero remoteHero = remote.heroInstance;
+        if (remoteHero != null) {
+            // Clear references before the next shared-world tick can encode a PLAYER target
+            // whose stable player ID no longer exists in the connected Actor graph.
+            if (Dungeon.level != null) {
+                for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
+                    mob.multiplayerForgetTarget(remoteHero);
+                }
+            }
+            for (Buff buff : new java.util.ArrayList<>(remoteHero.buffs())) {
+                if (buff != null) buff.detach();
+            }
+            Actor.remove(remoteHero);
+            if (remoteHero.sprite != null) {
+                remoteHero.sprite.remove();
+                remoteHero.sprite = null;
+            }
+        }
+        manager.removeRemotePlayer(playerId);
     }
 
     private static void handleServerMobEvent(String json) {

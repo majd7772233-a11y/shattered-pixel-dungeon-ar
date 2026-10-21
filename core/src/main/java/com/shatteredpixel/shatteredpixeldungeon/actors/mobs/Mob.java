@@ -250,6 +250,20 @@ public abstract class Mob extends Char {
     public boolean multiplayerAlerted() { return alerted; }
     public Char multiplayerEnemy() { return enemy; }
 
+    /**
+     * Removes a disconnected remote Hero from native AI targeting immediately. Keep the last
+     * target cell so SPD's own Hunting/Fleeing logic can resolve the lost target on its next turn,
+     * but do not publish a player identity that can no longer be resolved by any peer.
+     */
+    public void multiplayerForgetTarget(Char disconnected) {
+        if (disconnected != null && enemy == disconnected) {
+            enemy = null;
+            enemyID = -1;
+            enemySeen = false;
+            alerted = false;
+        }
+    }
+
     public String multiplayerTargetType() {
         if (enemy instanceof Mob) return "MOB";
         if (enemy instanceof Hero) return "PLAYER";

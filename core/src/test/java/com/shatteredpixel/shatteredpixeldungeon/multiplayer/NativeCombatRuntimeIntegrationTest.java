@@ -147,6 +147,45 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void disconnectedRemotePlayerIsRemovedFromNativeActorsAndMobTargets() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-target-disconnect", "client-publisher", new TestTransport());
+
+        RemotePlayer departing = new RemotePlayer("departing-player", "Departing", "WARRIOR");
+        departing.pos = hero.pos + 3;
+        departing.hp = departing.ht = 20;
+        RemoteHero remoteHero = new RemoteHero();
+        remoteHero.pos = departing.pos;
+        remoteHero.HP = remoteHero.HT = 20;
+        departing.heroInstance = remoteHero;
+        manager.addRemotePlayer(departing);
+        Actor.add(remoteHero);
+
+        Rat acting = addRat(hero.pos + 1, 18);
+        manager.registerServerEntityId(acting.id(), "stable-mob-targeting-player-0001");
+        acting.restoreMultiplayerAiState("Hunting", acting.multiplayerBaseSpeed(), acting.defenseSkill,
+                Math.max(0f, acting.cooldown()), remoteHero.pos, true, true, "PLAYER", departing.playerId);
+        Assert.assertSame(remoteHero, acting.multiplayerEnemy());
+        int remoteActorId = remoteHero.id();
+
+        NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{\"playerId\":\"departing-player\"}");
+        left.senderId = departing.playerId;
+        RemotePlayerActionReceiver.handleNetworkMessage(left);
+
+        Assert.assertNull("Disconnected player must leave the remote-player registry",
+                manager.getRemotePlayer(departing.playerId));
+        Assert.assertNull("Disconnected Hero must leave the native Actor scheduler",
+                Actor.findById(remoteActorId));
+        Assert.assertFalse("Disconnected Hero must no longer be eligible for native AI targeting",
+                Actor.chars().contains(remoteHero));
+        Assert.assertNull("Mob target reference must be cleared immediately", acting.multiplayerEnemy());
+        Assert.assertEquals("NONE", acting.multiplayerTargetType());
+        Assert.assertEquals("", acting.multiplayerTargetEntityId());
+        Assert.assertEquals("Last-known target cell is retained for SPD's native lost-target logic",
+                remoteHero.pos, acting.multiplayerTargetCell());
+    }
+
+    @Test
     public void nativeMobTurnSnapshotIncludesEffectiveSpeedAndStableEnemyIdentity() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-mob-ai-snapshot", "client-publisher", new TestTransport());
@@ -190,6 +229,46 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals("stable-target-mob-0001", nativeRow.getString("targetEntityId"));
         Assert.assertTrue(nativeRow.getBoolean("enemySeen"));
         Assert.assertTrue(nativeRow.getBoolean("alerted"));
+    }
+
+    @Test
+    public void nativeMobAiSnapshotPreservesSleepingFleeingAndOutOfSightState() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-ai-state-preservation", "client-publisher", new TestTransport());
+
+        Rat sleeping = addRat(hero.pos + 1, 20);
+        Rat fleeing = addRat(hero.pos + 2, 20);
+        manager.registerServerEntityId(sleeping.id(), "stable-sleeping-mob-0001");
+        manager.registerServerEntityId(fleeing.id(), "stable-fleeing-mob-0001");
+        int lastKnownCell = hero.pos + 5;
+        sleeping.restoreMultiplayerAiState("Sleeping", sleeping.multiplayerBaseSpeed(),
+                sleeping.defenseSkill, 2.0f, -1, false, false, "NONE", "");
+        fleeing.restoreMultiplayerAiState("Fleeing", fleeing.multiplayerBaseSpeed(),
+                fleeing.defenseSkill, 3.0f, lastKnownCell, false, false, "NONE", "");
+
+        Assert.assertEquals("Sleeping", sleeping.state.getClass().getSimpleName());
+        Assert.assertEquals("Fleeing", fleeing.state.getClass().getSimpleName());
+        Assert.assertFalse("An out-of-sight mob must not report its target as currently seen",
+                fleeing.multiplayerEnemySeen());
+        Assert.assertEquals("The native AI keeps its last known cell", lastKnownCell,
+                fleeing.multiplayerTargetCell());
+        Assert.assertEquals("NONE", fleeing.multiplayerTargetType());
+
+        JsonValue root = new JsonReader().parse(SPDLevelSnapshot.currentNativeWorldTurnJson(sleeping, 9L));
+        JsonValue mobRows = root.get("mobs");
+        JsonValue sleepingRow = null;
+        JsonValue fleeingRow = null;
+        for (JsonValue row = mobRows.child; row != null; row = row.next) {
+            if ("stable-sleeping-mob-0001".equals(row.getString("entityId", ""))) sleepingRow = row;
+            if ("stable-fleeing-mob-0001".equals(row.getString("entityId", ""))) fleeingRow = row;
+        }
+        Assert.assertNotNull(sleepingRow);
+        Assert.assertNotNull(fleeingRow);
+        Assert.assertEquals("Sleeping", sleepingRow.getString("state"));
+        Assert.assertEquals("Fleeing", fleeingRow.getString("state"));
+        Assert.assertFalse(fleeingRow.getBoolean("enemySeen"));
+        Assert.assertEquals(lastKnownCell, fleeingRow.getInt("targetCell"));
+        Assert.assertEquals("NONE", fleeingRow.getString("targetType"));
     }
 
     @Test
