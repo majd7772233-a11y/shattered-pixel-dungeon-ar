@@ -636,6 +636,35 @@ public class WorldSnapshot {
         }
     }
 
+    /** Applies the authoritative Mob AI state after every player/Mob Actor has been restored. */
+    public static void restoreNativeMobAiState(WorldSnapshot snapshot) {
+        if (snapshot == null || snapshot.mobs == null) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        for (Map<String, Object> data : snapshot.mobs) {
+            String entityId = String.valueOf(data.get("entityId") == null ? "" : data.get("entityId"));
+            if (entityId.isEmpty() || number(data.get("hp"), 0) <= 0) continue;
+            Integer localId = manager.getLocalActorIdForServerEntity(entityId);
+            Actor localActor = localId == null ? null : Actor.findById(localId);
+            if (!(localActor instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob)) continue;
+            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob =
+                    (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) localActor;
+            mob.restoreMultiplayerAiState(
+                    String.valueOf(data.get("state")),
+                    floatNumber(data.get("baseSpeed"), mob.multiplayerBaseSpeed()),
+                    number(data.get("defenseSkill"), mob.defenseSkill),
+                    floatNumber(data.get("cooldown"), 0f),
+                    number(data.get("targetCell"), -1),
+                    boolValue(data.get("enemySeen"), false),
+                    boolValue(data.get("alerted"), false),
+                    String.valueOf(data.get("targetType") == null ? "NONE" : data.get("targetType")),
+                    String.valueOf(data.get("targetEntityId") == null ? "" : data.get("targetEntityId")));
+            if (data.containsKey("effectiveSpeed")
+                    && !mob.multiplayerEffectiveSpeedMatches(floatNumber(data.get("effectiveSpeed"), -1f))) {
+                throw new IllegalStateException("Native mob effective-speed mismatch for stable entity " + entityId);
+            }
+        }
+    }
+
     public static boolean restoreWorld(WorldSnapshot snapshot) {
         return restoreWorld(snapshot, false);
     }
@@ -1057,31 +1086,7 @@ public class WorldSnapshot {
                 }
             }
         }
-        // Bind native Mob targets after all remote Hero replicas have been restored.
-        // The earlier pass resolved PLAYER IDs too early for a joining client.
-        for (Map<String, Object> data : snapshot.mobs) {
-            String entityId = String.valueOf(data.get("entityId") == null ? "" : data.get("entityId"));
-            if (entityId.isEmpty() || number(data.get("hp"), 0) <= 0) continue;
-            Integer localId = manager.getLocalActorIdForServerEntity(entityId);
-            Actor localActor = localId == null ? null : Actor.findById(localId);
-            if (!(localActor instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob)) continue;
-            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob =
-                    (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) localActor;
-            mob.restoreMultiplayerAiState(
-                    String.valueOf(data.get("state")),
-                    floatNumber(data.get("baseSpeed"), mob.multiplayerBaseSpeed()),
-                    number(data.get("defenseSkill"), mob.defenseSkill),
-                    floatNumber(data.get("cooldown"), 0f),
-                    number(data.get("targetCell"), -1),
-                    boolValue(data.get("enemySeen"), false),
-                    boolValue(data.get("alerted"), false),
-                    String.valueOf(data.get("targetType") == null ? "NONE" : data.get("targetType")),
-                    String.valueOf(data.get("targetEntityId") == null ? "" : data.get("targetEntityId")));
-            if (data.containsKey("effectiveSpeed")
-                    && !mob.multiplayerEffectiveSpeedMatches(floatNumber(data.get("effectiveSpeed"), -1f))) {
-                throw new IllegalStateException("Native mob effective-speed mismatch for stable entity " + entityId);
-            }
-        }
+        restoreNativeMobAiState(snapshot);
 
         // Recompute visibility only after authoritative terrain, hero position and entities
         // are in place; do not call Dungeon.observe(), which would invent extra visited cells.
