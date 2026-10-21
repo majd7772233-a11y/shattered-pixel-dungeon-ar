@@ -75,7 +75,7 @@ These pieces are the starting point, not evidence of complete behavior. The most
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status:** In progress. Stable server identities flow through publication ACKs, snapshot reconciliation and mob attack targets. Snapshots include all native tile flags, pending items, level visual settings, custom tiles/walls, spawn classes and respawner cooldown. Restore runs on the game thread, preserves heap order, refreshes map cells/FOV/visuals, and rolls back to the last good snapshot where possible before requesting resync. Full-world round-trip/idempotency and two-device convergence still require verification.
+**Status: Complete for implementation and automated acceptance.** Code checkpoint `8dde21303ac836c177457767d4c8e7c7e3ba7838` passed the backend TypeScript build/tests and Android JVM tests plus debug APK build in [CI run 39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189). Automated tests now cover cross-generation convergence, resize/reconnect, rollback after a mid-restore failure, and native heap/trap/plant/blob round trips. CI does not run a physical two-device Android session; that remains a release smoke test.
 
 ### Work items
 
@@ -84,20 +84,20 @@ These pieces are the starting point, not evidence of complete behavior. The most
 - [x] Add stable server-assigned entity IDs that survive reconnects and do not depend on local `Actor.id()`. Keep native actor IDs as local runtime identities only; IDs now map through publication ACKs, snapshots and mob attack target resolution.
 - [x] Make absent collection versus explicit empty collection semantics clear. A complete snapshot with zero traps/heaps/mobs must clear stale local objects; a partial snapshot must never accidentally clear them.
 - [x] Validate bounds, duplicate IDs/positions, native bundle types, array counts, numeric ranges, dimensions, depth/branch and server payload size before changing the live world.
-- [ ] Make restoration ordered and atomic from the caller's perspective: validate first, prepare native objects, apply world geometry, reconcile entities, then publish the snapshot as applied. On failure, keep the last good state and request a fresh snapshot.
+- [x] Make restoration ordered and atomic from the caller's perspective: validate first, apply validated geometry and native object bundles, reconcile entities, and publish the snapshot only after success. A valid local native rollback baseline is captured before the first remote snapshot; a failure restores the prior world and is rethrown so `MessageRouter` requests resync. Failure-after-resize rollback is exercised by JVM tests.
 - [x] Reconcile all entities both ways: create missing native instances, update matched instances, remove stale instances safely, and preserve tombstones for dead entities without rerunning kill rewards/loot. Stable IDs are cleaned up on removal, and remote death events remove entities without calling native loot-producing `Mob.die()`.
 - [x] Restore complete heaps without losing stack order, item properties, special heap state or remaining items. Restore traps/plants/blobs with their real native bundles and scheduler timing.
 - [x] Apply world mutations on the render thread; rebuild custom visuals in their original layer order, refresh all map cells and recompute FOV without inventing visited cells. Pathfinding dimensions are validated against the active level before apply.
 - [x] Audit and include gameplay-relevant level metadata omitted by the current snapshot (map exploration state, level lock/feeling, custom tiles/walls, mob spawn classes, respawner bundle and remaining cooldown, and native transitions).
-- [ ] Complete native-world round-trip/idempotency coverage for missing/stale entities, killed-mob tombstones and reconnect restore. Current coverage includes server stable-ID persistence/target resolution, duplicate-ID rejection, empty authoritative collections, invalid bundles, multi-item heaps, JVM identity-map tests, and a Java custom-tile/wall metadata Bundle round trip.
+- [x] Complete automated native-world round-trip/idempotency coverage for missing/stale entities, killed-mob tombstones and reconnect restore. JVM tests reconstruct a missing stable-ID mob, remove unrelated stale mobs, apply the same snapshot twice without duplication, restore a resized floor, converge two independently generated local worlds from one authoritative snapshot, restore native multi-item heaps/traps/plants/timed blobs, and roll back a deliberately failed mid-restore. Server tests cover stable-ID persistence/target resolution, duplicate-ID rejection, explicit empty collections and invalid bundles.
 
 ### Acceptance criteria
 
-- Two clients applying the same valid snapshot converge on the same playable level and entity/item state.
-- A reconnecting client can reconstruct a world even when its local generated floor or entity set differs.
-- A full empty collection removes stale local objects; malformed/incomplete data never silently marks the world synchronized.
-- Reapplying the same snapshot is idempotent and does not duplicate actors, loot, buffs or visuals.
-- Server and Android CI pass; snapshot contract tests cover both valid and invalid payloads.
+- [x] Two independently generated local worlds applying the same authoritative snapshot converge on the same playable level and tested entity state in an automated JVM convergence test. A physical two-device session is still a separate release smoke test.
+- [x] A reconnecting client can reconstruct a world even when its local generated floor dimensions or entity set differ (same active depth/branch).
+- [x] A full empty collection removes stale local objects; malformed/incomplete data is rejected before mutation or restored from the last known-good baseline on failure.
+- [x] Reapplying the same snapshot is idempotent for mobs, heaps/items, traps, plants and timed blobs; native mob Actor IDs remain local rather than being treated as network identity.
+- [x] Server and Android CI pass; snapshot contract tests cover valid/invalid data and restore rollback.
 
 ## Phase 2 — Make Native SPD Combat Replication Correct and Safe
 

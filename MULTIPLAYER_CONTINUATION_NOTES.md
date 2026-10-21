@@ -1,48 +1,38 @@
 # Multiplayer Continuation Checkpoint
 
-Updated: 2026-10-20 (UTC)
+Updated: 2026-10-21 (UTC)
 
 ## Repository / branch guardrails
 
 - Repository: https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar
 - Working branch: `multiplayer-framework-core-14118577486727081892`
 - Do not merge to `main` or switch branches as part of this continuation.
-- Code checkpoint: `b19693e81280003381c42003fb7928ff899ade98`
-- Verified CI run for that exact code checkpoint: [39478567024](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39478567024) — success. It passed backend TypeScript build/tests plus `./gradlew test assembleDebug` (JVM test suite and Android debug APK build).
-- Latest result proves automated CI only. It does not prove physical two-device Android gameplay.
+- Verified code checkpoint: `8dde21303ac836c177457767d4c8e7c7e3ba7838`
+- CI run for that exact code checkpoint: [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) — success. Backend TypeScript build/tests and `./gradlew test assembleDebug` (JVM tests and Android debug APK) both passed.
+- A docs-only commit may follow this code checkpoint; verify the code SHA and latest run when making later changes.
 
-## Phase 2 — Native combat replication
+## Phase 1 — lossless world snapshot / restoration
 
-**Implementation and automated CI acceptance: complete.** See the Phase 2 section of `ROADMAP.md`.
+**Implementation and automated acceptance: complete.** Verified paths:
+- A stable server mob identity never falls back to an unrelated local Actor/class/position match; absent stable mobs reconstruct from native bundles and are registered with the local scheduler.
+- Active-floor dimension differences are supported for the same depth/branch by replacing native level geometry/flag arrays and recreating the render scene only after successful apply.
+- Full native round trips are exercised for ordered multi-item heaps, heap state flags, traps, plants and timed blobs; repeated application does not duplicate them and stale local objects are removed.
+- A test forces failure after level resizing, and verifies restore returns to the local native rollback baseline before propagating the error for resync.
+- A single authoritative snapshot is applied to two independently generated local worlds with different stale entity sets; the tested terrain, player state, and stable-ID mob state converge.
+- Hero buff bundles are preflighted before the live hero changes; malformed input is rejected.
 
-Key verified code paths/tests include:
-- Native SPD hit/miss and true zero-damage/shield-only outcomes.
-- Real defense/retaliation, attacker's post-combat state and native inventory changes.
-- Blessed-Ankh revival and delegated kill XP attribution to the true attacker.
-- Mob-to-player and periodic mob damage reports.
-- PvP native combat and Ankh reconciliation.
-- Secondary mob changes with stable entity IDs and complete native bundles.
-- Stable-ID convergence across two simulated worlds with different local `Actor.id()` values.
-- Stale/replayed events, duplicate death/loot prevention and authority-only result acceptance.
-- Headless-safe native state/death processing when optional sprites/presentation are not attached.
+The local rollback baseline is captured directly from live native Level/Mob/Heap/Trap/Plant/Blob objects instead of round-tripping it through libGDX JSON that omits default numeric zeros. Its local mob IDs remain private to that rollback-only copy; inbound network snapshots still require stable server entity IDs.
 
-Latest relevant fixes include:
-- `NativeMobCombatDelta` now uses a typed native payload and sentinel primitive defaults so JSON explicitly carries `complete`, an empty/non-empty `deltas` array, and zero-valued shield/HP fields. Map-based JSON serialization was rejected because it inserted type metadata and broke runtime decoding.
-- `Char.die()` keeps state/reward processing but skips sprite presentation when no sprite exists, enabling the actual native death path in headless integration tests.
-- The tests initialize `Game.version` for debug catalog initialization and preserve useful stack traces on failures.
-- Attacker after-state is validated against the server-trusted before-state before committing native retaliation, inventory, buffs or bounded legitimate level-up changes.
-- Untrusted/incomplete secondary shared-mob deltas trigger authoritative resync instead of blindly committing client data.
+## Phase 2 — native combat replication
 
-### Explicit trust boundary
+Implementation and automated CI acceptance remain complete, as documented in `ROADMAP.md`. The Worker does not run the Java SPD engine or independently reproduce its RNG/damage formulas. The designated level publisher resolves native attacks against mobs; the PvP target owner resolves incoming player attacks. The Worker validates authority, pending request, identity, depth, geometry, trusted pre-state, transitions, bundles, loot and replay protection before committing outcomes. Non-authoritative secondary mob changes/loot are rejected and require resync.
 
-The Worker does not run the Java SPD engine or independently reproduce its RNG/damage formulas. The selected level publisher resolves native attacks against mobs; the PvP target owner resolves incoming player attacks. The Worker checks authority, pending request, identity, depth, legal geometry, saved pre-state, native transitions, bundles, loot and replay protection before it commits/broadcasts the result. Non-authoritative secondary mob changes/loot are rejected and require an authoritative resync.
+## Remaining release verification / declared limits
 
-## Remaining release verification (not falsely marked as passed)
-
-1. Run a physical two-device Android smoke test for co-op combat, reconnect/resync and PvP.
-2. Exercise unusual mod/class-specific combat effects not represented by the runtime test fixtures on real levels/devices.
-3. Phase 1 world restoration still has separate risks: the current snapshot path rejects a level dimension mismatch rather than reconstructing a new-sized level; exhaustive live-world restore/idempotence for every native entity type has not been proven end-to-end. Revisit those before declaring the entire multiplayer foundation production-ready.
-4. Phase 3 remains separate: native mob AI/pathing/actor-scheduler timing is not proven equivalent to the original Java scheduler. Do not infer Phase 3 completion from Phase 2 CI.
+1. Run a physical two-device Android smoke test for co-op combat, reconnect/resync and PvP. GitHub Actions cannot perform this physical-device test, so it is not claimed as passed.
+2. Test unusual mod/class-specific effects and rare item/quest content on real game levels/devices.
+3. Dimension reconstruction is limited to the currently active depth/branch so the original native `Level` subclass remains valid. A snapshot for a different depth or branch is rejected for resync rather than being forced into the wrong Level subclass.
+4. Phase 3 remains separate: native mob AI/pathing/actor-scheduler timing is not yet proven equivalent to the original Java scheduler. Do not infer Phase 3 completion from Phase 1/2 CI.
 
 ## User execution rule
 
