@@ -21,7 +21,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
-import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfUpgrade;
+import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
@@ -212,7 +212,7 @@ public class NativeCombatRuntimeIntegrationTest {
         expectedHeap.hidden = true;
         expectedHeap.autoExplored = true;
         expectedHeap.items.addLast(new Ankh());
-        expectedHeap.items.addLast(new ScrollOfUpgrade());
+        expectedHeap.items.addLast(new Item());
         Map<String, Object> heapRow = new HashMap<>();
         heapRow.put("pos", heapPos);
         heapRow.put("type", expectedHeap.type.name());
@@ -314,7 +314,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(2, restoredHeap.items.size());
         Assert.assertTrue(restoredHeap.items.getFirst() instanceof Ankh);
         Assert.assertTrue("Native heap item order must survive reconstruction",
-                restoredHeap.items.getLast() instanceof ScrollOfUpgrade);
+                restoredHeap.items.getLast().getClass() == Item.class);
 
         Trap restoredTrap = level.traps.get(trapPos);
         Assert.assertTrue(restoredTrap instanceof FrostTrap);
@@ -347,7 +347,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(1, level.blobs.size());
         Assert.assertEquals(2, level.heaps.get(heapPos).items.size());
         Assert.assertTrue(level.heaps.get(heapPos).items.getFirst() instanceof Ankh);
-        Assert.assertTrue(level.heaps.get(heapPos).items.getLast() instanceof ScrollOfUpgrade);
+        Assert.assertTrue(level.heaps.get(heapPos).items.getLast().getClass() == Item.class);
         Blob restoredFireAgain = level.blobs.get(Fire.class);
         Assert.assertNotNull(restoredFireAgain);
         Assert.assertEquals(7, restoredFireAgain.volume);
