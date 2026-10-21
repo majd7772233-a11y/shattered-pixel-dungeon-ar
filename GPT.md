@@ -15,7 +15,7 @@ When the user says “yalla phase N” or asks to finish a phase, implement the 
 - **Target transports represented in code:** Internet/WebSocket, LAN, and Bluetooth. Do not advertise any transport as working until it is actually wired and verified.
 - **Internet Worker endpoint currently hardcoded in setup:** `https://spd-multiplayer.majd7772233.workers.dev/room/{roomName}/websocket`.
 - **Latest previously verified native snapshot/combat baseline:** `c1d009cc99bf093754987a38e35e98ef42e895b5`; CI run [39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374) passed backend tests and Android JVM/debug APK checks.
-- **Current consistency-hardening checkpoint:** `81ed967088aedbfc1bcc65773a8cb5dd0774c087`; exact-SHA CI [39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671) was queued at last check. Do not treat this latest fix as validated until its workflow result is checked.
+- **Final verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for backend TypeScript build/tests and Android JVM tests/debug APK compilation.
 - **Roadmap:** read `ROADMAP.md` before starting a task. Phase 1 is complete for implementation and automated acceptance after the final snapshot consistency audit; exact-SHA run [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) passed both backend and Android jobs. Phase 2 remains complete for automated acceptance; Phase 3 is next.
 
 ## 2. Non-Negotiable Product and Engineering Rules
@@ -99,7 +99,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Branch: multiplayer-framework-core-14118577486727081892. Never merge into main without explicit instruction.
 - Latest verified snapshot-consistency code SHA: `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`.
 - Exact-SHA workflow [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded: backend TypeScript build/tests and Android JVM tests/debug APK compile both passed.
-- Workflow [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) passed on that exact code SHA.
+- Earlier workflow [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) is historical baseline evidence; the current Phase 1 implementation was separately verified on exact code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30` by run [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420).
 - Passed job 1: Backend typecheck and tests — Node 20, npm ci, TypeScript build and Vitest.
 - Passed job 2: Android debug APK compile — Java 17, Gradle JVM tests and Android debug APK.
 - Markdown-only edits may not trigger CI because workflow path filters target code/protocol/Gradle/workflow paths. Do not claim a code change has CI evidence unless the exact SHA was tested.
@@ -187,7 +187,7 @@ The project is not done when it compiles or when two clients merely connect. Don
 ### 2026-10-21 — Current state supersedes older checkpoints
 
 - Verified snapshot-consistency code SHA: `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`. Exact-SHA CI run [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) passed both backend and Android jobs.
-- CI run 39557655189 passed on the exact gameplay SHA. Backend build/tests and Android JVM tests/debug APK compilation both passed.
+- Historical baseline CI run 39557655189 passed its then-current gameplay SHA; the latest Phase 1 follow-up passed exact-SHA run 39655327420 on `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`.
 - Phase 1 automated acceptance is complete after the final snapshot consistency audit: stable-ID Mob reconstruction, stale cleanup, idempotency, rollback after forced resize failure, native heap/trap/plant/timed-blob restore, independent-world convergence and strict server/Android preflight parity are covered by tests.
 - Phase 2 implementation and automated acceptance are complete: native hit/miss/shield/retaliation/Ankh/reward/Mob-to-player/periodic/PvP/secondary-Mob paths are covered by runtime and backend contract tests.
 - Next whole phase is Phase 3, native Mob AI and Actor scheduler from one authority. Phases 3–10 remain open.
