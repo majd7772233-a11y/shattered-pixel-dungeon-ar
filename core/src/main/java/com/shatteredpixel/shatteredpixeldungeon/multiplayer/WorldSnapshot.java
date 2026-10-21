@@ -185,6 +185,15 @@ public class WorldSnapshot {
         }
     }
 
+    private static boolean boolValue(Object value, boolean fallback) {
+        if (value instanceof Boolean) return (Boolean) value;
+        if (value instanceof Number) return ((Number) value).intValue() != 0;
+        if (value == null) return fallback;
+        if ("true".equalsIgnoreCase(String.valueOf(value))) return true;
+        if ("false".equalsIgnoreCase(String.valueOf(value))) return false;
+        return fallback;
+    }
+
     private static int number(Object value, int fallback) {
         if (value instanceof Number) return ((Number) value).intValue();
         if (value != null) {
@@ -305,6 +314,29 @@ public class WorldSnapshot {
                         || !serverEntityIds.add(entityId)))
                     || pos < 0 || pos >= length || !mobPositions.add(pos)
                     || hp < 0 || ht < 1 || hp > ht) return rejectValidation("validator-check-25");
+            if (mob.containsKey("effectiveSpeed")) {
+                float effectiveSpeed = floatNumber(mob.get("effectiveSpeed"), -1f);
+                if (!Float.isFinite(effectiveSpeed) || effectiveSpeed <= 0f || effectiveSpeed > 1000f)
+                    return rejectValidation("validator-check-26a");
+            }
+            if (mob.containsKey("baseSpeed")) {
+                float baseSpeed = floatNumber(mob.get("baseSpeed"), -1f);
+                if (!Float.isFinite(baseSpeed) || baseSpeed <= 0f || baseSpeed > 1000f)
+                    return rejectValidation("validator-check-26b");
+            }
+            if (mob.containsKey("cooldown")) {
+                float cooldown = floatNumber(mob.get("cooldown"), -1f);
+                if (!Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f)
+                    return rejectValidation("validator-check-26c");
+            }
+            int targetCell = number(mob.get("targetCell"), -1);
+            if (targetCell < -1 || targetCell >= length) return rejectValidation("validator-check-26d");
+            String targetType = String.valueOf(mob.get("targetType") == null ? "NONE" : mob.get("targetType"));
+            String targetEntity = String.valueOf(mob.get("targetEntityId") == null ? "" : mob.get("targetEntityId"));
+            if (!java.util.Arrays.asList("NONE", "MOB", "PLAYER").contains(targetType)
+                    || targetEntity.length() > 128
+                    || (("MOB".equals(targetType) || "PLAYER".equals(targetType)) && targetEntity.isEmpty()))
+                return rejectValidation("validator-check-26e");
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return rejectValidation("validator-check-26");
             Object buffs = mob.get("buffs");
             if (!(buffs instanceof List)) return rejectValidation("validator-check-27");
@@ -805,6 +837,30 @@ public class WorldSnapshot {
                     Actor.remove(stale);
                     for (Buff oldBuff : new java.util.ArrayList<>(stale.buffs())) oldBuff.detach();
                     if (stale.sprite != null) stale.sprite.remove();
+                }
+            }
+            // Rebind targets only after every stable mob ID is mapped. Snapshot list order is not authority.
+            for (Map<String, Object> data : snapshot.mobs) {
+                String entityId = String.valueOf(data.get("entityId") == null ? "" : data.get("entityId"));
+                if (entityId.isEmpty() || number(data.get("hp"), 0) <= 0) continue;
+                Integer localId = manager.getLocalActorIdForServerEntity(entityId);
+                Actor localActor = localId == null ? null : Actor.findById(localId);
+                if (!(localActor instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob)) continue;
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob =
+                        (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob) localActor;
+                mob.restoreMultiplayerAiState(
+                        String.valueOf(data.get("state")),
+                        floatNumber(data.get("baseSpeed"), mob.multiplayerBaseSpeed()),
+                        number(data.get("defenseSkill"), mob.defenseSkill),
+                        floatNumber(data.get("cooldown"), 0f),
+                        number(data.get("targetCell"), -1),
+                        boolValue(data.get("enemySeen"), false),
+                        boolValue(data.get("alerted"), false),
+                        String.valueOf(data.get("targetType") == null ? "NONE" : data.get("targetType")),
+                        String.valueOf(data.get("targetEntityId") == null ? "" : data.get("targetEntityId")));
+                if (data.containsKey("effectiveSpeed")
+                        && !mob.multiplayerEffectiveSpeedMatches(floatNumber(data.get("effectiveSpeed"), -1f))) {
+                    throw new IllegalStateException("Native mob effective-speed mismatch for stable entity " + entityId);
                 }
             }
         }
