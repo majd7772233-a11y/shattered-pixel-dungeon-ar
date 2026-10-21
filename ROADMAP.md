@@ -53,7 +53,7 @@ The detailed phase requirements and acceptance gates below are the authoritative
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status: Complete for implementation and automated acceptance.** Code checkpoint `8dde21303ac836c177457767d4c8e7c7e3ba7838` passed the backend TypeScript build/tests and Android JVM tests plus debug APK build in [CI run 39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189). Automated tests now cover cross-generation convergence, resize/reconnect, rollback after a mid-restore failure, and native heap/trap/plant/blob round trips. CI does not run a physical two-device Android session; that remains a release smoke test.
+**Status: Complete for implementation and automated acceptance.** Current verified code checkpoint `c1d009cc99bf093754987a38e35e98ef42e895b5` passed backend TypeScript build/tests and Android JVM tests plus debug APK build in [CI run 39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374). Coverage includes cross-generation convergence, resize/reconnect, rollback after a mid-restore failure, native heap/trap/plant/blob round trips, repeated snapshot idempotency, and full native subclass-bundle restoration for an already-mapped mob while retaining the device-local `Actor.id()`. CI does not run a physical two-device Android session; that remains a release smoke test.
 
 ### Work items
 
@@ -67,6 +67,7 @@ The detailed phase requirements and acceptance gates below are the authoritative
 - [x] Restore complete heaps without losing stack order, item properties, special heap state or remaining items. Restore traps/plants/blobs with their real native bundles and scheduler timing.
 - [x] Apply world mutations on the render thread; rebuild custom visuals in their original layer order, refresh all map cells and recompute FOV without inventing visited cells. Pathfinding dimensions are validated against the active level before apply.
 - [x] Audit and include gameplay-relevant level metadata omitted by the current snapshot (map exploration state, level lock/feeling, custom tiles/walls, mob spawn classes, respawner bundle and remaining cooldown, and native transitions).
+- [x] Restore the entire native serialized bundle for already-matched mobs, including subclass-specific fields, while preserving the current device's Actor ID and scheduler registration; a JVM regression test reapplies the same stable-ID snapshot twice and verifies those invariants.
 - [x] Complete automated native-world round-trip/idempotency coverage for missing/stale entities, killed-mob tombstones and reconnect restore. JVM tests reconstruct a missing stable-ID mob, remove unrelated stale mobs, apply the same snapshot twice without duplication, restore a resized floor, converge two independently generated local worlds from one authoritative snapshot, restore native multi-item heaps/traps/plants/timed blobs, and roll back a deliberately failed mid-restore. Server tests cover stable-ID persistence/target resolution, duplicate-ID rejection, explicit empty collections and invalid bundles.
 
 ### Acceptance criteria
