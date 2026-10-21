@@ -341,9 +341,9 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertTrue("A second apply must not duplicate native heaps/traps/plants/blobs",
                 WorldSnapshot.restoreWorld(snapshot));
-        Assert.assertEquals(1, level.heaps.size());
-        Assert.assertEquals(1, level.traps.size());
-        Assert.assertEquals(1, level.plants.size());
+        Assert.assertEquals(1, level.heaps.keyArray().length);
+        Assert.assertEquals(1, level.traps.keyArray().length);
+        Assert.assertEquals(1, level.plants.keyArray().length);
         Assert.assertEquals(1, level.blobs.size());
         Assert.assertEquals(2, level.heaps.get(heapPos).items.size());
         Assert.assertTrue(level.heaps.get(heapPos).items.getFirst() instanceof Ankh);
