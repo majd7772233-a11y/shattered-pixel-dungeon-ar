@@ -269,7 +269,17 @@ public class WorldSnapshot {
                 String combat = state.getString("combatBundle");
                 String inventory = state.getString("inventoryBundle");
                 if (combat == null || combat.isEmpty() || readBundle(combat) == null
-                        || inventory == null || inventory.isEmpty() || readBundle(inventory) == null) return false;
+                        || inventory == null || inventory.isEmpty() || readBundle(inventory) == null
+                        || !state.contains("buffCount")) return false;
+                int heroBuffCount = state.getInt("buffCount");
+                if (heroBuffCount < 0 || heroBuffCount > 256) return false;
+                for (int i = 0; i < heroBuffCount; i++) {
+                    String encodedBuff = state.getString("buff_" + i);
+                    if (!state.contains("buff_" + i) || !bundleContains(encodedBuff, "buff", Buff.class)
+                            || !state.contains("buffCooldown_" + i)) return false;
+                    float buffCooldown = state.getFloat("buffCooldown_" + i);
+                    if (!Float.isFinite(buffCooldown) || buffCooldown < 0f || buffCooldown > 100000f) return false;
+                }
             }
         }
         java.util.Set<Integer> claimed = new java.util.HashSet<>();
@@ -346,6 +356,10 @@ public class WorldSnapshot {
             if (pos < 0 || pos >= length || (unique && !positions.add(pos))) return false;
         }
         return true;
+    }
+
+    static boolean allowsLegacyMobIdentityFallback(String entityId) {
+        return entityId == null || entityId.isEmpty();
     }
 
     private static boolean bundleContains(Object raw, String key, Class<?> expectedType) {
@@ -467,7 +481,7 @@ public class WorldSnapshot {
                     }
                 }
                 String name = String.valueOf(data.get("name"));
-                if (matched == null && entityId.isEmpty()) {
+                if (matched == null && allowsLegacyMobIdentityFallback(entityId)) {
                     // Local Actor.id() is a legacy-only fallback; never use it to reconcile a
                     // snapshot that already carries a stable server identity.
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
@@ -475,15 +489,16 @@ public class WorldSnapshot {
                                 && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
                 }
-                if (matched == null) {
-                    // Position + native class is a stronger fallback than class-only matching:
-                    // floors commonly contain several mobs of the same class.
+                if (matched == null && allowsLegacyMobIdentityFallback(entityId)) {
+                    // Never bind a stable server entity to a different same-class mob merely
+                    // because it currently occupies the same position. Missing stable IDs must
+                    // be reconstructed from the authoritative native bundle instead.
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
                         if (!authoritativeMobs.contains(mob) && mob.pos == pos
                                 && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
                 }
-                if (matched == null && entityId.isEmpty()) {
+                if (matched == null && allowsLegacyMobIdentityFallback(entityId)) {
                     for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : Dungeon.level.mobs) {
                         if (!authoritativeMobs.contains(mob) && mob.getClass().getSimpleName().equals(name)) { matched = mob; break; }
                     }
@@ -507,6 +522,15 @@ public class WorldSnapshot {
                                     floatNumber(data.get("cooldown"), 0f));
                             Dungeon.level.mobs.add(matched);
                             GameScene.add(matched);
+                            // GameScene normally registers actors while placing their sprites.
+                            // During initial reconnect/headless restoration there may be no scene;
+                            // still register the reconstructed native mob with the Actor scheduler.
+                            Actor scheduled = Actor.findById(matched.id());
+                            if (scheduled == null) {
+                                Actor.add(matched);
+                            } else if (scheduled != matched) {
+                                throw new IllegalStateException("Native mob Actor.id collision while restoring stable entity " + entityId);
+                            }
                         } else {
                             GLog.w("Snapshot mob bundle did not contain a native Mob for entity " + id);
                         }

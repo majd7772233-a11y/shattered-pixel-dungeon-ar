@@ -15,6 +15,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
@@ -23,6 +24,7 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.watabou.noosa.Game;
+import com.watabou.utils.Bundle;
 import com.watabou.utils.Random;
 import com.watabou.utils.SparseArray;
 import org.junit.After;
@@ -36,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -100,6 +103,84 @@ public class NativeCombatRuntimeIntegrationTest {
         Actor.clear();
         Dungeon.hero = null;
         Dungeon.level = null;
+    }
+
+    @Test
+    public void worldSnapshotReconstructsMissingStableMobAndRepeatedRestoreIsIdempotent() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-reconnect", "client-publisher", new TestTransport());
+
+        int sharedPosition = hero.pos + 1;
+        Rat localWrongMob = addRat(sharedPosition, 5);
+
+        // Represents a native mob in the authoritative snapshot but absent from this client's
+        // generated floor. Same class/position as localWrongMob catches unsafe identity fallback.
+        Rat authoritativeMob = new Rat();
+        authoritativeMob.pos = sharedPosition;
+        authoritativeMob.HP = 27;
+        authoritativeMob.HT = 30;
+        authoritativeMob.defenseSkill = 3;
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, authoritativeMob, "stable-native-mob-0001");
+
+        Assert.assertTrue("Complete authoritative snapshot must pass structural/native validation",
+                WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertTrue("Missing native mob must be reconstructed from its serialized bundle",
+                WorldSnapshot.restoreWorld(snapshot));
+
+        Mob restored = findMobByServerId(manager, "stable-native-mob-0001");
+        Assert.assertNotNull(restored);
+        Assert.assertNotSame("Stable server identity must not bind to an unrelated same-class local mob",
+                localWrongMob, restored);
+        Assert.assertEquals(27, restored.HP);
+        Assert.assertEquals(30, restored.HT);
+        Assert.assertEquals(sharedPosition, restored.pos);
+        Assert.assertFalse("The stale local mob must be removed", level.mobs.contains(localWrongMob));
+        Assert.assertSame("Restored mob must be registered in the native Actor scheduler",
+                restored, Actor.findById(restored.id()));
+        Assert.assertEquals(1, level.mobs.size());
+
+        manager.markSnapshotApplied(snapshot.sequence);
+        Assert.assertTrue("Reapplying the same snapshot must be idempotent", WorldSnapshot.restoreWorld(snapshot));
+        Mob restoredAgain = findMobByServerId(manager, "stable-native-mob-0001");
+        Assert.assertSame("Idempotent restoration must reuse the mapped native actor", restored, restoredAgain);
+        Assert.assertSame(restored, Actor.findById(restored.id()));
+        Assert.assertEquals(1, level.mobs.size());
+        Assert.assertEquals(27, restoredAgain.HP);
+        Assert.assertEquals(30, restoredAgain.HT);
+    }
+
+    @Test
+    public void snapshotPreflightRejectsMalformedHeroBuffBeforeChangingLiveWorld() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-preflight", "client-publisher", new TestTransport());
+        Rat liveMob = addRat(hero.pos + 1, 11);
+        int terrainBefore = level.map[liveMob.pos];
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, null, null);
+
+        Bundle combatBundle = new Bundle();
+        hero.storeInBundle(combatBundle);
+        Bundle inventoryBundle = new Bundle();
+        hero.belongings.storeInBundle(inventoryBundle);
+        Bundle invalidHeroState = new Bundle();
+        invalidHeroState.put("combatBundle", combatBundle.toString());
+        invalidHeroState.put("inventoryBundle", inventoryBundle.toString());
+        invalidHeroState.put("hp", hero.HP);
+        invalidHeroState.put("ht", hero.HT);
+        invalidHeroState.put("pos", hero.pos);
+        invalidHeroState.put("shielding", hero.shielding());
+        invalidHeroState.put("cooldown", Math.max(0f, hero.cooldown()));
+        invalidHeroState.put("buffCount", 1);
+        invalidHeroState.put("buff_0", "not-a-native-bundle");
+        invalidHeroState.put("buffCooldown_0", 0f);
+        snapshot.playerStateJson.put(manager.getLocalPlayerId(), invalidHeroState.toString());
+
+        Assert.assertFalse("Malformed hero buff must fail preflight",
+                WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertFalse(WorldSnapshot.restoreWorld(snapshot));
+        Assert.assertTrue("Failed preflight must leave live actors untouched", level.mobs.contains(liveMob));
+        Assert.assertSame(liveMob, Actor.findById(liveMob.id()));
+        Assert.assertEquals(terrainBefore, level.map[liveMob.pos]);
+        Assert.assertEquals(hero.pos, snapshot.playerPositions.get(manager.getLocalPlayerId()).intValue());
     }
 
     @Test
@@ -999,6 +1080,82 @@ public class NativeCombatRuntimeIntegrationTest {
         @Override public void disconnect() { connected = false; }
         @Override public boolean isConnected() { return connected; }
         @Override public String getTransportType() { return "TEST"; }
+    }
+
+    private WorldSnapshot makeSnapshotWithMob(long sequence, Mob authoritativeMob, String entityId) {
+        WorldSnapshot snapshot = new WorldSnapshot(sequence, Dungeon.depth, Dungeon.seedCurDepth());
+        snapshot.completeWorldSnapshot = true;
+        snapshot.branch = Dungeon.branch;
+        snapshot.levelWidth = level.width();
+        snapshot.levelHeight = level.height();
+        snapshot.entrancePos = level.entrance();
+        snapshot.exitPos = level.exit();
+        snapshot.levelLocked = level.locked;
+        snapshot.levelFeeling = level.multiplayerFeelingName();
+        snapshot.nativeLevelMetadataBundle = level.multiplayerMetadataBundle();
+        snapshot.visitedPositions.clear();
+        snapshot.mappedPositions.clear();
+        for (int pos = 0; pos < level.length(); pos++) {
+            if (level.visited[pos]) snapshot.visitedPositions.add(pos);
+            if (level.mapped[pos]) snapshot.mappedPositions.add(pos);
+            Map<String, Object> tile = new HashMap<>();
+            tile.put("pos", pos);
+            tile.put("terrain", level.map[pos]);
+            tile.put("passable", level.passable[pos] ? 1 : 0);
+            tile.put("solid", level.solid[pos] ? 1 : 0);
+            tile.put("pit", level.pit[pos] ? 1 : 0);
+            tile.put("losBlocking", level.losBlocking[pos] ? 1 : 0);
+            tile.put("flammable", level.flamable[pos] ? 1 : 0);
+            tile.put("secret", level.secret[pos] ? 1 : 0);
+            tile.put("avoid", level.avoid[pos] ? 1 : 0);
+            tile.put("water", level.water[pos] ? 1 : 0);
+            tile.put("discoverable", level.discoverable[pos] ? 1 : 0);
+            tile.put("openSpace", level.openSpace[pos] ? 1 : 0);
+            snapshot.tiles.add(tile);
+        }
+        String localPlayerId = MultiplayerManager.getInstance().getLocalPlayerId();
+        snapshot.playerPositions.put(localPlayerId, hero.pos);
+        snapshot.playerHp.put(localPlayerId, hero.HP);
+        snapshot.playerHt.put(localPlayerId, hero.HT);
+        snapshot.playerClasses.put(localPlayerId, hero.heroClass.name());
+        snapshot.playerStateJson.put(localPlayerId, SPDLevelSnapshot.currentHeroStateJson());
+        snapshot.mobs.clear();
+        if (authoritativeMob != null) snapshot.mobs.add(snapshotMob(authoritativeMob, entityId));
+        return snapshot;
+    }
+
+    private Map<String, Object> snapshotMob(Mob mob, String entityId) {
+        Map<String, Object> row = new HashMap<>();
+        row.put("mobId", mob.id());
+        row.put("entityId", entityId);
+        row.put("name", mob.getClass().getSimpleName());
+        row.put("pos", mob.pos);
+        row.put("hp", mob.HP);
+        row.put("ht", mob.HT);
+        row.put("shielding", Math.max(0, mob.shielding()));
+        row.put("state", mob.state == null ? "" : mob.state.getClass().getSimpleName());
+        row.put("serializedBundle", SPDLevelSnapshot.currentMobBundle(mob));
+        row.put("defenseSkill", mob.defenseSkill);
+        row.put("baseSpeed", mob.multiplayerBaseSpeed());
+        row.put("cooldown", Math.max(0f, mob.cooldown()));
+        ArrayList<Map<String, Object>> buffs = new ArrayList<>();
+        for (Buff buff : mob.buffs()) {
+            Bundle bundle = new Bundle();
+            bundle.put("buff", buff);
+            Map<String, Object> buffRow = new HashMap<>();
+            buffRow.put("serializedBundle", bundle.toString());
+            buffRow.put("cooldown", Math.max(0f, buff.cooldown()));
+            buffs.add(buffRow);
+        }
+        row.put("buffs", buffs);
+        return row;
+    }
+
+    private Mob findMobByServerId(MultiplayerManager manager, String entityId) {
+        for (Mob mob : level.mobs) {
+            if (entityId.equals(manager.getServerEntityId(mob.id()))) return mob;
+        }
+        return null;
     }
 
     private static final class TestLevel extends Level {
