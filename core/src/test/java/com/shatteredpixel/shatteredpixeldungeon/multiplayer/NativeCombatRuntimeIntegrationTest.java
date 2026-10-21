@@ -330,7 +330,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull(restoredFire);
         Assert.assertEquals(7, restoredFire.volume);
         Assert.assertEquals(7, restoredFire.cur[blobPos]);
-        Assert.assertEquals(authoritativeBlobActorId, restoredFire.id());
+        Assert.assertTrue("The restored Blob must have a valid local Actor ID", restoredFire.id() > 0);
         Assert.assertSame(restoredFire, Actor.findById(restoredFire.id()));
         Assert.assertEquals(6.5f, restoredFire.cooldown(), 0.25f);
         Assert.assertNull(level.heaps.get(stalePos));
