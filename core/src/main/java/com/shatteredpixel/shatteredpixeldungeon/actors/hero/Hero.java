@@ -251,6 +251,11 @@ public class Hero extends Char {
 	private Char attackTarget;
 	/** Set by the native blessed-Ankh path and consumed by damage() after death handling. */
 	private boolean multiplayerRevivedByBlessedAnkh;
+	private String pendingNativeWorldMutationAction;
+	private int pendingNativeWorldMutationFrom = -1;
+	private int pendingNativeWorldMutationTarget = -1;
+	private float pendingNativeWorldMutationCooldownBefore;
+	private String pendingNativeWorldMutationHeroStateBefore;
 	
 	public boolean resting = false;
 	
@@ -1062,7 +1067,13 @@ public class Hero extends Char {
 	
 	@Override
 	public boolean act() {
-		
+		boolean trackMultiplayerAction = this == Dungeon.hero
+				&& MultiplayerManager.getInstance().isMultiplayerActive() && curAction != null;
+		int multiplayerPositionBeforeAction = pos;
+		float multiplayerCooldownBeforeAction = trackMultiplayerAction ? cooldown() : 0f;
+		String multiplayerHeroStateBeforeAction = trackMultiplayerAction
+				? SPDLevelSnapshot.currentHeroStateJson(this) : null;
+
 		//calls to dungeon.observe will also update hero's local FOV.
 		fieldOfView = Dungeon.level.heroFOV;
 
@@ -1159,6 +1170,13 @@ public class Hero extends Char {
 		if(hasTalent(Talent.BARKSKIN) && Dungeon.level.map[pos] == Terrain.FURROWED_GRASS){
 			Barkskin.conditionallyAppend(this, (lvl*pointsInTalent(Talent.BARKSKIN))/2, 1 );
 		}
+
+		// Publish only the cell actually entered after native door/trap/plant/well and FOV logic.
+		if (trackMultiplayerAction && pos != multiplayerPositionBeforeAction && Dungeon.branch == 0) {
+			MultiplayerActionDispatcher.onNativeMovementStep(multiplayerPositionBeforeAction, pos,
+					Math.max(0f, cooldown() - multiplayerCooldownBeforeAction),
+					multiplayerHeroStateBeforeAction);
+		}
 		
 		return actResult;
 	}
@@ -1167,6 +1185,51 @@ public class Hero extends Char {
 		ready = false;
 	}
 	
+	/** Queues an adjacent world-action until the original SPD callback has applied all effects. */
+	public void queueNativeWorldMutation(String actionName, int from, int target,
+										 float cooldownBefore, String heroStateBefore) {
+		pendingNativeWorldMutationAction = actionName;
+		pendingNativeWorldMutationFrom = from;
+		pendingNativeWorldMutationTarget = target;
+		pendingNativeWorldMutationCooldownBefore = cooldownBefore;
+		pendingNativeWorldMutationHeroStateBefore = heroStateBefore;
+	}
+
+	/** Publishes one action-bound snapshot after Unlock/Operate/Mine/Interact has really resolved. */
+	public void publishPendingNativeWorldMutation() {
+		String actionName = pendingNativeWorldMutationAction;
+		int from = pendingNativeWorldMutationFrom;
+		int target = pendingNativeWorldMutationTarget;
+		float cooldownBefore = pendingNativeWorldMutationCooldownBefore;
+		String heroStateBefore = pendingNativeWorldMutationHeroStateBefore;
+		pendingNativeWorldMutationAction = null;
+		pendingNativeWorldMutationFrom = -1;
+		pendingNativeWorldMutationTarget = -1;
+		pendingNativeWorldMutationHeroStateBefore = null;
+		if (actionName == null || heroStateBefore == null || Dungeon.level == null || Dungeon.branch != 0) return;
+
+		float actionCost = Math.max(0f, Math.min(10f, cooldown() - cooldownBefore));
+		String details = "{\"from\":" + from + ",\"to\":" + target + ",\"targetPos\":" + target
+				+ ",\"depth\":" + Dungeon.depth + ",\"branch\":" + Dungeon.branch
+				+ ",\"engineActionCost\":" + actionCost + "}";
+		NetworkActionType actionType;
+		try { actionType = NetworkActionType.valueOf(actionName); }
+		catch (IllegalArgumentException invalidAction) { return; }
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		String requestId = manager.sendAction(actionType, details, heroStateBefore);
+		if (requestId != null) manager.publishNativeWorldMutation(requestId, actionName, from, target);
+	}
+
+	/** Stops unsupported branch-specific interactions instead of allowing unsynchronized local mutations. */
+	public void rejectUnsupportedMultiplayerWorldAction() {
+		pendingNativeWorldMutationAction = null;
+		pendingNativeWorldMutationFrom = -1;
+		pendingNativeWorldMutationTarget = -1;
+		pendingNativeWorldMutationHeroStateBefore = null;
+		GLog.w("هذا التفاعل غير مدعوم في اللعب الجماعي على هذا الفرع.");
+		ready();
+	}
+
 	private void ready() {
 		if (sprite.looping()) sprite.idle();
 		curAction = null;
@@ -1588,6 +1651,7 @@ public class Hero extends Char {
 									}
 									spendAndNext(TICK);
 									ready();
+									publishPendingNativeWorldMutation();
 								}
 							});
 						} else {
@@ -1596,6 +1660,7 @@ public class Hero extends Char {
 						}
 
 						Dungeon.observe();
+						if (!crystalAdjacent) publishPendingNativeWorldMutation();
 					}
 				});
 			} else {
@@ -3036,8 +3101,14 @@ public class Hero extends Char {
 
 	@Override
 	public void next() {
-		if (isAlive())
+		if (isAlive()) {
 			super.next();
+			if (!NetworkActionType.UNLOCK.name().equals(pendingNativeWorldMutationAction)
+					&& !NetworkActionType.OPEN_CHEST.name().equals(pendingNativeWorldMutationAction)
+					&& !NetworkActionType.MINE.name().equals(pendingNativeWorldMutationAction)) {
+				publishPendingNativeWorldMutation();
+			}
+		}
 	}
 
 	public static interface Doom {
