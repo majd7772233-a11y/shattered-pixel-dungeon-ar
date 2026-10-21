@@ -114,22 +114,34 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 **Priority:** P0
 
+**Status:** Complete for implementation and automated acceptance on code SHA `a5565ea05ae677104f3eccfa428e99c5b5e787bb`. Exact-SHA CI [39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419) passed both required jobs.
+
 ### Work items
 
-- [ ] Choose one authoritative execution model for mobs and actor turns. Do not run native AI independently on each client while the server also simulates the mob.
-- [ ] Replace generic server AI/pathfinding as gameplay truth. Preserve native per-mob state (sleeping, wandering, investigating, hunting, fleeing, passive, target, alerted flags, buffs, subclass-specific behavior, special attacks and cooldown).
-- [ ] If the server remains TypeScript-only, treat its pathing as non-authoritative transport/display logic only; it must not claim to match SPD AI. Otherwise provide an engine-backed authority capable of running the Java SPD actor scheduler.
-- [ ] Serialize/restore native effective speed and remaining cooldown, not only `baseSpeed`; include modifiers from buffs, armor glyphs, challenges, status effects and mob-specific overrides.
-- [ ] Ensure actor turn ordering, ties, action costs, delayed actions, paralysis/stun/time stop, DOTs, regeneration, respawners and actor removal match the native scheduler.
-- [ ] Replicate mob moves, attacks, special effects, deaths and drops as sequenced events; never re-run mob death/reward code on clients merely to update HP.
-- [ ] Handle mobs targeting either co-op player according to actual alignment, FOV and native AI rules.
-- [ ] Add scenario tests for sleeping mobs, out-of-sight players, obstacles/diagonal corners, fleeing, special mob attacks, speed buffs, simultaneous actor turns and disconnected targets.
+- [x] Use one authoritative execution model for mobs and actor turns: the elected Java SPD level publisher runs the original shared `Actor.process()` scheduler; other clients do not advance shared Mob/Blob/Mob-target Buff/respawner actors independently.
+- [x] Keep the TypeScript Worker on the transport/validation/persistence/sequencing side. Generic server pathfinding is not used as native SPD gameplay truth.
+- [x] Preserve native per-Mob state through native bundles and AI snapshot data, including sleeping/hunting/fleeing/wandering state, stable target identity and cell, FOV/alert flags, buffs, subclass behavior and special attacks.
+- [x] Serialize and restore native effective speed and remaining Actor cooldown; verify status-modified speed (including Haste) survives a full round trip instead of deriving turn time from base speed.
+- [x] Keep native actor ordering, ties, action costs, status ticks, delayed effects, respawners and actor removal under the original Java scheduler; publish only completed shared-world results. If a shared actor's native `act()` returns `false`, defer the snapshot until its original callback advances `Actor.next()`; this includes animated attacks and callback-driven special projectiles.
+- [x] Sequence accepted native actor turns on the Worker with a strictly contiguous counter; reject replayed or skipped turn numbers and carry the accepted counter through full snapshot/resync restoration.
+- [x] Reconcile authoritative Mob moves, attacks, special effects, deaths and drops as sequenced native world state, without re-running replica death/reward/loot code just to update state.
+- [x] Support publisher-native targeting of either living co-op Hero according to the game's alignment/FOV rules, and rebind stable PLAYER targets only after the remote Hero has been constructed in the receiving Actor graph.
+- [x] Add runtime scenarios covering sleeping/fleeing/out-of-sight state, stable target rebinding, disconnected target removal, obstacles/diagonal corners, fleeing/path choices, speed buffs and cooldowns, animated attack completion, callback-driven special Mob effects, and publisher-only execution. Existing native combat scenarios continue to cover exactly-once death/reward/loot and secondary Mob effects.
 
 ### Acceptance criteria
 
-- Every mob action has one authoritative outcome and one sequence number.
-- Mob AI behavior and turn timing come from the native SPD rules; no generic damage/pathing approximation is presented as equivalent.
-- Clients do not independently produce conflicting mob actions.
+- [x] Every accepted shared native Actor turn has one authoritative result and one contiguous server sequence/counter; stale or skipped native turn submissions are rejected.
+- [x] Mob AI, effect resolution and turn timing come from the original Java SPD rules; the Worker does not substitute generic AI/damage/pathing as equivalent behavior.
+- [x] Clients do not independently execute conflicting shared Mob turns, and restoration retains native target identity and scheduler state.
+
+### Verification and limits
+
+- Code SHA tested: `a5565ea05ae677104f3eccfa428e99c5b5e787bb`.
+- Exact-SHA CI [39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419) succeeded for `Backend typecheck and tests` and `Android debug APK compile`, including the JVM test suite.
+- Vitest reported 220 executions passed across the TypeScript test file and its generated JavaScript counterpart (the two files exercise corresponding test cases; this is not 220 distinct source scenarios).
+- `NativeCombatRuntimeIntegrationTest` contains 36 integration test methods at this checkpoint, including the new callback-driven special Mob test.
+- No physical two-device session or deployed Worker end-to-end run is claimed. Real-device/network verification remains an explicit Phase 10 release gate.
+- Phase 4 — movement and floor lifecycle is the next whole phase. Phase 9 publisher-disconnect/authority handoff work remains separate and open.
 
 ## Phase 4 — Complete Movement, Floors, Doors and World Interactions
 
@@ -335,4 +347,4 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - `protocol/schema.json` defines native attack, combat outcome, Mob damage, blessed/unblessed Ankh revival, periodic/environment damage, and complete native Mob/level snapshot contracts.
 - Current branch head at re-audit: `0a88887fa01bed79bc317f28d73692c5192b78da`. [CI run 39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both required jobs: Backend typecheck and tests; Android debug APK compile (including JVM tests).
 - Conclusion: Phase 2 already had its required implementation and automated acceptance; no duplicate implementation was added merely to create activity. Its phase status and verification evidence are now explicit and current. The physical two-device test is intentionally not claimed and remains a Phase 10 release gate.
-- Next whole phase remains Phase 3 — native Mob AI and Actor scheduler. Do not skip Phase 2 in future summaries: Phase 1 = snapshots/restoration; Phase 2 = native combat; Phase 3 = Mob AI/Actor scheduler.
+- At this historical Phase 2 re-audit, Phase 3 was next. Its completion and the current next phase (Phase 4) are recorded above. Keep phase numbering fixed: Phase 1 = snapshots/restoration; Phase 2 = native combat; Phase 3 = Mob AI/Actor scheduler.
