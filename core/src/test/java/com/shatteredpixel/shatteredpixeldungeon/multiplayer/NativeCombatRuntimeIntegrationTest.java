@@ -9,6 +9,8 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
+import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
@@ -19,10 +21,13 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
+import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfUpgrade;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
+import com.shatteredpixel.shatteredpixeldungeon.levels.traps.FrostTrap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
+import com.shatteredpixel.shatteredpixeldungeon.plants.Firebloom;
 import com.watabou.noosa.Game;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.Random;
@@ -184,6 +189,171 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertSame(liveMob, Actor.findById(liveMob.id()));
         Assert.assertEquals(terrainBefore, level.map[liveMob.pos]);
         Assert.assertEquals(hero.pos, snapshot.playerPositions.get(manager.getLocalPlayerId()).intValue());
+    }
+
+    @Test
+    public void worldSnapshotRestoresNativeHeapTrapPlantAndTimedBlobIdempotently() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-native-objects", "client-publisher", new TestTransport());
+
+        int heapPos = hero.pos + 1;
+        int trapPos = hero.pos + 2;
+        int plantPos = hero.pos + 3;
+        int blobPos = hero.pos + 4;
+        int stalePos = hero.pos + 5;
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, null, null);
+
+        // Exact native heap order and stack metadata are sent as individual native Item bundles.
+        Heap expectedHeap = new Heap();
+        expectedHeap.pos = heapPos;
+        expectedHeap.type = Heap.Type.FOR_SALE;
+        expectedHeap.seen = true;
+        expectedHeap.haunted = true;
+        expectedHeap.hidden = true;
+        expectedHeap.autoExplored = true;
+        expectedHeap.items.addLast(new Ankh());
+        expectedHeap.items.addLast(new ScrollOfUpgrade());
+        Map<String, Object> heapRow = new HashMap<>();
+        heapRow.put("pos", heapPos);
+        heapRow.put("type", expectedHeap.type.name());
+        heapRow.put("seen", expectedHeap.seen);
+        heapRow.put("haunted", expectedHeap.haunted);
+        heapRow.put("hidden", expectedHeap.hidden);
+        heapRow.put("autoExplored", expectedHeap.autoExplored);
+        ArrayList<Map<String, Object>> itemRows = new ArrayList<>();
+        for (com.shatteredpixel.shatteredpixeldungeon.items.Item item : expectedHeap.items) {
+            Bundle itemBundle = new Bundle();
+            itemBundle.put("item", item);
+            Map<String, Object> itemRow = new HashMap<>();
+            itemRow.put("className", item.getClass().getName());
+            itemRow.put("quantity", item.quantity());
+            itemRow.put("level", item.level());
+            itemRow.put("cursed", item.cursed);
+            itemRow.put("cursedKnown", item.cursedKnown);
+            itemRow.put("serializedBundle", itemBundle.toString());
+            itemRows.add(itemRow);
+        }
+        heapRow.put("items", itemRows);
+        snapshot.heaps.clear();
+        snapshot.heaps.add(heapRow);
+
+        FrostTrap authoritativeTrap = new FrostTrap();
+        authoritativeTrap.pos = trapPos;
+        authoritativeTrap.visible = true;
+        authoritativeTrap.active = false;
+        authoritativeTrap.reclaimed = true;
+        authoritativeTrap.color = Trap.VIOLET;
+        authoritativeTrap.shape = Trap.DIAMOND;
+        Bundle trapBundle = new Bundle();
+        trapBundle.put("trap", authoritativeTrap);
+        Map<String, Object> trapRow = new HashMap<>();
+        trapRow.put("pos", trapPos);
+        trapRow.put("serializedBundle", trapBundle.toString());
+        trapRow.put("active", authoritativeTrap.active);
+        trapRow.put("visible", authoritativeTrap.visible);
+        trapRow.put("reclaimed", authoritativeTrap.reclaimed);
+        trapRow.put("color", authoritativeTrap.color);
+        trapRow.put("shape", authoritativeTrap.shape);
+        snapshot.traps.clear();
+        snapshot.traps.add(trapRow);
+
+        Firebloom authoritativePlant = new Firebloom();
+        authoritativePlant.pos = plantPos;
+        Bundle plantBundle = new Bundle();
+        plantBundle.put("plant", authoritativePlant);
+        Map<String, Object> plantRow = new HashMap<>();
+        plantRow.put("pos", plantPos);
+        plantRow.put("serializedBundle", plantBundle.toString());
+        snapshot.plants.clear();
+        snapshot.plants.add(plantRow);
+
+        Fire authoritativeFire = new Fire();
+        authoritativeFire.cur = new int[level.length()];
+        authoritativeFire.cur[blobPos] = 7;
+        authoritativeFire.volume = 7;
+        authoritativeFire.restoreMultiplayerCooldown(6.5f);
+        Bundle blobBundle = new Bundle();
+        blobBundle.put("blob", authoritativeFire);
+        int authoritativeBlobActorId = authoritativeFire.id();
+        Map<String, Object> blobRow = new HashMap<>();
+        blobRow.put("className", Fire.class.getName());
+        blobRow.put("serializedBundle", blobBundle.toString());
+        blobRow.put("cooldown", 6.5f);
+        snapshot.blobs.clear();
+        snapshot.blobs.add(blobRow);
+
+        // These local-only objects must be removed because a complete snapshot omits their cells/types.
+        Heap staleHeap = new Heap();
+        staleHeap.pos = stalePos;
+        staleHeap.items.addLast(new Ankh());
+        level.heaps.put(stalePos, staleHeap);
+        FrostTrap staleTrap = new FrostTrap();
+        staleTrap.pos = stalePos;
+        level.traps.put(stalePos, staleTrap);
+        Firebloom stalePlant = new Firebloom();
+        stalePlant.pos = stalePos;
+        level.plants.put(stalePos, stalePlant);
+        ToxicGas staleGas = new ToxicGas();
+        staleGas.cur = new int[level.length()];
+        staleGas.cur[stalePos] = 3;
+        staleGas.volume = 3;
+        level.blobs.put(ToxicGas.class, staleGas);
+        Actor.add(staleGas);
+
+        Assert.assertTrue("All native item/trap/plant/blob bundles must be validated before apply",
+                WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
+
+        Heap restoredHeap = level.heaps.get(heapPos);
+        Assert.assertNotNull(restoredHeap);
+        Assert.assertEquals(Heap.Type.FOR_SALE, restoredHeap.type);
+        Assert.assertTrue(restoredHeap.seen);
+        Assert.assertTrue(restoredHeap.haunted);
+        Assert.assertTrue(restoredHeap.hidden);
+        Assert.assertTrue(restoredHeap.autoExplored);
+        Assert.assertEquals(2, restoredHeap.items.size());
+        Assert.assertTrue(restoredHeap.items.getFirst() instanceof Ankh);
+        Assert.assertTrue("Native heap item order must survive reconstruction",
+                restoredHeap.items.getLast() instanceof ScrollOfUpgrade);
+
+        Trap restoredTrap = level.traps.get(trapPos);
+        Assert.assertTrue(restoredTrap instanceof FrostTrap);
+        Assert.assertFalse(restoredTrap.active);
+        Assert.assertTrue(restoredTrap.visible);
+        Assert.assertTrue(restoredTrap.reclaimed);
+        Assert.assertEquals(Trap.VIOLET, restoredTrap.color);
+        Assert.assertEquals(Trap.DIAMOND, restoredTrap.shape);
+        Assert.assertTrue(level.plants.get(plantPos) instanceof Firebloom);
+        Assert.assertEquals(plantPos, level.plants.get(plantPos).pos);
+
+        Blob restoredFire = level.blobs.get(Fire.class);
+        Assert.assertNotNull(restoredFire);
+        Assert.assertEquals(7, restoredFire.volume);
+        Assert.assertEquals(7, restoredFire.cur[blobPos]);
+        Assert.assertEquals(authoritativeBlobActorId, restoredFire.id());
+        Assert.assertSame(restoredFire, Actor.findById(restoredFire.id()));
+        Assert.assertEquals(6.5f, restoredFire.cooldown(), 0.25f);
+        Assert.assertNull(level.heaps.get(stalePos));
+        Assert.assertNull(level.traps.get(stalePos));
+        Assert.assertNull(level.plants.get(stalePos));
+        Assert.assertFalse(level.blobs.containsKey(ToxicGas.class));
+        Assert.assertNull(Actor.findById(staleGas.id()));
+
+        Assert.assertTrue("A second apply must not duplicate native heaps/traps/plants/blobs",
+                WorldSnapshot.restoreWorld(snapshot));
+        Assert.assertEquals(1, level.heaps.size());
+        Assert.assertEquals(1, level.traps.size());
+        Assert.assertEquals(1, level.plants.size());
+        Assert.assertEquals(1, level.blobs.size());
+        Assert.assertEquals(2, level.heaps.get(heapPos).items.size());
+        Assert.assertTrue(level.heaps.get(heapPos).items.getFirst() instanceof Ankh);
+        Assert.assertTrue(level.heaps.get(heapPos).items.getLast() instanceof ScrollOfUpgrade);
+        Blob restoredFireAgain = level.blobs.get(Fire.class);
+        Assert.assertNotNull(restoredFireAgain);
+        Assert.assertEquals(7, restoredFireAgain.volume);
+        Assert.assertEquals(7, restoredFireAgain.cur[blobPos]);
+        Assert.assertEquals(6.5f, restoredFireAgain.cooldown(), 0.25f);
+        Assert.assertSame(restoredFireAgain, Actor.findById(restoredFireAgain.id()));
     }
 
     @Test
