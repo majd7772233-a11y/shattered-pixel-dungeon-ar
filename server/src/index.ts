@@ -1798,9 +1798,76 @@ export class MatchRoom {
           Number.isSafeInteger(Number(storedTurnRow?.value)) ? Number(storedTurnRow.value) : 0,
           Number.isSafeInteger(Number(previousSnapshot.nativeWorldTurnCounter))
             ? Number(previousSnapshot.nativeWorldTurnCounter) : 0);
+        let verifiedMutationHeroStateJson: string | null = null;
+        if (isNativeWorldMutation) {
+          const mutationAction = String(level.nativeMutationAction || "");
+          const mutationRequestId = String(level.nativeMutationRequestId || "");
+          const mutationFrom = level.nativeMutationFrom;
+          const mutationTarget = level.nativeMutationTargetPos;
+          const transitionAlreadyPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+          const acceptedRow = mutationRequestId.length > 0
+            ? this.sql.exec("SELECT player_id,result_json FROM processed_actions WHERE request_id = ?", mutationRequestId).toArray()[0] : null;
+          let accepted: any = null;
+          try { accepted = acceptedRow ? JSON.parse(String(acceptedRow.result_json)) : null; } catch (_) {}
+          const expectedEvent = mutationAction === "MOVE" ? "PLAYER_MOVED" : "WORLD_ACTION_RESOLVED";
+          const acceptedPayload = accepted?.action;
+          const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+          const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+          let reportedHero: any = null;
+          try { reportedHero = JSON.parse(String(level.heroStateJson || "")); } catch (_) {}
+          const actionWasAccepted = !!acceptedRow && String(acceptedRow.player_id) === session.playerId
+            && accepted?.status === "ACCEPTED" && accepted?.eventType === expectedEvent
+            && (mutationAction === "MOVE"
+              ? acceptedPayload?.playerId === session.playerId && acceptedPayload?.from === mutationFrom
+                && acceptedPayload?.pos === mutationTarget
+              : acceptedPayload?.playerId === session.playerId && acceptedPayload?.actionType === mutationAction
+                && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget);
+          const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
+            && Number(reportedHero.pos) === Number(playerRow.pos)
+            && Number(reportedHero.hp) === Number(playerRow.hp) && Number(reportedHero.ht) === Number(playerRow.ht)
+            && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
+              hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos),
+              shielding: Number(reportedHero.shielding)
+            });
+          if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
+              || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
+                mutationFrom, mutationTarget, trustedHeroRow.value)) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
+            return;
+          }
+          const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
+            hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos),
+            shielding: Number(reportedHero.shielding)
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, true);
+          if (merged == null) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
+            return;
+          }
+          const mergedHero: any = JSON.parse(merged);
+          mergedHero.cooldown = reportedHero.cooldown;
+          if (mutationAction === "UNLOCK" || mutationAction === "OPEN_CHEST" || mutationAction === "INTERACT") {
+            for (const field of ["notesBundle", "ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
+              mergedHero[field] = reportedHero[field];
+            }
+          }
+          if (mutationAction === "INTERACT") mergedHero.questStateBundle = reportedHero.questStateBundle;
+          if (mutationAction === "INTERACT" || mutationAction === "MINE") mergedHero.inventoryBundle = reportedHero.inventoryBundle;
+          verifiedMutationHeroStateJson = JSON.stringify(mergedHero);
+          mobs = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : [];
+          level.mobs = mobs;
+          // Hero state is player-specific; never overwrite shared floor metadata with a guest copy.
+          level.heroStateJson = String(previousSnapshot.heroStateJson || "");
+          delete level.nativeWorldMutation;
+          delete level.nativeMutationAction;
+          delete level.nativeMutationRequestId;
+          delete level.nativeMutationFrom;
+          delete level.nativeMutationTargetPos;
+        }
         const isNativeWorldTurn = level.nativeWorldTick === true;
         if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0
-            && isNativeWorldTurn) {
+            && (isNativeWorldTurn || isNativeWorldMutation)) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));
           return;
@@ -1841,10 +1908,18 @@ export class MatchRoom {
         this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
           ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
           `levelSnapshot:${depth}`, JSON.stringify(level));
-        if (typeof level.heroStateJson === "string" && level.heroStateJson.length <= 200000) {
+        const heroStateToStore = verifiedMutationHeroStateJson || level.heroStateJson;
+        if (typeof heroStateToStore === "string" && heroStateToStore.length <= 200000) {
           this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-            `heroState:${session.playerId}`, level.heroStateJson);
+            `heroState:${session.playerId}`, heroStateToStore);
+          let storedHero: any = null;
+          try { storedHero = JSON.parse(heroStateToStore); } catch (_) {}
+          if (storedHero && Number.isInteger(storedHero.hp) && Number.isInteger(storedHero.ht)
+              && Number.isInteger(storedHero.pos)) {
+            this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ? WHERE player_id = ?",
+              storedHero.hp, storedHero.ht, storedHero.pos, session.playerId);
+          }
         }
         for (const t of tiles) {
           this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
@@ -1862,6 +1937,14 @@ export class MatchRoom {
             VALUES (?,?,?,?,?,?,8,6,?,?)`,
             Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),
             this.worldTime + initialCooldown, nativeState);
+        }
+        if (isNativeWorldMutation) {
+          this.currentSequence++;
+          const mutationEvent = { action: String(level.nativeMutationAction || "WORLD"),
+            playerId: session.playerId, depth, from: level.nativeMutationFrom,
+            targetPos: level.nativeMutationTargetPos };
+          this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+            this.currentSequence, session.playerId, "NATIVE_WORLD_MUTATION", JSON.stringify(mutationEvent));
         }
         if (isNativeWorldTurn) {
           this.currentSequence++;
@@ -1896,8 +1979,8 @@ export class MatchRoom {
             depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length,
             nativeWorldTurnCounter: ackTurnCounter,
             entities: mobs.map((mob: any) => ({ mobId: Number(mob.mobId), entityId: String(mob.entityId) })) }) }));
-        if (isNativeWorldTurn) {
-          // Broadcast the complete server-committed world to the peers, not a guessed Mob delta.
+        if (isNativeWorldTurn || isNativeWorldMutation) {
+          // Broadcast the complete server-committed world to peers, not a guessed delta.
           const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
           const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray().map((player: any) => {
             const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
