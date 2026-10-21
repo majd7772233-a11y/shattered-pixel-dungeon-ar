@@ -209,6 +209,53 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void sameSnapshotConvergesAcrossTwoLocallyDifferentGeneratedWorlds() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-two-worlds", "client-publisher", new TestTransport());
+
+        int sharedPosition = hero.pos + 1;
+        addRat(sharedPosition, 5);
+        addRat(hero.pos + 3, 8);
+        Rat authoritativeMob = new Rat();
+        authoritativeMob.pos = sharedPosition;
+        authoritativeMob.HP = 27;
+        authoritativeMob.HT = 30;
+        authoritativeMob.defenseSkill = 3;
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, authoritativeMob, "stable-two-world-mob-0001");
+        resizeSnapshotTiles(snapshot, 28, 28);
+
+        Assert.assertTrue(WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
+        Mob firstRestored = findMobByServerId(manager, "stable-two-world-mob-0001");
+        Assert.assertNotNull(firstRestored);
+        Assert.assertEquals(1, level.mobs.size());
+        int firstLocalActorId = firstRestored.id();
+        String firstSignature = snapshotConvergenceSignature(manager, "stable-two-world-mob-0001");
+
+        // Simulate a reconnect/client with a separately generated level and more local actors.
+        clearNativeWorld();
+        setUpNativeWorld();
+        manager = MultiplayerManager.getInstance();
+        manager.startSession("snapshot-two-worlds", "client-publisher", new TestTransport());
+        addRat(sharedPosition, 4);
+        addRat(hero.pos + 3, 6);
+        addRat(hero.pos + 4, 7);
+
+        Assert.assertTrue("The same authoritative snapshot must apply to a different local generation",
+                WorldSnapshot.restoreWorld(snapshot));
+        Mob secondRestored = findMobByServerId(manager, "stable-two-world-mob-0001");
+        Assert.assertNotNull(secondRestored);
+        Assert.assertNotSame(firstRestored, secondRestored);
+        Assert.assertNotEquals("Local Actor IDs may differ across generated worlds",
+                firstLocalActorId, secondRestored.id());
+        Assert.assertEquals(1, level.mobs.size());
+        Assert.assertEquals(28, level.width());
+        Assert.assertEquals(28, level.height());
+        Assert.assertEquals("Both independently generated worlds must converge to the same native state",
+                firstSignature, snapshotConvergenceSignature(manager, "stable-two-world-mob-0001"));
+    }
+
+    @Test
     public void snapshotPreflightRejectsMalformedHeroBuffBeforeChangingLiveWorld() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-preflight", "client-publisher", new TestTransport());
@@ -1399,6 +1446,22 @@ public class NativeCombatRuntimeIntegrationTest {
         }
         row.put("buffs", buffs);
         return row;
+    }
+
+    private String snapshotConvergenceSignature(MultiplayerManager manager, String entityId) {
+        Mob mob = findMobByServerId(manager, entityId);
+        Assert.assertNotNull(mob);
+        return level.width() + "x" + level.height()
+                + "|terrain=" + Arrays.toString(level.map)
+                + "|passable=" + Arrays.toString(level.passable)
+                + "|solid=" + Arrays.toString(level.solid)
+                + "|visited=" + Arrays.toString(level.visited)
+                + "|mapped=" + Arrays.toString(level.mapped)
+                + "|hero=" + hero.pos + ":" + hero.HP + ":" + hero.HT
+                + "|mob=" + entityId + ":" + mob.pos + ":" + mob.HP + ":" + mob.HT
+                + "|objects=" + level.heaps.keyArray().length + ":"
+                    + level.traps.keyArray().length + ":" + level.plants.keyArray().length
+                    + ":" + level.blobs.size();
     }
 
     private Mob findMobByServerId(MultiplayerManager manager, String entityId) {
