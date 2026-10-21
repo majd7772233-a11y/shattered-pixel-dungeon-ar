@@ -42,6 +42,7 @@ public class MultiplayerActionDispatcher {
             String details = "{\"from\":" + currentPos + ",\"to\":" + currentPos
                     + ",\"stairsPos\":" + currentPos + ",\"depth\":" + currentDepth
                     + ",\"branch\":" + Dungeon.branch + "}";
+            manager.markFloorTransitionPending();
             manager.sendAction(NetworkActionType.LVL_TRANSITION, details, heroStateBefore);
             return;
         }
