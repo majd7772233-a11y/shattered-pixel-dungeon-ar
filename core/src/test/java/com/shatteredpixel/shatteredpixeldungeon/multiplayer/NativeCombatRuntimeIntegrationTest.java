@@ -1369,7 +1369,7 @@ public class NativeCombatRuntimeIntegrationTest {
         }
     }
 
-    private static final class BundledStateRat extends Rat {
+    public static final class BundledStateRat extends Rat {
         int nativePhase;
 
         @Override
