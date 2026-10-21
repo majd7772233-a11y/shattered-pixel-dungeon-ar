@@ -30,6 +30,8 @@ import java.util.Map;
 
 public class WorldSnapshot {
     private static volatile WorldSnapshot lastAppliedSnapshot;
+    /** True only for a local rollback copy; never serialized on the wire. */
+    private boolean localRollbackBaseline;
 
     public long sequence;
     public int depth = 1;
@@ -295,8 +297,12 @@ public class WorldSnapshot {
             int pos = number(mob.get("pos"), -1);
             int hp = number(mob.get("hp"), -1);
             int ht = number(mob.get("ht"), -1);
-            if (id < 0 || !mobIds.add(id) || entityId.length() < 8 || entityId.length() > 80
-                    || !serverEntityIds.add(entityId) || pos < 0 || pos >= length || !mobPositions.add(pos)
+            boolean stableIdentityPresent = entityId != null && !entityId.isEmpty();
+            if (id < 0 || !mobIds.add(id)
+                    || (!stableIdentityPresent && !snapshot.localRollbackBaseline)
+                    || (stableIdentityPresent && (entityId.length() < 8 || entityId.length() > 80
+                        || !serverEntityIds.add(entityId)))
+                    || pos < 0 || pos >= length || !mobPositions.add(pos)
                     || hp < 0 || ht < 1 || hp > ht) return false;
             if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
             Object buffs = mob.get("buffs");
@@ -374,6 +380,122 @@ public class WorldSnapshot {
         lastAppliedSnapshot = null;
     }
 
+    /**
+     * Captures this device's currently playable world as a private first-snapshot rollback point.
+     * Local Actor IDs are retained only inside this backup; the backup is never sent to the server.
+     */
+    public static WorldSnapshot captureLocalRollbackBaseline() {
+        try {
+            String encoded = SPDLevelSnapshot.currentLevelJson();
+            if (encoded == null || encoded.isEmpty()) return null;
+            JsonValue parsed = new JsonReader().parse(encoded);
+            Object converted = jsonValueToJava(parsed);
+            if (!(converted instanceof Map)) return null;
+            Map<String, Object> source = (Map<String, Object>) converted;
+
+            WorldSnapshot baseline = new WorldSnapshot();
+            baseline.localRollbackBaseline = true;
+            MultiplayerManager manager = MultiplayerManager.getInstance();
+            baseline.sequence = Math.max(0L, manager.getLastSequence());
+            baseline.depth = number(source.get("depth"), Dungeon.depth);
+            baseline.branch = number(source.get("branch"), Dungeon.branch);
+            Object rawSeed = source.get("seed");
+            baseline.dungeonSeed = rawSeed instanceof Number ? ((Number) rawSeed).longValue() : Dungeon.seedCurDepth();
+            baseline.levelWidth = number(source.get("width"), 0);
+            baseline.levelHeight = number(source.get("height"), 0);
+            baseline.entrancePos = number(source.get("entrancePos"), -1);
+            baseline.exitPos = number(source.get("exitPos"), -1);
+            baseline.levelLocked = Boolean.TRUE.equals(source.get("locked"));
+            baseline.levelFeeling = String.valueOf(source.getOrDefault("feeling", "NONE"));
+            baseline.nativeLevelMetadataBundle = String.valueOf(source.getOrDefault("nativeLevelMetadataBundle", ""));
+            baseline.completeWorldSnapshot = true;
+            baseline.visitedPositions = integerList(source.get("visitedPositions"));
+            baseline.mappedPositions = integerList(source.get("mappedPositions"));
+            baseline.tiles = objectRows(source.get("tiles"));
+            for (Map<String, Object> tile : baseline.tiles) {
+                for (String flag : new String[]{"passable", "solid", "pit", "losBlocking", "flammable",
+                        "secret", "avoid", "water", "discoverable", "openSpace"}) {
+                    Object value = tile.get(flag);
+                    if (value instanceof Boolean) tile.put(flag, (Boolean) value ? 1 : 0);
+                }
+            }
+            baseline.transitions = objectRows(source.get("transitions"));
+            baseline.mobs = objectRows(source.get("mobs"));
+            // A local rollback must match actual current local Actor IDs, not stale server mappings.
+            for (Map<String, Object> mob : baseline.mobs) mob.put("entityId", "");
+            baseline.heaps = objectRows(source.get("heaps"));
+            baseline.traps = objectRows(source.get("traps"));
+            baseline.blobs = objectRows(source.get("blobs"));
+            baseline.plants = objectRows(source.get("plants"));
+
+            String localId = manager.getLocalPlayerId();
+            if (localId == null || localId.isEmpty() || Dungeon.hero == null) return null;
+            baseline.playerPositions.put(localId, Dungeon.hero.pos);
+            baseline.playerHp.put(localId, Dungeon.hero.HP);
+            baseline.playerHt.put(localId, Dungeon.hero.HT);
+            baseline.playerClasses.put(localId, Dungeon.hero.heroClass.name());
+            String localHeroState = String.valueOf(source.getOrDefault("heroStateJson", ""));
+            if (localHeroState.isEmpty()) localHeroState = SPDLevelSnapshot.currentHeroStateJson();
+            baseline.playerStateJson.put(localId, localHeroState);
+
+            for (Map.Entry<String, MultiplayerManager.RemotePlayer> entry : manager.getRemotePlayers().entrySet()) {
+                MultiplayerManager.RemotePlayer remote = entry.getValue();
+                if (remote == null || entry.getKey() == null || entry.getKey().isEmpty()
+                        || remote.pos < 0 || remote.pos >= baseline.levelWidth * baseline.levelHeight) continue;
+                baseline.playerPositions.put(entry.getKey(), remote.pos);
+                baseline.playerHp.put(entry.getKey(), Math.max(0, remote.hp));
+                baseline.playerHt.put(entry.getKey(), Math.max(1, remote.ht));
+                baseline.playerClasses.put(entry.getKey(), remote.heroClass == null ? "WARRIOR" : remote.heroClass);
+                if (remote.heroInstance != null) {
+                    baseline.playerStateJson.put(entry.getKey(), SPDLevelSnapshot.currentHeroStateJson(remote.heroInstance));
+                }
+            }
+            return validateForRestore(baseline) ? baseline : null;
+        } catch (RuntimeException captureError) {
+            GLog.w("Unable to capture local rollback baseline: " + captureError.getMessage());
+            return null;
+        }
+    }
+
+    private static Object jsonValueToJava(JsonValue value) {
+        if (value == null || value.isNull()) return null;
+        if (value.isObject()) {
+            Map<String, Object> object = new HashMap<>();
+            for (JsonValue child = value.child; child != null; child = child.next) {
+                object.put(child.name, jsonValueToJava(child));
+            }
+            return object;
+        }
+        if (value.isArray()) {
+            List<Object> array = new ArrayList<>();
+            for (JsonValue child = value.child; child != null; child = child.next) array.add(jsonValueToJava(child));
+            return array;
+        }
+        if (value.isBoolean()) return value.asBoolean();
+        if (value.isNumber()) return value.isLong() ? Long.valueOf(value.asLong()) : Double.valueOf(value.asDouble());
+        if (value.isString()) return value.asString();
+        return value.asString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> objectRows(Object raw) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (!(raw instanceof List)) return rows;
+        for (Object entry : (List<?>) raw) {
+            if (entry instanceof Map) rows.add(new HashMap<>((Map<String, Object>) entry));
+        }
+        return rows;
+    }
+
+    private static List<Integer> integerList(Object raw) {
+        List<Integer> result = new ArrayList<>();
+        if (raw instanceof List) {
+            for (Object item : (List<?>) raw) if (item instanceof Number) result.add(((Number) item).intValue());
+        }
+        return result;
+    }
+
+
     /** Reapplies the last known-good snapshot if a later reconciliation throws mid-apply. */
     public static boolean rollbackToLastApplied() {
         WorldSnapshot backup = lastAppliedSnapshot;
@@ -399,6 +521,15 @@ public class WorldSnapshot {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (!manager.isMultiplayerActive()
                 || (!rollback && snapshot.sequence < manager.getLastSequence())) return false;
+
+        if (!rollback && !snapshot.localRollbackBaseline && lastAppliedSnapshot == null) {
+            WorldSnapshot baseline = captureLocalRollbackBaseline();
+            if (baseline == null) {
+                GLog.w("Rejected first authoritative snapshot because a valid local rollback baseline could not be captured.");
+                return false;
+            }
+            lastAppliedSnapshot = baseline;
+        }
 
         boolean dimensionsChanged = Dungeon.level.width() != snapshot.levelWidth
                 || Dungeon.level.height() != snapshot.levelHeight;
