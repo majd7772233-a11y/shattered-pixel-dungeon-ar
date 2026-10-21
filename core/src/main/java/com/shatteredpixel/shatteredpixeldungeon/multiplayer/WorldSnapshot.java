@@ -30,8 +30,6 @@ import java.util.Map;
 
 public class WorldSnapshot {
     private static volatile WorldSnapshot lastAppliedSnapshot;
-    private static int validationRejectCounter;
-    private static volatile int lastValidationRejectCounter;
     private static volatile String lastRollbackCaptureDiagnostic = "not run";
     /** True only for a local rollback copy; never serialized on the wire. */
     private boolean localRollbackBaseline;
@@ -208,8 +206,6 @@ public class WorldSnapshot {
      * not partially clear actors or advance the client's acknowledged sequence.
      */
     public static boolean validateForRestore(WorldSnapshot snapshot) {
-        validationRejectCounter = 0;
-        lastValidationRejectCounter = 0;
         if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return rejectValidation("validator-check-1");
         if (snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
                 || snapshot.depth != Dungeon.depth || snapshot.branch != Dungeon.branch
@@ -353,13 +349,8 @@ public class WorldSnapshot {
     }
 
     private static boolean rejectValidation(String reason) {
-        lastValidationRejectCounter = ++validationRejectCounter;
         lastRollbackCaptureDiagnostic = reason;
         return false;
-    }
-
-    public static int lastValidationRejectForDiagnostics() {
-        return lastValidationRejectCounter;
     }
 
     private static boolean validCellList(List<Integer> values, int length) {
@@ -598,45 +589,6 @@ public class WorldSnapshot {
     public static String lastRollbackCaptureDiagnostic() {
         return lastRollbackCaptureDiagnostic;
     }
-
-    private static Object jsonValueToJava(JsonValue value) {
-        if (value == null || value.isNull()) return null;
-        if (value.isObject()) {
-            Map<String, Object> object = new HashMap<>();
-            for (JsonValue child = value.child; child != null; child = child.next) {
-                object.put(child.name, jsonValueToJava(child));
-            }
-            return object;
-        }
-        if (value.isArray()) {
-            List<Object> array = new ArrayList<>();
-            for (JsonValue child = value.child; child != null; child = child.next) array.add(jsonValueToJava(child));
-            return array;
-        }
-        if (value.isBoolean()) return value.asBoolean();
-        if (value.isNumber()) return value.isLong() ? Long.valueOf(value.asLong()) : Double.valueOf(value.asDouble());
-        if (value.isString()) return value.asString();
-        return value.asString();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> objectRows(Object raw) {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        if (!(raw instanceof List)) return rows;
-        for (Object entry : (List<?>) raw) {
-            if (entry instanceof Map) rows.add(new HashMap<>((Map<String, Object>) entry));
-        }
-        return rows;
-    }
-
-    private static List<Integer> integerList(Object raw) {
-        List<Integer> result = new ArrayList<>();
-        if (raw instanceof List) {
-            for (Object item : (List<?>) raw) if (item instanceof Number) result.add(((Number) item).intValue());
-        }
-        return result;
-    }
-
 
     /** Reapplies the last known-good snapshot if a later reconciliation throws mid-apply. */
     public static boolean rollbackToLastApplied() {
