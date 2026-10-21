@@ -402,69 +402,168 @@ public class WorldSnapshot {
     public static WorldSnapshot captureLocalRollbackBaseline() {
         lastRollbackCaptureDiagnostic = "capture started";
         try {
-            String encoded = SPDLevelSnapshot.currentLevelJson();
-            if (encoded == null || encoded.isEmpty()) {
-                lastRollbackCaptureDiagnostic = "currentLevelJson returned an empty string";
+            com.shatteredpixel.shatteredpixeldungeon.levels.Level level = Dungeon.level;
+            Hero hero = Dungeon.hero;
+            MultiplayerManager manager = MultiplayerManager.getInstance();
+            String localId = manager.getLocalPlayerId();
+            if (level == null || hero == null || localId == null || localId.isEmpty()) {
+                lastRollbackCaptureDiagnostic = "missing current level, hero, or local player identity";
                 return null;
             }
-            JsonValue parsed = new JsonReader().parse(encoded);
-            Object converted = jsonValueToJava(parsed);
-            if (!(converted instanceof Map)) {
-                lastRollbackCaptureDiagnostic = "currentLevelJson root is not an object";
-                return null;
-            }
-            Map<String, Object> source = (Map<String, Object>) converted;
 
             WorldSnapshot baseline = new WorldSnapshot();
             baseline.localRollbackBaseline = true;
-            MultiplayerManager manager = MultiplayerManager.getInstance();
             baseline.sequence = Math.max(0L, manager.getLastSequence());
-            baseline.depth = number(source.get("depth"), Dungeon.depth);
-            baseline.branch = number(source.get("branch"), Dungeon.branch);
-            Object rawSeed = source.get("seed");
-            baseline.dungeonSeed = rawSeed instanceof Number ? ((Number) rawSeed).longValue() : Dungeon.seedCurDepth();
-            baseline.levelWidth = number(source.get("width"), 0);
-            baseline.levelHeight = number(source.get("height"), 0);
-            baseline.entrancePos = number(source.get("entrancePos"), -1);
-            baseline.exitPos = number(source.get("exitPos"), -1);
-            baseline.levelLocked = Boolean.TRUE.equals(source.get("locked"));
-            baseline.levelFeeling = String.valueOf(source.getOrDefault("feeling", "NONE"));
-            baseline.nativeLevelMetadataBundle = String.valueOf(source.getOrDefault("nativeLevelMetadataBundle", ""));
+            baseline.depth = Dungeon.depth;
+            baseline.branch = Dungeon.branch;
+            baseline.dungeonSeed = Dungeon.seedCurDepth();
+            baseline.levelWidth = level.width();
+            baseline.levelHeight = level.height();
+            baseline.entrancePos = level.entrance();
+            baseline.exitPos = level.exit();
+            baseline.levelLocked = level.locked;
+            baseline.levelFeeling = level.multiplayerFeelingName();
+            baseline.nativeLevelMetadataBundle = level.multiplayerMetadataBundle();
             baseline.completeWorldSnapshot = true;
-            baseline.visitedPositions = integerList(source.get("visitedPositions"));
-            baseline.mappedPositions = integerList(source.get("mappedPositions"));
-            baseline.tiles = objectRows(source.get("tiles"));
-            for (Map<String, Object> tile : baseline.tiles) {
-                for (String flag : new String[]{"passable", "solid", "pit", "losBlocking", "flammable",
-                        "secret", "avoid", "water", "discoverable", "openSpace"}) {
-                    Object value = tile.get(flag);
-                    if (value instanceof Boolean) tile.put(flag, (Boolean) value ? 1 : 0);
-                    else if (!(value instanceof Number)
-                            || (((Number) value).intValue() != 0 && ((Number) value).intValue() != 1)) {
-                        // libGDX omits primitive false fields when serializing the current level.
-                        // A missing flag in this local-only export means false, not malformed input.
-                        tile.put(flag, 0);
-                    }
+
+            baseline.visitedPositions.clear();
+            baseline.mappedPositions.clear();
+            for (int pos = 0; pos < level.length(); pos++) {
+                if (level.visited != null && level.visited[pos]) baseline.visitedPositions.add(pos);
+                if (level.mapped != null && level.mapped[pos]) baseline.mappedPositions.add(pos);
+                Map<String, Object> tile = new HashMap<>();
+                tile.put("pos", pos);
+                tile.put("terrain", level.map[pos]);
+                tile.put("passable", level.passable[pos] ? 1 : 0);
+                tile.put("solid", level.solid[pos] ? 1 : 0);
+                tile.put("pit", level.pit[pos] ? 1 : 0);
+                tile.put("losBlocking", level.losBlocking[pos] ? 1 : 0);
+                tile.put("flammable", level.flamable[pos] ? 1 : 0);
+                tile.put("secret", level.secret[pos] ? 1 : 0);
+                tile.put("avoid", level.avoid[pos] ? 1 : 0);
+                tile.put("water", level.water[pos] ? 1 : 0);
+                tile.put("discoverable", level.discoverable != null && level.discoverable[pos] ? 1 : 0);
+                tile.put("openSpace", level.openSpace[pos] ? 1 : 0);
+                baseline.tiles.add(tile);
+            }
+
+            baseline.transitions.clear();
+            if (level.transitions != null) {
+                for (LevelTransition transition : level.transitions) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("pos", transition.cell());
+                    row.put("type", transition.type == null ? "" : transition.type.name());
+                    row.put("targetDepth", transition.destDepth);
+                    row.put("targetBranch", transition.destBranch);
+                    row.put("targetType", transition.destType == null ? "" : transition.destType.name());
+                    baseline.transitions.add(row);
                 }
             }
-            baseline.transitions = objectRows(source.get("transitions"));
-            baseline.mobs = objectRows(source.get("mobs"));
-            // A local rollback must match actual current local Actor IDs, not stale server mappings.
-            for (Map<String, Object> mob : baseline.mobs) mob.put("entityId", "");
-            baseline.heaps = objectRows(source.get("heaps"));
-            baseline.traps = objectRows(source.get("traps"));
-            baseline.blobs = objectRows(source.get("blobs"));
-            baseline.plants = objectRows(source.get("plants"));
 
-            String localId = manager.getLocalPlayerId();
-            if (localId == null || localId.isEmpty() || Dungeon.hero == null) return null;
-            baseline.playerPositions.put(localId, Dungeon.hero.pos);
-            baseline.playerHp.put(localId, Dungeon.hero.HP);
-            baseline.playerHt.put(localId, Dungeon.hero.HT);
-            baseline.playerClasses.put(localId, Dungeon.hero.heroClass.name());
-            String localHeroState = String.valueOf(source.getOrDefault("heroStateJson", ""));
-            if (localHeroState.isEmpty()) localHeroState = SPDLevelSnapshot.currentHeroStateJson();
-            baseline.playerStateJson.put(localId, localHeroState);
+            baseline.mobs.clear();
+            for (com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob mob : level.mobs) {
+                if (mob == null) continue;
+                Map<String, Object> row = new HashMap<>();
+                row.put("mobId", mob.id());
+                // Local Actor IDs are private to this baseline and never serve as server identity.
+                row.put("entityId", "");
+                row.put("name", mob.getClass().getSimpleName());
+                row.put("pos", mob.pos);
+                row.put("hp", mob.HP);
+                row.put("ht", mob.HT);
+                row.put("shielding", Math.max(0, mob.shielding()));
+                row.put("state", mob.state == null ? "" : mob.state.getClass().getSimpleName());
+                row.put("defenseSkill", mob.defenseSkill);
+                row.put("baseSpeed", mob.multiplayerBaseSpeed());
+                row.put("cooldown", Math.max(0f, mob.cooldown()));
+                row.put("serializedBundle", SPDLevelSnapshot.currentMobBundle(mob));
+                List<Map<String, Object>> buffs = new ArrayList<>();
+                for (Buff buff : mob.buffs()) {
+                    Bundle buffBundle = new Bundle();
+                    buffBundle.put("buff", buff);
+                    Map<String, Object> buffRow = new HashMap<>();
+                    buffRow.put("serializedBundle", buffBundle.toString());
+                    buffRow.put("cooldown", Math.max(0f, buff.cooldown()));
+                    buffs.add(buffRow);
+                }
+                row.put("buffs", buffs);
+                baseline.mobs.add(row);
+            }
+
+            baseline.heaps.clear();
+            for (Heap heap : level.heaps.valueList()) {
+                if (heap == null) continue;
+                Map<String, Object> row = new HashMap<>();
+                row.put("pos", heap.pos);
+                row.put("type", heap.type == null ? "HEAP" : heap.type.name());
+                row.put("seen", heap.seen);
+                row.put("haunted", heap.haunted);
+                row.put("hidden", heap.hidden);
+                row.put("autoExplored", heap.autoExplored);
+                List<Map<String, Object>> items = new ArrayList<>();
+                for (Item item : heap.items) {
+                    if (item == null) continue;
+                    Bundle itemBundle = new Bundle();
+                    itemBundle.put("item", item);
+                    Map<String, Object> itemRow = new HashMap<>();
+                    itemRow.put("className", item.getClass().getName());
+                    itemRow.put("quantity", item.quantity());
+                    itemRow.put("level", item.level());
+                    itemRow.put("cursed", item.cursed);
+                    itemRow.put("cursedKnown", item.cursedKnown);
+                    itemRow.put("serializedBundle", itemBundle.toString());
+                    items.add(itemRow);
+                }
+                row.put("items", items);
+                baseline.heaps.add(row);
+            }
+
+            baseline.traps.clear();
+            for (Trap trap : level.traps.valueList()) {
+                if (trap == null) continue;
+                Bundle bundle = new Bundle();
+                bundle.put("trap", trap);
+                Map<String, Object> row = new HashMap<>();
+                row.put("pos", trap.pos);
+                row.put("className", trap.getClass().getName());
+                row.put("active", trap.active);
+                row.put("visible", trap.visible);
+                row.put("reclaimed", trap.reclaimed);
+                row.put("color", trap.color);
+                row.put("shape", trap.shape);
+                row.put("serializedBundle", bundle.toString());
+                baseline.traps.add(row);
+            }
+
+            baseline.blobs.clear();
+            for (Blob blob : level.blobs.values()) {
+                if (blob == null) continue;
+                Bundle bundle = new Bundle();
+                bundle.put("blob", blob);
+                Map<String, Object> row = new HashMap<>();
+                row.put("className", blob.getClass().getName());
+                row.put("serializedBundle", bundle.toString());
+                row.put("cooldown", Math.max(0f, blob.cooldown()));
+                baseline.blobs.add(row);
+            }
+
+            baseline.plants.clear();
+            for (Plant plant : level.plants.valueList()) {
+                if (plant == null) continue;
+                Bundle bundle = new Bundle();
+                bundle.put("plant", plant);
+                Map<String, Object> row = new HashMap<>();
+                row.put("pos", plant.pos);
+                row.put("className", plant.getClass().getName());
+                row.put("serializedBundle", bundle.toString());
+                baseline.plants.add(row);
+            }
+
+            baseline.playerPositions.put(localId, hero.pos);
+            baseline.playerHp.put(localId, hero.HP);
+            baseline.playerHt.put(localId, hero.HT);
+            baseline.playerClasses.put(localId, hero.heroClass.name());
+            baseline.playerStateJson.put(localId, SPDLevelSnapshot.currentHeroStateJson(hero));
 
             for (Map.Entry<String, RemotePlayer> entry : manager.getRemotePlayers().entrySet()) {
                 RemotePlayer remote = entry.getValue();
@@ -475,21 +574,18 @@ public class WorldSnapshot {
                 baseline.playerHt.put(entry.getKey(), Math.max(1, remote.ht));
                 baseline.playerClasses.put(entry.getKey(), remote.heroClass == null ? "WARRIOR" : remote.heroClass);
                 if (remote.heroInstance != null) {
-                    baseline.playerStateJson.put(entry.getKey(), SPDLevelSnapshot.currentHeroStateJson(remote.heroInstance));
+                    baseline.playerStateJson.put(entry.getKey(),
+                            SPDLevelSnapshot.currentHeroStateJson(remote.heroInstance));
                 }
             }
+
             if (!validateForRestore(baseline)) {
-                lastRollbackCaptureDiagnostic = "validateForRestore rejected by "
-                    + lastRollbackCaptureDiagnostic + " (complete=" + baseline.completeWorldSnapshot
-                    + ", level=" + (Dungeon.level != null)
-                    + ", depth=" + baseline.depth + "/" + Dungeon.depth
-                    + ", branch=" + baseline.branch + "/" + Dungeon.branch
-                    + ", size=" + baseline.levelWidth + "x" + baseline.levelHeight
-                    + ", tiles=" + (baseline.tiles == null ? -1 : baseline.tiles.size()) + ")";
-                GLog.w("Local rollback baseline rejected: " + lastRollbackCaptureDiagnostic);
+                String reason = lastRollbackCaptureDiagnostic;
+                lastRollbackCaptureDiagnostic = "local native rollback snapshot failed validation: " + reason;
+                GLog.w(lastRollbackCaptureDiagnostic);
                 return null;
             }
-            lastRollbackCaptureDiagnostic = "captured and validated";
+            lastRollbackCaptureDiagnostic = "captured directly from live native objects and validated";
             return baseline;
         } catch (RuntimeException captureError) {
             lastRollbackCaptureDiagnostic = "exception " + captureError.getClass().getSimpleName()
