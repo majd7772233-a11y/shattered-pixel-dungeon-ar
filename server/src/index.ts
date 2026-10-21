@@ -80,7 +80,7 @@ export function isValidNativeMoveIntent(
   }
   const walkable = (pos: number) => {
     const tile = tileByPos.get(pos);
-    return !!tile && tile.passable === true && tile.solid === false && tile.pit === false;
+    return !!tile && tile.passable === true && (tile.solid === false || Number(tile.terrain) === 5) && tile.pit === false;
   };
   if (!tileByPos.has(from) || !walkable(to)) return false;
   const dx = (to % width) - (from % width);
@@ -120,6 +120,204 @@ export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: 
     transitionType: String(transition.type), targetType, targetBranch: 0 };
 }
 
+
+/** Distinguishes unsupported branch exits from stale/invalid stair requests. */
+export function classifyNativeTransitionRejection(levelSnapshot: any, currentDepth: unknown,
+  currentPos: unknown, data: any): "UNSUPPORTED_BRANCH_TRANSITION" | "FLOOR_LOCKED" | "INVALID_TRANSITION" {
+  if (levelSnapshot && (levelSnapshot.branch !== 0
+      || (data?.branch !== undefined && data.branch !== 0))) return "UNSUPPORTED_BRANCH_TRANSITION";
+  if (levelSnapshot?.locked === true) return "FLOOR_LOCKED";
+  const pos = typeof currentPos === "number" ? currentPos : data?.from;
+  const transition = Array.isArray(levelSnapshot?.transitions)
+    ? levelSnapshot.transitions.find((row: any) => row?.pos === pos) : null;
+  if (transition && (String(transition.type).startsWith("BRANCH_") || Number(transition.targetBranch) !== 0)) {
+    return "UNSUPPORTED_BRANCH_TRANSITION";
+  }
+  return "INVALID_TRANSITION";
+}
+
+/** Validates the intent against the authoritative floor, not the caller's claimed target alone. */
+export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, levelSnapshot: any,
+  currentDepth: unknown, currentPos: unknown): boolean {
+  const action = String(actionValue || "");
+  if (!["UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(action)
+      || !levelSnapshot || levelSnapshot.branch !== 0 || levelSnapshot.depth !== currentDepth
+      || levelSnapshot.locked === true || data?.depth !== currentDepth || data?.from !== currentPos
+      || !Number.isInteger(currentPos) || !Number.isInteger(data?.targetPos)
+      || !Array.isArray(levelSnapshot.tiles) || !Array.isArray(levelSnapshot.heaps)
+      || !Array.isArray(levelSnapshot.mobs)) return false;
+  const width = Number(levelSnapshot.width), height = Number(levelSnapshot.height), target = Number(data.targetPos);
+  const size = width * height;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || target < 0 || target >= size
+      || currentPos < 0 || currentPos >= size
+      || Math.max(Math.abs((target % width) - (currentPos % width)),
+          Math.abs(Math.floor(target / width) - Math.floor(currentPos / width))) !== 1) return false;
+  const tile = levelSnapshot.tiles.find((row: any) => row?.pos === target);
+  if (!tile) return false;
+  const terrain = Number(tile.terrain);
+  if (action === "UNLOCK") return [10, 21, 31, 38].includes(terrain);
+  if (action === "MINE") return [4, 12, 35, 36].includes(terrain);
+  if (action === "OPEN_CHEST") {
+    const heap = levelSnapshot.heaps.find((row: any) => row?.pos === target);
+    return !!heap && ["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(heap.type));
+  }
+  return levelSnapshot.mobs.some((mob: any) =>
+    Number(mob?.pos) === target && Number(mob?.hp) > 0 && typeof mob?.entityId === "string");
+}
+
+/** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
+export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
+  fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown): boolean {
+  const action = String(actionValue || "");
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(action)
+      || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
+      || next.nativeWorldMutation !== true || next.nativeWorldTick === true
+      || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
+      || previous.depth !== next.depth || previous.branch !== 0 || next.branch !== 0
+      || previous.width !== next.width || previous.height !== next.height || previous.seed !== next.seed
+      || previous.entrancePos !== next.entrancePos || previous.exitPos !== next.exitPos
+      || previous.locked !== next.locked || previous.feeling !== next.feeling
+      || previous.nativeLevelMetadataBundle !== next.nativeLevelMetadataBundle
+      || !Array.isArray(previous.transitions) || !Array.isArray(next.transitions)
+      || !Array.isArray(previous.tiles) || !Array.isArray(next.tiles)) return false;
+  const from = fromValue, target = targetValue;
+  const width = Number(previous.width), height = Number(previous.height), size = width * height;
+  if (!Number.isInteger(from) || Number(from) < 0 || Number(from) >= size
+      || !Number.isInteger(target) || Number(target) < 0 || Number(target) >= size) return false;
+  const expectedHeroPos = action === "MOVE" ? Number(target) : Number(from);
+  let beforeHero: any = null, afterHero: any = null;
+  try {
+    beforeHero = JSON.parse(String(trustedHeroStateValue ?? previous.heroStateJson ?? ""));
+    afterHero = JSON.parse(String(next.heroStateJson || ""));
+  } catch (_) { return false; }
+  if (!beforeHero || !afterHero || afterHero.pos !== expectedHeroPos
+      || !isValidNativeHeroStateJson(next.heroStateJson, {
+        hp: afterHero.hp, ht: afterHero.ht, pos: expectedHeroPos, shielding: afterHero.shielding
+      })) return false;
+  const canonical = (value: any): any => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") {
+      const result: any = {};
+      for (const key of Object.keys(value).sort()) result[key] = canonical(value[key]);
+      return result;
+    }
+    return value;
+  };
+  const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  if (!same(previous.transitions, next.transitions)) return false;
+
+  // Native shared Actors remain server-trusted until their own publisher turn arrives.
+  const oldMobs = new Map<number, any>((previous.mobs || []).map((m: any) => [Number(m.mobId), m]));
+  const newMobs = new Map<number, any>((next.mobs || []).map((m: any) => [Number(m.mobId), m]));
+  if (oldMobs.size !== newMobs.size) return false;
+  for (const [id, oldMob] of oldMobs) {
+    const newMob = newMobs.get(id);
+    if (!newMob) return false;
+    for (const key of ["entityId", "name", "pos", "hp", "ht", "shielding", "state", "defenseSkill",
+      "baseSpeed", "effectiveSpeed", "cooldown", "targetCell", "targetType", "targetEntityId",
+      "enemySeen", "alerted", "buffs"]) if (!same(oldMob[key], newMob[key])) return false;
+  }
+
+  const dist = (a: number, b: number) => Math.max(Math.abs((a % width) - (b % width)),
+    Math.abs(Math.floor(a / width) - Math.floor(b / width)));
+  const oldTiles = new Map<number, any>((previous.tiles || []).map((t: any) => [Number(t.pos), t]));
+  const newTiles = new Map<number, any>((next.tiles || []).map((t: any) => [Number(t.pos), t]));
+  if (oldTiles.size !== size || newTiles.size !== size) return false;
+  const flags: Record<number, [boolean, boolean, boolean]> = {
+    0:[false,false,true], 1:[true,false,false], 2:[true,false,false], 3:[true,false,false],
+    4:[false,true,false], 5:[true,true,false], 6:[true,false,false], 7:[true,false,false],
+    8:[true,false,false], 9:[true,false,false], 10:[false,true,false], 12:[false,true,false],
+    13:[false,true,false], 14:[true,false,false], 15:[true,false,false], 16:[false,true,false],
+    17:[true,false,false], 18:[false,false,false], 19:[true,false,false], 20:[true,false,false],
+    21:[false,true,false], 22:[true,false,false], 24:[false,false,false], 27:[false,true,false],
+    28:[false,true,false], 29:[true,false,false], 30:[true,false,false], 31:[false,true,false],
+    32:[true,false,false], 35:[false,true,false], 36:[false,true,false], 38:[false,true,false]
+  };
+  const allowedTerrain = (pos: number, a: number, b: number): boolean => {
+    if (a === b) return true;
+    if (action === "MOVE") return (pos === Number(from) && a === 6 && b === 5)
+      || (pos === Number(target) && ((a === 5 && b === 6)
+        || ([2, 15, 30, 9].includes(a) && [2, 9, 15, 30].includes(b))
+        || (a === 16 && b === 5) || (a === 17 && b === 18) || (a === 18 && [19, 1].includes(b)))
+      || (dist(pos, Number(target)) <= 12 && ((a === 16 && b === 5) || (a === 17 && b === 18)));
+    if (action === "UNLOCK" && pos === Number(target)) return (a === 10 && b === 5)
+      || (a === 38 && b === 5) || (a === 31 && b === 1) || (a === 21 && b === 22);
+    if (action === "MINE" && dist(pos, Number(target)) <= 1) return ([4, 12].includes(a) && b === 20)
+      || (a === 35 && b === 1) || (a === 36 && b === 20);
+    if (action === "INTERACT" && dist(pos, Number(target)) <= 1) return (a === 13 && [1, 20, 2, 9].includes(b))
+      || (a === 27 && [1, 20].includes(b)) || (a === 16 && b === 5) || (a === 17 && b === 18);
+    return false;
+  };
+  for (let pos = 0; pos < size; pos++) {
+    const a = oldTiles.get(pos), b = newTiles.get(pos);
+    if (!a || !b) return false;
+    const terrainChanged = Number(a.terrain) !== Number(b.terrain);
+    if (terrainChanged && (dist(pos, Number(target)) > (action === "MOVE" ? 12 : action === "MINE" || action === "INTERACT" ? 1 : 0)
+        || !allowedTerrain(pos, Number(a.terrain), Number(b.terrain)))) return false;
+    if (terrainChanged) {
+      const expected = flags[Number(b.terrain)];
+      if (expected && (b.passable !== expected[0] || b.solid !== expected[1] || b.pit !== expected[2])) return false;
+    }
+    for (const field of ["passable", "solid", "pit", "losBlocking", "flammable", "secret", "avoid", "water"]) {
+      if (!same(a[field], b[field]) && !terrainChanged) return false;
+    }
+    for (const field of ["discoverable", "openSpace"]) {
+      if (!same(a[field], b[field]) && dist(pos, expectedHeroPos) > 12
+          && !(action === "MINE" && dist(pos, Number(target)) <= 1)) return false;
+    }
+    if (!same(a.secret, b.secret) && !terrainChanged) return false;
+  }
+  const growthLocal = (before: any[], after: any[]) => {
+    const oldSet = new Set<number>(before || []), newSet = new Set<number>(after || []);
+    for (const p of oldSet) if (!newSet.has(p)) return false;
+    for (const p of newSet) if (!oldSet.has(p) && dist(p, expectedHeroPos) > 12) return false;
+    return true;
+  };
+  if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
+      || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
+  if (action !== "OPEN_CHEST" && action !== "MINE" && !same(previous.heaps, next.heaps)) return false;
+  if (action === "OPEN_CHEST") {
+    const oldHeap = (previous.heaps || []).find((h: any) => Number(h.pos) === Number(target));
+    if (!oldHeap || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(oldHeap.type))) return false;
+    const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
+    const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
+    for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
+      if (pos !== Number(target) && !same(before.get(pos), after.get(pos))) return false;
+    }
+  }
+  if (action !== "MOVE" && !same(previous.traps, next.traps)) return false;
+  if (action !== "MOVE" && !same(previous.plants, next.plants)) return false;
+  if (action === "MOVE" && !same(previous.blobs, next.blobs)) {
+    const old = new Map<string, any>((previous.blobs || []).map((b: any) => [String(b.className), b]));
+    const curr = new Map<string, any>((next.blobs || []).map((b: any) => [String(b.className), b]));
+    for (const name of new Set<string>([...old.keys(), ...curr.keys()])) {
+      if (!same(old.get(name), curr.get(name)) && (!name.endsWith(".Web")
+          || !old.has(name) || !curr.has(name))) return false;
+    }
+  }
+
+  const keyFields = ["ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"];
+  for (const field of keyFields) if (!Number.isInteger(beforeHero[field]) || beforeHero[field] < 0
+      || !Number.isInteger(afterHero[field]) || afterHero[field] < 0) return false;
+  if (typeof beforeHero.inventoryBundle !== "string" || typeof afterHero.inventoryBundle !== "string") return false;
+  if (action !== "INTERACT" && action !== "MINE" && beforeHero.inventoryBundle !== afterHero.inventoryBundle) return false;
+  const targetTerrain = Number(oldTiles.get(Number(target))?.terrain);
+  const oldHeap = (previous.heaps || []).find((h: any) => Number(h.pos) === Number(target));
+  const requiredKey = action === "UNLOCK"
+    ? targetTerrain === 10 ? "ironKeyCount" : targetTerrain === 31 ? "crystalKeyCount" : targetTerrain === 21 ? "wornKeyCount" : null
+    : action === "OPEN_CHEST" ? oldHeap?.type === "LOCKED_CHEST" ? "goldenKeyCount"
+      : oldHeap?.type === "CRYSTAL_CHEST" ? "crystalKeyCount" : null : null;
+  if (requiredKey) {
+    for (const field of keyFields) if (afterHero[field] !== beforeHero[field] - (field === requiredKey ? 1 : 0)) return false;
+    if (typeof beforeHero.notesBundle !== "string" || typeof afterHero.notesBundle !== "string"
+        || beforeHero.notesBundle === afterHero.notesBundle) return false;
+  } else if (action !== "INTERACT" && action !== "MINE") {
+    for (const field of keyFields) if (beforeHero[field] !== afterHero[field]) return false;
+    if (beforeHero.notesBundle !== afterHero.notesBundle) return false;
+  }
+  if (action !== "INTERACT" && beforeHero.questStateBundle !== afterHero.questStateBundle) return false;
+  return true;
+}
 /** Rejects partial/legacy level payloads before any room state is replaced. */
 export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   if (!level || typeof level !== "object"
