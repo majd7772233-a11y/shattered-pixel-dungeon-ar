@@ -705,7 +705,7 @@ public final class MessageRouter {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
                 } else if ("LEVEL_TRANSITION".equals(type)) {
-                    MultiplayerManager manager = MultiplayerManager.getInstance();
+                    MultiplayerManager transitionManager = MultiplayerManager.getInstance();
                     String initiatorId = stringValue(action.get("playerId"), "");
                     int sourceDepth = intValue(action.get("fromDepth"), -1);
                     int destinationDepth = intValue(action.get("depth"), -1);
@@ -713,13 +713,13 @@ public final class MessageRouter {
                     String transitionType = stringValue(action.get("transitionType"), "");
                     String targetType = stringValue(action.get("targetType"), "");
                     int targetBranch = intValue(action.get("targetBranch"), -1);
-                    if (initiatorId.equals(manager.getLocalPlayerId())
+                    if (initiatorId.equals(transitionManager.getLocalPlayerId())
                             || (Dungeon.branch == 0 && Dungeon.depth == destinationDepth)) {
-                        manager.updateLastSequence(seq);
+                        transitionManager.updateLastSequence(seq);
                     } else if (Dungeon.hero == null || Dungeon.level == null || Dungeon.branch != 0
                             || Dungeon.depth != sourceDepth || Dungeon.level.locked || targetBranch != 0
                             || (destinationDepth != sourceDepth + 1 && destinationDepth != sourceDepth - 1)) {
-                        manager.requestResync(seq);
+                        transitionManager.requestResync(seq);
                     } else {
                         com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition transition =
                                 Dungeon.level.getTransition(stairsPos);
@@ -733,9 +733,9 @@ public final class MessageRouter {
                                 && (transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
                                     || transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE);
                         if (matchesNativeSource && Dungeon.level.activateTransition(Dungeon.hero, transition)) {
-                            manager.updateLastSequence(seq);
+                            transitionManager.updateLastSequence(seq);
                         } else {
-                            manager.requestResync(seq);
+                            transitionManager.requestResync(seq);
                         }
                     }
                 } else if ("MATCH_END".equals(type)) {
