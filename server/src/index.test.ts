@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -166,6 +166,59 @@ describe('Native level snapshot contract', () => {
   it('accepts an explicit full snapshot with empty authoritative collections', () => {
     expect(hasCompleteNativeLevelSnapshot(completeSnapshot())).toBe(true);
   });
+  const previousNativeMobSnapshot = () => {
+    const previous: any = completeSnapshot();
+    previous.mobs = [{
+      mobId: 11, entityId: "stable-native-mob-0001", name: "Rat", pos: 10,
+      hp: 10, ht: 10, shielding: 0, serializedBundle: "native-rat-bundle", buffs: [],
+      state: "Hunting", baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false
+    }];
+    return previous;
+  };
+
+  const nextNativeMobTurn = (overrides: any = {}) => {
+    const previous: any = previousNativeMobSnapshot();
+    return {
+      ...previous,
+      nativeWorldTick: true, nativeWorldTurnCounter: 1, nativeActorClock: 4.5,
+      nativeWorldActorKind: "MOB", nativeWorldActorId: 11,
+      nativeWorldActorClass: "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat",
+      nativeWorldActorEntityId: "stable-native-mob-0001",
+      nativeMobActorId: 11, nativeMobEntityId: "stable-native-mob-0001",
+      mobs: [{ ...previous.mobs[0], pos: 11, cooldown: 1 }],
+      ...overrides
+    };
+  };
+
+  it("accepts a fresh native Mob turn with a matching stable actor identity", () => {
+    expect(isValidNativeWorldTurnSnapshot(previousNativeMobSnapshot(), nextNativeMobTurn(), 0, 1)).toBe(true);
+  });
+
+  it("rejects replayed counters, foreign actor IDs and mismatched stable identities", () => {
+    const previous = previousNativeMobSnapshot();
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn(), 1, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeWorldActorId: 88 }), 0, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({
+      nativeWorldActorEntityId: "different-stable-mob-0002", nativeMobEntityId: "different-stable-mob-0002"
+    }), 0, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ width: 9 }), 0, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeActorClock: Number.NaN }), 0, 1)).toBe(false);
+  });
+
+  it("rejects malformed native timing and target fields before any room state is written", () => {
+    const previous = previousNativeMobSnapshot();
+    expect(hasCompleteNativeLevelSnapshot(nextNativeMobTurn({
+      mobs: [{ ...previous.mobs[0], effectiveSpeed: 0 }]
+    }))).toBe(false);
+    expect(hasCompleteNativeLevelSnapshot(nextNativeMobTurn({
+      mobs: [{ ...previous.mobs[0], cooldown: -1 }]
+    }))).toBe(false);
+    expect(hasCompleteNativeLevelSnapshot(nextNativeMobTurn({
+      mobs: [{ ...previous.mobs[0], targetType: "PLAYER", targetEntityId: "" }]
+    }))).toBe(false);
+  });
+
 
   it('rejects missing collections rather than treating them as empty', () => {
     const snapshot: any = completeSnapshot();

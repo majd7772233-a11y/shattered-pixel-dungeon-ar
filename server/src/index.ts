@@ -83,11 +83,95 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
     && Number.isInteger(mob?.shielding) && Number(mob.shielding) >= 0 && Number(mob.shielding) <= 100000
     && Array.isArray(mob?.buffs) && mob.buffs.length <= 256
     && mob.buffs.every((buff: any) => bundle(buff?.serializedBundle)))) return false;
+  if (level.nativeWorldTick === true) {
+    if (!Number.isSafeInteger(level.nativeWorldTurnCounter) || level.nativeWorldTurnCounter < 1
+      || !Number.isFinite(level.nativeActorClock) || level.nativeActorClock < 0 || level.nativeActorClock > 1e9
+      || !Number.isInteger(level.nativeWorldActorId) || level.nativeWorldActorId < 0
+      || typeof level.nativeWorldActorClass !== "string" || level.nativeWorldActorClass.length < 1
+      || level.nativeWorldActorClass.length > 240
+      || !["MOB", "MOB_BUFF", "BLOB", "RESPAWNER"].includes(String(level.nativeWorldActorKind))
+      || typeof level.nativeWorldActorEntityId !== "string" || level.nativeWorldActorEntityId.length > 80
+      || typeof level.nativeMobEntityId !== "string" || level.nativeMobEntityId.length > 80
+      || !Number.isInteger(level.nativeMobActorId) || level.nativeMobActorId < -1) return false;
+    if ((level.nativeWorldActorKind === "MOB" || level.nativeWorldActorKind === "MOB_BUFF")
+      && (level.nativeWorldActorEntityId.length < 8 || level.nativeMobEntityId !== level.nativeWorldActorEntityId
+        || level.nativeMobActorId < 0)) return false;
+    for (const mob of level.mobs) {
+      const baseSpeed = Number(mob?.baseSpeed);
+      const effectiveSpeed = Number(mob?.effectiveSpeed);
+      const cooldown = Number(mob?.cooldown ?? 0);
+      const targetCell = Number(mob?.targetCell ?? -1);
+      const targetType = String(mob?.targetType ?? "NONE");
+      const targetEntityId = String(mob?.targetEntityId ?? "");
+      if (!Number.isFinite(baseSpeed) || baseSpeed <= 0 || baseSpeed > 1000
+        || !Number.isFinite(effectiveSpeed) || effectiveSpeed <= 0 || effectiveSpeed > 1000
+        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
+        || !Number.isInteger(targetCell) || targetCell < -1 || targetCell >= size
+        || !["NONE", "MOB", "PLAYER"].includes(targetType) || targetEntityId.length > 128
+        || ((targetType === "MOB" || targetType === "PLAYER") && targetEntityId.length < 8)) return false;
+    }
+  }
   if (!level.heaps.every((heap: any) => Array.isArray(heap?.items) && heap.items.length <= 512
     && heap.items.every((item: any) => bundle(item?.serializedBundle)))) return false;
   if (!level.traps.every((trap: any) => bundle(trap?.serializedBundle))
     || !level.plants.every((plant: any) => bundle(plant?.serializedBundle))
     || !level.blobs.every((blob: any) => bundle(blob?.serializedBundle))) return false;
+  return true;
+}
+
+/**
+ * Accepts only a fresh full snapshot emitted by the native Java Actor scheduler, after validating
+ * that its actor existed in the previous authoritative world. TypeScript deliberately does not
+ * reconstruct Mob AI moves or damage; it only sequences the already-resolved native state.
+ */
+export function isValidNativeWorldTurnSnapshot(
+  previous: any,
+  next: any,
+  lastAcceptedTurn: unknown,
+  expectedDepth: number
+): boolean {
+  const last = Number(lastAcceptedTurn);
+  if (!previous || !Array.isArray(previous.mobs) || !Array.isArray(previous.blobs)
+    || !hasCompleteNativeLevelSnapshot(next) || next.nativeWorldTick !== true
+    || !Number.isSafeInteger(last) || last < 0
+    || !Number.isSafeInteger(next.nativeWorldTurnCounter) || next.nativeWorldTurnCounter <= last
+    || Number(next.depth) !== expectedDepth || Number(previous.depth) !== expectedDepth
+    || Number(previous.width) !== Number(next.width) || Number(previous.height) !== Number(next.height)
+    || Number(previous.branch) !== Number(next.branch) || Number(previous.seed) !== Number(next.seed)) return false;
+
+  const actorKind = String(next.nativeWorldActorKind);
+  const actorClass = String(next.nativeWorldActorClass);
+  const actorEntityId = String(next.nativeWorldActorEntityId || "");
+  const mobEntityId = String(next.nativeMobEntityId || "");
+  const previousMobs = previous.mobs as any[];
+
+  if (actorKind === "MOB") {
+    const matches = previousMobs.filter(m => String(m?.entityId || "") === actorEntityId);
+    if (matches.length !== 1 || Number(matches[0].mobId) !== Number(next.nativeWorldActorId)
+      || Number(next.nativeMobActorId) !== Number(matches[0].mobId)
+      || mobEntityId !== actorEntityId
+      || !(actorClass.endsWith("." + String(matches[0].name)) || actorClass.endsWith("$" + String(matches[0].name)))) return false;
+  } else if (actorKind === "MOB_BUFF") {
+    const matches = previousMobs.filter(m => String(m?.entityId || "") === mobEntityId);
+    if (matches.length !== 1 || Number(matches[0].mobId) !== Number(next.nativeMobActorId)
+      || actorEntityId !== mobEntityId || !actorClass.includes(".actors.buffs.")) return false;
+  } else if (actorKind === "BLOB") {
+    const existed = previous.blobs.some((blob: any) => String(blob?.className || "") === actorClass);
+    if (!existed || actorEntityId.length !== 0) return false;
+  } else if (actorKind === "RESPAWNER") {
+    if (!actorClass.includes("MobSpawner") || actorEntityId.length !== 0
+      || typeof previous.nativeLevelMetadataBundle !== "string" || previous.nativeLevelMetadataBundle.length === 0) return false;
+  } else {
+    return false;
+  }
+
+  // The full snapshot is authoritative only when all surviving entities retain unique stable IDs.
+  const entityIds = new Set<string>();
+  for (const mob of next.mobs) {
+    const id = String(mob?.entityId || "");
+    if (id.length < 8 || id.length > 80 || entityIds.has(id)) return false;
+    entityIds.add(id);
+  }
   return true;
 }
 
@@ -1308,6 +1392,11 @@ export class MatchRoom {
             || !Number.isInteger(hp) || !Number.isInteger(ht) || hp < 0 || ht < 1 || hp > ht
             || !Number.isInteger(mob?.shielding) || Number(mob.shielding) < 0 || Number(mob.shielding) > 100000
             || typeof mob?.name !== "string" || !validBundle(mob?.serializedBundle)
+            || (level.nativeWorldTick === true && (!Number.isFinite(Number(mob?.baseSpeed)) || Number(mob.baseSpeed) <= 0
+              || Number(mob.baseSpeed) > 1000 || !Number.isFinite(Number(mob?.effectiveSpeed))
+              || Number(mob.effectiveSpeed) <= 0 || Number(mob.effectiveSpeed) > 1000
+              || !Number.isFinite(Number(mob?.cooldown ?? 0)) || Number(mob.cooldown ?? 0) < 0
+              || Number(mob.cooldown ?? 0) > 100000))
             || !Array.isArray(mob?.buffs) || mob.buffs.length > 256
             || mob.buffs.some((buff: any) => !validBundle(buff?.serializedBundle)
               || !Number.isFinite(Number(buff?.cooldown)) || Number(buff.cooldown) < 0 || Number(buff.cooldown) > 100000)) {
@@ -1349,6 +1438,22 @@ export class MatchRoom {
           previousSnapshot = previousSnapshotRow && typeof previousSnapshotRow.value === "string"
             ? JSON.parse(String(previousSnapshotRow.value)) : {};
         } catch (_) { previousSnapshot = {}; }
+        const storedTurnRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeWorldTurnCounter").toArray()[0];
+        const storedTurnCounter = Math.max(0,
+          Number.isSafeInteger(Number(storedTurnRow?.value)) ? Number(storedTurnRow.value) : 0,
+          Number.isSafeInteger(Number(previousSnapshot.nativeWorldTurnCounter))
+            ? Number(previousSnapshot.nativeWorldTurnCounter) : 0);
+        const isNativeWorldTurn = level.nativeWorldTick === true;
+        if (isNativeWorldTurn && !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, depth)) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_OR_REPLAYED_NATIVE_WORLD_TURN" }) }));
+          return;
+        }
+        if (!isNativeWorldTurn && level.nativeWorldTurnCounter !== undefined) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "UNMARKED_NATIVE_WORLD_TURN" }) }));
+          return;
+        }
         assignStableEntityIds(mobs, Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : []);
         level.mobs = mobs;
 
@@ -1377,15 +1482,58 @@ export class MatchRoom {
             `spd_${depth}_${Number(t.pos)}_${String(t.type)}`,depth,Number(t.pos),type,Number(t.targetDepth));
         }
         for (const m of mobs) {
-          const initialCooldown = Math.max(0, Math.min(100, Number(m.cooldown) || 0));
+          const initialCooldown = Math.max(0, Math.min(100000, Number(m.cooldown) || 0));
+          const nativeState = String(m.state || "WANDERING").slice(0, 40);
           this.sql.exec(`INSERT OR REPLACE INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state)
-            VALUES (?,?,?,?,?,?,8,6,?,'HUNTING')`,
-            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),this.worldTime + initialCooldown);
+            VALUES (?,?,?,?,?,?,8,6,?,?)`,
+            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),
+            this.worldTime + initialCooldown, nativeState);
         }
+        if (isNativeWorldTurn) {
+          this.currentSequence++;
+          const actorEvent = {
+            turnCounter: Number(level.nativeWorldTurnCounter),
+            actorKind: String(level.nativeWorldActorKind),
+            actorClass: String(level.nativeWorldActorClass),
+            actorEntityId: String(level.nativeWorldActorEntityId || ""),
+            mobEntityId: String(level.nativeMobEntityId || ""),
+            actorClock: Number(level.nativeActorClock),
+            depth
+          };
+          this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "nativeWorldTurnCounter", String(level.nativeWorldTurnCounter));
+          this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+            this.currentSequence, session.playerId, "NATIVE_WORLD_TURN", JSON.stringify(actorEvent));
+        }
+        const ackTurnRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeWorldTurnCounter").toArray()[0];
+        const ackTurnCounter = Math.max(0, Number(ackTurnRow?.value) || Number(level.nativeWorldTurnCounter) || 0);
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
           sequence: this.currentSequence, payloadJson: JSON.stringify({ accepted: true, source: "SPD_JAVA_GENERATOR",
             depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length,
+            nativeWorldTurnCounter: ackTurnCounter,
             entities: mobs.map((mob: any) => ({ mobId: Number(mob.mobId), entityId: String(mob.entityId) })) }) }));
+        if (isNativeWorldTurn) {
+          // Broadcast the complete server-committed world to the peers, not a guessed Mob delta.
+          const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
+          const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray().map((player: any) => {
+            const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
+            return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+          });
+          const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
+          const claims = this.sql.exec("SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?", this.currentDepth).toArray();
+          const snapshotPayload = {
+            sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
+            players, mobs: liveMobs, claims, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
+          };
+          const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
+            senderId: session.playerId, sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
+          for (const peer of this.state.getWebSockets()) {
+            if (peer === ws) continue;
+            const peerSession = peer.deserializeAttachment() as SessionData | null;
+            if (!peerSession || peerSession.playerId === session.playerId) continue;
+            peer.send(message);
+          }
+        }
         return;
       }
 
@@ -2922,7 +3070,8 @@ export class MatchRoom {
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
           this.checkMatchEndCondition();
-          if (eventType !== "PLAYER_DAMAGED" && eventType !== "PLAYER_REVIVED" && eventType !== "CHAR_DAMAGED") this.processMobTurns();
+          // Mob turns are resolved exclusively by the original Java SPD Actor scheduler.
+          // Running a TypeScript pathfinder here would race the publisher and overwrite native AI.
         } else {
           if (pendingCombatForCleanup && String(pendingCombatForCleanup.authorityId || "") === session.playerId) {
             this.clearPendingCombat(pendingCombatForCleanup);
@@ -3007,12 +3156,26 @@ export class MatchRoom {
     const originalMobs = new Map<number, any>(
       (Array.isArray(original.mobs) ? original.mobs : []).map((mob: any) => [Number(mob.mobId), mob])
     );
+    const originalTiles = new Map<number, any>(
+      (Array.isArray(original.tiles) ? original.tiles : []).map((tile: any) => [Number(tile.pos), tile])
+    );
     const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
     return {
       ...originalWorld,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
-      tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
+      tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray().map((tile: any) => {
+        const savedTile = originalTiles.get(Number(tile.pos)) || {};
+        return {
+          ...savedTile, ...tile,
+          pos: Number(tile.pos), terrain: Number(tile.terrain),
+          passable: Number(tile.passable) !== 0, solid: Number(tile.solid) !== 0,
+          pit: Number(tile.pit) !== 0, losBlocking: Number(tile.los_blocking) !== 0,
+          flammable: Boolean(savedTile.flammable), secret: Boolean(savedTile.secret),
+          avoid: Boolean(savedTile.avoid), water: Boolean(savedTile.water),
+          discoverable: Boolean(savedTile.discoverable), openSpace: Boolean(savedTile.openSpace)
+        };
+      }),
       transitions: Array.isArray(original.transitions) ? original.transitions :
         this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
       mobs: liveMobs.map((mob: any) => {
@@ -3089,156 +3252,6 @@ export class MatchRoom {
           sequence: this.currentSequence,
           payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MATCH_END", depth: this.currentDepth, action: matchEndPayload }])
         });
-      }
-    }
-  }
-
-  /** Finds the shortest legal 8-way SPD-style step without cutting corners or overlapping actors. */
-  private findNextMobStep(start: number, target: number, width: number, depth: number, mobId: number): number {
-    const levelRows = this.sql.exec(
-      `SELECT pos, passable, solid, pit FROM level_tiles WHERE depth = ?`, depth
-    ).toArray();
-    const tiles = new Map<number, { passable: number; solid: number; pit: number }>();
-    for (const row of levelRows) {
-      tiles.set(Number(row.pos), {
-        passable: Number(row.passable), solid: Number(row.solid), pit: Number(row.pit)
-      });
-    }
-    const mobRows = this.sql.exec(`SELECT pos FROM mobs WHERE depth = ? AND hp > 0 AND mob_id != ?`, depth, mobId).toArray();
-    const occupied = new Set<number>(mobRows.map((row: any) => Number(row.pos)));
-    const playerRows = this.sql.exec(`SELECT pos FROM players WHERE state = 'ALIVE'`).toArray();
-    for (const row of playerRows) occupied.add(Number(row.pos));
-
-    const height = levelRows.length / Math.max(1, width);
-    const count = Math.floor(width * height);
-    if (start < 0 || target < 0 || start >= count || target >= count || width < 1) return -1;
-    const queue = new Int32Array(count);
-    const previous = new Int32Array(count);
-    const firstStep = new Int32Array(count);
-    previous.fill(-2);
-    previous[start] = -1;
-    let head = 0, tail = 0;
-    queue[tail++] = start;
-    const targetX = target % width, targetY = Math.floor(target / width);
-    let goal = -1;
-    const dirs = [-1, 0, 1];
-
-    while (head < tail) {
-      const current = queue[head++];
-      if (current !== start) {
-        const cx = current % width, cy = Math.floor(current / width);
-        if (Math.abs(cx - targetX) <= 1 && Math.abs(cy - targetY) <= 1
-          && (cx !== targetX || cy !== targetY)) {
-          goal = current;
-          break;
-        }
-      }
-      const x = current % width, y = Math.floor(current / width);
-      for (const dy of dirs) for (const dx of dirs) {
-        if (dx === 0 && dy === 0) continue;
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny * width + nx >= count) continue;
-        const next = ny * width + nx;
-        if (previous[next] !== -2 || occupied.has(next)) continue;
-        const tile = tiles.get(next);
-        if (!tile || tile.passable !== 1 || tile.solid === 1 || tile.pit === 1) continue;
-        if (dx !== 0 && dy !== 0) {
-          const sideA = tiles.get(y * width + nx);
-          const sideB = tiles.get(ny * width + x);
-          if (!sideA || !sideB || sideA.passable !== 1 || sideA.solid === 1 || sideA.pit === 1
-            || sideB.passable !== 1 || sideB.solid === 1 || sideB.pit === 1) continue;
-        }
-        previous[next] = current;
-        firstStep[next] = current === start ? next : firstStep[current];
-        queue[tail++] = next;
-      }
-    }
-    return goal < 0 ? -1 : firstStep[goal];
-  }
-
-  private getNativeMobTurnDelay(mobId: number): number {
-    try {
-      const row = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
-      if (row && typeof row.value === "string") {
-        const snapshot = JSON.parse(String(row.value));
-        const mobs = Array.isArray(snapshot.mobs) ? snapshot.mobs : [];
-        const mob = mobs.find((entry: any) => Number(entry.mobId) === mobId);
-        const speed = Number(mob?.baseSpeed);
-        if (Number.isFinite(speed) && speed > 0) return Math.max(0.05, Math.min(10, 1 / speed));
-      }
-    } catch (_) {}
-    return 1.0;
-  }
-
-  private processMobTurns() {
-    if (this.gameStatus === "ENDED") return;
-    const activeMobs = this.sql.exec(`SELECT mob_id, name, pos, hp, next_act_at FROM mobs WHERE depth = ? AND hp > 0 AND next_act_at <= ? ORDER BY next_act_at ASC, mob_id ASC`, this.currentDepth, this.worldTime).toArray();
-    const activePlayers = this.sql.exec(`SELECT pos FROM players WHERE state = 'ALIVE'`).toArray();
-
-    if (activeMobs.length === 0 || activePlayers.length === 0) return;
-
-    const levelRow = this.sql.exec(`SELECT width FROM levels WHERE depth = ?`, this.currentDepth).toArray();
-    const mapWidth = levelRow.length > 0 ? Number(levelRow[0].width) : 32;
-
-    for (const mob of activeMobs) {
-      const mobId = Number(mob.mob_id);
-      const mobPos = Number(mob.pos);
-
-      let closestPlayer: any = null;
-      let minDistance = 999999;
-
-      for (const player of activePlayers) {
-        const playerPos = Number(player.pos);
-        {
-          const dx = Math.abs((mobPos % mapWidth) - (playerPos % mapWidth));
-          const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(playerPos / mapWidth));
-          const dist = Math.max(dx, dy) + (this.hasLineOfSight(mobPos, playerPos, this.currentDepth) ? 0 : 2);
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestPlayer = player;
-          }
-        }
-      }
-
-      if (!closestPlayer) {
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
-        continue;
-      }
-
-      const targetPos = Number(closestPlayer.pos);
-
-      const dx = Math.abs((mobPos % mapWidth) - (targetPos % mapWidth));
-      const dy = Math.abs(Math.floor(mobPos / mapWidth) - Math.floor(targetPos / mapWidth));
-
-      if (this.isMeleeAdjacent(mobPos, targetPos, this.currentDepth)) {
-        // Do not approximate SPD hit chance, armor DR, buffs or damage with server-side RNG.
-        // The original Java engine resolves the attack on the owning client and reports the
-        // resulting HP through SYNC_HERO_STATE. The server only advances this mob's native turn.
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`,
-          this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
-      } else if (Math.max(dx, dy) <= 8) {
-        const nextPos = this.findNextMobStep(mobPos, targetPos, mapWidth, this.currentDepth, mobId);
-        if (nextPos >= 0) {
-          this.sql.exec(`UPDATE mobs SET pos = ?, next_act_at = ? WHERE mob_id = ?`, nextPos, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
-          this.currentSequence++;
-          const movePayload = { mobId, fromPos: mobPos, toPos: nextPos };
-          this.sql.exec(
-            `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MOB_MOVED', ?)`,
-            this.currentSequence, JSON.stringify(movePayload)
-          );
-          this.broadcast({
-            protocolVersion: "1.0.0",
-            messageType: "EVENT_BATCH",
-            senderId: "SERVER",
-            sequence: this.currentSequence,
-            payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MOB_MOVED", depth: this.currentDepth, action: movePayload }])
-          });
-        } else {
-          this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
-        }
-      } else {
-        // A mob that cannot currently reach a visible target still consumes its turn.
-        this.sql.exec(`UPDATE mobs SET next_act_at = ? WHERE mob_id = ?`, this.worldTime + this.getNativeMobTurnDelay(mobId), mobId);
       }
     }
   }

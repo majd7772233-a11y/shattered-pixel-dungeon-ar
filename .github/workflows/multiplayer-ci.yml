@@ -14,6 +14,9 @@ on:
       - 'settings.gradle'
       - 'gradlew'
       - '.github/workflows/multiplayer-ci.yml'
+      - 'ROADMAP.md'
+      - 'GPT.md'
+      - 'MULTIPLAYER_CONTINUATION_NOTES.md'
   pull_request:
     paths:
       - 'core/**'
@@ -25,6 +28,9 @@ on:
       - 'settings.gradle'
       - 'gradlew'
       - '.github/workflows/multiplayer-ci.yml'
+      - 'ROADMAP.md'
+      - 'GPT.md'
+      - 'MULTIPLAYER_CONTINUATION_NOTES.md'
 
 concurrency:
   group: multiplayer-validation-${{ github.ref }}
