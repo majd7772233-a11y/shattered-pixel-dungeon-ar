@@ -2016,6 +2016,7 @@ export class MatchRoom {
           }
 
           const actionStr = payload.action || payload.data?.action;
+          let actionErrorCode = "INVALID_ACTION";
           let authorityPending: any = null;
 
           if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
@@ -2803,6 +2804,30 @@ export class MatchRoom {
               actionValid = true;
               actionCost = 0;
             }
+          } else if (["UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(String(actionStr))) {
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray();
+            const data = payload.data || {};
+            const saved = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+              "levelSnapshot:" + this.currentDepth).toArray()[0];
+            let currentLevel: any = null;
+            try { currentLevel = saved ? JSON.parse(String(saved.value)) : null; } catch (_) {}
+            const pendingTransition = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            const playerPos = Number(playerRow[0]?.pos);
+            const requestedCost = data.engineActionCost;
+            if (!pendingTransition && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE"
+                && currentLevel?.branch === 0
+                && isValidNativeWorldActionIntent(actionStr, data, currentLevel, this.currentDepth, playerPos)
+                && typeof requestedCost === "number" && Number.isFinite(requestedCost)
+                && requestedCost >= 0 && requestedCost <= 10) {
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId: session.playerId, actionType: String(actionStr),
+                depth: this.currentDepth, from: playerPos, targetPos: Number(data.targetPos),
+                targetTerrain: Number(currentLevel.tiles.find((tile: any) => tile.pos === Number(data.targetPos))?.terrain) };
+              actionValid = true;
+              actionCost = requestedCost;
+            } else if (String(actionStr) === "MINE" && currentLevel && currentLevel.branch !== 0) {
+              actionErrorCode = "UNSUPPORTED_BRANCH_TRANSITION";
+            }
           } else if (actionStr === "MOVE" && targetPos >= 0) {
             const playerRow = this.sql.exec(`SELECT pos, state FROM players WHERE player_id = ?`, session.playerId).toArray();
             if (playerRow.length > 0 && String(playerRow[0].state) === "ALIVE") {
@@ -2815,25 +2840,49 @@ export class MatchRoom {
                 `levelSnapshot:${this.currentDepth}`).toArray()[0];
               let currentLevelSnapshot: any = null;
               try { currentLevelSnapshot = levelSnapshotRow ? JSON.parse(String(levelSnapshotRow.value)) : null; } catch (_) {}
-              const tileRows = this.sql.exec(`SELECT pos,passable,solid,pit FROM level_tiles WHERE depth = ?`, this.currentDepth).toArray()
-                .map((tile: any) => ({ pos: Number(tile.pos), passable: Number(tile.passable) === 1,
-                  solid: Number(tile.solid) === 1, pit: Number(tile.pit) === 1 }));
+              const tileRows = this.sql.exec("SELECT pos,terrain,passable,solid,pit FROM level_tiles WHERE depth = ?", this.currentDepth).toArray()
+                .map((tile: any) => ({ pos: Number(tile.pos), terrain: Number(tile.terrain),
+                  passable: Number(tile.passable) === 1, solid: Number(tile.solid) === 1, pit: Number(tile.pit) === 1 }));
               const occupiedPlayers = this.sql.exec(
                 `SELECT pos FROM players WHERE player_id <> ? AND state = 'ALIVE' AND connected = 1`, session.playerId
               ).toArray().map((row: any) => Number(row.pos));
               const occupiedMobs = this.sql.exec(
                 `SELECT pos FROM mobs WHERE depth = ? AND hp > 0`, this.currentDepth
               ).toArray().map((row: any) => Number(row.pos));
-              if (!this.sql.exec(`SELECT value FROM room_meta WHERE key = 'transitionPending'`).toArray().length
-                  && currentLevelSnapshot && data.depth === this.currentDepth && data.from === currentPos
-                  && data.to === targetPos && isValidNativeMoveIntent(data.from, data.to, mapWidth, mapHeight, tileRows,
-                    occupiedPlayers.concat(occupiedMobs))) {
-                this.sql.exec(`UPDATE players SET pos = ? WHERE player_id = ?`, targetPos, session.playerId);
+              const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+              let trustedHero: any = null;
+              try { trustedHero = trustedHeroRow && typeof trustedHeroRow.value === "string"
+                ? JSON.parse(String(trustedHeroRow.value)) : null; } catch (_) {}
+              let environmentStepConfirmed = false;
+              if (currentPos === targetPos && data.from !== currentPos) {
+                const lastDamage = this.sql.exec("SELECT payload FROM events WHERE sender_id = ? AND event_type = 'PLAYER_DAMAGED' ORDER BY sequence DESC LIMIT 1",
+                  session.playerId).toArray()[0];
+                let payloadBeforeMove: any = null;
+                try { payloadBeforeMove = lastDamage ? JSON.parse(String(lastDamage.payload)) : null; } catch (_) {}
+                environmentStepConfirmed = !!payloadBeforeMove
+                  && Number(payloadBeforeMove.targetPos) === Number(data.from)
+                  && Number(payloadBeforeMove.targetPosAfter) === Number(data.to);
+              }
+              const acceptedFrom = data.from === currentPos || environmentStepConfirmed;
+              const requestedCost = data.engineActionCost;
+              const rootBlocked = !!trustedHero
+                && (trustedHero.rooted === true || Number(trustedHero.paralysed || 0) > 0);
+              const validStep = currentLevelSnapshot && data.depth === this.currentDepth
+                && Number.isInteger(data.from) && Number.isInteger(data.to)
+                && isValidNativeMoveIntent(data.from, data.to, mapWidth, mapHeight, tileRows,
+                  occupiedPlayers.concat(occupiedMobs));
+              if (!this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length
+                  && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && !rootBlocked
+                  && acceptedFrom && validStep && typeof requestedCost === "number"
+                  && Number.isFinite(requestedCost) && requestedCost >= 0 && requestedCost <= 10) {
+                if (data.from === currentPos) {
+                  this.sql.exec("UPDATE players SET pos = ? WHERE player_id = ?", targetPos, session.playerId);
+                }
                 eventType = "PLAYER_MOVED";
-                actionResultPayload = { playerId: session.playerId, pos: targetPos, from: currentPos, depth: this.currentDepth };
+                actionResultPayload = { playerId: session.playerId, pos: targetPos, from: data.from,
+                  to: targetPos, depth: this.currentDepth, environmentStepConfirmed };
                 actionValid = true;
-                const nativeMoveCost = Number(payload.data?.engineActionCost);
-                actionCost = Number.isFinite(nativeMoveCost) ? Math.max(0.05, Math.min(10, nativeMoveCost)) : 1.0;
+                actionCost = requestedCost;
               }
             }
           } else if (actionStr === "LVL_TRANSITION") {
@@ -2848,7 +2897,8 @@ export class MatchRoom {
               && this.sql.exec(`SELECT player_id FROM players WHERE player_id = ? AND connected = 1`, String(publisherRow[0]?.value)).toArray().length > 0;
             if (!pendingRow.length && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && activePublisher) {
               const currentPos = Number(playerRow[0].pos);
-              const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, payload.data || {});
+              const transitionData = payload.data || {};
+              const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, transitionData);
               if (transition) {
                 const pending = { ...transition, initiatorId: session.playerId,
                   publisherId: String(publisherRow[0].value), snapshotReady: false, startedAt: Date.now() };
@@ -2862,7 +2912,12 @@ export class MatchRoom {
                 actionResultPayload = { ...transition, playerId: session.playerId };
                 actionValid = true;
                 actionCost = 1.0;
+              } else {
+                actionErrorCode = classifyNativeTransitionRejection(sourceSnapshot, this.currentDepth, currentPos, transitionData);
               }
+            } else {
+              actionErrorCode = classifyNativeTransitionRejection(sourceSnapshot, this.currentDepth,
+                Number(playerRow[0]?.pos), transitionData);
             }
           } else if (actionStr === "ATTACK" && isValidNativeCombatRequestId(msg.requestId)) {
             let targetId = payload.data?.targetId || payload.targetId;
@@ -3507,7 +3562,7 @@ export class MatchRoom {
             messageType: "ERROR",
             requestId: msg.requestId,
             sequence: this.currentSequence,
-            payloadJson: JSON.stringify({ error: "INVALID_ACTION" })
+            payloadJson: JSON.stringify({ error: actionErrorCode })
           });
           ws.send(errorMessage);
           if (pendingCombatForCleanup && actionOwnerId !== session.playerId) {
