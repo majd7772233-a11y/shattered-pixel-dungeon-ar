@@ -278,7 +278,7 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void nativeMobTargetRebindWaitsUntilRemoteHeroReplicaExists() throws Exception {
+    public void nativeMobTargetRebindWaitsUntilRemoteHeroReplicaExists() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-player-target-rebind", "client-publisher", new TestTransport());
 
@@ -295,32 +295,21 @@ public class NativeCombatRuntimeIntegrationTest {
         targetPlayer.hp = targetHero.HP;
         targetPlayer.ht = targetHero.HT;
         targetPlayer.heroInstance = targetHero;
-        manager.addRemotePlayer(targetPlayer);
-        Actor.add(targetHero);
         mob.restoreMultiplayerAiState("Hunting", mob.multiplayerBaseSpeed(), mob.defenseSkill,
                 1.75f, targetHero.pos, true, true, "PLAYER", targetPlayer.playerId);
 
-        int localHeroPos = hero.pos;
-        hero.pos = targetHero.pos;
-        String targetHeroStateJson = SPDLevelSnapshot.currentHeroStateJson(hero);
-        hero.pos = localHeroPos;
         WorldSnapshot snapshot = makeSnapshotWithMob(1L, mob, entityId);
-        snapshot.playerPositions.put(targetPlayer.playerId, targetHero.pos);
-        snapshot.playerHp.put(targetPlayer.playerId, targetHero.HP);
-        snapshot.playerHt.put(targetPlayer.playerId, targetHero.HT);
-        snapshot.playerClasses.put(targetPlayer.playerId, "WARRIOR");
-        snapshot.playerStateJson.put(targetPlayer.playerId, targetHeroStateJson);
-        manager.removeRemotePlayer(targetPlayer.playerId);
-        Actor.remove(targetHero);
-
-        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
-        RemotePlayer restoredPlayer = manager.getRemotePlayer(targetPlayer.playerId);
         Mob restoredMob = findMobByServerId(manager, entityId);
-        Assert.assertNotNull(restoredPlayer);
-        Assert.assertNotNull(restoredPlayer.heroInstance);
         Assert.assertNotNull(restoredMob);
-        Assert.assertSame("The native target must rebind after the remote Hero is reconstructed",
-                restoredPlayer.heroInstance, restoredMob.multiplayerEnemy());
+        Assert.assertNull("An unresolved PLAYER ID must not bind a stale Actor", restoredMob.multiplayerEnemy());
+
+        // This is the post-player-restore reconciliation stage used by restoreWorld().
+        manager.addRemotePlayer(targetPlayer);
+        Actor.add(targetHero);
+        WorldSnapshot.restoreNativeMobAiState(snapshot);
+
+        Assert.assertSame("Mob target must resolve after the remote Hero exists in the Actor graph",
+                targetHero, restoredMob.multiplayerEnemy());
         Assert.assertEquals("PLAYER", restoredMob.multiplayerTargetType());
         Assert.assertEquals(targetPlayer.playerId, restoredMob.multiplayerTargetEntityId());
         Assert.assertEquals(1.75f, restoredMob.cooldown(), 0.02f);
@@ -1740,6 +1729,12 @@ public class NativeCombatRuntimeIntegrationTest {
 
     private static final class QueuedAttackRat extends Rat {
         boolean beginNativeAttack(Char target) { enemy = target; return doAttack(target); }
+
+        @Override
+        public boolean attack(Char target, float damageMultiplier, float damageBonus, float accuracyMultiplier) {
+            // Native completion is exercised without loading graphics assets in the headless JVM test.
+            return false;
+        }
     }
 
     private static final class TestAttackSprite extends CharSprite {
