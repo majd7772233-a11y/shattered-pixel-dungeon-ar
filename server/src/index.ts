@@ -642,7 +642,8 @@ export interface NativeSecondaryMobDeltaPayload {
 
 /** Validates every secondary native mob mutation against the last server-held level snapshot. */
 export function parseAndValidateNativeSecondaryMobDeltas(
-  value: unknown, savedMobs: unknown, levelSize: number, width: number, authoritativeOwner = false
+  value: unknown, savedMobs: unknown, levelSize: number, width: number, authoritativeOwner = false,
+  excludedEntityId?: string
 ): NativeSecondaryMobDeltaPayload | null {
   let payload: any = value;
   if (typeof payload === "string" && payload.length > 200000) return null;
@@ -659,7 +660,7 @@ export function parseAndValidateNativeSecondaryMobDeltas(
   const deathPositions = new Set<number>();
   for (const delta of payload.deltas) {
     if (!delta || typeof delta.entityId !== "string" || delta.entityId.length < 8
-      || delta.entityId.length > 80 || seen.has(delta.entityId)) return null;
+      || delta.entityId.length > 80 || delta.entityId === excludedEntityId || seen.has(delta.entityId)) return null;
     seen.add(delta.entityId);
     const saved = byId.get(delta.entityId);
     if (!saved) return null;
@@ -1639,7 +1640,8 @@ export class MatchRoom {
               const attackerPos = Number(attackerRow[0]?.pos), targetPos = Number(mobRow[0]?.pos);
               const targetPosAfter = Number(data.targetPosAfter), targetHp = Number(data.targetHp), targetHt = Number(data.targetHt), damage = Number(data.damage);
               const nativeCost = Number(data.engineActionCost), distance = Number(data.engineDistance), ranged = data.engineRanged === true;
-              const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(data.secondaryMobDeltas, levelSnapshot?.mobs, levelSize, width);
+              const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(
+                data.secondaryMobDeltas, levelSnapshot?.mobs, levelSize, width, false, String(data.targetEntityId));
               const secondaryDeaths = (secondaryMobPayload?.deltas || []).filter((delta: any) => Number(delta.hpAfter) === 0).map((delta: any) => Number(delta.posAfter));
               const allDeaths = [...(targetHp <= 0 ? [targetPosAfter] : []), ...secondaryDeaths];
               const lootSnapshot = targetHp <= 0 ? data.heaps : secondaryDeaths.length > 0 ? secondaryMobPayload?.heaps : undefined;
@@ -2644,7 +2646,7 @@ export class MatchRoom {
                         payload.data?.targetShieldAfter, savedTargetMob.shielding);
                     const targetMobBundleValid = targetHp <= 0 || isValidNativeMobBundle(payload.data?.targetMobBundleAfter);
                     const secondaryMobPayload = parseAndValidateNativeSecondaryMobDeltas(
-                      payload.data?.secondaryMobDeltas, combatLevel?.mobs, levelSize, width);
+                      payload.data?.secondaryMobDeltas, combatLevel?.mobs, levelSize, width, false, String(targetEntityId));
                     const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
                       .filter((delta: any) => Number(delta.hpAfter) === 0)
                       .map((delta: any) => Number(delta.posAfter));

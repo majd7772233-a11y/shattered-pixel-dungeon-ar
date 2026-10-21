@@ -773,6 +773,17 @@ describe('Native secondary mob combat deltas', () => {
       { complete: true, deltas: [defensiveProc] }, saved, 1024, 32, true)?.deltas).toHaveLength(1);
   });
 
+  it('rejects a direct target repeated as a secondary delta before state mutation', () => {
+    const primaryId = 'primary-target-0001';
+    const savedPrimary = { ...saved[0], entityId: primaryId, mobId: 8 };
+    const primaryOverlap = { ...delta(), entityId: primaryId };
+    const snapshotMobs = [...saved, savedPrimary];
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [primaryOverlap] }, snapshotMobs, 1024, 32)).not.toBeNull();
+    expect(parseAndValidateNativeSecondaryMobDeltas(
+      { complete: true, deltas: [primaryOverlap] }, snapshotMobs, 1024, 32, false, primaryId)).toBeNull();
+  });
+
   it('accepts an empty complete delta and rejects an oversized/incomplete collection', () => {
     expect(parseAndValidateNativeSecondaryMobDeltas(
       { complete: true, deltas: [] }, saved, 1024, 32)?.deltas).toEqual([]);
