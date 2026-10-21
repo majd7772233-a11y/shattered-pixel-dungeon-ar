@@ -439,7 +439,7 @@ public class WorldSnapshot {
             baseline.playerStateJson.put(localId, localHeroState);
 
             for (Map.Entry<String, RemotePlayer> entry : manager.getRemotePlayers().entrySet()) {
-                MultiplayerManager.RemotePlayer remote = entry.getValue();
+                RemotePlayer remote = entry.getValue();
                 if (remote == null || entry.getKey() == null || entry.getKey().isEmpty()
                         || remote.pos < 0 || remote.pos >= baseline.levelWidth * baseline.levelHeight) continue;
                 baseline.playerPositions.put(entry.getKey(), remote.pos);
