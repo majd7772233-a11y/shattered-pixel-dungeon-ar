@@ -187,6 +187,7 @@ public abstract class Actor implements Bundlable {
 	private static HashSet<Actor> all = new HashSet<>();
 	private static HashSet<Char> chars = new HashSet<>();
 	private static volatile Actor current;
+	private static volatile Actor pendingMultiplayerSharedActorResult;
 
 	private static SparseArray<Actor> ids = new SparseArray<>();
 	private static int nextID = 1;
@@ -200,6 +201,7 @@ public abstract class Actor implements Bundlable {
 	public static synchronized void clear() {
 		
 		now = 0;
+		pendingMultiplayerSharedActorResult = null;
 
 		all.clear();
 		chars.clear();
@@ -269,6 +271,7 @@ public abstract class Actor implements Bundlable {
 		if (current == this) {
 			current = null;
 		}
+		publishDeferredMultiplayerSharedActorResult(this);
 	}
 
 	public static boolean processing(){
@@ -305,6 +308,29 @@ public abstract class Actor implements Bundlable {
         if (!manager.isMultiplayerActive() || !manager.isLevelPublisher()
                 || !isMultiplayerSharedActor(actor)) return false;
         return !(actor instanceof Mob) || !((Mob) actor).multiplayerAttackAwaitingCompletion();
+    }
+
+    /** Defers a shared turn when the original engine act() returns false for a later callback. */
+    public static synchronized void deferMultiplayerSharedActorResult(Actor actor) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (!manager.isMultiplayerActive() || !manager.isLevelPublisher()
+                || !isMultiplayerSharedActor(actor)) return;
+        if (pendingMultiplayerSharedActorResult == null || pendingMultiplayerSharedActorResult == actor) {
+            pendingMultiplayerSharedActorResult = actor;
+        }
+    }
+
+    private static void publishDeferredMultiplayerSharedActorResult(Actor actor) {
+        boolean publish = false;
+        synchronized (Actor.class) {
+            if (pendingMultiplayerSharedActorResult == actor) {
+                pendingMultiplayerSharedActorResult = null;
+                publish = true;
+            }
+        }
+        if (publish && shouldPublishMultiplayerSharedActorResult(actor)) {
+            MultiplayerManager.getInstance().publishNativeWorldActorResult(actor);
+        }
     }
 
     public static void process() {
@@ -359,8 +385,12 @@ public abstract class Actor implements Bundlable {
 					current = null;
 				} else {
 					doNext = acting.act();
-                    if (shouldPublishMultiplayerSharedActorResult(acting)) {
-                        MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
+                    if (doNext) {
+                        if (shouldPublishMultiplayerSharedActorResult(acting)) {
+                            MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
+                        }
+                    } else {
+                        deferMultiplayerSharedActorResult(acting);
                     }
 					if (doNext && (Dungeon.hero == null || !Dungeon.hero.isAlive())) {
 						doNext = false;

@@ -799,7 +799,6 @@ public abstract class Mob extends Char {
 	
     @Override
     public void onAttackComplete() {
-        boolean publishResolvedWorldTurn = multiplayerAttackAwaitingCompletion;
         multiplayerAttackAwaitingCompletion = false;
         boolean hit = attack( enemy );
         Invisibility.dispel(this);
@@ -807,12 +806,8 @@ public abstract class Mob extends Char {
         spend(nativeActionCost);
         boolean reported = flushMultiplayerHeroDamageReport(nativeActionCost);
         if (!reported) reportNativePlayerNoEffect(enemy, hit, nativeActionCost);
+        // Char.onAttackComplete calls Actor.next(), committing after all native effects/cooldown.
         super.onAttackComplete();
-
-        if (publishResolvedWorldTurn) {
-            com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance()
-                    .publishNativeWorldActorResult(this);
-        }
     }
 
 	/** Queue target damage changes until the native mob action has finished all procs. */

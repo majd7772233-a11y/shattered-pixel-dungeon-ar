@@ -424,6 +424,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue(mob.multiplayerAttackAwaitingCompletion());
         Assert.assertFalse(Actor.shouldPublishMultiplayerSharedActorResult(mob));
         Assert.assertEquals(0L, transport.sent.stream().filter(m -> m.messageType == MessageType.LEVEL_DATA).count());
+        Actor.deferMultiplayerSharedActorResult(mob);
 
         mob.onAttackComplete();
 
