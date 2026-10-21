@@ -32,6 +32,7 @@ public class WorldSnapshot {
     private static volatile WorldSnapshot lastAppliedSnapshot;
     private static int validationRejectCounter;
     private static volatile int lastValidationRejectCounter;
+    private static volatile String lastRollbackCaptureDiagnostic = "not run";
     /** True only for a local rollback copy; never serialized on the wire. */
     private boolean localRollbackBaseline;
 
@@ -398,12 +399,19 @@ public class WorldSnapshot {
      * Local Actor IDs are retained only inside this backup; the backup is never sent to the server.
      */
     public static WorldSnapshot captureLocalRollbackBaseline() {
+        lastRollbackCaptureDiagnostic = "capture started";
         try {
             String encoded = SPDLevelSnapshot.currentLevelJson();
-            if (encoded == null || encoded.isEmpty()) return null;
+            if (encoded == null || encoded.isEmpty()) {
+                lastRollbackCaptureDiagnostic = "currentLevelJson returned an empty string";
+                return null;
+            }
             JsonValue parsed = new JsonReader().parse(encoded);
             Object converted = jsonValueToJava(parsed);
-            if (!(converted instanceof Map)) return null;
+            if (!(converted instanceof Map)) {
+                lastRollbackCaptureDiagnostic = "currentLevelJson root is not an object";
+                return null;
+            }
             Map<String, Object> source = (Map<String, Object>) converted;
 
             WorldSnapshot baseline = new WorldSnapshot();
@@ -470,14 +478,28 @@ public class WorldSnapshot {
                 }
             }
             if (!validateForRestore(baseline)) {
-                GLog.w("Local rollback baseline failed validation branch #" + lastValidationRejectCounter);
+                lastRollbackCaptureDiagnostic = "validateForRestore branch #" + lastValidationRejectCounter
+                    + " (complete=" + baseline.completeWorldSnapshot
+                    + ", level=" + (Dungeon.level != null)
+                    + ", depth=" + baseline.depth + "/" + Dungeon.depth
+                    + ", branch=" + baseline.branch + "/" + Dungeon.branch
+                    + ", size=" + baseline.levelWidth + "x" + baseline.levelHeight
+                    + ", tiles=" + (baseline.tiles == null ? -1 : baseline.tiles.size()) + ")";
+                GLog.w("Local rollback baseline rejected: " + lastRollbackCaptureDiagnostic);
                 return null;
             }
+            lastRollbackCaptureDiagnostic = "captured and validated";
             return baseline;
         } catch (RuntimeException captureError) {
-            GLog.w("Unable to capture local rollback baseline: " + captureError.getMessage());
+            lastRollbackCaptureDiagnostic = "exception " + captureError.getClass().getSimpleName()
+                + ": " + captureError.getMessage();
+            GLog.w("Unable to capture local rollback baseline: " + lastRollbackCaptureDiagnostic);
             return null;
         }
+    }
+
+    public static String lastRollbackCaptureDiagnostic() {
+        return lastRollbackCaptureDiagnostic;
     }
 
     private static Object jsonValueToJava(JsonValue value) {
