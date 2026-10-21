@@ -210,9 +210,10 @@ describe('Native level snapshot contract', () => {
     const previous = previousNativeMobSnapshot();
     const next = nextNativeMobTurn();
     next.mobs.push({
-      mobId: 27, name: "Skeleton", pos: 18, hp: 7, ht: 7, shielding: 0,
-      serializedBundle: "native-skeleton-bundle", buffs: [], baseSpeed: 1, effectiveSpeed: 1,
-      cooldown: 0, targetCell: -1, targetType: "NONE", targetEntityId: ""
+      mobId: 27, entityId: "", name: "Skeleton", pos: 18, hp: 7, ht: 7, shielding: 0,
+      state: "Wandering", defenseSkill: 5, serializedBundle: "native-skeleton-bundle", buffs: [],
+      baseSpeed: 1, effectiveSpeed: 1, cooldown: 0, targetCell: -1, targetType: "NONE",
+      targetEntityId: "", enemySeen: false, alerted: false
     });
     expect(isValidNativeWorldTurnSnapshot(previous, next, 0, 1)).toBe(true);
   });
@@ -230,6 +231,72 @@ describe('Native level snapshot contract', () => {
     }))).toBe(false);
   });
 
+
+  it('rejects duplicate tile, exploration, heap, trap and plant positions before persistence', () => {
+    const duplicateTiles: any = completeSnapshot();
+    duplicateTiles.tiles[1].pos = 0;
+    expect(hasCompleteNativeLevelSnapshot(duplicateTiles)).toBe(false);
+
+    const duplicateExploration: any = completeSnapshot();
+    duplicateExploration.visitedPositions = [4, 4];
+    expect(hasCompleteNativeLevelSnapshot(duplicateExploration)).toBe(false);
+
+    const duplicateHeaps: any = completeSnapshot();
+    const heap = { pos: 21, type: "HEAP", seen: false, haunted: false, hidden: false, autoExplored: false, items: [] };
+    duplicateHeaps.heaps = [heap, { ...heap }];
+    expect(hasCompleteNativeLevelSnapshot(duplicateHeaps)).toBe(false);
+
+    const duplicateTraps: any = completeSnapshot();
+    const trap = { pos: 22, active: true, visible: false, reclaimed: false, color: 0, shape: 0, serializedBundle: "native-trap-bundle" };
+    duplicateTraps.traps = [trap, { ...trap }];
+    expect(hasCompleteNativeLevelSnapshot(duplicateTraps)).toBe(false);
+
+    const duplicatePlants: any = completeSnapshot();
+    const plant = { pos: 23, className: "Firebloom", serializedBundle: "native-plant-bundle" };
+    duplicatePlants.plants = [plant, { ...plant }];
+    expect(hasCompleteNativeLevelSnapshot(duplicatePlants)).toBe(false);
+  });
+
+  it('rejects duplicate mob IDs, duplicate mob cells, duplicate stable IDs and duplicate blob classes', () => {
+    const mob = (mobId: number, entityId: string, pos: number) => ({
+      mobId, entityId, name: "Rat", pos, hp: 10, ht: 10, shielding: 0, state: "Wandering",
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0, targetCell: -1,
+      targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+      serializedBundle: "native-rat-bundle", buffs: []
+    });
+
+    const duplicateMobCells: any = completeSnapshot();
+    duplicateMobCells.mobs = [mob(1, "stable-mob-0001", 10), mob(2, "stable-mob-0002", 10)];
+    expect(hasCompleteNativeLevelSnapshot(duplicateMobCells)).toBe(false);
+
+    const duplicateMobIds: any = completeSnapshot();
+    duplicateMobIds.mobs = [mob(1, "stable-mob-0001", 10), mob(1, "stable-mob-0002", 11)];
+    expect(hasCompleteNativeLevelSnapshot(duplicateMobIds)).toBe(false);
+
+    const duplicateEntityIds: any = completeSnapshot();
+    duplicateEntityIds.mobs = [mob(1, "stable-mob-0001", 10), mob(2, "stable-mob-0001", 11)];
+    expect(hasCompleteNativeLevelSnapshot(duplicateEntityIds)).toBe(false);
+
+    const duplicateBlobClasses: any = completeSnapshot();
+    duplicateBlobClasses.blobs = [
+      { className: "com.example.Fire", cooldown: 0, serializedBundle: "native-fire-1" },
+      { className: "com.example.Fire", cooldown: 1, serializedBundle: "native-fire-2" }
+    ];
+    expect(hasCompleteNativeLevelSnapshot(duplicateBlobClasses)).toBe(false);
+  });
+
+  it('rejects out-of-range native cells and incomplete native Mob scheduler state', () => {
+    const badTile: any = completeSnapshot();
+    badTile.tiles[0].terrain = 256;
+    expect(hasCompleteNativeLevelSnapshot(badTile)).toBe(false);
+
+    const incompleteMob: any = completeSnapshot();
+    incompleteMob.mobs = [{
+      mobId: 1, entityId: "stable-mob-0001", name: "Rat", pos: 10, hp: 10, ht: 10,
+      shielding: 0, serializedBundle: "native-rat-bundle", buffs: []
+    }];
+    expect(hasCompleteNativeLevelSnapshot(incompleteMob)).toBe(false);
+  });
 
   it('rejects missing collections rather than treating them as empty', () => {
     const snapshot: any = completeSnapshot();
@@ -252,12 +319,11 @@ describe('Native level snapshot contract', () => {
   it('preserves complete heaps containing multiple native item bundles', () => {
     const snapshot: any = completeSnapshot();
     snapshot.heaps.push({
-      pos: 21,
-      type: "HEAP",
+      pos: 21, type: "HEAP", seen: false, haunted: false, hidden: false, autoExplored: false,
       items: [
-        { itemClass: "PotionOfHealing", serializedBundle: "native-item-bundle-1" },
-        { itemClass: "ScrollOfUpgrade", serializedBundle: "native-item-bundle-2" },
-        { itemClass: "Gold", serializedBundle: "native-item-bundle-3" }
+        { className: "PotionOfHealing", quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: "native-item-bundle-1" },
+        { className: "ScrollOfUpgrade", quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: "native-item-bundle-2" },
+        { className: "Gold", quantity: 5, level: 0, cursed: false, cursedKnown: false, serializedBundle: "native-item-bundle-3" }
       ]
     });
     expect(hasCompleteNativeLevelSnapshot(snapshot)).toBe(true);
@@ -284,6 +350,16 @@ describe('Native level snapshot contract', () => {
       hp: 0,
       ht: 10,
       shielding: 0,
+      state: "Wandering",
+      defenseSkill: 5,
+      baseSpeed: 1,
+      effectiveSpeed: 1,
+      cooldown: 0,
+      targetCell: -1,
+      targetType: "NONE",
+      targetEntityId: "",
+      enemySeen: false,
+      alerted: false,
       serializedBundle: "native-dead-mob-bundle",
       buffs: []
     });
