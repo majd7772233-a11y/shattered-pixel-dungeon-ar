@@ -438,7 +438,7 @@ public class WorldSnapshot {
             if (localHeroState.isEmpty()) localHeroState = SPDLevelSnapshot.currentHeroStateJson();
             baseline.playerStateJson.put(localId, localHeroState);
 
-            for (Map.Entry<String, MultiplayerManager.RemotePlayer> entry : manager.getRemotePlayers().entrySet()) {
+            for (Map.Entry<String, RemotePlayer> entry : manager.getRemotePlayers().entrySet()) {
                 MultiplayerManager.RemotePlayer remote = entry.getValue();
                 if (remote == null || entry.getKey() == null || entry.getKey().isEmpty()
                         || remote.pos < 0 || remote.pos >= baseline.levelWidth * baseline.levelHeight) continue;
