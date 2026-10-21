@@ -2912,6 +2912,10 @@ public class Hero extends Char {
 		if (!ready) {
 			super.onOperateComplete();
 		}
+		if (NetworkActionType.UNLOCK.name().equals(pendingNativeWorldMutationAction)
+				|| NetworkActionType.OPEN_CHEST.name().equals(pendingNativeWorldMutationAction)) {
+			publishPendingNativeWorldMutation();
+		}
 	}
 
 	public boolean search( boolean intentional ) {
