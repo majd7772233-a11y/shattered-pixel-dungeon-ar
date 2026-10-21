@@ -351,6 +351,15 @@ public class WorldSnapshot {
         return true;
     }
 
+    private static boolean rejectValidation() {
+        lastValidationRejectCounter = ++validationRejectCounter;
+        return false;
+    }
+
+    public static int lastValidationRejectForDiagnostics() {
+        return lastValidationRejectCounter;
+    }
+
     private static boolean validCellList(List<Integer> values, int length) {
         java.util.Set<Integer> cells = new java.util.HashSet<>();
         for (Integer pos : values) if (pos == null || pos < 0 || pos >= length || !cells.add(pos)) return false;
