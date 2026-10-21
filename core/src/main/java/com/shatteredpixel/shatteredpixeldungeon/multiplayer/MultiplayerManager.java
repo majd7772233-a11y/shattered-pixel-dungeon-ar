@@ -330,14 +330,13 @@ public class MultiplayerManager implements TransportCallback {
         }
     }
 
-    public void sendAction(NetworkActionType actionType, String actionDetailsJson) {
-        sendAction(actionType, actionDetailsJson, SPDLevelSnapshot.currentHeroStateJson());
+    public String sendAction(NetworkActionType actionType, String actionDetailsJson) {
+        return sendAction(actionType, actionDetailsJson, SPDLevelSnapshot.currentHeroStateJson());
     }
 
-    /** Sends an action together with the exact native hero state affected by it. */
-    public void sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
-        if (!isMultiplayerActive || activeTransport == null) return;
-
+    /** Sends a native action and returns its request ID to correlate the completed native world delta. */
+    public String sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
+        if (!isMultiplayerActive || activeTransport == null || actionType == null || actionDetailsJson == null) return null;
         NetworkMessage msg = new NetworkMessage();
         msg.messageType = MessageType.ACTION;
         msg.senderId = localPlayerId;
@@ -345,12 +344,48 @@ public class MultiplayerManager implements TransportCallback {
         String heroStateJson = nativeHeroStateJson == null ? "" : nativeHeroStateJson;
         msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson
                 + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
-
-        if (msg.requestId != null) {
-            pendingActions.put(msg.requestId, msg);
-        }
-
+        pendingActions.put(msg.requestId, msg);
         activeTransport.send(msg);
+        return msg.requestId;
+    }
+
+    /** Reports the complete post-action native floor, correlated to an accepted movement/world intent. */
+    public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos) {
+        if (!isMultiplayerActive || activeTransport == null || actionRequestId == null || actionRequestId.isEmpty()
+                || Dungeon.level == null || Dungeon.branch != 0 || actionName == null) return;
+        String snapshot = SPDLevelSnapshot.currentLevelJson();
+        if (snapshot == null || snapshot.length() < 2 || snapshot.charAt(snapshot.length() - 1) != '}') {
+            requestResync(lastSequence);
+            return;
+        }
+        String mutation = snapshot.substring(0, snapshot.length() - 1)
+                + ",\"nativeWorldMutation\":true"
+                + ",\"nativeMutationAction\":" + new Json().toJson(actionName)
+                + ",\"nativeMutationRequestId\":" + new Json().toJson(actionRequestId)
+                + ",\"nativeMutationFrom\":" + from
+                + ",\"nativeMutationTargetPos\":" + targetPos + "}";
+        NetworkMessage message = new NetworkMessage();
+        message.messageType = MessageType.LEVEL_DATA;
+        message.senderId = localPlayerId;
+        // Separate envelope ID: ACTION_ACCEPTED may already have consumed the intent ID.
+        message.requestId = UUID.randomUUID().toString();
+        message.payloadJson = mutation;
+        pendingActions.put(message.requestId, message);
+        activeTransport.send(message);
+    }
+
+    /** Each living peer proves it built the native destination floor before the server opens the barrier. */
+    public void sendLevelReady() {
+        if (!isMultiplayerActive || activeTransport == null || Dungeon.level == null || Dungeon.branch != 0) return;
+        NetworkMessage message = new NetworkMessage();
+        message.messageType = MessageType.LEVEL_READY;
+        message.senderId = localPlayerId;
+        message.requestId = UUID.randomUUID().toString();
+        String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        message.payloadJson = "{\"depth\":" + Dungeon.depth + ",\"branch\":" + Dungeon.branch
+                + ",\"seed\":" + Dungeon.seedCurDepth()
+                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
+        activeTransport.send(message);
     }
 
     public void sendAuthorityAction(String requestId, NetworkActionType actionType,
@@ -374,7 +409,8 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public void publishCurrentLevel() {
-        if (!isMultiplayerActive || activeTransport == null || Dungeon.level == null) return;
+        if (!isMultiplayerActive || !levelPublisher || activeTransport == null || Dungeon.level == null
+                || Dungeon.branch != 0) return;
         String levelKey = Dungeon.seed + ":" + Dungeon.branch + ":" + Dungeon.depth;
         if (levelKey.equals(lastPublishedLevelKey)) return;
         String snapshot = SPDLevelSnapshot.currentLevelJson();
@@ -469,7 +505,26 @@ public class MultiplayerManager implements TransportCallback {
                     rejectedNativeTurn = tick != null && tick.asBoolean();
                 } catch (RuntimeException ignored) {}
             }
-            if (rejectedNativeTurn || (rejected != null && rejected.payloadJson != null
+            boolean rejectedNativeWorldMutation = false;
+            boolean rejectedWorldAction = false;
+            if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA && rejected.payloadJson != null) {
+                try {
+                    JsonValue rejectedSnapshot = new JsonReader().parse(rejected.payloadJson);
+                    JsonValue mutation = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldMutation");
+                    rejectedNativeWorldMutation = mutation != null && mutation.asBoolean();
+                } catch (RuntimeException ignored) {}
+            }
+            if (rejected != null && rejected.messageType == MessageType.ACTION && rejected.payloadJson != null) {
+                try {
+                    JsonValue intent = new JsonReader().parse(rejected.payloadJson);
+                    JsonValue action = intent == null ? null : intent.get("action");
+                    String name = action == null ? "" : action.asString();
+                    rejectedWorldAction = "MOVE".equals(name) || "UNLOCK".equals(name) || "MINE".equals(name)
+                            || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name);
+                } catch (RuntimeException ignored) {}
+            }
+            if (rejectedNativeTurn || rejectedNativeWorldMutation || rejectedWorldAction
+                    || (rejected != null && rejected.payloadJson != null
                     && (rejected.payloadJson.contains("\"action\":\"ATTACK\"")
                         || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"")
                         || rejected.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\"")

@@ -12,6 +12,7 @@ public enum MessageType {
     MATCH_START,
     ACTION,
     LEVEL_DATA,
+    LEVEL_READY,
     ACTION_ACCEPTED,
     COMBAT_REQUEST,
     EVENT_BATCH,
