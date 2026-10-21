@@ -176,6 +176,19 @@ public class WorldSnapshot {
             } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
         }
         hero.restoreMultiplayerCooldown(heroState.getFloat("cooldown"));
+
+        // Journal and NPC quest flags belong to the local run, not individual remote Hero replicas.
+        if (hero == Dungeon.hero) {
+            Bundle notes = readBundle(heroState.getString("notesBundle"));
+            if (notes != null) com.shatteredpixel.shatteredpixeldungeon.journal.Notes.restoreFromBundle(notes);
+            Bundle quests = readBundle(heroState.getString("questStateBundle"));
+            if (quests != null) {
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Ghost.Quest.restoreFromBundle(quests);
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Wandmaker.Quest.restoreFromBundle(quests);
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Blacksmith.Quest.restoreFromBundle(quests);
+                com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Imp.Quest.restoreFromBundle(quests);
+            }
+        }
     }
 
     private static Bundle readBundle(String json) {

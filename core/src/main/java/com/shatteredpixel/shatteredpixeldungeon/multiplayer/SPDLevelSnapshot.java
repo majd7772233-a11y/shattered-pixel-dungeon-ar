@@ -419,6 +419,29 @@ public final class SPDLevelSnapshot {
         heroState.put("ht", hero.HT);
         heroState.put("pos", hero.pos);
         heroState.put("shielding", hero.shielding());
+        heroState.put("rooted", hero.rooted);
+        heroState.put("paralysed", hero.paralysed);
+        // Notes and quest flags are run-global SPD state and must survive reconnects/floor swaps.
+        // Never export a remote Hero's view as the device's shared journal.
+        if (hero == Dungeon.hero) {
+            Bundle notesBundle = new Bundle();
+            com.shatteredpixel.shatteredpixeldungeon.journal.Notes.storeInBundle(notesBundle);
+            heroState.put("notesBundle", notesBundle.toString());
+            heroState.put("ironKeyCount", com.shatteredpixel.shatteredpixeldungeon.journal.Notes.keyCount(
+                    new com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey(Dungeon.depth)));
+            heroState.put("crystalKeyCount", com.shatteredpixel.shatteredpixeldungeon.journal.Notes.keyCount(
+                    new com.shatteredpixel.shatteredpixeldungeon.items.keys.CrystalKey(Dungeon.depth)));
+            heroState.put("wornKeyCount", com.shatteredpixel.shatteredpixeldungeon.journal.Notes.keyCount(
+                    new com.shatteredpixel.shatteredpixeldungeon.items.keys.WornKey(Dungeon.depth)));
+            heroState.put("goldenKeyCount", com.shatteredpixel.shatteredpixeldungeon.journal.Notes.keyCount(
+                    new com.shatteredpixel.shatteredpixeldungeon.items.keys.GoldenKey(Dungeon.depth)));
+            Bundle quests = new Bundle();
+            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Ghost.Quest.storeInBundle(quests);
+            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Wandmaker.Quest.storeInBundle(quests);
+            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Blacksmith.Quest.storeInBundle(quests);
+            com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Imp.Quest.storeInBundle(quests);
+            heroState.put("questStateBundle", quests.toString());
+        }
         int ankhCount = 0;
         int blessedAnkhCount = 0;
         for (com.shatteredpixel.shatteredpixeldungeon.items.Ankh ankh
