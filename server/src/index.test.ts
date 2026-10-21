@@ -285,6 +285,24 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(duplicateBlobClasses)).toBe(false);
   });
 
+  it('rejects invalid native entrance/exit cells, missing seed, and coerced string coordinates', () => {
+    const badEntrance: any = completeSnapshot();
+    badEntrance.entrancePos = 64;
+    expect(hasCompleteNativeLevelSnapshot(badEntrance)).toBe(false);
+
+    const badExit: any = completeSnapshot();
+    badExit.exitPos = -1;
+    expect(hasCompleteNativeLevelSnapshot(badExit)).toBe(false);
+
+    const missingSeed: any = completeSnapshot();
+    delete missingSeed.seed;
+    expect(hasCompleteNativeLevelSnapshot(missingSeed)).toBe(false);
+
+    const coercedDimensions: any = completeSnapshot();
+    coercedDimensions.width = "8";
+    expect(hasCompleteNativeLevelSnapshot(coercedDimensions)).toBe(false);
+  });
+
   it('rejects out-of-range native cells and incomplete native Mob scheduler state', () => {
     const badTile: any = completeSnapshot();
     badTile.tiles[0].terrain = 256;
