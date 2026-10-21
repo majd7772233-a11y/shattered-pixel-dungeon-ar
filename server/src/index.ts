@@ -107,11 +107,13 @@ export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: 
   } | null {
   if (!levelSnapshot || typeof currentDepth !== "number" || !Number.isInteger(currentDepth)
     || typeof currentPos !== "number" || !Number.isInteger(currentPos)
-    || levelSnapshot.depth !== currentDepth || levelSnapshot.branch !== 0 || levelSnapshot.locked === true
+    || levelSnapshot.depth !== currentDepth || levelSnapshot.branch !== 0 || levelSnapshot.locked !== false
     || data?.depth !== currentDepth || data?.from !== currentPos
     || data?.to !== currentPos || data?.stairsPos !== currentPos
     || !Array.isArray(levelSnapshot.transitions)) return null;
-  const transition = levelSnapshot.transitions.find((item: any) => item?.pos === currentPos);
+  const matchingTransitions = levelSnapshot.transitions.filter((item: any) => item?.pos === currentPos);
+  if (matchingTransitions.length !== 1) return null;
+  const transition = matchingTransitions[0];
   if (!transition || !["REGULAR_EXIT", "REGULAR_ENTRANCE"].includes(String(transition.type))) return null;
   const targetDepth = transition.targetDepth;
   const targetBranch = transition.targetBranch;
@@ -211,16 +213,22 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
   if (!same(previous.transitions, next.transitions)) return false;
 
-  // Native shared Actors remain server-trusted until their own publisher turn arrives.
-  const oldMobs = new Map<number, any>((previous.mobs || []).map((m: any) => [Number(m.mobId), m]));
-  const newMobs = new Map<number, any>((next.mobs || []).map((m: any) => [Number(m.mobId), m]));
-  if (oldMobs.size !== newMobs.size) return false;
-  for (const [id, oldMob] of oldMobs) {
-    const newMob = newMobs.get(id);
+  // Mob.id() is local to an SPD process; compare the authoritative server entity identity instead.
+  // An NPC's native serialization may change only when the accepted action interacted with that
+  // exact NPC. HP, position, AI, scheduler, buffs and stable identity remain server-controlled.
+  const stableEntityId = (mob: any) => typeof mob?.entityId === "string" ? mob.entityId : "";
+  const oldMobs = new Map<string, any>((previous.mobs || []).map((m: any) => [stableEntityId(m), m]));
+  const newMobs = new Map<string, any>((next.mobs || []).map((m: any) => [stableEntityId(m), m]));
+  if (oldMobs.size !== newMobs.size || oldMobs.has("") || newMobs.has("")
+      || oldMobs.size !== (previous.mobs || []).length || newMobs.size !== (next.mobs || []).length) return false;
+  for (const [entityId, oldMob] of oldMobs) {
+    const newMob = newMobs.get(entityId);
     if (!newMob) return false;
-    for (const key of ["entityId", "name", "pos", "hp", "ht", "shielding", "state", "defenseSkill",
+    for (const key of ["name", "pos", "hp", "ht", "shielding", "state", "defenseSkill",
       "baseSpeed", "effectiveSpeed", "cooldown", "targetCell", "targetType", "targetEntityId",
       "enemySeen", "alerted", "buffs"]) if (!same(oldMob[key], newMob[key])) return false;
+    if (!same(oldMob.serializedBundle, newMob.serializedBundle)
+        && !(action === "INTERACT" && Number(oldMob.pos) === Number(target))) return false;
   }
 
   const dist = (a: number, b: number) => Math.max(Math.abs((a % width) - (b % width)),
@@ -291,7 +299,9 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     }
     for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
       if (same(before.get(pos), after.get(pos))) continue;
-      if (pos !== Number(target)) return false;
+      // Mining a gold wall can place an uncollected DarkGold item under the Hero, not only
+      // on the wall cell. No other heap positions are permitted to change.
+      if (action === "OPEN_CHEST" ? pos !== Number(target) : pos !== Number(target) && pos !== Number(from)) return false;
       if (action === "MINE") {
         const result = after.get(pos);
         if (result && (!Array.isArray(result.items)
@@ -299,8 +309,29 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       }
     }
   }
-  if (action !== "MOVE" && !same(previous.traps, next.traps)) return false;
-  if (action !== "MOVE" && !same(previous.plants, next.plants)) return false;
+  const localRowsUnchangedOutside = (beforeRows: any[], afterRows: any[], radius: number): boolean => {
+    if (!Array.isArray(beforeRows) || !Array.isArray(afterRows)) return false;
+    const index = (rows: any[]) => {
+      const result = new Map<number, any>();
+      for (const row of rows) {
+        const pos = Number(row?.pos);
+        if (!Number.isInteger(pos) || pos < 0 || pos >= size || result.has(pos)) return null;
+        result.set(pos, row);
+      }
+      return result;
+    };
+    const before = index(beforeRows), after = index(afterRows);
+    if (!before || !after) return false;
+    for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
+      if (!same(before.get(pos), after.get(pos)) && dist(pos, expectedHeroPos) > radius) return false;
+    }
+    return true;
+  };
+  if (action === "MOVE") {
+    // A step/search can trigger nearby traps and plants but cannot change distant world objects.
+    if (!localRowsUnchangedOutside(previous.traps, next.traps, 3)
+        || !localRowsUnchangedOutside(previous.plants, next.plants, 1)) return false;
+  } else if (!same(previous.traps, next.traps) || !same(previous.plants, next.plants)) return false;
   if (action === "MOVE" && !same(previous.blobs, next.blobs)) {
     const old = new Map<string, any>((previous.blobs || []).map((b: any) => [String(b.className), b]));
     const curr = new Map<string, any>((next.blobs || []).map((b: any) => [String(b.className), b]));
@@ -1875,7 +1906,14 @@ export class MatchRoom {
           verifiedMutationAction = mutationAction;
           verifiedMutationFrom = Number(mutationFrom);
           verifiedMutationTargetPos = Number(mutationTarget);
-          mobs = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : [];
+          const submittedMobs = Array.isArray(level.mobs) ? level.mobs : [];
+          mobs = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs.map((previousMob: any) => {
+            if (mutationAction !== "INTERACT" || Number(previousMob?.pos) !== Number(mutationTarget)) return previousMob;
+            const submittedMob = submittedMobs.find((candidate: any) =>
+              String(candidate?.entityId || "") === String(previousMob?.entityId || ""));
+            if (!submittedMob || typeof submittedMob.serializedBundle !== "string") return previousMob;
+            return { ...previousMob, serializedBundle: submittedMob.serializedBundle };
+          }) : [];
           level.mobs = mobs;
           // Hero state is player-specific; never overwrite shared floor metadata with a guest copy.
           level.heroStateJson = String(previousSnapshot.heroStateJson || "");
