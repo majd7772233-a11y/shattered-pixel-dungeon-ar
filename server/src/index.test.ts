@@ -1368,3 +1368,62 @@ describe('Authoritative native movement and floor transition validation', () => 
     ]}, 4, 23, data)).toBeNull();
   });
 });
+
+describe('Native movement mutation snapshot admission', () => {
+  const heroState = (pos: number, overrides: Record<string, any> = {}) => JSON.stringify({
+    hp: 20, ht: 20, pos, shielding: 0,
+    combatBundle: 'native-hero-bundle', inventoryBundle: 'native-inventory-bundle',
+    buffCount: 0, ironKeyCount: 0, crystalKeyCount: 0, wornKeyCount: 0, goldenKeyCount: 0,
+    notesBundle: 'native-notes-bundle', questStateBundle: 'native-quest-bundle',
+    cooldown: 0, ...overrides
+  });
+  const level = (heroPos: number) => ({
+    schemaVersion: 1, depth: 1, branch: 0, width: 8, height: 8, seed: 713,
+    entrancePos: 9, exitPos: 54, locked: false, feeling: 'NONE',
+    nativeLevelMetadataBundle: 'native-level-metadata',
+    tiles: Array.from({ length: 64 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+      flammable: false, secret: false, avoid: false, water: false,
+      discoverable: false, openSpace: false
+    })),
+    transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
+    visitedPositions: [9], mappedPositions: [9], heroStateJson: heroState(heroPos)
+  });
+  const admitMove = (before: any, after: any) => {
+    after.nativeWorldMutation = true;
+    return isValidNativeWorldMutation(before, after, 'MOVE', 9, 10, before.heroStateJson);
+  };
+
+  it('accepts the original engine opening a door during an adjacent move', () => {
+    const before = level(9);
+    const after = level(10);
+    before.tiles[10] = { ...before.tiles[10], terrain: 5, solid: true, losBlocking: true };
+    after.tiles[10] = { ...after.tiles[10], terrain: 6, solid: false, losBlocking: false };
+    expect(admitMove(before, after)).toBe(true);
+  });
+
+  it('rejects remote terrain edits and forged inventory inside a full movement snapshot', () => {
+    const before = level(9);
+    const remoteEdit = level(10);
+    remoteEdit.tiles[63] = {
+      ...remoteEdit.tiles[63], terrain: 4, passable: false, solid: true, losBlocking: true
+    };
+    expect(admitMove(before, remoteEdit)).toBe(false);
+
+    const forgedInventory = level(10);
+    forgedInventory.heroStateJson = heroState(10, { inventoryBundle: 'invented-key-and-loot' });
+    expect(admitMove(before, forgedInventory)).toBe(false);
+  });
+
+  it('requires stable native map coverage and does not permit a teleporting Hero', () => {
+    const before = level(9);
+    const teleported = level(50);
+    teleported.nativeWorldMutation = true;
+    expect(isValidNativeWorldMutation(before, teleported, 'MOVE', 9, 10, before.heroStateJson)).toBe(false);
+    const incomplete = level(10);
+    incomplete.tiles = incomplete.tiles.slice(0, 63);
+    incomplete.nativeWorldMutation = true;
+    expect(isValidNativeWorldMutation(before, incomplete, 'MOVE', 9, 10, before.heroStateJson)).toBe(false);
+  });
+});
+
