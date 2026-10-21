@@ -298,8 +298,11 @@ public abstract class Actor implements Bundlable {
 
     public static boolean shouldSkipMultiplayerSharedActor(Actor actor) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        return manager.isMultiplayerActive() && isMultiplayerSharedActor(actor)
-                && !manager.isLevelPublisher();
+        if (!manager.isMultiplayerActive()) return false;
+        // Do not let a destination Hero issue another action while the server is waiting
+        // for every living peer's native destination floor and Hero state.
+        if (manager.isFloorTransitionPending() && actor == Dungeon.hero) return true;
+        return isMultiplayerSharedActor(actor) && !manager.isLevelPublisher();
     }
 
     /** Only publish shared state after the original native action has resolved. */
