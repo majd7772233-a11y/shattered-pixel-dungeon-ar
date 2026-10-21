@@ -519,6 +519,10 @@ public final class MessageRouter {
                     if (WorldSnapshot.restoreWorld(snapshot)) {
                         manager.markSnapshotApplied(snapshot.sequence);
                         manager.synchronizeNativeWorldTurnCounter(snapshot.nativeWorldTurnCounter);
+                        if (manager.isFloorTransitionPending()) {
+                            manager.markFloorTransitionComplete();
+                            if (Dungeon.hero != null) Dungeon.hero.next();
+                        }
                     } else {
                         WorldSnapshot.rollbackToLastApplied();
                         manager.requestResync(snapshot.sequence);
@@ -706,6 +710,7 @@ public final class MessageRouter {
                     if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
                 } else if ("LEVEL_TRANSITION".equals(type)) {
                     MultiplayerManager transitionManager = MultiplayerManager.getInstance();
+                    transitionManager.markFloorTransitionPending();
                     String initiatorId = stringValue(action.get("playerId"), "");
                     int sourceDepth = intValue(action.get("fromDepth"), -1);
                     int destinationDepth = intValue(action.get("depth"), -1);
@@ -732,8 +737,19 @@ public final class MessageRouter {
                                     || transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE)
                                 && (transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
                                     || transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE);
-                        if (matchesNativeSource && Dungeon.level.activateTransition(Dungeon.hero, transition)) {
-                            transitionManager.updateLastSequence(seq);
+                        if (matchesNativeSource) {
+                            // The remote peer follows the exact native transition selected by
+                            // the initiator, then lets SPD perform its own save/load operation.
+                            int oldPos = Dungeon.hero.pos;
+                            Dungeon.hero.pos = stairsPos;
+                            if (Dungeon.hero.sprite != null && oldPos != stairsPos) Dungeon.hero.sprite.place(stairsPos);
+                            if (Dungeon.level.activateTransition(Dungeon.hero, transition)) {
+                                transitionManager.updateLastSequence(seq);
+                            } else {
+                                Dungeon.hero.pos = oldPos;
+                                if (Dungeon.hero.sprite != null) Dungeon.hero.sprite.place(oldPos);
+                                transitionManager.requestResync(seq);
+                            }
                         } else {
                             transitionManager.requestResync(seq);
                         }
