@@ -9,6 +9,8 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 
 public class MultiplayerManager implements TransportCallback {
     private static MultiplayerManager instance;
@@ -23,6 +25,7 @@ public class MultiplayerManager implements TransportCallback {
     private long lastSequence = 0;
     private long lastResyncRequestedSequence = -1L;
     private String lastPublishedLevelKey;
+    private long nativeWorldTurnCounter;
     private Long authoritativeSeed;
     private String pendingUnblessedAnkhBeforeHeroStateJson;
     private String pendingUnblessedAnkhBeforeBuffsJson;
@@ -70,6 +73,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastSequence = 0L;
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
+        this.nativeWorldTurnCounter = 0L;
         this.authoritativeSeed = null;
         clearPendingUnblessedAnkhRevival();
         WorldSnapshot.clearAppliedSnapshot();
@@ -103,6 +107,7 @@ public class MultiplayerManager implements TransportCallback {
         this.lastSequence = 0L;
         this.lastResyncRequestedSequence = -1L;
         this.lastPublishedLevelKey = null;
+        this.nativeWorldTurnCounter = 0L;
         this.authoritativeSeed = null;
         clearPendingUnblessedAnkhRevival();
         WorldSnapshot.clearAppliedSnapshot();
@@ -261,6 +266,22 @@ public class MultiplayerManager implements TransportCallback {
         return remotePlayers.get(playerId);
     }
 
+    public String getPlayerIdForHero(Hero hero) {
+        if (hero == null) return null;
+        if (hero == Dungeon.hero) return localPlayerId;
+        for (RemotePlayer player : remotePlayers.values()) {
+            if (player != null && player.heroInstance == hero) return player.playerId;
+        }
+        return null;
+    }
+
+    public Hero getHeroForPlayerId(String playerId) {
+        if (playerId == null || playerId.isEmpty()) return null;
+        if (playerId.equals(localPlayerId)) return Dungeon.hero;
+        RemotePlayer player = remotePlayers.get(playerId);
+        return player == null ? null : player.heroInstance;
+    }
+
     public String getServerEntityId(int localActorId) {
         return actorToServerEntityId.get(localActorId);
     }
@@ -286,6 +307,10 @@ public class MultiplayerManager implements TransportCallback {
         if (message == null || message.payloadJson == null) return;
         try {
             JsonValue payload = new JsonReader().parse(message.payloadJson);
+            JsonValue turnCounter = payload == null ? null : payload.get("nativeWorldTurnCounter");
+            if (turnCounter != null && turnCounter.isNumber() && turnCounter.asLong() >= 0L) {
+                nativeWorldTurnCounter = Math.max(nativeWorldTurnCounter, turnCounter.asLong());
+            }
             JsonValue entities = payload == null ? null : payload.get("entities");
             if (entities == null || !entities.isArray()) return;
             for (JsonValue entity = entities.child; entity != null; entity = entity.next) {
@@ -356,6 +381,25 @@ public class MultiplayerManager implements TransportCallback {
         msg.payloadJson = snapshot;
         activeTransport.send(msg);
         lastPublishedLevelKey = levelKey;
+    }
+
+    /**
+     * Publish the complete native level after a shared Actor finishes its original Java SPD action.
+     * The Worker validates and sequences it instead of inventing AI movement or damage.
+     */
+    public synchronized void publishNativeWorldActorResult(Actor actor) {
+        if (!isMultiplayerActive || !levelPublisher || activeTransport == null
+                || Dungeon.level == null || !Actor.isMultiplayerSharedActor(actor)) return;
+        long nextCounter = nativeWorldTurnCounter + 1L;
+        String snapshot = SPDLevelSnapshot.currentNativeWorldTurnJson(actor, nextCounter);
+        if (snapshot == null || snapshot.isEmpty()) return;
+        NetworkMessage message = new NetworkMessage();
+        message.messageType = MessageType.LEVEL_DATA;
+        message.senderId = localPlayerId;
+        message.requestId = UUID.randomUUID().toString();
+        message.payloadJson = snapshot;
+        nativeWorldTurnCounter = nextCounter;
+        activeTransport.send(message);
     }
 
     public void sendReconnect() {

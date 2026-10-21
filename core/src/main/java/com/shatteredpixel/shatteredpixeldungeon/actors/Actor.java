@@ -27,6 +27,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.watabou.noosa.Game;
 import com.watabou.utils.Bundlable;
 import com.watabou.utils.Bundle;
@@ -246,6 +247,24 @@ public abstract class Actor implements Bundlable {
 	
 	public static boolean keepActorThreadAlive = true;
 	
+    /**
+     * Shared native-world actors execute on the level publisher only. Other clients retain
+     * these actors for collision/FOV and snapshot reconciliation, but do not run a second AI.
+     */
+    public static boolean isMultiplayerSharedActor(Actor actor) {
+        if (actor == null) return false;
+        if (actor instanceof Mob || actor instanceof Blob) return true;
+        if (actor instanceof Buff && ((Buff) actor).target instanceof Mob) return true;
+        // Level.MobSpawner is private; identify its native type without duplicating its implementation.
+        return "MobSpawner".equals(actor.getClass().getSimpleName());
+    }
+
+    public static boolean shouldSkipMultiplayerSharedActor(Actor actor) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        return manager.isMultiplayerActive() && isMultiplayerSharedActor(actor)
+                && !manager.isLevelPublisher();
+    }
+
 	public static void process() {
 		
 		boolean doNext;
@@ -259,6 +278,7 @@ public abstract class Actor implements Bundlable {
 
 				synchronized (Actor.class) {
 					for (Actor actor : all) {
+						if (shouldSkipMultiplayerSharedActor(actor)) continue;
 
 						//some actors will always go before others if time is equal.
 						if (actor.time < earliest ||
@@ -297,6 +317,11 @@ public abstract class Actor implements Bundlable {
 					current = null;
 				} else {
 					doNext = acting.act();
+					if (MultiplayerManager.getInstance().isMultiplayerActive()
+							&& MultiplayerManager.getInstance().isLevelPublisher()
+							&& isMultiplayerSharedActor(acting)) {
+						MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
+					}
 					if (doNext && (Dungeon.hero == null || !Dungeon.hero.isAlive())) {
 						doNext = false;
 						current = null;

@@ -234,7 +234,71 @@ public abstract class Mob extends Char {
         spend(Math.max(0f, cooldown));
     }
 
-//mobs need to remember their targets after every actor is added
+
+    /** Native SPD speed after live status, buff, glyph and mob-specific speed modifiers. */
+    public float multiplayerEffectiveSpeed() {
+        return speed();
+    }
+
+    public boolean multiplayerEffectiveSpeedMatches(float expected) {
+        return Float.isFinite(expected) && expected > 0f
+                && Math.abs(multiplayerEffectiveSpeed() - expected) <= 0.05f;
+    }
+
+    public int multiplayerTargetCell() { return target; }
+    public boolean multiplayerEnemySeen() { return enemySeen; }
+    public boolean multiplayerAlerted() { return alerted; }
+    public Char multiplayerEnemy() { return enemy; }
+
+    public String multiplayerTargetType() {
+        if (enemy instanceof Mob) return "MOB";
+        if (enemy instanceof Hero) return "PLAYER";
+        return "NONE";
+    }
+
+    /** Stable identity of the native enemy target; never expose its device-local Actor.id(). */
+    public String multiplayerTargetEntityId() {
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        if (enemy instanceof Mob) {
+            String id = manager.getServerEntityId(enemy.id());
+            return id == null ? "" : id;
+        }
+        if (enemy instanceof Hero) {
+            String id = manager.getPlayerIdForHero((Hero) enemy);
+            return id == null ? "" : id;
+        }
+        return "";
+    }
+
+    /**
+     * Rebind the authoritative target to this device's Actor graph. Native state objects are
+     * inner instances bound to their enclosing Mob, so always use this Mob's own state instances.
+     */
+    public void restoreMultiplayerAiState(String stateName, float savedBaseSpeed,
+                                          int savedDefenseSkill, float cooldown,
+                                          int savedTargetCell, boolean savedEnemySeen,
+                                          boolean savedAlerted, String targetType,
+                                          String targetEntityId) {
+        restoreMultiplayerState(stateName, savedBaseSpeed, savedDefenseSkill, cooldown);
+        target = savedTargetCell;
+        enemySeen = savedEnemySeen;
+        alerted = savedAlerted;
+        Char resolved = null;
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        if ("MOB".equals(targetType) && targetEntityId != null && !targetEntityId.isEmpty()) {
+            Integer localId = manager.getLocalActorIdForServerEntity(targetEntityId);
+            Actor localActor = localId == null ? null : Actor.findById(localId);
+            if (localActor instanceof Char) resolved = (Char) localActor;
+        } else if ("PLAYER".equals(targetType) && targetEntityId != null && !targetEntityId.isEmpty()) {
+            resolved = manager.getHeroForPlayerId(targetEntityId);
+        }
+        enemy = resolved;
+        enemyID = resolved == null ? -1 : resolved.id();
+    }
+
+//mobs need to remember their targets after every actor is added//mobs need to remember their targets after every actor is added
 	public void restoreEnemy(){
 		if (enemyID != -1 && enemy == null) enemy = (Char)Actor.findById(enemyID);
 	}

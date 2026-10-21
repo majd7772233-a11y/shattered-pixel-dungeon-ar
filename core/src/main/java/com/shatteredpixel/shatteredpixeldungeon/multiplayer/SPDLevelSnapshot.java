@@ -6,6 +6,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.watabou.utils.Bundle;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
@@ -45,6 +46,16 @@ public final class SPDLevelSnapshot {
     public List<BlobData> blobs = new ArrayList<>();
     public List<PlantData> plants = new ArrayList<>();
     public String heroStateJson = "";
+    /** Marker/counter for a full snapshot emitted after a shared native Actor action. */
+    public boolean nativeWorldTick;
+    public long nativeWorldTurnCounter;
+    public float nativeActorClock;
+    public String nativeWorldActorKind = "";
+    public int nativeWorldActorId = -1;
+    public String nativeWorldActorClass = "";
+    public String nativeWorldActorEntityId = "";
+    public int nativeMobActorId = -1;
+    public String nativeMobEntityId = "";
 
     public static final class Tile {
         public int pos;
@@ -83,7 +94,13 @@ public final class SPDLevelSnapshot {
         public String serializedBundle = "";
         public int defenseSkill;
         public float baseSpeed;
+        public float effectiveSpeed;
         public float cooldown;
+        public int targetCell = -1;
+        public String targetType = "NONE";
+        public String targetEntityId = "";
+        public boolean enemySeen;
+        public boolean alerted;
         public List<BuffData> buffs = new ArrayList<>();
     }
 
@@ -145,6 +162,16 @@ public final class SPDLevelSnapshot {
     }
 
     public static String currentLevelJson() {
+        return buildLevelJson(null, 0L);
+    }
+
+    /** Full native world snapshot emitted only after one shared Actor finishes its native turn. */
+    public static String currentNativeWorldTurnJson(Actor actor, long turnCounter) {
+        if (actor == null || turnCounter < 1L || !Actor.isMultiplayerSharedActor(actor)) return null;
+        return buildLevelJson(actor, turnCounter);
+    }
+
+    private static String buildLevelJson(Actor nativeWorldActor, long turnCounter) {
         Level level = Dungeon.level;
         if (level == null) return null;
 
@@ -159,6 +186,35 @@ public final class SPDLevelSnapshot {
         out.locked = level.locked;
         out.feeling = level.multiplayerFeelingName();
         out.nativeLevelMetadataBundle = level.multiplayerMetadataBundle();
+        if (nativeWorldActor != null) {
+            out.nativeWorldTick = true;
+            out.nativeWorldTurnCounter = turnCounter;
+            out.nativeActorClock = Actor.now();
+            out.nativeWorldActorId = nativeWorldActor.id();
+            out.nativeWorldActorClass = nativeWorldActor.getClass().getName();
+            if (nativeWorldActor instanceof Mob) {
+                Mob actingMob = (Mob) nativeWorldActor;
+                out.nativeWorldActorKind = "MOB";
+                out.nativeWorldActorEntityId = MultiplayerManager.getInstance().getServerEntityId(actingMob.id());
+                out.nativeMobActorId = actingMob.id();
+                out.nativeMobEntityId = out.nativeWorldActorEntityId;
+            } else if (nativeWorldActor instanceof Buff
+                    && ((Buff) nativeWorldActor).target instanceof Mob) {
+                Mob targetMob = (Mob) ((Buff) nativeWorldActor).target;
+                out.nativeWorldActorKind = "MOB_BUFF";
+                out.nativeWorldActorEntityId = MultiplayerManager.getInstance().getServerEntityId(targetMob.id());
+                out.nativeMobActorId = targetMob.id();
+                out.nativeMobEntityId = out.nativeWorldActorEntityId;
+            } else if (nativeWorldActor instanceof Blob) {
+                out.nativeWorldActorKind = "BLOB";
+            } else if ("MobSpawner".equals(nativeWorldActor.getClass().getSimpleName())) {
+                out.nativeWorldActorKind = "RESPAWNER";
+            } else {
+                return null;
+            }
+            if (out.nativeWorldActorEntityId == null) out.nativeWorldActorEntityId = "";
+            if (out.nativeMobEntityId == null) out.nativeMobEntityId = "";
+        }
         for (int i = 0; i < level.length(); i++) {
             if (level.visited != null && level.visited[i]) out.visitedPositions.add(i);
             if (level.mapped != null && level.mapped[i]) out.mappedPositions.add(i);
@@ -207,7 +263,13 @@ public final class SPDLevelSnapshot {
                 m.state = mob.state == null ? "" : mob.state.getClass().getSimpleName();
                 m.defenseSkill = mob.defenseSkill;
                 m.baseSpeed = mob.multiplayerBaseSpeed();
+                m.effectiveSpeed = mob.multiplayerEffectiveSpeed();
                 m.cooldown = Math.max(0f, mob.cooldown());
+                m.targetCell = mob.multiplayerTargetCell();
+                m.targetType = mob.multiplayerTargetType();
+                m.targetEntityId = mob.multiplayerTargetEntityId();
+                m.enemySeen = mob.multiplayerEnemySeen();
+                m.alerted = mob.multiplayerAlerted();
                 m.serializedBundle = currentMobBundle(mob);
                 for (Buff buff : mob.buffs()) {
                     BuffData buffData = new BuffData();
