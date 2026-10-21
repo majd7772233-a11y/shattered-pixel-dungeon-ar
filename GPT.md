@@ -14,7 +14,7 @@ When the user says “yalla phase N” or asks to finish a phase, implement the 
 - **Primary objective:** real multiplayer gameplay between two or more devices. Players should share a coherent match and world, perform actions, fight native mobs/other players, collect and drop items, preserve inventory and temporary effects, move between floors, and recover from disconnects without duplicated/lost actions.
 - **Target transports represented in code:** Internet/WebSocket, LAN, and Bluetooth. Do not advertise any transport as working until it is actually wired and verified.
 - **Internet Worker endpoint currently hardcoded in setup:** `https://spd-multiplayer.majd7772233.workers.dev/room/{roomName}/websocket`.
-- **Latest previously verified native snapshot/combat baseline:** `c1d009cc99bf093754987a38e35e98ef42e895b5`; CI run [39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374) passed backend tests and Android JVM/debug APK checks.
+- **Phase 2 native combat re-audit:** current branch head `0a88887fa01bed79bc317f28d73692c5192b78da`; CI [39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both jobs. Verified 28 native runtime integration tests and 107 backend tests overall; see the 2026-10-21 Phase 2 re-audit in `ROADMAP.md`.
 - **Final verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for backend TypeScript build/tests and Android JVM tests/debug APK compilation.
 - **Roadmap:** read `ROADMAP.md` before starting a task. Phase 1 is complete for implementation and automated acceptance after the final snapshot consistency audit; exact-SHA run [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) passed both backend and Android jobs. Phase 2 remains complete for automated acceptance; Phase 3 is next.
 
@@ -107,7 +107,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ### Phase status
 - Phase 1, lossless native world snapshot/restoration: **complete for implementation and automated acceptance after the 2026-10-21 cross-layer re-audit**. Exact code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30` passed [CI 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) on backend and Android jobs.
-- Phase 2, native SPD combat replication: **complete for implementation and automated acceptance**.
+- Phase 2, native SPD combat replication: **complete for implementation and automated acceptance; re-audited on 2026-10-21**. Current branch-head CI run 39656587836 passed backend tests and Android JVM/debug APK checks. No physical two-device test is claimed.
 - Phase 3, native Mob AI and Actor scheduler: **next whole phase; open**.
 - Phases 4–10 remain open. See ROADMAP.md for the entire indivisible phase scope and completion gates.
 - No physical two-device match has been performed by CI; this must not be implied by the green workflow.
@@ -266,3 +266,13 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - `protocol/schema.json` now requires native Mob scheduler/AI fields for a complete full snapshot.
 - Phase 1 is complete for implementation and automated acceptance. This does not claim a physical two-device test; Phase 10 remains responsible for real-device and deployed Worker verification.
 - Next whole phase: Phase 3 — native Mob AI and Actor scheduling. Do not start it until the phase scope and current repository are re-read from the latest branch head.
+
+
+## 2026-10-21 Phase 2 re-audit — current verified status
+
+- Phase numbering is fixed: Phase 1 = lossless native snapshots/restoration; Phase 2 = native combat replication; Phase 3 = native Mob AI/Actor scheduler.
+- Re-read Phase 2's acceptance criteria, `NativeCombatRuntimeIntegrationTest.java` (28 native runtime tests), `NativeCombatAuthorityPolicyTest.java`, `server/src/index.test.ts` (107 backend tests total), `server/src/index.ts`, `protocol/schema.json`, and `.github/workflows/multiplayer-ci.yml` on the current branch.
+- Verified coverage includes native hit/miss/zero-damage/shield-only, retaliation and attacker post-state, blessed Ankh and kill reward attribution, Mob-to-player/periodic damage, target-owner PvP, secondary Mob deltas with stable IDs and full bundles, duplicate-death prevention, replay/stale-state checks, authority ownership, buffs/shields, loot and resync on untrusted reactive damage.
+- Exact current branch-head CI [39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both backend and Android jobs on `0a88887fa01bed79bc317f28d73692c5192b78da`.
+- Phase 2 remains complete for implementation and automated acceptance. Do not add duplicate code to make the phase appear newly implemented; keep the evidence current. Physical two-device validation remains Phase 10 and is not claimed.
+- Next phase: Phase 3, native Mob AI and Actor scheduler. Phase 2 must never be skipped in user-facing summaries.
