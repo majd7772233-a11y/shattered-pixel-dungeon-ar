@@ -228,6 +228,7 @@ public class GameScene extends PixelScene {
 		super.create();
 		if (MultiplayerManager.getInstance().isMultiplayerActive()) {
 			MultiplayerManager.getInstance().publishCurrentLevel();
+			MultiplayerManager.getInstance().sendLevelReady();
 		}
 		Camera.main.zoom( GameMath.gate(minZoom, defaultZoom + SPDSettings.zoom(), maxZoom));
 		Camera.main.edgeScroll.set(1);
