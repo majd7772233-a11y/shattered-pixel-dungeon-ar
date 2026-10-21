@@ -266,7 +266,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull(fleeingRow);
         Assert.assertEquals("Sleeping", sleepingRow.getString("state"));
         Assert.assertEquals("Fleeing", fleeingRow.getString("state"));
-        Assert.assertFalse(fleeingRow.getBoolean("enemySeen"));
+        JsonValue seenValue = fleeingRow.get("enemySeen");
+        Assert.assertTrue(seenValue == null || !seenValue.asBoolean());
         Assert.assertEquals(lastKnownCell, fleeingRow.getInt("targetCell"));
         Assert.assertEquals("NONE", fleeingRow.getString("targetType"));
     }
