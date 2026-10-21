@@ -1307,7 +1307,7 @@ describe('Authoritative native movement and floor transition validation', () => 
     expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
   });
 
-  it('rejects stale, non-adjacent, occupied, blocked and pit destinations', () => {
+  it('rejects stale, non-adjacent, occupied, blocked destinations and pits, matching native SPD diagonal rules', () => {
     const tiles = makeTiles();
     expect(isValidNativeMoveIntent(-1, 10, 8, 8, tiles, [])).toBe(false);
     expect(isValidNativeMoveIntent(9, 26, 8, 8, tiles, [])).toBe(false);
@@ -1315,10 +1315,10 @@ describe('Authoritative native movement and floor transition validation', () => 
     tiles[10].pit = true;
     expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(false);
     tiles[10].pit = false;
+    // The original Hero.getCloser() does not add an extra two-side diagonal-corner rule.
     tiles[10].solid = true;
-    expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(false);
-    tiles[10].solid = false;
-    tiles[17].passable = false;
+    expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(true);
+    tiles[18].passable = false;
     expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(false);
   });
 
