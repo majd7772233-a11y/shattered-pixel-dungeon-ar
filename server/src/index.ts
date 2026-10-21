@@ -61,13 +61,16 @@ export function resolveServerMobIdByEntityId(levelSnapshot: any, entityId: unkno
 
 /** Rejects partial/legacy level payloads before any room state is replaced. */
 export function hasCompleteNativeLevelSnapshot(level: any): boolean {
-  if (!level || typeof level !== "object" || Number(level.schemaVersion) !== 1
-    || Number(level.branch) !== 0 || !Number.isInteger(Number(level.depth))
-    || Number(level.depth) < 1 || Number(level.depth) > 100
-    || !Number.isInteger(Number(level.width)) || !Number.isInteger(Number(level.height))
-    || Number(level.width) < 8 || Number(level.height) < 8
-    || Number(level.width) > 100 || Number(level.height) > 100) return false;
-  const size = Number(level.width) * Number(level.height);
+  if (!level || typeof level !== "object"
+    || level.schemaVersion !== 1 || level.branch !== 0
+    || !Number.isInteger(level.depth) || level.depth < 1 || level.depth > 100
+    || !Number.isInteger(level.width) || !Number.isInteger(level.height)
+    || level.width < 8 || level.height < 8 || level.width > 100 || level.height > 100
+    || !Number.isFinite(level.seed)
+    || !Number.isInteger(level.entrancePos) || !Number.isInteger(level.exitPos)) return false;
+  const size = level.width * level.height;
+  if (level.entrancePos < 0 || level.entrancePos >= size
+    || level.exitPos < 0 || level.exitPos >= size) return false;
   const arrays = ["tiles", "transitions", "heaps", "traps", "blobs", "plants", "mobs", "visitedPositions", "mappedPositions"];
   if (arrays.some((key) => !Array.isArray(level[key]))) return false;
   if (level.tiles.length !== size || level.transitions.length > 128 || level.heaps.length > size
