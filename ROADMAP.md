@@ -5,8 +5,8 @@
 > Repository: majd7772233-a11y/shattered-pixel-dungeon-ar  
 > Working branch: multiplayer-framework-core-14118577486727081892  
 > Most recent code/schema hardening commits: `1a5d4c537ee3c2e8b6da88c126310e1499ff42c4`, `39f7441b39874988b3b4293defc48f65ec4745cf`, `81ed967088aedbfc1bcc65773a8cb5dd0774c087`  
-> Latest validated gameplay-code SHA: 8dde21303ac836c177457767d4c8e7c7e3ba7838  
-> CI for that exact code SHA: [run 39557655189 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189)
+> Latest validated snapshot-consistency code SHA: `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`  
+> CI for that exact code SHA: [run 39655327420 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) (backend TypeScript build/tests and Android JVM tests/debug APK both passed).
 
 ## Product Goal and Definition of Done
 
@@ -30,9 +30,9 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 ## Current Verified Status
 
-- **Phase 1 — Lossless native snapshots/restoration: previous acceptance baseline was green; a consistency audit found a server/Android preflight mismatch and reopened the phase for re-verification.** The server validator, regression tests and protocol schema have been hardened. Run `39654793671` for exact current SHA `81ed967088aedbfc1bcc65773a8cb5dd0774c087` is queued; do not claim the latest changes passed until that run is green.
+- **Phase 1 — Lossless native snapshots/restoration: complete for implementation and automated acceptance after cross-layer re-verification.** The final snapshot-consistency code SHA is `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; [CI run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for this exact SHA, with both backend and Android jobs green. The audit fix rejects conflicting or incomplete snapshots before server persistence and adds negative regression tests. Physical two-device testing remains in Phase 10.
 - **Phase 2 — Native combat replication: complete for implementation and automated acceptance.** Tests cover native hits/misses, shield-only outcomes, retaliation/attacker post-state, blessed Ankh, delegated kill rewards, periodic Mob damage, Mob-to-player damage, PvP, secondary stable-ID Mob deltas and replay/stale-event handling.
-- **Verified integrated code:** 8dde21303ac836c177457767d4c8e7c7e3ba7838. **CI:** [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189), both backend and Android jobs passed. Branch head d335e3917d3038bbc9043be6b18cfb9b0abd191c is a later checkpoint/documentation commit.
+- **Latest verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`. **CI:** [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) — exact-SHA backend TypeScript build/tests and Android JVM tests/debug APK build passed. Later documentation commits must preserve the distinction between code SHA and branch HEAD.
 - **No physical two-device match has been performed by CI.** Phase 10 retains this as a required release verification step.
 - **Phase 3 is next.** Phases 3–10 remain open. Phase 1/2 success does not establish native Mob scheduler parity, complete floor/interactions, transactional inventory, working transports, enforced modes or release readiness.
 
@@ -53,7 +53,7 @@ The detailed phase requirements and acceptance gates below are the authoritative
 ## Phase 1 — Establish a Lossless, Validated World Snapshot
 
 **Priority:** P0  
-**Status: Reopened for consistency re-verification.** The prior acceptance baseline `c1d009cc99bf093754987a38e35e98ef42e895b5` passed [CI run 39653964374](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39653964374). A subsequent cross-layer audit found that the server accepted duplicate entity/map positions and incomplete Mob scheduler fields that Android's `WorldSnapshot.validateForRestore()` would reject. The fix is committed in `server/src/index.ts`, `server/src/index.test.ts` and `protocol/schema.json`; exact current commit `81ed967088aedbfc1bcc65773a8cb5dd0774c087` is awaiting [CI run 39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671). Do not mark the follow-up complete until exact-SHA CI is green. CI does not run a physical two-device Android session; that remains a release smoke test.
+**Status: Complete for implementation and automated acceptance after the consistency audit.** Server snapshot admission now matches Android's full-snapshot requirements for typed dimensions/seed/floor entrance and exit coordinates, unique tile and exploration cells, unique Mob IDs/positions/stable IDs, unique heap/trap/plant positions and blob classes, and required native Mob runtime fields. Native bundles that the server cannot decode remain length-bounded and are validated by the native client before restore. Exact code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30` passed [CI run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420): backend TypeScript build/tests and Android JVM tests/debug APK build both succeeded. Physical two-device testing remains a Phase 10 release gate.
 
 ### Work items
 
@@ -68,7 +68,7 @@ The detailed phase requirements and acceptance gates below are the authoritative
 - [x] Apply world mutations on the render thread; rebuild custom visuals in their original layer order, refresh all map cells and recompute FOV without inventing visited cells. Pathfinding dimensions are validated against the active level before apply.
 - [x] Audit and include gameplay-relevant level metadata omitted by the current snapshot (map exploration state, level lock/feeling, custom tiles/walls, mob spawn classes, respawner bundle and remaining cooldown, and native transitions).
 - [x] Restore the entire native serialized bundle for already-matched mobs, including subclass-specific fields, while preserving the current device's Actor ID and scheduler registration; a JVM regression test reapplies the same stable-ID snapshot twice and verifies those invariants.
-- [x] Keep server snapshot admission at least as strict as Android restore preflight: enforce full native Mob AI/scheduler fields and reject duplicate tile/exploration cells, mob IDs/positions/stable IDs, heap/trap/plant positions and blob classes before SQL persistence. Regression tests cover these invalid full-snapshot cases, and `protocol/schema.json` marks native Mob snapshot state required. Latest CI is pending at this documentation checkpoint.
+- [x] Keep server snapshot admission at least as strict as Android restore preflight: enforce numeric schema/dimension/depth/branch/seed/entrance/exit fields and floor-cell bounds, full native Mob AI/scheduler fields, and uniqueness of tile/exploration cells, Mob IDs/positions/stable IDs, heap/trap/plant positions and blob classes before SQL persistence. Regression tests cover conflicting positions, incomplete Mob state, malformed cells/coordinates and coerced string dimensions; `protocol/schema.json` requires the native Mob snapshot state. Exact-SHA run 39655327420 passed both CI jobs.
 - [x] Complete automated native-world round-trip/idempotency coverage for missing/stale entities, killed-mob tombstones and reconnect restore. JVM tests reconstruct a missing stable-ID mob, remove unrelated stale mobs, apply the same snapshot twice without duplication, restore a resized floor, converge two independently generated local worlds from one authoritative snapshot, restore native multi-item heaps/traps/plants/timed blobs, and roll back a deliberately failed mid-restore. Server tests cover stable-ID persistence/target resolution, duplicate-ID rejection, explicit empty collections and invalid bundles.
 
 ### Acceptance criteria
@@ -77,7 +77,7 @@ The detailed phase requirements and acceptance gates below are the authoritative
 - [x] A reconnecting client can reconstruct a world even when its local generated floor dimensions or entity set differ (same active depth/branch).
 - [x] A full empty collection removes stale local objects; malformed/incomplete data is rejected before mutation or restored from the last known-good baseline on failure.
 - [x] Reapplying the same snapshot is idempotent for mobs, heaps/items, traps, plants and timed blobs; native mob Actor IDs remain local rather than being treated as network identity.
-- [ ] Latest consistency-hardening changes pass exact-SHA backend TypeScript build/tests and Android JVM tests/debug APK CI; currently awaiting run `39654793671` for `81ed967088aedbfc1bcc65773a8cb5dd0774c087`.
+- [x] Latest consistency-hardening changes pass exact-SHA backend TypeScript build/tests and Android JVM tests/debug APK CI: [run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) passed on code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`.
 - [x] Server and Android CI pass; snapshot contract tests cover valid/invalid data and restore rollback.
 
 ## Phase 2 — Make Native SPD Combat Replication Correct and Safe
@@ -298,7 +298,7 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 ### 2026-10-21 — Synchronized phase state and execution rules
 
 - Current branch head before this documentation refresh: d335e3917d3038bbc9043be6b18cfb9b0abd191c.
-- Latest validated gameplay code: 8dde21303ac836c177457767d4c8e7c7e3ba7838.
+- Latest validated snapshot-consistency code: `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI run 39655327420 passed both jobs.
 - Workflow run [39557655189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39557655189) succeeded for that exact gameplay SHA: backend TypeScript build/tests and Android JVM tests/debug APK build both passed.
 - Phase 1 automated acceptance is complete, including cross-generation convergence and rollback-after-resize. Phase 2 native combat implementation/automated acceptance is complete. The whole project is not yet finished.
 - Next whole phase: Phase 3, native Mob AI and Actor scheduling from one authority.
@@ -313,5 +313,15 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Updated `server/src/index.ts` to reject duplicate/out-of-range tile and exploration cells, duplicate heap/trap/plant positions, duplicate Mob IDs/positions/stable IDs, duplicate blob classes, malformed native heap/trap/plant values, and incomplete native Mob runtime fields before persistence.
 - Added corresponding negative tests in `server/src/index.test.ts` and aligned `protocol/schema.json` so the Mob AI/scheduler fields captured by the native exporter are required in full snapshots.
 - Source commits: [1a5d4c5](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/1a5d4c537ee3c2e8b6da88c126310e1499ff42c), [39f7441](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/39f7441b39874988b3b4293defc48f65ec4745cf), and [81ed967](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/81ed967088aedbfc1bcc65773a8cb5dd0774c087).
-- Exact-SHA workflow [39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671) was queued at the checkpoint; its result must be checked before the phase is closed again.
+- Exact-SHA workflow [39654793671](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39654793671) was superseded by subsequent fixes and CI run 39655327420, which passed both jobs on the final Phase 1 code SHA.
 - No physical two-device run is claimed. This audit and CI do not replace Phase 10 live-device release verification.
+
+
+## 2026-10-21 Phase 1 completion verification — consistency fixes green
+
+- Completed the cross-layer audit that exposed Worker/Android disagreement on full native snapshots.
+- `server/src/index.ts` now rejects duplicate/out-of-range tile and exploration cells, duplicate Mob local IDs/positions/stable IDs, duplicate heap/trap/plant positions, duplicate blob classes, malformed native object metadata and incomplete full-snapshot Mob runtime state before SQL persistence. Shared validation also requires numeric version/dimensions/depth/branch/seed/entrance/exit and in-bounds entrance/exit cells; it no longer accepts numeric strings for dimensions.
+- `server/src/index.test.ts` adds negative tests for these invalid cases. A first CI run exposed a test fixture missing `defenseSkill`; the fixture was corrected rather than weakening validation. Follow-up exact-SHA run is green.
+- `protocol/schema.json` now marks the Mob AI/scheduler state required by the full native snapshot as required contract fields.
+- Final code SHA: `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`. Exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for both `Backend typecheck and tests` and `Android debug APK compile`.
+- Phase 1 is complete for implementation and automated acceptance. No physical two-device session was performed; real-device/network release verification remains under Phase 10.
