@@ -143,7 +143,7 @@ export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, 
   if (!["UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(action)
       || !levelSnapshot || levelSnapshot.branch !== 0 || levelSnapshot.depth !== currentDepth
       || levelSnapshot.locked === true || data?.depth !== currentDepth || data?.from !== currentPos
-      || !Number.isInteger(currentPos) || !Number.isInteger(data?.targetPos)
+      || typeof currentPos !== "number" || !Number.isInteger(currentPos) || !Number.isInteger(data?.targetPos)
       || !Array.isArray(levelSnapshot.tiles) || !Array.isArray(levelSnapshot.heaps)
       || !Array.isArray(levelSnapshot.mobs)) return false;
   const width = Number(levelSnapshot.width), height = Number(levelSnapshot.height), target = Number(data.targetPos);
@@ -2080,6 +2080,7 @@ export class MatchRoom {
         let eventType = "PLAYER_MOVED";
         let actionResultPayload: any = {};
         let actionValid = false;
+        let actionErrorCode = "INVALID_ACTION";
         let actionCost = 1.0;
         let actionOwnerId = session.playerId;
         let pendingCombatForCleanup: any = null;
@@ -2978,9 +2979,9 @@ export class MatchRoom {
             try { sourceSnapshot = sourceSnapshotRow ? JSON.parse(String(sourceSnapshotRow.value)) : null; } catch (_) {}
             const activePublisher = publisherRow.length > 0
               && this.sql.exec(`SELECT player_id FROM players WHERE player_id = ? AND connected = 1`, String(publisherRow[0]?.value)).toArray().length > 0;
+            const transitionData = payload.data || {};
             if (!pendingRow.length && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && activePublisher) {
               const currentPos = Number(playerRow[0].pos);
-              const transitionData = payload.data || {};
               const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, transitionData);
               if (transition) {
                 const pending = { ...transition, initiatorId: session.playerId,
