@@ -238,7 +238,7 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     if (action === "MOVE") return (pos === Number(from) && a === 6 && b === 5)
       || (pos === Number(target) && ((a === 5 && b === 6)
         || ([2, 15, 30, 9].includes(a) && [2, 9, 15, 30].includes(b))
-        || (a === 16 && b === 5) || (a === 17 && b === 18) || (a === 18 && [19, 1].includes(b)))
+        || (a === 16 && b === 5) || (a === 17 && b === 18) || (a === 18 && [19, 1].includes(b))))
       || (dist(pos, Number(target)) <= 12 && ((a === 16 && b === 5) || (a === 17 && b === 18)));
     if (action === "UNLOCK" && pos === Number(target)) return (a === 10 && b === 5)
       || (a === 38 && b === 5) || (a === 31 && b === 1) || (a === 21 && b === 22);
