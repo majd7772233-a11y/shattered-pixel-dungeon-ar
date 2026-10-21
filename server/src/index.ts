@@ -241,6 +241,7 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   const allowedTerrain = (pos: number, a: number, b: number): boolean => {
     if (a === b) return true;
     if (action === "MOVE") return (pos === Number(from) && a === 6 && b === 5)
+      || (pos === Number(target) && a === 24 && b === 3)
       || (pos === Number(target) && ((a === 5 && b === 6)
         || ([2, 15, 30, 9].includes(a) && [2, 9, 15, 30].includes(b))
         || (a === 16 && b === 5) || (a === 17 && b === 18) || (a === 18 && [19, 1].includes(b))))
@@ -281,13 +282,21 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
       || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
   if (action !== "OPEN_CHEST" && action !== "MINE" && !same(previous.heaps, next.heaps)) return false;
-  if (action === "OPEN_CHEST") {
-    const oldHeap = (previous.heaps || []).find((h: any) => Number(h.pos) === Number(target));
-    if (!oldHeap || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(oldHeap.type))) return false;
+  if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
+    if (action === "OPEN_CHEST") {
+      const oldHeap = before.get(Number(target));
+      if (!oldHeap || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(oldHeap.type))) return false;
+    }
     for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
-      if (pos !== Number(target) && !same(before.get(pos), after.get(pos))) return false;
+      if (same(before.get(pos), after.get(pos))) continue;
+      if (pos !== Number(target)) return false;
+      if (action === "MINE") {
+        const result = after.get(pos);
+        if (result && (!Array.isArray(result.items)
+            || !result.items.every((item: any) => String(item?.className || "").endsWith(".DarkGold")))) return false;
+      }
     }
   }
   if (action !== "MOVE" && !same(previous.traps, next.traps)) return false;
@@ -1804,6 +1813,9 @@ export class MatchRoom {
           Number.isSafeInteger(Number(previousSnapshot.nativeWorldTurnCounter))
             ? Number(previousSnapshot.nativeWorldTurnCounter) : 0);
         let verifiedMutationHeroStateJson: string | null = null;
+        let verifiedMutationAction = "";
+        let verifiedMutationFrom = -1;
+        let verifiedMutationTargetPos = -1;
         if (isNativeWorldMutation) {
           const mutationAction = String(level.nativeMutationAction || "");
           const mutationRequestId = String(level.nativeMutationRequestId || "");
@@ -1860,6 +1872,9 @@ export class MatchRoom {
           if (mutationAction === "INTERACT") mergedHero.questStateBundle = reportedHero.questStateBundle;
           if (mutationAction === "INTERACT" || mutationAction === "MINE") mergedHero.inventoryBundle = reportedHero.inventoryBundle;
           verifiedMutationHeroStateJson = JSON.stringify(mergedHero);
+          verifiedMutationAction = mutationAction;
+          verifiedMutationFrom = Number(mutationFrom);
+          verifiedMutationTargetPos = Number(mutationTarget);
           mobs = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : [];
           level.mobs = mobs;
           // Hero state is player-specific; never overwrite shared floor metadata with a guest copy.
@@ -1945,9 +1960,9 @@ export class MatchRoom {
         }
         if (isNativeWorldMutation) {
           this.currentSequence++;
-          const mutationEvent = { action: String(level.nativeMutationAction || "WORLD"),
-            playerId: session.playerId, depth, from: level.nativeMutationFrom,
-            targetPos: level.nativeMutationTargetPos };
+          const mutationEvent = { action: verifiedMutationAction || "WORLD",
+            playerId: session.playerId, depth, from: verifiedMutationFrom,
+            targetPos: verifiedMutationTargetPos };
           this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
             this.currentSequence, session.playerId, "NATIVE_WORLD_MUTATION", JSON.stringify(mutationEvent));
         }

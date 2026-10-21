@@ -27,6 +27,7 @@
         "MATCH_START",
         "ACTION",
         "LEVEL_DATA",
+        "LEVEL_READY",
         "ACTION_ACCEPTED",
         "EVENT_BATCH",
         "SNAPSHOT",
@@ -241,6 +242,14 @@
           "minLength": 1,
           "maxLength": 200000
         },
+        "nativeWorldMutation": { "type": "boolean" },
+        "nativeMutationAction": {
+          "type": "string",
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"]
+        },
+        "nativeMutationRequestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "nativeMutationFrom": { "type": "integer", "minimum": 0 },
+        "nativeMutationTargetPos": { "type": "integer", "minimum": 0 },
         "mobs": {
           "type": "array",
           "maxItems": 512,

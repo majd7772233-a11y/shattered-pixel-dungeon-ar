@@ -705,9 +705,39 @@ public final class MessageRouter {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
                 } else if ("LEVEL_TRANSITION".equals(type)) {
-                    // The authoritative level snapshot that follows a transition is required
-                    // before changing local geometry; never synthesize a floor from depth alone.
-                    MultiplayerManager.getInstance().updateLastSequence(seq);
+                    MultiplayerManager manager = MultiplayerManager.getInstance();
+                    String initiatorId = stringValue(action.get("playerId"), "");
+                    int sourceDepth = intValue(action.get("fromDepth"), -1);
+                    int destinationDepth = intValue(action.get("depth"), -1);
+                    int stairsPos = intValue(action.get("transitionPos"), -1);
+                    String transitionType = stringValue(action.get("transitionType"), "");
+                    String targetType = stringValue(action.get("targetType"), "");
+                    int targetBranch = intValue(action.get("targetBranch"), -1);
+                    if (initiatorId.equals(manager.getLocalPlayerId())
+                            || (Dungeon.branch == 0 && Dungeon.depth == destinationDepth)) {
+                        manager.updateLastSequence(seq);
+                    } else if (Dungeon.hero == null || Dungeon.level == null || Dungeon.branch != 0
+                            || Dungeon.depth != sourceDepth || Dungeon.level.locked || targetBranch != 0
+                            || (destinationDepth != sourceDepth + 1 && destinationDepth != sourceDepth - 1)) {
+                        manager.requestResync(seq);
+                    } else {
+                        com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition transition =
+                                Dungeon.level.getTransition(stairsPos);
+                        boolean matchesNativeSource = transition != null && transition.cell() == stairsPos
+                                && transition.inside(stairsPos)
+                                && transition.type.name().equals(transitionType)
+                                && transition.destDepth == destinationDepth && transition.destBranch == 0
+                                && transition.destType != null && transition.destType.name().equals(targetType)
+                                && (transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
+                                    || transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE)
+                                && (transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
+                                    || transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE);
+                        if (matchesNativeSource && Dungeon.level.activateTransition(Dungeon.hero, transition)) {
+                            manager.updateLastSequence(seq);
+                        } else {
+                            manager.requestResync(seq);
+                        }
+                    }
                 } else if ("MATCH_END".equals(type)) {
                     MultiplayerManager.getInstance().updateLastSequence(seq);
                 }

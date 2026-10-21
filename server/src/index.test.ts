@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, classifyNativeTransitionRejection, isValidNativeWorldActionIntent, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -165,6 +165,31 @@ describe('Native level snapshot contract', () => {
 
   it('accepts an explicit full snapshot with empty authoritative collections', () => {
     expect(hasCompleteNativeLevelSnapshot(completeSnapshot())).toBe(true);
+  });
+
+  it('accepts a narrowly scoped movement snapshot only when its native Hero result and action marker are valid', () => {
+    const before: any = completeSnapshot();
+    const heroState = (pos: number) => JSON.stringify({
+      hp: 10, ht: 10, pos, shielding: 0, combatBundle: "native-hero-bundle",
+      inventoryBundle: "native-inventory-bundle", buffCount: 0, cooldown: 0,
+      notesBundle: "native-notes-bundle", questStateBundle: "native-quests-bundle",
+      ironKeyCount: 0, crystalKeyCount: 0, wornKeyCount: 0, goldenKeyCount: 0
+    });
+    before.heroStateJson = heroState(9);
+    const after: any = JSON.parse(JSON.stringify(before));
+    after.heroStateJson = heroState(10);
+    after.nativeWorldMutation = true;
+    expect(isValidNativeWorldMutation(before, after, "MOVE", 9, 10, before.heroStateJson)).toBe(true);
+
+    const unrelated = JSON.parse(JSON.stringify(after));
+    unrelated.tiles[63].terrain = 4;
+    unrelated.tiles[63].passable = false;
+    unrelated.tiles[63].solid = true;
+    expect(isValidNativeWorldMutation(before, unrelated, "MOVE", 9, 10, before.heroStateJson)).toBe(false);
+
+    const unmarked = JSON.parse(JSON.stringify(after));
+    delete unmarked.nativeWorldMutation;
+    expect(isValidNativeWorldMutation(before, unmarked, "MOVE", 9, 10, before.heroStateJson)).toBe(false);
   });
   const previousNativeMobSnapshot = () => {
     const previous: any = completeSnapshot();
@@ -1274,10 +1299,12 @@ describe('Authoritative native movement and floor transition validation', () => 
     pos, passable: true, solid: false, pit: false
   }));
 
-  it('accepts adjacent cardinal and clear diagonal native steps', () => {
+  it('accepts adjacent cardinal, clear diagonal and native closed-door steps', () => {
     const tiles = makeTiles();
     expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
     expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(true);
+    tiles[10] = { ...tiles[10], terrain: 5, passable: true, solid: true, pit: false };
+    expect(isValidNativeMoveIntent(9, 10, 8, 8, tiles, [])).toBe(true);
   });
 
   it('rejects stale, non-adjacent, occupied, blocked and pit destinations', () => {
@@ -1293,6 +1320,35 @@ describe('Authoritative native movement and floor transition validation', () => 
     tiles[10].solid = false;
     tiles[17].passable = false;
     expect(isValidNativeMoveIntent(9, 18, 8, 8, tiles, [])).toBe(false);
+  });
+
+  it('returns explicit reasons for locked floors and unsupported branch transitions', () => {
+    const level: any = { depth: 4, branch: 0, locked: false, transitions: [
+      { pos: 23, type: 'REGULAR_EXIT', targetDepth: 5, targetBranch: 0, targetType: 'REGULAR_ENTRANCE' },
+      { pos: 32, type: 'BRANCH_ENTRANCE', targetDepth: 5, targetBranch: 1, targetType: 'BRANCH_EXIT' }
+    ] };
+    expect(classifyNativeTransitionRejection({ ...level, locked: true }, 4, 23, { from: 23 })).toBe("FLOOR_LOCKED");
+    expect(classifyNativeTransitionRejection(level, 4, 32, { from: 32 })).toBe("UNSUPPORTED_BRANCH_TRANSITION");
+    expect(classifyNativeTransitionRejection({ ...level, branch: 1 }, 4, 23, { from: 23 })).toBe("UNSUPPORTED_BRANCH_TRANSITION");
+    expect(classifyNativeTransitionRejection(level, 4, 23, { from: 23 })).toBe("INVALID_TRANSITION");
+  });
+
+  it('validates adjacent door, chest and living native NPC world intents only', () => {
+    const level: any = {
+      branch: 0, depth: 4, width: 8, height: 8, locked: false,
+      tiles: Array.from({ length: 64 }, (_, pos) => ({ pos, terrain: 1 })), heaps: [], mobs: []
+    };
+    level.tiles[10].terrain = 10;
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 11 }, level, 4, 9)).toBe(false);
+    level.tiles[10].terrain = 1;
+    level.heaps.push({ pos: 10, type: "LOCKED_CHEST" });
+    expect(isValidNativeWorldActionIntent("OPEN_CHEST", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
+    level.heaps = [];
+    level.mobs.push({ pos: 10, hp: 4, entityId: "stable-world-npc-0001" });
+    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
+    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 30 }, level, 4, 9)).toBe(false);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, { ...level, locked: true }, 4, 9)).toBe(false);
   });
 
   it('resolves only the matching unlocked regular transition on the current floor', () => {
