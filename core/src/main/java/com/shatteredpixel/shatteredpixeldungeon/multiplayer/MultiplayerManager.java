@@ -17,6 +17,7 @@ public class MultiplayerManager implements TransportCallback {
 
     private boolean isMultiplayerActive = false;
     private volatile boolean levelPublisher = false;
+    private volatile boolean floorTransitionPending = false;
     private volatile boolean resolvingAuthorityCombat = false;
     private volatile String authorityCombatRequestId;
     private String roomCode;
@@ -69,6 +70,7 @@ public class MultiplayerManager implements TransportCallback {
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.lastSequence = 0L;
         this.lastResyncRequestedSequence = -1L;
@@ -101,6 +103,7 @@ public class MultiplayerManager implements TransportCallback {
         this.serverEntityIdToActor.clear();
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.localPlayerId = null;
         this.roomCode = null;
@@ -114,6 +117,13 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public boolean isLevelPublisher() { return levelPublisher; }
+
+    public boolean isFloorTransitionPending() { return floorTransitionPending; }
+
+    public void markFloorTransitionPending() { floorTransitionPending = true; }
+
+    /** Only a restored server-committed destination snapshot releases the floor barrier. */
+    public void markFloorTransitionComplete() { floorTransitionPending = false; }
 
     public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
         if (acceptedTurn >= 0L) nativeWorldTurnCounter = acceptedTurn;
@@ -412,7 +422,9 @@ public class MultiplayerManager implements TransportCallback {
         if (!isMultiplayerActive || !levelPublisher || activeTransport == null || Dungeon.level == null
                 || Dungeon.branch != 0) return;
         String levelKey = Dungeon.seed + ":" + Dungeon.branch + ":" + Dungeon.depth;
-        if (levelKey.equals(lastPublishedLevelKey)) return;
+        // A revisited floor still needs its real native instance and dynamic state at a group
+        // transition. Bypass the usual one-publication-per-key shortcut while the barrier is open.
+        if (levelKey.equals(lastPublishedLevelKey) && !floorTransitionPending) return;
         String snapshot = SPDLevelSnapshot.currentLevelJson();
         if (snapshot == null) return;
         NetworkMessage msg = new NetworkMessage();
@@ -492,7 +504,8 @@ public class MultiplayerManager implements TransportCallback {
             } catch (RuntimeException ignored) {}
         }
 
-        if (message.messageType == MessageType.ACTION_ACCEPTED && message.requestId != null) {
+        if ((message.messageType == MessageType.ACTION_ACCEPTED || message.messageType == MessageType.ACK)
+                && message.requestId != null) {
             pendingActions.remove(message.requestId);
         } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
             NetworkMessage rejected = pendingActions.remove(message.requestId);
@@ -523,7 +536,13 @@ public class MultiplayerManager implements TransportCallback {
                             || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name);
                 } catch (RuntimeException ignored) {}
             }
+            boolean rejectedTransition = rejected != null && rejected.payloadJson != null
+                    && rejected.payloadJson.contains("\"action\":\"LVL_TRANSITION\"");
+            boolean transitionAlreadyPending = message.payloadJson != null
+                    && message.payloadJson.contains("TRANSITION_PENDING");
+            if (rejectedTransition && !transitionAlreadyPending) floorTransitionPending = false;
             if (rejectedNativeTurn || rejectedNativeWorldMutation || rejectedWorldAction
+                    || (rejectedTransition && !transitionAlreadyPending)
                     || (rejected != null && rejected.payloadJson != null
                     && (rejected.payloadJson.contains("\"action\":\"ATTACK\"")
                         || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"")
@@ -564,7 +583,10 @@ public class MultiplayerManager implements TransportCallback {
         }
 
         // A snapshot sequence is acknowledged only after its full native world is restored.
-        if (message.messageType != MessageType.SNAPSHOT && message.sequence > this.lastSequence) {
+        // EVENT_BATCH is consumed per event by MessageRouter. Advancing to the envelope
+        // sequence first would make every contained event at that sequence look stale.
+        if (message.messageType != MessageType.SNAPSHOT && message.messageType != MessageType.EVENT_BATCH
+                && message.sequence > this.lastSequence) {
             this.lastSequence = message.sequence;
         }
 
