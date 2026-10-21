@@ -31,7 +31,6 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.traps.FrostTrap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Firebloom;
 import com.watabou.noosa.Game;
-import com.watabou.noosa.MovieClip.Animation;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.Random;
@@ -290,22 +289,27 @@ public class NativeCombatRuntimeIntegrationTest {
         RemotePlayer targetPlayer = new RemotePlayer("remote-target-player", "Remote", "WARRIOR");
         RemoteHero targetHero = new RemoteHero();
         targetHero.pos = hero.pos + 4;
-        targetHero.HP = targetHero.HT = 20;
+        targetHero.HP = hero.HP;
+        targetHero.HT = hero.HT;
         targetPlayer.pos = targetHero.pos;
-        targetPlayer.hp = targetPlayer.ht = 20;
+        targetPlayer.hp = targetHero.HP;
+        targetPlayer.ht = targetHero.HT;
         targetPlayer.heroInstance = targetHero;
         manager.addRemotePlayer(targetPlayer);
         Actor.add(targetHero);
         mob.restoreMultiplayerAiState("Hunting", mob.multiplayerBaseSpeed(), mob.defenseSkill,
                 1.75f, targetHero.pos, true, true, "PLAYER", targetPlayer.playerId);
 
+        int localHeroPos = hero.pos;
+        hero.pos = targetHero.pos;
+        String targetHeroStateJson = SPDLevelSnapshot.currentHeroStateJson(hero);
+        hero.pos = localHeroPos;
         WorldSnapshot snapshot = makeSnapshotWithMob(1L, mob, entityId);
         snapshot.playerPositions.put(targetPlayer.playerId, targetHero.pos);
         snapshot.playerHp.put(targetPlayer.playerId, targetHero.HP);
         snapshot.playerHt.put(targetPlayer.playerId, targetHero.HT);
         snapshot.playerClasses.put(targetPlayer.playerId, "WARRIOR");
-        snapshot.playerStateJson.put(targetPlayer.playerId,
-                SPDLevelSnapshot.currentHeroStateJson(targetHero));
+        snapshot.playerStateJson.put(targetPlayer.playerId, targetHeroStateJson);
         manager.removeRemotePlayer(targetPlayer.playerId);
         Actor.remove(targetHero);
 
@@ -1739,10 +1743,8 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     private static final class TestAttackSprite extends CharSprite {
-        TestAttackSprite() {
-            idle = new Animation(1, true);
-            attack = new Animation(1, false);
-            play(idle);
+        @Override public void attack(int cell) {
+            // The test invokes native completion manually; no render-thread animation is needed.
         }
     }
 
