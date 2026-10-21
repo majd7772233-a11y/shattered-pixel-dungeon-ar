@@ -552,6 +552,10 @@ public class Notes {
 	protected static int nextCustomID = 0;
 
 	public static void storeInBundle( Bundle bundle ) {
+		// A fresh headless native world (including multiplayer validation fixtures) can
+		// snapshot before any journal record has been discovered or Notes.reset() has run.
+		// The authoritative serialized value for that state is an empty records collection.
+		if (records == null) records = new ArrayList<>();
 		bundle.put( RECORDS, records );
 		bundle.put( NEXT_CUSTOM_ID, nextCustomID );
 	}
