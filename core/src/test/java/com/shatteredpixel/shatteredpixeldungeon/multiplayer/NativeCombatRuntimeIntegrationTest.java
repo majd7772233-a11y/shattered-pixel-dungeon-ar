@@ -327,8 +327,8 @@ public class NativeCombatRuntimeIntegrationTest {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-ai-coop-target-selection", "client-publisher", new TestTransport());
         NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"ai-owner-token\\","
-                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"ai-owner-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
         publisherSession.sequence = 1L;
         manager.onMessageReceived(publisherSession);
 
@@ -350,8 +350,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertSame("Publisher's original SPD AI can select the other living co-op Hero",
                 remoteHero, mob.chooseNativeEnemy());
         NetworkMessage guestSession = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"ai-owner-token\\","
-                        + "\\"isLevelPublisher\\":false,\\"sequence\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"ai-owner-token\","
+                        + "\"isLevelPublisher\":false,\"sequence\":1}");
         guestSession.sequence = 1L;
         manager.onMessageReceived(guestSession);
         Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mob));
@@ -406,8 +406,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("native-animated-mob-attack", "client-publisher", transport);
         NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"attack-owner-token\\","
-                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"attack-owner-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
         publisherSession.sequence = 1L;
         manager.onMessageReceived(publisherSession);
         QueuedAttackRat mob = (QueuedAttackRat) addMob(new QueuedAttackRat(), hero.pos + 1, 20);
