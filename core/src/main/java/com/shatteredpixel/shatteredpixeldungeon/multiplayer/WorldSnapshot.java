@@ -30,6 +30,8 @@ import java.util.Map;
 
 public class WorldSnapshot {
     private static volatile WorldSnapshot lastAppliedSnapshot;
+    private static int validationRejectCounter;
+    private static volatile int lastValidationRejectCounter;
     /** True only for a local rollback copy; never serialized on the wire. */
     private boolean localRollbackBaseline;
 
@@ -205,45 +207,47 @@ public class WorldSnapshot {
      * not partially clear actors or advance the client's acknowledged sequence.
      */
     public static boolean validateForRestore(WorldSnapshot snapshot) {
-        if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return false;
+        validationRejectCounter = 0;
+        lastValidationRejectCounter = 0;
+        if (snapshot == null || !snapshot.completeWorldSnapshot || Dungeon.level == null) return rejectValidation();
         if (snapshot.sequence < 0 || snapshot.depth < 1 || snapshot.depth > 100 || snapshot.branch != 0
                 || snapshot.depth != Dungeon.depth || snapshot.branch != Dungeon.branch
                 || snapshot.levelWidth <= 0 || snapshot.levelHeight <= 0
                 || snapshot.levelWidth > 100 || snapshot.levelHeight > 100
-                || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return false;
+                || snapshot.tiles == null || snapshot.tiles.size() != snapshot.levelWidth * snapshot.levelHeight) return rejectValidation();
         int length = snapshot.levelWidth * snapshot.levelHeight;
         if (snapshot.entrancePos < 0 || snapshot.entrancePos >= length
-                || snapshot.exitPos < 0 || snapshot.exitPos >= length) return false;
+                || snapshot.exitPos < 0 || snapshot.exitPos >= length) return rejectValidation();
         boolean[] tileSeen = new boolean[length];
         for (Map<String, Object> tile : snapshot.tiles) {
-            if (tile == null) return false;
+            if (tile == null) return rejectValidation();
             int pos = number(tile.get("pos"), -1);
             int terrain = number(tile.get("terrain"), -1);
-            if (pos < 0 || pos >= length || terrain < 0 || terrain > 255 || tileSeen[pos]) return false;
+            if (pos < 0 || pos >= length || terrain < 0 || terrain > 255 || tileSeen[pos]) return rejectValidation();
             for (String flag : new String[]{"passable", "solid", "pit", "losBlocking", "flammable", "secret", "avoid", "water", "discoverable", "openSpace"}) {
                 int value = number(tile.get(flag), -1);
-                if (value != 0 && value != 1) return false;
+                if (value != 0 && value != 1) return rejectValidation();
             }
             tileSeen[pos] = true;
         }
-        for (boolean seen : tileSeen) if (!seen) return false;
+        for (boolean seen : tileSeen) if (!seen) return rejectValidation();
         if (snapshot.visitedPositions == null || snapshot.mappedPositions == null
                 || snapshot.levelFeeling == null || snapshot.nativeLevelMetadataBundle == null
-                || snapshot.nativeLevelMetadataBundle.isEmpty() || snapshot.nativeLevelMetadataBundle.length() > 200000) return false;
+                || snapshot.nativeLevelMetadataBundle.isEmpty() || snapshot.nativeLevelMetadataBundle.length() > 200000) return rejectValidation();
         Bundle nativeMetadata = readBundle(snapshot.nativeLevelMetadataBundle);
-        if (nativeMetadata == null || !Dungeon.level.canRestoreMultiplayerMetadata(nativeMetadata)) return false;
+        if (nativeMetadata == null || !Dungeon.level.canRestoreMultiplayerMetadata(nativeMetadata)) return rejectValidation();
         if (!java.util.Arrays.asList("NONE", "CHASM", "WATER", "GRASS", "DARK", "LARGE", "TRAPS", "SECRETS")
-                .contains(snapshot.levelFeeling)) return false;
-        if (!validCellList(snapshot.visitedPositions, length) || !validCellList(snapshot.mappedPositions, length)) return false;
+                .contains(snapshot.levelFeeling)) return rejectValidation();
+        if (!validCellList(snapshot.visitedPositions, length) || !validCellList(snapshot.mappedPositions, length)) return rejectValidation();
         if (snapshot.transitions == null || snapshot.heaps == null || snapshot.traps == null
                 || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
                 || snapshot.playerPositions == null || snapshot.playerHp == null || snapshot.playerHt == null
                 || snapshot.playerClasses == null || snapshot.playerStateJson == null
-                || snapshot.claimedItemPositions == null) return false;
+                || snapshot.claimedItemPositions == null) return rejectValidation();
         if (!validPositions(snapshot.transitions, length, "pos", false)
                 || !validPositions(snapshot.heaps, length, "pos", true)
                 || !validPositions(snapshot.traps, length, "pos", true)
-                || !validPositions(snapshot.plants, length, "pos", true)) return false;
+                || !validPositions(snapshot.plants, length, "pos", true)) return rejectValidation();
         for (Map<String, Object> transition : snapshot.transitions) {
             try {
                 com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.valueOf(
@@ -251,47 +255,47 @@ public class WorldSnapshot {
                 String targetType = String.valueOf(transition.get("targetType"));
                 if (!targetType.isEmpty() && !"null".equals(targetType))
                     com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.valueOf(targetType);
-            } catch (RuntimeException invalidTransition) { return false; }
+            } catch (RuntimeException invalidTransition) { return rejectValidation(); }
             int targetDepth = number(transition.get("targetDepth"), -1);
             int targetBranch = number(transition.get("targetBranch"), -1);
             String transitionType = String.valueOf(transition.get("type"));
             if (targetDepth < ("SURFACE".equals(transitionType) ? 0 : 1)
-                    || targetDepth > 100 || targetBranch < 0 || targetBranch > 32) return false;
+                    || targetDepth > 100 || targetBranch < 0 || targetBranch > 32) return rejectValidation();
         }
         for (Map.Entry<String, Integer> player : snapshot.playerPositions.entrySet()) {
             if (player.getKey() == null || player.getKey().isEmpty() || player.getValue() == null
-                    || player.getValue() < 0 || player.getValue() >= length) return false;
+                    || player.getValue() < 0 || player.getValue() >= length) return rejectValidation();
             int hp = snapshot.playerHp.containsKey(player.getKey()) ? snapshot.playerHp.get(player.getKey()) : 0;
             int ht = snapshot.playerHt.containsKey(player.getKey()) ? snapshot.playerHt.get(player.getKey()) : 1;
-            if (hp < 0 || ht < 1 || hp > ht) return false;
+            if (hp < 0 || ht < 1 || hp > ht) return rejectValidation();
             String heroState = snapshot.playerStateJson.get(player.getKey());
             if (heroState != null && !heroState.isEmpty()) {
                 Bundle state = readBundle(heroState);
-                if (state == null) return false;
+                if (state == null) return rejectValidation();
                 String combat = state.getString("combatBundle");
                 String inventory = state.getString("inventoryBundle");
                 if (combat == null || combat.isEmpty() || readBundle(combat) == null
                         || inventory == null || inventory.isEmpty() || readBundle(inventory) == null
-                        || !state.contains("buffCount")) return false;
+                        || !state.contains("buffCount")) return rejectValidation();
                 int heroBuffCount = state.getInt("buffCount");
-                if (heroBuffCount < 0 || heroBuffCount > 256) return false;
+                if (heroBuffCount < 0 || heroBuffCount > 256) return rejectValidation();
                 for (int i = 0; i < heroBuffCount; i++) {
                     String encodedBuff = state.getString("buff_" + i);
                     if (!state.contains("buff_" + i) || !bundleContains(encodedBuff, "buff", Buff.class)
-                            || !state.contains("buffCooldown_" + i)) return false;
+                            || !state.contains("buffCooldown_" + i)) return rejectValidation();
                     float buffCooldown = state.getFloat("buffCooldown_" + i);
-                    if (!Float.isFinite(buffCooldown) || buffCooldown < 0f || buffCooldown > 100000f) return false;
+                    if (!Float.isFinite(buffCooldown) || buffCooldown < 0f || buffCooldown > 100000f) return rejectValidation();
                 }
             }
         }
         java.util.Set<Integer> claimed = new java.util.HashSet<>();
         for (Integer pos : snapshot.claimedItemPositions)
-            if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return false;
+            if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return rejectValidation();
         java.util.Set<Integer> mobIds = new java.util.HashSet<>();
         java.util.Set<Integer> mobPositions = new java.util.HashSet<>();
         java.util.Set<String> serverEntityIds = new java.util.HashSet<>();
         for (Map<String, Object> mob : snapshot.mobs) {
-            if (mob == null) return false;
+            if (mob == null) return rejectValidation();
             int id = number(mob.get("mobId"), -1);
             String entityId = String.valueOf(mob.get("entityId") == null ? "" : mob.get("entityId"));
             int pos = number(mob.get("pos"), -1);
@@ -303,46 +307,46 @@ public class WorldSnapshot {
                     || (stableIdentityPresent && (entityId.length() < 8 || entityId.length() > 80
                         || !serverEntityIds.add(entityId)))
                     || pos < 0 || pos >= length || !mobPositions.add(pos)
-                    || hp < 0 || ht < 1 || hp > ht) return false;
-            if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return false;
+                    || hp < 0 || ht < 1 || hp > ht) return rejectValidation();
+            if (!bundleContains(mob.get("serializedBundle"), "mob", com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob.class)) return rejectValidation();
             Object buffs = mob.get("buffs");
-            if (!(buffs instanceof List)) return false;
-            if (((List<?>) buffs).size() > 256) return false;
+            if (!(buffs instanceof List)) return rejectValidation();
+            if (((List<?>) buffs).size() > 256) return rejectValidation();
             for (Object raw : (List<?>) buffs) {
-                if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "buff", Buff.class)) return false;
+                if (!(raw instanceof Map) || !bundleContains(((Map<?, ?>) raw).get("serializedBundle"), "buff", Buff.class)) return rejectValidation();
                 float cooldown = floatNumber(((Map<?, ?>) raw).get("cooldown"), Float.NaN);
-                if (!Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return false;
+                if (!Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return rejectValidation();
             }
             float speed = floatNumber(mob.get("baseSpeed"), Float.NaN);
             float cooldown = floatNumber(mob.get("cooldown"), Float.NaN);
             if (!Float.isFinite(speed) || speed <= 0f || speed > 100f
-                    || !Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return false;
+                    || !Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return rejectValidation();
         }
         for (Map<String, Object> heap : snapshot.heaps) {
             try { Heap.Type.valueOf(String.valueOf(heap.get("type"))); }
-            catch (RuntimeException invalidHeapType) { return false; }
+            catch (RuntimeException invalidHeapType) { return rejectValidation(); }
             Object items = heap.get("items");
-            if (!(items instanceof List) || ((List<?>) items).size() > 512) return false;
+            if (!(items instanceof List) || ((List<?>) items).size() > 512) return rejectValidation();
             for (Object raw : (List<?>) items) {
-                if (!(raw instanceof Map)) return false;
+                if (!(raw instanceof Map)) return rejectValidation();
                 Map<?, ?> item = (Map<?, ?>) raw;
-                if (!bundleContains(item.get("serializedBundle"), "item", Item.class)) return false;
+                if (!bundleContains(item.get("serializedBundle"), "item", Item.class)) return rejectValidation();
                 int quantity = number(item.get("quantity"), -1);
                 int itemLevel = number(item.get("level"), 0);
-                if (quantity < 1 || quantity > 100000 || itemLevel < -100 || itemLevel > 10000) return false;
+                if (quantity < 1 || quantity > 100000 || itemLevel < -100 || itemLevel > 10000) return rejectValidation();
             }
         }
         for (Map<String, Object> trap : snapshot.traps)
-            if (!bundleContains(trap.get("serializedBundle"), "trap", Trap.class)) return false;
+            if (!bundleContains(trap.get("serializedBundle"), "trap", Trap.class)) return rejectValidation();
         for (Map<String, Object> plant : snapshot.plants)
-            if (!bundleContains(plant.get("serializedBundle"), "plant", Plant.class)) return false;
+            if (!bundleContains(plant.get("serializedBundle"), "plant", Plant.class)) return rejectValidation();
         java.util.Set<String> blobTypes = new java.util.HashSet<>();
         for (Map<String, Object> blob : snapshot.blobs) {
-            if (!bundleContains(blob.get("serializedBundle"), "blob", Blob.class)) return false;
+            if (!bundleContains(blob.get("serializedBundle"), "blob", Blob.class)) return rejectValidation();
             String type = String.valueOf(blob.get("className"));
             float cooldown = floatNumber(blob.get("cooldown"), Float.NaN);
             if (type.isEmpty() || !blobTypes.add(type) || !Float.isFinite(cooldown)
-                    || cooldown < 0f || cooldown > 100000f) return false;
+                    || cooldown < 0f || cooldown > 100000f) return rejectValidation();
         }
         return true;
     }
@@ -456,7 +460,11 @@ public class WorldSnapshot {
                     baseline.playerStateJson.put(entry.getKey(), SPDLevelSnapshot.currentHeroStateJson(remote.heroInstance));
                 }
             }
-            return validateForRestore(baseline) ? baseline : null;
+            if (!validateForRestore(baseline)) {
+                GLog.w("Local rollback baseline failed validation branch #" + lastValidationRejectCounter);
+                return null;
+            }
+            return baseline;
         } catch (RuntimeException captureError) {
             GLog.w("Unable to capture local rollback baseline: " + captureError.getMessage());
             return null;

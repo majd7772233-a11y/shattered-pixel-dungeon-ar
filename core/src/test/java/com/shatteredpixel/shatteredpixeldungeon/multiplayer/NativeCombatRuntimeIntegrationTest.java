@@ -115,7 +115,8 @@ public class NativeCombatRuntimeIntegrationTest {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("snapshot-reconnect", "client-publisher", new TestTransport());
         WorldSnapshot localBaseline = WorldSnapshot.captureLocalRollbackBaseline();
-        Assert.assertNotNull("A valid local world must be capturable as first-snapshot rollback", localBaseline);
+        Assert.assertNotNull("A valid local world must be capturable as first-snapshot rollback; validation branch="
+                + WorldSnapshot.lastValidationRejectForDiagnostics(), localBaseline);
         Assert.assertTrue(WorldSnapshot.validateForRestore(localBaseline));
         for (Map<String, Object> localMob : localBaseline.mobs) {
             Assert.assertEquals("Rollback-local mobs must not expose local Actor IDs as server identities",
