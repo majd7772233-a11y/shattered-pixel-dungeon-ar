@@ -8,11 +8,13 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
@@ -29,6 +31,8 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.traps.FrostTrap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Firebloom;
 import com.watabou.noosa.Game;
+import com.watabou.noosa.MovieClip.Animation;
+import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.Random;
 import com.watabou.utils.SparseArray;
@@ -272,6 +276,161 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue targetTypeValue = fleeingRow.get("targetType");
         Assert.assertTrue(targetTypeValue == null || targetTypeValue.isNull()
                 || "NONE".equals(targetTypeValue.asString()));
+    }
+
+    @Test
+    public void nativeMobTargetRebindWaitsUntilRemoteHeroReplicaExists() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-player-target-rebind", "client-publisher", new TestTransport());
+
+        TargetingRat mob = (TargetingRat) addMob(new TargetingRat(), hero.pos + 1, 20);
+        String entityId = "stable-target-rebind-mob-0001";
+        manager.registerServerEntityId(mob.id(), entityId);
+
+        RemotePlayer targetPlayer = new RemotePlayer("remote-target-player", "Remote", "WARRIOR");
+        RemoteHero targetHero = new RemoteHero();
+        targetHero.pos = hero.pos + 4;
+        targetHero.HP = targetHero.HT = 20;
+        targetPlayer.pos = targetHero.pos;
+        targetPlayer.hp = targetPlayer.ht = 20;
+        targetPlayer.heroInstance = targetHero;
+        manager.addRemotePlayer(targetPlayer);
+        Actor.add(targetHero);
+        mob.restoreMultiplayerAiState("Hunting", mob.multiplayerBaseSpeed(), mob.defenseSkill,
+                1.75f, targetHero.pos, true, true, "PLAYER", targetPlayer.playerId);
+
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, mob, entityId);
+        snapshot.playerPositions.put(targetPlayer.playerId, targetHero.pos);
+        snapshot.playerHp.put(targetPlayer.playerId, targetHero.HP);
+        snapshot.playerHt.put(targetPlayer.playerId, targetHero.HT);
+        snapshot.playerClasses.put(targetPlayer.playerId, "WARRIOR");
+        snapshot.playerStateJson.put(targetPlayer.playerId,
+                SPDLevelSnapshot.currentHeroStateJson(targetHero));
+        manager.removeRemotePlayer(targetPlayer.playerId);
+        Actor.remove(targetHero);
+
+        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
+        RemotePlayer restoredPlayer = manager.getRemotePlayer(targetPlayer.playerId);
+        Mob restoredMob = findMobByServerId(manager, entityId);
+        Assert.assertNotNull(restoredPlayer);
+        Assert.assertNotNull(restoredPlayer.heroInstance);
+        Assert.assertNotNull(restoredMob);
+        Assert.assertSame("The native target must rebind after the remote Hero is reconstructed",
+                restoredPlayer.heroInstance, restoredMob.multiplayerEnemy());
+        Assert.assertEquals("PLAYER", restoredMob.multiplayerTargetType());
+        Assert.assertEquals(targetPlayer.playerId, restoredMob.multiplayerTargetEntityId());
+        Assert.assertEquals(1.75f, restoredMob.cooldown(), 0.02f);
+    }
+
+    @Test
+    public void publisherNativeMobAiSelectsVisibleCoopHeroButNonPublisherDoesNot() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-ai-coop-target-selection", "client-publisher", new TestTransport());
+        NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"ai-owner-token\\","
+                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+        publisherSession.sequence = 1L;
+        manager.onMessageReceived(publisherSession);
+
+        hero.pos = 2 * level.width() + 2;
+        TargetingRat mob = (TargetingRat) addMob(new TargetingRat(), 16 * level.width() + 16, 20);
+        boolean[] fov = new boolean[level.length()];
+        Arrays.fill(fov, true);
+        mob.setTestFieldOfView(fov);
+        RemotePlayer remote = new RemotePlayer("closer-coop-player", "Closer", "WARRIOR");
+        RemoteHero remoteHero = new RemoteHero();
+        remoteHero.pos = mob.pos + 1;
+        remoteHero.HP = remoteHero.HT = 20;
+        remote.pos = remoteHero.pos;
+        remote.hp = remote.ht = 20;
+        remote.heroInstance = remoteHero;
+        manager.addRemotePlayer(remote);
+        Actor.add(remoteHero);
+
+        Assert.assertSame("Publisher's original SPD AI can select the other living co-op Hero",
+                remoteHero, mob.chooseNativeEnemy());
+        NetworkMessage guestSession = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"ai-owner-token\\","
+                        + "\\"isLevelPublisher\\":false,\\"sequence\\":1}");
+        guestSession.sequence = 1L;
+        manager.onMessageReceived(guestSession);
+        Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mob));
+        Assert.assertSame("Non-publishers must not select a remote Hero in their independent Mob AI",
+                hero, mob.chooseNativeEnemy());
+    }
+
+    @Test
+    public void nativeMobSpeedAndCooldownRoundTripPreservesHasteModifier() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-mob-speed-roundtrip", "client-publisher", new TestTransport());
+        Rat mob = addRat(hero.pos + 1, 20);
+        String entityId = "stable-hasted-mob-0001";
+        manager.registerServerEntityId(mob.id(), entityId);
+        Buff.affect(mob, Haste.class, Haste.DURATION);
+        mob.restoreMultiplayerCooldown(2.75f);
+        float expectedSpeed = mob.multiplayerEffectiveSpeed();
+        Assert.assertEquals(mob.multiplayerBaseSpeed() * 3f, expectedSpeed, 0.001f);
+
+        WorldSnapshot snapshot = makeSnapshotWithMob(1L, mob, entityId);
+        Assert.assertTrue(WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertTrue(WorldSnapshot.restoreWorld(snapshot));
+        Mob restored = findMobByServerId(manager, entityId);
+        Assert.assertNotNull(restored);
+        Assert.assertNotNull(restored.buff(Haste.class));
+        Assert.assertEquals(expectedSpeed, restored.multiplayerEffectiveSpeed(), 0.02f);
+        Assert.assertEquals(2.75f, restored.cooldown(), 0.02f);
+    }
+
+    @Test
+    public void nativeMobPathingUsesSPDObstacleAndFleeRules() {
+        int from = 10 * level.width() + 10;
+        int target = from + 2 * level.width() + 2;
+        level.setTestTerrain(Terrain.WALL, from + 1, from + level.width());
+        PathingRat mob = (PathingRat) addMob(new PathingRat(), from, 20);
+        boolean[] fov = new boolean[level.length()];
+        Arrays.fill(fov, true);
+        mob.setTestFieldOfView(fov);
+
+        Assert.assertTrue(mob.moveToward(target));
+        Assert.assertNotEquals(target, mob.pos);
+        Assert.assertTrue(level.passable[mob.pos]);
+        Assert.assertTrue(level.adjacent(from, mob.pos));
+        int oldDistance = level.distance(mob.pos, hero.pos);
+        Assert.assertTrue(mob.moveAway(hero.pos));
+        Assert.assertTrue(level.distance(mob.pos, hero.pos) > oldDistance);
+    }
+
+    @Test
+    public void animatedNativeMobAttackPublishesOnlyAfterOriginalAttackCompletes() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-animated-mob-attack", "client-publisher", transport);
+        NetworkMessage publisherSession = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"attack-owner-token\\","
+                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+        publisherSession.sequence = 1L;
+        manager.onMessageReceived(publisherSession);
+        QueuedAttackRat mob = (QueuedAttackRat) addMob(new QueuedAttackRat(), hero.pos + 1, 20);
+        manager.registerServerEntityId(mob.id(), "stable-animated-attacker-0001");
+        TestAttackSprite sprite = new TestAttackSprite();
+        sprite.ch = mob;
+        sprite.visible = true;
+        mob.sprite = sprite;
+
+        Assert.assertFalse(mob.beginNativeAttack(hero));
+        Assert.assertTrue(mob.multiplayerAttackAwaitingCompletion());
+        Assert.assertFalse(Actor.shouldPublishMultiplayerSharedActorResult(mob));
+        Assert.assertEquals(0L, transport.sent.stream().filter(m -> m.messageType == MessageType.LEVEL_DATA).count());
+
+        mob.onAttackComplete();
+
+        Assert.assertFalse(mob.multiplayerAttackAwaitingCompletion());
+        Assert.assertTrue(Actor.shouldPublishMultiplayerSharedActorResult(mob));
+        Assert.assertEquals(1L, transport.sent.stream().filter(m -> m.messageType == MessageType.LEVEL_DATA).count());
+        NetworkMessage turn = transport.sent.stream()
+                .filter(m -> m.messageType == MessageType.LEVEL_DATA).findFirst().orElse(null);
+        Assert.assertNotNull(turn);
+        Assert.assertTrue(new JsonReader().parse(turn.payloadJson).getBoolean("nativeWorldTick"));
     }
 
     @Test
@@ -1563,6 +1722,30 @@ public class NativeCombatRuntimeIntegrationTest {
         }
     }
 
+    private static final class TargetingRat extends Rat {
+        void setTestFieldOfView(boolean[] fov) { fieldOfView = fov; }
+        Char chooseNativeEnemy() { return chooseEnemy(); }
+    }
+
+    private static final class PathingRat extends Rat {
+        void setTestFieldOfView(boolean[] fov) { fieldOfView = fov; }
+        boolean moveToward(int target) { return getCloser(target); }
+        boolean moveAway(int target) { return getFurther(target); }
+        @Override public void move(int step) { pos = step; }
+    }
+
+    private static final class QueuedAttackRat extends Rat {
+        boolean beginNativeAttack(Char target) { enemy = target; return doAttack(target); }
+    }
+
+    private static final class TestAttackSprite extends CharSprite {
+        TestAttackSprite() {
+            idle = new Animation(1, true);
+            attack = new Animation(1, false);
+            play(idle);
+        }
+    }
+
     private static final class TestTransport implements NetworkTransport {
         private boolean connected;
         final java.util.List<NetworkMessage> sent = new ArrayList<>();
@@ -1702,6 +1885,11 @@ public class NativeCombatRuntimeIntegrationTest {
 
     private static final class TestLevel extends Level {
         private boolean failNextFeelingRestore;
+
+        private void setTestTerrain(int terrain, int... positions) {
+            for (int position : positions) map[position] = terrain;
+            buildFlagMaps();
+        }
 
         private TestLevel() {
             // Use the game's standard 32x32 pathfinding dimensions. Native combat publication

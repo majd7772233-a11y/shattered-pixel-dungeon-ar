@@ -195,9 +195,11 @@ describe('Native level snapshot contract', () => {
     expect(isValidNativeWorldTurnSnapshot(previousNativeMobSnapshot(), nextNativeMobTurn(), 0, 1)).toBe(true);
   });
 
-  it("rejects replayed counters, foreign actor IDs and mismatched stable identities", () => {
+  it("rejects replayed and skipped counters, foreign actor IDs and mismatched stable identities", () => {
     const previous = previousNativeMobSnapshot();
     expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn(), 1, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeWorldTurnCounter: 2 }), 0, 1)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeWorldTurnCounter: 3 }), 2, 1)).toBe(true);
     expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({ nativeWorldActorId: 88 }), 0, 1)).toBe(false);
     expect(isValidNativeWorldTurnSnapshot(previous, nextNativeMobTurn({
       nativeWorldActorEntityId: "different-stable-mob-0002", nativeMobEntityId: "different-stable-mob-0002"

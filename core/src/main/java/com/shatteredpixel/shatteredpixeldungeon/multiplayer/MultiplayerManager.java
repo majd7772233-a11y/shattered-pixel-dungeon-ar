@@ -313,7 +313,7 @@ public class MultiplayerManager implements TransportCallback {
             JsonValue payload = new JsonReader().parse(message.payloadJson);
             JsonValue turnCounter = payload == null ? null : payload.get("nativeWorldTurnCounter");
             if (turnCounter != null && turnCounter.isNumber() && turnCounter.asLong() >= 0L) {
-                nativeWorldTurnCounter = turnCounter.asLong();
+                nativeWorldTurnCounter = Math.max(nativeWorldTurnCounter, turnCounter.asLong());
             }
             if (message.requestId != null) pendingActions.remove(message.requestId);
             JsonValue entities = payload == null ? null : payload.get("entities");
