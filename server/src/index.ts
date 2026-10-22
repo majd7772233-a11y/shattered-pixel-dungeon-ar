@@ -110,11 +110,14 @@ export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: 
     || levelSnapshot.depth !== currentDepth || levelSnapshot.branch !== 0 || levelSnapshot.locked !== false
     || data?.depth !== currentDepth || data?.from !== currentPos
     || data?.to !== currentPos || data?.stairsPos !== currentPos
-    || !Array.isArray(levelSnapshot.transitions) || !Array.isArray(levelSnapshot.tiles)) return null;
+    || !Array.isArray(levelSnapshot.transitions)) return null;
 
   // Native SPD handles pits before moving the Hero into the cell: Chasm.heroFall() runs while
   // the Hero stays at currentPos. Model that as a separate floor transition, not a stair edge.
   if (data?.transitionKind === "FALL") {
+    if (!Array.isArray(levelSnapshot.tiles)
+      || !Number.isInteger(levelSnapshot.width) || levelSnapshot.width < 8 || levelSnapshot.width > 100
+      || !Number.isInteger(levelSnapshot.height) || levelSnapshot.height < 8 || levelSnapshot.height > 100) return null;
     const pitPos = data.pitPos;
     const width = Number(levelSnapshot.width), height = Number(levelSnapshot.height);
     const size = width * height;
