@@ -366,6 +366,10 @@ public class MultiplayerManager implements TransportCallback {
 
     /** Reports the complete post-action native floor, correlated to an accepted movement/world intent. */
     public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos) {
+        publishNativeWorldMutation(actionRequestId, actionName, from, targetPos, null);
+    }
+
+    public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos, String nativeMutationDetailsJson) {
         if (!isMultiplayerActive || activeTransport == null || actionRequestId == null || actionRequestId.isEmpty()
                 || Dungeon.level == null || Dungeon.branch != 0 || actionName == null) return;
         String snapshot = SPDLevelSnapshot.currentLevelJson();
@@ -378,7 +382,9 @@ public class MultiplayerManager implements TransportCallback {
                 + ",\"nativeMutationAction\":" + new Json().toJson(actionName)
                 + ",\"nativeMutationRequestId\":" + new Json().toJson(actionRequestId)
                 + ",\"nativeMutationFrom\":" + from
-                + ",\"nativeMutationTargetPos\":" + targetPos + "}";
+                + ",\"nativeMutationTargetPos\":" + targetPos
+                + (nativeMutationDetailsJson != null && nativeMutationDetailsJson.startsWith("{") && nativeMutationDetailsJson.endsWith("}")
+                    ? ",\"nativeMutationDetails\":" + nativeMutationDetailsJson : "") + "}";
         NetworkMessage message = new NetworkMessage();
         message.messageType = MessageType.LEVEL_DATA;
         message.senderId = localPlayerId;

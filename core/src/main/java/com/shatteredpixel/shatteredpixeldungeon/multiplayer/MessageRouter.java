@@ -684,6 +684,9 @@ public final class MessageRouter {
                     } else if (playerId != null && hp >= 0) {
                         applyPlayerHp(playerId, hp);
                     }
+                } else if ("NATIVE_WORLD_MUTATION".equals(type)) {
+                    // Inventory, quickslots, and native heap stacks must converge from one committed snapshot.
+                    MultiplayerManager.getInstance().requestResync(seq);
                 } else if ("ITEM_PICKED_UP".equals(type)) {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) {

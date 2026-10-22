@@ -257,6 +257,7 @@ public class Hero extends Char {
 	private int pendingNativeWorldMutationTarget = -1;
 	private float pendingNativeWorldMutationCooldownBefore;
 	private String pendingNativeWorldMutationHeroStateBefore;
+	private String pendingNativeWorldMutationDetailsJson;
 	
 	public boolean resting = false;
 	
@@ -1189,11 +1190,17 @@ public class Hero extends Char {
 	/** Queues an adjacent world-action until the original SPD callback has applied all effects. */
 	public void queueNativeWorldMutation(String actionName, int from, int target,
 										 float cooldownBefore, String heroStateBefore) {
+		queueNativeWorldMutation(actionName, from, target, cooldownBefore, heroStateBefore, null);
+	}
+
+	public void queueNativeWorldMutation(String actionName, int from, int target,
+										 float cooldownBefore, String heroStateBefore, String detailsJson) {
 		pendingNativeWorldMutationAction = actionName;
 		pendingNativeWorldMutationFrom = from;
 		pendingNativeWorldMutationTarget = target;
 		pendingNativeWorldMutationCooldownBefore = cooldownBefore;
 		pendingNativeWorldMutationHeroStateBefore = heroStateBefore;
+		pendingNativeWorldMutationDetailsJson = detailsJson;
 	}
 
 	/** Publishes one action-bound snapshot after Unlock/Operate/Mine/Interact has really resolved. */
@@ -1203,30 +1210,42 @@ public class Hero extends Char {
 		int target = pendingNativeWorldMutationTarget;
 		float cooldownBefore = pendingNativeWorldMutationCooldownBefore;
 		String heroStateBefore = pendingNativeWorldMutationHeroStateBefore;
+		String detailsJson = pendingNativeWorldMutationDetailsJson;
 		pendingNativeWorldMutationAction = null;
 		pendingNativeWorldMutationFrom = -1;
 		pendingNativeWorldMutationTarget = -1;
 		pendingNativeWorldMutationHeroStateBefore = null;
+		pendingNativeWorldMutationDetailsJson = null;
 		if (actionName == null || heroStateBefore == null || Dungeon.level == null || Dungeon.branch != 0) return;
 
 		float actionCost = Math.max(0f, Math.min(10f, cooldown() - cooldownBefore));
 		String details = "{\"from\":" + from + ",\"to\":" + target + ",\"targetPos\":" + target
 				+ ",\"depth\":" + Dungeon.depth + ",\"branch\":" + Dungeon.branch
-				+ ",\"engineActionCost\":" + actionCost + "}";
+				+ ",\"engineActionCost\":" + actionCost;
+		if (detailsJson != null && detailsJson.startsWith("{") && detailsJson.endsWith("}")) {
+			details += "," + detailsJson.substring(1, detailsJson.length() - 1);
+		}
+		details += "}";
 		NetworkActionType actionType;
 		try { actionType = NetworkActionType.valueOf(actionName); }
 		catch (IllegalArgumentException invalidAction) { return; }
 		MultiplayerManager manager = MultiplayerManager.getInstance();
 		String requestId = manager.sendAction(actionType, details, heroStateBefore);
-		if (requestId != null) manager.publishNativeWorldMutation(requestId, actionName, from, target);
+		if (requestId != null) manager.publishNativeWorldMutation(requestId, actionName, from, target, detailsJson);
+		else manager.requestResync(manager.getLastSequence());
 	}
 
 	/** Stops unsupported branch-specific interactions instead of allowing unsynchronized local mutations. */
-	public void rejectUnsupportedMultiplayerWorldAction() {
+	public void discardPendingNativeWorldMutation() {
 		pendingNativeWorldMutationAction = null;
 		pendingNativeWorldMutationFrom = -1;
 		pendingNativeWorldMutationTarget = -1;
 		pendingNativeWorldMutationHeroStateBefore = null;
+		pendingNativeWorldMutationDetailsJson = null;
+	}
+
+	public void rejectUnsupportedMultiplayerWorldAction() {
+		discardPendingNativeWorldMutation();
 		GLog.w("هذا التفاعل غير مدعوم في اللعب الجماعي على هذا الفرع.");
 		ready();
 	}
@@ -1382,6 +1401,9 @@ public class Hero extends Char {
 				Item item = heap.peek();
 				if (item.doPickUp( this )) {
 					heap.pickUp();
+					// doPickUp() advances Hero before Heap.pickUp() removes the item.
+					// Commit only after both inventory and heap reflect success.
+					if (NetworkActionType.PICKUP.name().equals(pendingNativeWorldMutationAction)) publishPendingNativeWorldMutation();
 
 					if (item instanceof Dewdrop
 							|| item instanceof TimekeepersHourglass.sandBag
@@ -1413,6 +1435,7 @@ public class Hero extends Char {
 					
 					curAction = null;
 				} else {
+					if (NetworkActionType.PICKUP.name().equals(pendingNativeWorldMutationAction)) discardPendingNativeWorldMutation();
 
 					if (waitOrPickup) {
 						spendAndNextConstant(TIME_TO_REST);
@@ -3110,7 +3133,8 @@ public class Hero extends Char {
 			super.next();
 			if (!NetworkActionType.UNLOCK.name().equals(pendingNativeWorldMutationAction)
 					&& !NetworkActionType.OPEN_CHEST.name().equals(pendingNativeWorldMutationAction)
-					&& !NetworkActionType.MINE.name().equals(pendingNativeWorldMutationAction)) {
+					&& !NetworkActionType.MINE.name().equals(pendingNativeWorldMutationAction)
+					&& !NetworkActionType.PICKUP.name().equals(pendingNativeWorldMutationAction)) {
 				publishPendingNativeWorldMutation();
 			}
 		}

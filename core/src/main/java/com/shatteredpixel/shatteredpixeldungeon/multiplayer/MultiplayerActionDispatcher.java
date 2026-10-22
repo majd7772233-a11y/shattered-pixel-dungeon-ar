@@ -63,15 +63,33 @@ public class MultiplayerActionDispatcher {
 
         String details;
         if (action instanceof HeroAction.PickUp) {
-            String itemClass = "";
+            // A pickup can first walk; only queue a transaction while standing on the exact heap.
+            if (currentPos != targetPos) return;
+            if (Dungeon.branch != 0 || Dungeon.level.locked) {
+                hero.rejectUnsupportedMultiplayerWorldAction();
+                return;
+            }
             com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(targetPos);
-            if (heap != null && heap.peek() != null) itemClass = heap.peek().getClass().getName();
-            details = "{\"from\":" + currentPos + ",\"to\":" + targetPos
-                    + ",\"itemPos\":" + targetPos + ",\"depth\":" + currentDepth
-                    + ",\"itemClass\":\"" + itemClass + "\"}";
+            com.shatteredpixel.shatteredpixeldungeon.items.Item item = heap == null ? null : heap.peek();
+            if (item == null) return;
+            com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+            String transactionDetails = "{\\"heapId\\":" + json.toJson(heap.multiplayerHeapId())
+                    + ",\\"itemId\\":" + json.toJson(item.multiplayerItemId())
+                    + ",\\"itemClass\\":" + json.toJson(item.getClass().getName())
+                    + ",\\"expectedQuantity\\":" + item.quantity()
+                    + ",\\"stackable\\":" + item.stackable + "}";
+            details = "{\\"from\\":" + currentPos + ",\\"to\\":" + targetPos
+                    + ",\\"targetPos\\":" + targetPos + ",\\"itemPos\\":" + targetPos
+                    + ",\\"depth\\":" + currentDepth + ",\\"heapId\\":" + json.toJson(heap.multiplayerHeapId())
+                    + ",\\"itemId\\":" + json.toJson(item.multiplayerItemId())
+                    + ",\\"itemClass\\":" + json.toJson(item.getClass().getName())
+                    + ",\\"expectedQuantity\\":" + item.quantity()
+                    + ",\\"stackable\\":" + item.stackable + "}";
+            hero.queueNativeWorldMutation("PICKUP", currentPos, targetPos, cooldownBefore, heroStateBefore, transactionDetails);
+            return;
         } else {
-            details = "{\"from\":" + currentPos + ",\"to\":" + targetPos
-                    + ",\"targetPos\":" + targetPos + ",\"depth\":" + currentDepth + "}";
+            details = "{\\"from\\":" + currentPos + ",\\"to\\":" + targetPos
+                    + ",\\"targetPos\\":" + targetPos + ",\\"depth\\":" + currentDepth + "}";
         }
         manager.sendAction(actionType, details, heroStateBefore);
     }
