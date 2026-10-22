@@ -782,11 +782,22 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   // rejects during preflight, so the server must reject them before any SQL replacement.
   if (!uniquePositionRows(level.heaps) || !uniquePositionRows(level.traps) || !uniquePositionRows(level.plants)) return false;
   const heapTypes = ["HEAP", "FOR_SALE", "CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST", "TOMB", "SKELETON", "REMAINS"];
+  const stableHeapIds = new Set<string>();
+  const stableItemIds = new Set<string>();
   for (const heap of level.heaps) {
+    const heapId = String(heap?.heapId || "");
+    if (heapId && (heapId.length < 8 || heapId.length > 80 || stableHeapIds.has(heapId))) return false;
+    if (heapId) stableHeapIds.add(heapId);
     if (!heapTypes.includes(String(heap?.type)) || !Array.isArray(heap?.items) || heap.items.length > 512
       || typeof heap?.seen !== "boolean" || typeof heap?.haunted !== "boolean"
       || typeof heap?.hidden !== "boolean" || typeof heap?.autoExplored !== "boolean") return false;
     for (const item of heap.items) {
+      const itemId = String(item?.itemId || "");
+      if (itemId && (itemId.length < 8 || itemId.length > 80 || stableItemIds.has(itemId)
+          || typeof item?.stackable !== "boolean" || !bundle(item?.serializedBundle)
+          || !String(item.serializedBundle).includes(itemId))) return false;
+      if (heapId && !itemId) return false;
+      if (itemId) stableItemIds.add(itemId);
       if (!bundle(item?.serializedBundle) || !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > 100000
         || !Number.isInteger(item?.level) || item.level < -100 || item.level > 10000
         || typeof item?.cursed !== "boolean" || typeof item?.cursedKnown !== "boolean") return false;

@@ -242,14 +242,33 @@
           "minLength": 1,
           "maxLength": 200000
         },
-        "nativeWorldMutation": { "type": "boolean" },
+        "nativeWorldMutation": {
+          "type": "boolean"
+        },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"]
+          "enum": [
+            "MOVE",
+            "UNLOCK",
+            "MINE",
+            "INTERACT",
+            "OPEN_CHEST",
+            "PICKUP"
+          ]
         },
-        "nativeMutationRequestId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "nativeMutationFrom": { "type": "integer", "minimum": 0 },
-        "nativeMutationTargetPos": { "type": "integer", "minimum": 0 },
+        "nativeMutationRequestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "nativeMutationFrom": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nativeMutationTargetPos": {
+          "type": "integer",
+          "minimum": 0
+        },
         "mobs": {
           "type": "array",
           "maxItems": 512,
@@ -268,7 +287,11 @@
           "maxItems": 128
         },
         "heaps": {
-          "type": "array"
+          "type": "array",
+          "maxItems": 640,
+          "items": {
+            "$ref": "#/definitions/NativeHeap"
+          }
         },
         "traps": {
           "type": "array"
@@ -285,6 +308,36 @@
         },
         "mappedPositions": {
           "type": "array"
+        },
+        "nativeMutationDetails": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Stable identity for a native item/heap mutation; present only on the action-bound post-state snapshot.",
+          "properties": {
+            "heapId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "expectedQuantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "stackable": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },
@@ -1580,6 +1633,110 @@
           "description": "The complete native level heap snapshot after resurrection. The server permits only the expected LostBackpack addition at the death cell; all other heap/item state must remain unchanged."
         },
         "heroStateJson": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200000
+        }
+      }
+    },
+    "NativeHeap": {
+      "type": "object",
+      "required": [
+        "pos",
+        "type",
+        "seen",
+        "haunted",
+        "hidden",
+        "autoExplored",
+        "items"
+      ],
+      "properties": {
+        "heapId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Stable physical heap/chest identity; omitted only in legacy snapshots."
+        },
+        "pos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "HEAP",
+            "FOR_SALE",
+            "CHEST",
+            "LOCKED_CHEST",
+            "CRYSTAL_CHEST",
+            "TOMB",
+            "SKELETON",
+            "REMAINS"
+          ]
+        },
+        "seen": {
+          "type": "boolean"
+        },
+        "haunted": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "autoExplored": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/definitions/NativeItem"
+          }
+        }
+      }
+    },
+    "NativeItem": {
+      "type": "object",
+      "required": [
+        "className",
+        "quantity",
+        "level",
+        "cursed",
+        "cursedKnown",
+        "serializedBundle"
+      ],
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Stable item instance ID; omitted only in legacy snapshots."
+        },
+        "className": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "level": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 10000
+        },
+        "cursed": {
+          "type": "boolean"
+        },
+        "cursedKnown": {
+          "type": "boolean"
+        },
+        "stackable": {
+          "type": "boolean"
+        },
+        "serializedBundle": {
           "type": "string",
           "minLength": 1,
           "maxLength": 200000

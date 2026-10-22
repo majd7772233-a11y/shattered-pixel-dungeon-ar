@@ -1521,6 +1521,43 @@ describe('Native movement mutation snapshot admission', () => {
     expect(admitMove(before, forged)).toBe(false);
   });
 
+  it('validates stable heap/item IDs in new snapshots and keeps legacy snapshots readable', () => {
+    const legacy = level(9);
+    expect(hasCompleteNativeLevelSnapshot(legacy)).toBe(true);
+
+    const modern = level(9);
+    modern.heaps = [{
+      heapId: 'stable-heap-0001', pos: 9, type: 'HEAP', seen: true, haunted: false,
+      hidden: false, autoExplored: false,
+      items: [{
+        itemId: 'stable-item-0001',
+        className: 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing',
+        quantity: 1, level: 0, cursed: false, cursedKnown: false, stackable: false,
+        serializedBundle: 'native-bundle-stable-item-0001'
+      }]
+    }];
+    expect(hasCompleteNativeLevelSnapshot(modern)).toBe(true);
+
+    const duplicateHeap = JSON.parse(JSON.stringify(modern));
+    duplicateHeap.heaps.push({ ...duplicateHeap.heaps[0], pos: 10 });
+    expect(hasCompleteNativeLevelSnapshot(duplicateHeap)).toBe(false);
+
+    const duplicateItem = JSON.parse(JSON.stringify(modern));
+    duplicateItem.heaps.push({
+      ...duplicateItem.heaps[0], heapId: 'stable-heap-0002', pos: 10,
+      items: [{ ...duplicateItem.heaps[0].items[0] }]
+    });
+    expect(hasCompleteNativeLevelSnapshot(duplicateItem)).toBe(false);
+
+    const mismatchedBundle = JSON.parse(JSON.stringify(modern));
+    mismatchedBundle.heaps[0].items[0].serializedBundle = 'native-bundle-without-id';
+    expect(hasCompleteNativeLevelSnapshot(mismatchedBundle)).toBe(false);
+
+    const malformedStackFlag = JSON.parse(JSON.stringify(modern));
+    malformedStackFlag.heaps[0].items[0].stackable = 'false';
+    expect(hasCompleteNativeLevelSnapshot(malformedStackFlag)).toBe(false);
+  });
+
   it('requires stable native map coverage and does not permit a teleporting Hero', () => {
     const before = level(9);
     const teleported = level(50);
