@@ -38,6 +38,9 @@ import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.Dart;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.TippedDart;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
 import com.shatteredpixel.shatteredpixeldungeon.mechanics.Ballistica;
@@ -173,11 +176,38 @@ public class Item implements Bundlable {
 		curItem = this;
 		
 		if (action.equals( AC_DROP )) {
-			
-			if (hero.belongings.backpack.contains(this) || isEquipped(hero)) {
-				doDrop(hero);
+			if (!(hero.belongings.backpack.contains(this) || isEquipped(hero))) return;
+			MultiplayerManager manager = MultiplayerManager.getInstance();
+			boolean trackDrop = hero == Dungeon.hero && manager.isMultiplayerActive();
+			if (trackDrop && (Dungeon.branch != 0 || Dungeon.level == null || Dungeon.level.locked)) {
+				hero.rejectUnsupportedMultiplayerWorldAction();
+				return;
 			}
-			
+			int dropPos = hero.pos;
+			String itemId = multiplayerItemId();
+			String itemClass = getClass().getName();
+			int itemQuantity = quantity();
+			boolean itemStackable = stackable;
+			float cooldownBefore = hero.cooldown();
+			String heroStateBefore = trackDrop ? SPDLevelSnapshot.currentHeroStateJson(hero) : null;
+			if (trackDrop) hero.queueNativeWorldMutation("DROP", dropPos, dropPos, cooldownBefore, heroStateBefore);
+			doDrop(hero);
+			if (trackDrop) {
+				boolean stillOwned = hero.belongings.getAllItems(Item.class).contains(this) || isEquipped(hero);
+				com.shatteredpixel.shatteredpixeldungeon.items.Heap droppedHeap = Dungeon.level == null ? null : Dungeon.level.heaps.get(dropPos);
+				if (stillOwned || droppedHeap == null) {
+					hero.discardPendingNativeWorldMutation();
+				} else {
+					com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+					String details = "{\"heapId\":" + json.toJson(droppedHeap.multiplayerHeapId())
+							+ ",\"itemId\":" + json.toJson(itemId)
+							+ ",\"itemClass\":" + json.toJson(itemClass)
+							+ ",\"expectedQuantity\":" + itemQuantity
+							+ ",\"stackable\":" + itemStackable + "}";
+					hero.queueNativeWorldMutation("DROP", dropPos, dropPos, cooldownBefore, heroStateBefore, details);
+					hero.publishPendingNativeWorldMutation();
+				}
+			}
 		} else if (action.equals( AC_THROW )) {
 			
 			if (hero.belongings.backpack.contains(this) || isEquipped(hero)) {

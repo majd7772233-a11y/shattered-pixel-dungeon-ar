@@ -421,6 +421,23 @@ public final class SPDLevelSnapshot {
         Bundle inventory = new Bundle();
         hero.belongings.storeInBundle(inventory);
         heroState.put("inventoryBundle", inventory.toString());
+        List<Map<String, Object>> inventoryIndex = new ArrayList<>();
+        for (Item item : hero.belongings.getAllItems(Item.class)) {
+            if (item == null || item.quantity() <= 0) continue;
+            Map<String, Object> entry = new HashMap<>();
+            entry.put("itemId", item.multiplayerItemId());
+            entry.put("className", item.getClass().getName());
+            entry.put("quantity", item.quantity());
+            entry.put("level", item.level());
+            entry.put("cursed", item.cursed);
+            entry.put("cursedKnown", item.cursedKnown);
+            entry.put("stackable", item.stackable);
+            entry.put("equipped", item.isEquipped(hero));
+            entry.put("serializedBundle", currentItemBundle(item));
+            inventoryIndex.add(entry);
+        }
+        heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
+        if (hero == Dungeon.hero) heroState.put("gold", Dungeon.gold);
         heroState.put("hp", hero.HP);
         heroState.put("ht", hero.HT);
         heroState.put("pos", hero.pos);

@@ -3134,7 +3134,8 @@ public class Hero extends Char {
 			if (!NetworkActionType.UNLOCK.name().equals(pendingNativeWorldMutationAction)
 					&& !NetworkActionType.OPEN_CHEST.name().equals(pendingNativeWorldMutationAction)
 					&& !NetworkActionType.MINE.name().equals(pendingNativeWorldMutationAction)
-					&& !NetworkActionType.PICKUP.name().equals(pendingNativeWorldMutationAction)) {
+					&& !NetworkActionType.PICKUP.name().equals(pendingNativeWorldMutationAction)
+					&& !NetworkActionType.DROP.name().equals(pendingNativeWorldMutationAction)) {
 				publishPendingNativeWorldMutation();
 			}
 		}
