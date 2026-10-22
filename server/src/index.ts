@@ -472,9 +472,9 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
-  fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown): boolean {
+  fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -613,7 +613,9 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
       || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
   if (action === "MOVE" && !isValidNativeMovementHeapMutation(previous, next, target)) return false;
-  if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE"
+  if (action === "PICKUP" && !isValidNativePickupHeapMutation(previous.heaps, next.heaps, target,
+      next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
+  if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
       && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
@@ -683,7 +685,12 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   for (const field of keyFields) if (!Number.isInteger(beforeHero[field]) || beforeHero[field] < 0
       || !Number.isInteger(afterHero[field]) || afterHero[field] < 0) return false;
   if (typeof beforeHero.inventoryBundle !== "string" || typeof afterHero.inventoryBundle !== "string") return false;
-  if (action !== "INTERACT" && action !== "MINE" && beforeHero.inventoryBundle !== afterHero.inventoryBundle) return false;
+  if (action !== "INTERACT" && action !== "MINE" && action !== "PICKUP"
+      && beforeHero.inventoryBundle !== afterHero.inventoryBundle) return false;
+  if (action === "PICKUP" && beforeHero.inventoryBundle === afterHero.inventoryBundle
+      && beforeHero.notesBundle === afterHero.notesBundle && beforeHero.questStateBundle === afterHero.questStateBundle
+      && beforeHero.ironKeyCount === afterHero.ironKeyCount && beforeHero.crystalKeyCount === afterHero.crystalKeyCount
+      && beforeHero.wornKeyCount === afterHero.wornKeyCount && beforeHero.goldenKeyCount === afterHero.goldenKeyCount) return false;
   const targetTerrain = Number(oldTiles.get(Number(target))?.terrain);
   const oldHeap = (previous.heaps || []).find((h: any) => Number(h.pos) === Number(target));
   const requiredKey = action === "UNLOCK"
@@ -694,11 +701,11 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     for (const field of keyFields) if (afterHero[field] !== beforeHero[field] - (field === requiredKey ? 1 : 0)) return false;
     if (typeof beforeHero.notesBundle !== "string" || typeof afterHero.notesBundle !== "string"
         || beforeHero.notesBundle === afterHero.notesBundle) return false;
-  } else if (action !== "INTERACT" && action !== "MINE") {
+  } else if (action !== "INTERACT" && action !== "MINE" && action !== "PICKUP") {
     for (const field of keyFields) if (beforeHero[field] !== afterHero[field]) return false;
     if (beforeHero.notesBundle !== afterHero.notesBundle) return false;
   }
-  if (action !== "INTERACT" && beforeHero.questStateBundle !== afterHero.questStateBundle) return false;
+  if (action !== "INTERACT" && action !== "PICKUP" && beforeHero.questStateBundle !== afterHero.questStateBundle) return false;
   return true;
 }
 /** Rejects partial/legacy level payloads before any room state is replaced. */
@@ -2263,8 +2270,10 @@ export class MatchRoom {
             ? this.sql.exec("SELECT player_id,result_json FROM processed_actions WHERE request_id = ?", mutationRequestId).toArray()[0] : null;
           let accepted: any = null;
           try { accepted = acceptedRow ? JSON.parse(String(acceptedRow.result_json)) : null; } catch (_) {}
-          const expectedEvent = mutationAction === "MOVE" ? "MOVE_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
+          const expectedEvent = mutationAction === "MOVE" ? "MOVE_INTENT_ACCEPTED"
+            : mutationAction === "PICKUP" ? "ITEM_PICKUP_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
           const acceptedPayload = accepted?.action;
+          const mutationDetails = level.nativeMutationDetails || null;
           const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
           let reportedHero: any = null;
@@ -2275,7 +2284,13 @@ export class MatchRoom {
               ? acceptedPayload?.playerId === session.playerId && acceptedPayload?.from === mutationFrom
                 && acceptedPayload?.pos === mutationTarget
               : acceptedPayload?.playerId === session.playerId && acceptedPayload?.actionType === mutationAction
-                && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget);
+                && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget
+                && (mutationAction !== "PICKUP" || mutationDetails != null
+                  && acceptedPayload?.heapId === mutationDetails.heapId
+                  && acceptedPayload?.itemId === mutationDetails.itemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
+                  && acceptedPayload?.stackable === mutationDetails.stackable));
           const previousMutationHero: any = (() => {
             try { return JSON.parse(String(trustedHeroRow?.value || "")); } catch (_) { return null; }
           })();
@@ -2283,22 +2298,23 @@ export class MatchRoom {
           const previousTargetTerrain = Number(previousSnapshot?.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
           const submittedTargetTerrain = Number(level.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
           const consumedNativeWell = mutationAction === "MOVE" && previousTargetTerrain === 24 && submittedTargetTerrain === 3;
-          const heroHpValid = mutationAction === "MOVE"
+          const heroHpValid = mutationAction === "MOVE" || mutationAction === "PICKUP"
             ? Number.isInteger(reportedHero?.hp) && (reportedHero.hp <= Number(playerRow?.hp)
-              || (consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
+              || (mutationAction === "MOVE" && consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
             : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
             && Number(reportedHero.pos) === mutationExpectedPos && heroHpValid
             && Number(reportedHero.ht) === Number(playerRow.ht)
-            && (mutationAction !== "MOVE" || !!previousMutationHero
-              && (reportedHero.shielding <= Number(previousMutationHero.shielding) || consumedNativeWell))
+            && ((mutationAction !== "MOVE" && mutationAction !== "PICKUP") || !!previousMutationHero
+              && (reportedHero.shielding <= Number(previousMutationHero.shielding)
+                || (mutationAction === "MOVE" && consumedNativeWell)))
             && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
               hp: Number(reportedHero.hp), ht: Number(reportedHero.ht), pos: mutationExpectedPos,
               shielding: Number(reportedHero.shielding)
             });
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
               || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
-                mutationFrom, mutationTarget, trustedHeroRow.value)) {
+                mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
             return;
@@ -2306,7 +2322,7 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, true);
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP");
           if (merged == null) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
@@ -2314,13 +2330,13 @@ export class MatchRoom {
           }
           const mergedHero: any = JSON.parse(merged);
           mergedHero.cooldown = reportedHero.cooldown;
-          if (mutationAction === "UNLOCK" || mutationAction === "OPEN_CHEST" || mutationAction === "INTERACT") {
+          if (mutationAction === "UNLOCK" || mutationAction === "OPEN_CHEST" || mutationAction === "INTERACT" || mutationAction === "PICKUP") {
             for (const field of ["notesBundle", "ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
               mergedHero[field] = reportedHero[field];
             }
           }
-          if (mutationAction === "INTERACT") mergedHero.questStateBundle = reportedHero.questStateBundle;
-          if (mutationAction === "INTERACT" || mutationAction === "MINE") mergedHero.inventoryBundle = reportedHero.inventoryBundle;
+          if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
+          if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP") mergedHero.inventoryBundle = reportedHero.inventoryBundle;
           verifiedMutationHeroStateJson = JSON.stringify(mergedHero);
           verifiedMutationAction = mutationAction;
           verifiedMutationFrom = Number(mutationFrom);
@@ -2341,6 +2357,7 @@ export class MatchRoom {
           delete level.nativeMutationRequestId;
           delete level.nativeMutationFrom;
           delete level.nativeMutationTargetPos;
+          delete level.nativeMutationDetails;
         }
         const isNativeWorldTurn = level.nativeWorldTick === true;
         if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0
