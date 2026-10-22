@@ -136,7 +136,7 @@ export function isPendingNativeFloorDestinationSnapshot(currentDepth: unknown, p
   submittedDepth: unknown, submittedBranch: unknown, senderId: unknown): boolean {
   return Number.isInteger(currentDepth) && Number.isInteger(submittedDepth) && submittedBranch === 0
     && !!pending && pending.fromDepth === currentDepth && pending.depth === submittedDepth
-    && pending.depth !== currentDepth && Math.abs(pending.depth - pending.fromDepth) === 1
+    && pending.depth !== currentDepth && Math.abs(Number(pending.depth) - Number(pending.fromDepth)) === 1
     && pending.targetBranch === 0 && pending.publisherId === senderId
     && pending.snapshotReady !== true;
 }
@@ -147,7 +147,7 @@ export function canFinalizeNativeFloorTransition(currentDepth: unknown, pending:
   readyPlayerCount: unknown, connectedLivingPlayerCount: unknown): boolean {
   return Number.isInteger(currentDepth) && !!pending && pending.fromDepth === currentDepth
     && Number.isInteger(pending.depth) && pending.depth !== currentDepth
-    && Math.abs(pending.depth - currentDepth) === 1 && pending.targetBranch === 0
+    && Math.abs(Number(pending.depth) - Number(currentDepth)) === 1 && pending.targetBranch === 0
     && pending.snapshotReady === true && destinationSnapshotReady === true && destinationValid === true
     && Number.isInteger(readyPlayerCount) && Number(readyPlayerCount) > 0
     && Number.isInteger(connectedLivingPlayerCount)

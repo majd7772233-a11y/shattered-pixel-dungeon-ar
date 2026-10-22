@@ -1435,7 +1435,7 @@ describe('Native movement mutation snapshot admission', () => {
   it('accepts native high-grass loot and rejects invented loot during movement', () => {
     const before = level(9);
     before.tiles[10] = { ...before.tiles[10], terrain: 15, losBlocking: true, flammable: true };
-    const nativeDrop = level(10);
+    const nativeDrop: any = level(10);
     nativeDrop.tiles[10] = { ...nativeDrop.tiles[10], terrain: 2, flammable: true };
     nativeDrop.heaps.push({ pos: 10, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false,
       items: [{ className: 'com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop',
