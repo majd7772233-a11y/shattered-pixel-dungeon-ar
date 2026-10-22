@@ -141,6 +141,14 @@ export function isPendingNativeFloorDestinationSnapshot(currentDepth: unknown, p
     && pending.snapshotReady !== true;
 }
 
+/** A timed-out regular floor transition may be aborted only while the room is still on its source depth. */
+export function canAbortNativeFloorTransition(currentDepth: unknown, pending: any): boolean {
+  return Number.isInteger(currentDepth) && !!pending && pending.fromDepth === currentDepth
+    && Number.isInteger(pending.depth) && pending.depth !== currentDepth
+    && Math.abs(Number(pending.depth) - Number(currentDepth)) === 1
+    && pending.targetBranch === 0 && Number.isFinite(Number(pending.startedAt));
+}
+
 /** Fail closed until the matching destination snapshot and all connected living-player states exist. */
 export function canFinalizeNativeFloorTransition(currentDepth: unknown, pending: any,
   destinationSnapshotReady: unknown, destinationValid: unknown,
@@ -1475,6 +1483,69 @@ export class MatchRoom {
     this.state = state;
     this.sql = state.storage.sql;
     this.initDatabase();
+  }
+
+  /** Durable Object alarm prevents a missing destination snapshot from locking the room forever. */
+  async alarm(): Promise<void> {
+    const row = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+    if (!row || typeof row.value !== "string") {
+      await this.state.storage.deleteAlarm();
+      return;
+    }
+    let pending: any = null;
+    try { pending = JSON.parse(String(row.value)); } catch (_) {}
+    if (!pending || !Number.isFinite(Number(pending.startedAt))) {
+      await this.state.storage.deleteAlarm();
+      return;
+    }
+    const deadline = Number(pending.startedAt) + 30000;
+    if (Date.now() < deadline) {
+      await this.state.storage.setAlarm(deadline);
+      return;
+    }
+    this.abortPendingLevelTransition(pending, "DESTINATION_NOT_READY");
+    await this.state.storage.deleteAlarm();
+  }
+
+  private abortPendingLevelTransition(pending: any, reasonCode: string): boolean {
+    const currentRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+    let currentPending: any = null;
+    try { currentPending = currentRow && typeof currentRow.value === "string"
+      ? JSON.parse(String(currentRow.value)) : null; } catch (_) {}
+    if (!canAbortNativeFloorTransition(this.currentDepth, pending) || !currentPending
+        || currentPending.startedAt !== pending.startedAt
+        || currentPending.fromDepth !== this.currentDepth) return false;
+
+    const payload = {
+      playerId: String(pending.initiatorId || ""),
+      fromDepth: Number(pending.fromDepth),
+      depth: Number(pending.depth),
+      transitionPos: Number(pending.transitionPos),
+      targetBranch: 0,
+      reasonCode
+    };
+    this.sql.exec("DELETE FROM room_meta WHERE key = 'transitionPending'");
+    this.sql.exec("DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'");
+    this.currentSequence++;
+    this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+      this.currentSequence, "server", "LEVEL_TRANSITION_ABORTED", JSON.stringify(payload));
+    const eventBatch = [{
+      sequence: this.currentSequence,
+      sender_id: "server",
+      event_type: "LEVEL_TRANSITION_ABORTED",
+      payload: JSON.stringify(payload)
+    }];
+    const message = JSON.stringify({
+      protocolVersion: "1.0.0",
+      messageType: "EVENT_BATCH",
+      senderId: "server",
+      sequence: this.currentSequence,
+      payloadJson: JSON.stringify(eventBatch)
+    });
+    for (const peer of this.state.getWebSockets()) {
+      try { peer.send(message); } catch (_) {}
+    }
+    return true;
   }
 
   private reconcileCombatAttackerState(
@@ -3252,6 +3323,7 @@ export class MatchRoom {
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES ('transitionPending',?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`, JSON.stringify(pending));
                 this.sql.exec(`DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'`);
+                this.state.storage.setAlarm(Date.now() + 30000).catch(() => {});
                 // Keep the room on its source depth while the transition barrier is pending.
                 // The destination becomes authoritative only in tryFinalizeLevelTransition().
                 eventType = "LEVEL_TRANSITION";

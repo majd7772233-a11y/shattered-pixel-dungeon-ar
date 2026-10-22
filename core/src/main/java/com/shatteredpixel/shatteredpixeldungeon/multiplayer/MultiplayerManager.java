@@ -125,6 +125,11 @@ public class MultiplayerManager implements TransportCallback {
     /** Only a restored server-committed destination snapshot releases the floor barrier. */
     public void markFloorTransitionComplete() { floorTransitionPending = false; }
 
+    /** Forces a fresh publish if the native floor-transition barrier aborts and loads the source floor again. */
+    public void invalidateCurrentLevelPublication() {
+        lastPublishedLevelKey = null;
+    }
+
     public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
         if (acceptedTurn >= 0L) nativeWorldTurnCounter = acceptedTurn;
     }

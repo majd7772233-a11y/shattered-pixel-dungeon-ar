@@ -754,6 +754,33 @@ public final class MessageRouter {
                             transitionManager.requestResync(seq);
                         }
                     }
+                } else if ("LEVEL_TRANSITION_ABORTED".equals(type)) {
+                    MultiplayerManager transitionManager = MultiplayerManager.getInstance();
+                    int sourceDepth = intValue(action.get("fromDepth"), -1);
+                    int destinationDepth = intValue(action.get("depth"), -1);
+                    int stairsPos = intValue(action.get("transitionPos"), -1);
+                    int targetBranch = intValue(action.get("targetBranch"), -1);
+                    if (sourceDepth < 1 || destinationDepth < 1
+                            || Math.abs(destinationDepth - sourceDepth) != 1
+                            || targetBranch != 0 || stairsPos < 0) {
+                        transitionManager.requestResync(seq);
+                    } else {
+                        transitionManager.markFloorTransitionComplete();
+                        transitionManager.invalidateCurrentLevelPublication();
+                        if (Dungeon.branch == 0 && Dungeon.depth == destinationDepth && Dungeon.hero != null) {
+                            // The source floor was saved by SPD's original InterlevelScene transition.
+                            // Return through that same native loader so seed, inventory and quest state survive.
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnDepth = sourceDepth;
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnBranch = 0;
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnPos = stairsPos;
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.curTransition = null;
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.mode =
+                                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.Mode.RETURN;
+                            Game.switchScene(com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.class);
+                        } else if (Dungeon.branch != 0 || Dungeon.depth != sourceDepth) {
+                            transitionManager.requestResync(seq);
+                        }
+                    }
                 } else if ("MATCH_END".equals(type)) {
                     MultiplayerManager.getInstance().updateLastSequence(seq);
                 }
