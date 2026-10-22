@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1533,3 +1533,66 @@ describe('Native movement mutation snapshot admission', () => {
   });
 });
 
+
+describe('Stable native pickup transactions', () => {
+  const item = (itemId: string, className = 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing', quantity = 1, stackable = false) => ({
+    itemId, className, quantity, level: 0, cursed: false, cursedKnown: false, stackable,
+    serializedBundle: `native-bundle-item-id:${itemId}`
+  });
+  const heap = (heapId: string, pos: number, items: any[]) => ({
+    heapId, pos, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false, items
+  });
+  const baseLevel = (heaps: any[]) => ({ depth: 4, branch: 0, locked: false, width: 8, height: 8, heaps });
+  const pickup = (overrides: Record<string, any> = {}) => ({
+    from: 9, to: 9, targetPos: 9, itemPos: 9, depth: 4, engineActionCost: 1,
+    heapId: 'stable-heap-0001', itemId: 'stable-item-0001',
+    itemClass: 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing',
+    expectedQuantity: 1, stackable: false, ...overrides
+  });
+  const player = { pos: 9, state: 'ALIVE' };
+
+  it('accepts only the exact top item at the alive player current cell and floor', () => {
+    const level = baseLevel([heap('stable-heap-0001', 9, [item('stable-item-0001')])]);
+    expect(isValidNativePickupIntent(level, pickup(), 4, 'player-0001', player)).toBe(true);
+    expect(isValidNativePickupIntent(level, pickup({ itemId: 'stable-item-other' }), 4, 'player-0001', player)).toBe(false);
+    expect(isValidNativePickupIntent(level, pickup({ itemClass: 'com.shatteredpixel.shatteredpixeldungeon.items.Ankh' }), 4, 'player-0001', player)).toBe(false);
+    expect(isValidNativePickupIntent(level, pickup({ depth: 5 }), 4, 'player-0001', player)).toBe(false);
+    expect(isValidNativePickupIntent(level, pickup({ from: 8 }), 4, 'player-0001', player)).toBe(false);
+    expect(isValidNativePickupIntent(level, pickup(), 4, 'player-0001', { ...player, state: 'DEAD' })).toBe(false);
+    expect(isValidNativePickupIntent({ ...level, locked: true }, pickup(), 4, 'player-0001', player)).toBe(false);
+  });
+
+  it('removes one concrete top item from a partial heap without changing the rest', () => {
+    const second = item('stable-item-second', 'com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify');
+    const oldHeap = heap('stable-heap-0001', 9, [item('stable-item-0001'), second]);
+    const newHeap = heap('stable-heap-0001', 9, [second]);
+    const details = pickup();
+    const accepted = { ...details, playerId: 'player-0001', actionType: 'PICKUP' };
+    expect(isValidNativePickupHeapMutation([oldHeap], [newHeap], 9, details, accepted)).toBe(true);
+    expect(isValidNativePickupHeapMutation([oldHeap], [], 9, details, accepted)).toBe(false);
+    expect(isValidNativePickupHeapMutation([oldHeap], [heap('stable-heap-other', 9, [second])], 9, details, accepted)).toBe(false);
+    expect(isValidNativePickupHeapMutation([oldHeap], [heap('stable-heap-0001', 9, [item('stable-item-0001'), second])], 9, details, accepted)).toBe(false);
+    expect(isValidNativePickupHeapMutation([oldHeap], [newHeap, heap('unrelated-new-heap', 20, [item('unrelated-item-001')])], 9, details, accepted)).toBe(false);
+  });
+
+  it('allows the heap to disappear only after its sole item is removed', () => {
+    const oldHeap = heap('stable-heap-0001', 9, [item('stable-item-0001')]);
+    const details = pickup();
+    const accepted = { ...details, playerId: 'player-0001', actionType: 'PICKUP' };
+    expect(isValidNativePickupHeapMutation([oldHeap], [], 9, details, accepted)).toBe(true);
+    expect(isValidNativePickupHeapMutation([oldHeap], [oldHeap], 9, details, accepted)).toBe(false);
+    expect(isValidNativePickupHeapMutation([oldHeap], [], 9, details, { ...accepted, itemId: 'stable-item-other' })).toBe(false);
+  });
+
+  it('distinguishes two item instances with the same class and rejects a replay', () => {
+    const oldHeap = heap('stable-heap-0001', 9, [
+      item('stable-item-0001', undefined, 2, true), item('stable-item-0002', undefined, 3, true)
+    ]);
+    const afterOne = heap('stable-heap-0001', 9, [oldHeap.items[1]]);
+    const details = pickup({ expectedQuantity: 2, stackable: true });
+    const accepted = { ...details, playerId: 'player-0001', actionType: 'PICKUP' };
+    expect(isValidNativePickupHeapMutation([oldHeap], [afterOne], 9, details, accepted)).toBe(true);
+    expect(isValidNativePickupHeapMutation([afterOne], [], 9, details, accepted)).toBe(false);
+    expect(isValidNativePickupHeapMutation([oldHeap], [afterOne], 9, details, { ...accepted, heapId: 'stable-heap-other' })).toBe(false);
+  });
+});

@@ -391,6 +391,85 @@ export function isValidNativeMovementHeapMutation(previous: any, next: any, targ
   return true;
 }
 
+
+/** Validates a pickup request against one exact stable heap and its current top item. */
+export function isValidNativePickupIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
+  playerIdValue: unknown, player: any): boolean {
+  const data: any = dataValue;
+  const playerId = String(playerIdValue || "");
+  const depth = Number(currentDepthValue);
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || playerId.length === 0 || String(player.state) !== "ALIVE"
+      || !Number.isInteger(player.pos)) return false;
+  const pos = Number(data.itemPos), heapId = String(data.heapId || ""), itemId = String(data.itemId || "");
+  const itemClass = String(data.itemClass || ""), quantity = data.expectedQuantity, stackable = data.stackable;
+  const cost = data.engineActionCost;
+  if (!Number.isInteger(pos) || pos !== Number(player.pos) || data.from !== pos || data.to !== pos
+      || data.targetPos !== pos || Number(data.depth) !== depth
+      || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
+      || itemClass.length === 0 || itemClass.length > 256
+      || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
+      || typeof stackable !== "boolean" || !Number.isFinite(cost) || cost < 0 || cost > 10) return false;
+  const matches = level.heaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
+  if (matches.length !== 1) return false;
+  const heap = matches[0];
+  if (Number(heap.pos) !== pos || !Array.isArray(heap.items) || heap.items.length === 0) return false;
+  const top = heap.items[0];
+  return String(top?.itemId || "") === itemId && String(top?.className || "") === itemClass
+    && Number(top?.quantity) === quantity && top?.stackable === stackable
+    && typeof top?.serializedBundle === "string" && top.serializedBundle.includes(itemId);
+}
+
+/** Allows only removal of the accepted top item; other heaps and remaining item order stay unchanged. */
+export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: any, targetValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+      || !Number.isInteger(target) || target < 0 || accepted.actionType !== "PICKUP"
+      || accepted.targetPos !== target || accepted.from !== target
+      || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
+      || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
+      || accepted.stackable !== details.stackable || !Number.isInteger(accepted.depth) || accepted.depth < 1) return false;
+  const heapId = String(details.heapId || ""), itemId = String(details.itemId || "");
+  if (heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80) return false;
+  const canonical = (value: any): any => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") {
+      const result: any = {};
+      for (const key of Object.keys(value).sort()) result[key] = canonical(value[key]);
+      return result;
+    }
+    return value;
+  };
+  const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  const oldMatches = previousHeaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
+  const newMatches = nextHeaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
+  if (oldMatches.length !== 1 || newMatches.length > 1) return false;
+  const oldHeap = oldMatches[0], newHeap = newMatches[0];
+  if (Number(oldHeap.pos) !== target || !Array.isArray(oldHeap.items) || oldHeap.items.length === 0) return false;
+  const top = oldHeap.items[0];
+  if (String(top?.itemId || "") !== itemId || String(top?.className || "") !== String(details.itemClass || "")
+      || Number(top?.quantity) !== Number(details.expectedQuantity) || top?.stackable !== details.stackable
+      || typeof top?.serializedBundle !== "string" || !top.serializedBundle.includes(itemId)) return false;
+  for (const heap of previousHeaps) {
+    if (String(heap?.heapId || "") === heapId) continue;
+    const next = nextHeaps.find((candidate: any) => String(candidate?.heapId || "") === String(heap?.heapId || ""));
+    if (!next || !same(heap, next)) return false;
+  }
+  for (const heap of nextHeaps) {
+    if (String(heap?.heapId || "") === heapId) continue;
+    const old = previousHeaps.find((candidate: any) => String(candidate?.heapId || "") === String(heap?.heapId || ""));
+    if (!old || !same(old, heap)) return false;
+  }
+  const remaining = oldHeap.items.slice(1);
+  if (remaining.length === 0) return !newHeap && !nextHeaps.some((heap: any) => Number(heap?.pos) === target);
+  return !!newHeap && Number(newHeap.pos) === target && String(newHeap.type) === String(oldHeap.type)
+    && newHeap.seen === oldHeap.seen && newHeap.haunted === oldHeap.haunted
+    && newHeap.hidden === oldHeap.hidden && newHeap.autoExplored === oldHeap.autoExplored
+    && Array.isArray(newHeap.items) && same(newHeap.items, remaining);
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown): boolean {
@@ -3911,34 +3990,24 @@ export class MatchRoom {
               actionCost = 1.0;
             }
           } else if (actionStr === "PICKUP") {
-            const itemPos = Number(payload.data?.itemPos ?? targetPos);
-            const savedRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            const data = payload.data || {};
+            const itemPos = Number(data.itemPos ?? targetPos);
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const heaps = levelSnapshot && Array.isArray(levelSnapshot.heaps) ? levelSnapshot.heaps : [];
-            const heapIndex = heaps.findIndex((heap: any) => Number(heap.pos) === itemPos);
-            const heap = heapIndex >= 0 ? heaps[heapIndex] : null;
-            const items = heap && Array.isArray(heap.items) ? heap.items : [];
-            const itemClass = String(payload.data?.itemClass || "");
-            const itemIndex = items.findIndex((item: any) => String(item.className || "") === itemClass);
-            if (heap && items.length > 0 && itemPos >= 0) {
-              items.splice(itemIndex >= 0 ? itemIndex : 0, 1);
-              const remainingItemCount = items.length;
-              if (remainingItemCount === 0) {
-                heaps.splice(heapIndex, 1);
-                this.sql.exec(`INSERT OR REPLACE INTO claimed_items (item_pos, depth, claimed_by) VALUES (?, ?, ?)`,
-                  itemPos, this.currentDepth, session.playerId);
-              } else {
-                this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth);
-              }
-              levelSnapshot.heaps = heaps;
-              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-                `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
-              eventType = "ITEM_PICKED_UP";
-              actionResultPayload = { itemPos, itemClass, remainingItemCount, claimedBy: session.playerId };
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const transitionPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!transitionPending && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow)
+                && itemPos === Number(targetPos)) {
+              eventType = "ITEM_PICKUP_INTENT_ACCEPTED";
+              actionResultPayload = {
+                playerId: session.playerId, actionType: "PICKUP", from: itemPos, targetPos: itemPos,
+                itemPos, depth: this.currentDepth, heapId: String(data.heapId), itemId: String(data.itemId),
+                itemClass: String(data.itemClass), expectedQuantity: Number(data.expectedQuantity), stackable: data.stackable
+              };
               actionValid = true;
-              actionCost = 1.0;
+              actionCost = Number(data.engineActionCost);
             }
           } else if (actionStr === "OPEN_CHEST") {
             const itemPos = Number(payload.data?.itemPos ?? targetPos);
@@ -3988,7 +4057,8 @@ export class MatchRoom {
                     "heroState:" + session.playerId, payload.heroStateJson);
                 }
               }
-            } else {
+            } else if (actionStr !== "PICKUP") {
+              // A pickup is only an intent; its submitted Hero state is not committed before the post-state validates.
               this.sql.exec(`INSERT OR IGNORE INTO room_meta (key,value) VALUES (?,?)`,
                 `heroState:${session.playerId}`, payload.heroStateJson);
             }
