@@ -128,6 +128,32 @@ export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: 
 }
 
 
+/**
+ * Only the elected publisher may submit the matching destination floor while a regular
+ * transition barrier is pending. The room remains on fromDepth until every living peer is ready.
+ */
+export function isPendingNativeFloorDestinationSnapshot(currentDepth: unknown, pending: any,
+  submittedDepth: unknown, submittedBranch: unknown, senderId: unknown): boolean {
+  return Number.isInteger(currentDepth) && Number.isInteger(submittedDepth) && submittedBranch === 0
+    && !!pending && pending.fromDepth === currentDepth && pending.depth === submittedDepth
+    && pending.depth !== currentDepth && Math.abs(pending.depth - pending.fromDepth) === 1
+    && pending.targetBranch === 0 && pending.publisherId === senderId
+    && pending.snapshotReady !== true;
+}
+
+/** Fail closed until the matching destination snapshot and all connected living-player states exist. */
+export function canFinalizeNativeFloorTransition(currentDepth: unknown, pending: any,
+  destinationSnapshotReady: unknown, destinationValid: unknown,
+  readyPlayerCount: unknown, connectedLivingPlayerCount: unknown): boolean {
+  return Number.isInteger(currentDepth) && !!pending && pending.fromDepth === currentDepth
+    && Number.isInteger(pending.depth) && pending.depth !== currentDepth
+    && Math.abs(pending.depth - currentDepth) === 1 && pending.targetBranch === 0
+    && pending.snapshotReady === true && destinationSnapshotReady === true && destinationValid === true
+    && Number.isInteger(readyPlayerCount) && Number(readyPlayerCount) > 0
+    && Number.isInteger(connectedLivingPlayerCount)
+    && Number(readyPlayerCount) === Number(connectedLivingPlayerCount);
+}
+
 /** Distinguishes unsupported branch exits from stale/invalid stair requests. */
 export function classifyNativeTransitionRejection(levelSnapshot: any, currentDepth: unknown,
   currentPos: unknown, data: any): "UNSUPPORTED_BRANCH_TRANSITION" | "FLOOR_LOCKED" | "INVALID_TRANSITION" {
@@ -172,6 +198,126 @@ export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, 
     Number(mob?.pos) === target && Number(mob?.hp) > 0 && typeof mob?.entityId === "string");
 }
 
+/**
+ * A movement may reveal nearby heaps, trample high grass and produce native seed/stone/dew/berry
+ * drops, uproot a plant with seed preservation, or destroy nearby heaps when a trap activates.
+ * Keep those exceptions local and item-specific; an arbitrary inventory/loot insertion is rejected.
+ */
+export function isValidNativeMovementHeapMutation(previous: any, next: any, targetValue: unknown): boolean {
+  const width = Number(previous?.width), height = Number(previous?.height), size = width * height;
+  const target = Number(targetValue);
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
+      || !Number.isInteger(target) || target < 0 || target >= size
+      || !Array.isArray(previous?.heaps) || !Array.isArray(next?.heaps)
+      || !Array.isArray(previous?.tiles) || !Array.isArray(next?.tiles)
+      || !Array.isArray(previous?.traps) || !Array.isArray(next?.traps)
+      || !Array.isArray(previous?.plants) || !Array.isArray(next?.plants)) return false;
+  const canonical = (value: any): any => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") {
+      const out: any = {};
+      for (const key of Object.keys(value).sort()) out[key] = canonical(value[key]);
+      return out;
+    }
+    return value;
+  };
+  const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  const distance = (a: number, b: number) => Math.max(
+    Math.abs((a % width) - (b % width)),
+    Math.abs(Math.floor(a / width) - Math.floor(b / width))
+  );
+  const indexRows = (rows: any[]) => {
+    const result = new Map<number, any>();
+    for (const row of rows) {
+      const pos = row?.pos;
+      if (!Number.isInteger(pos) || pos < 0 || pos >= size || result.has(pos)) return null;
+      result.set(pos, row);
+    }
+    return result;
+  };
+  const before = indexRows(previous.heaps), after = indexRows(next.heaps);
+  const oldTraps = indexRows(previous.traps), newTraps = indexRows(next.traps);
+  const oldPlants = indexRows(previous.plants), newPlants = indexRows(next.plants);
+  if (!before || !after || !oldTraps || !newTraps || !oldPlants || !newPlants) return false;
+  const trapActivatedNearTarget = [...new Set<number>([...oldTraps.keys(), ...newTraps.keys()])].some(pos => {
+    const oldTrap = oldTraps.get(pos), newTrap = newTraps.get(pos);
+    return distance(pos, target) <= 3 && !!oldTrap && oldTrap.active === true
+      && (!newTrap || newTrap.active === false);
+  });
+  const sourceTerrain = Number(previous.tiles.find((tile: any) => tile?.pos === target)?.terrain);
+  const destinationTerrain = Number(next.tiles.find((tile: any) => tile?.pos === target)?.terrain);
+  const grassTrampled = [15, 30].includes(sourceTerrain) && [2, 30].includes(destinationTerrain);
+  const plantRemoved = oldPlants.has(target) && !newPlants.has(target);
+  const seedClass = (name: string) => name.includes(".plants.")
+    && (name.endsWith("$Seed") || name.endsWith(".Seed"));
+  const allowedDrop = (item: any): boolean => {
+    const name = String(item?.className || "");
+    if (grassTrampled) return name.endsWith(".Dewdrop") || name.endsWith(".Berry")
+      || seedClass(name) || name.includes(".items.stones.");
+    return plantRemoved && seedClass(name);
+  };
+  const itemKind = (item: any) => JSON.stringify([
+    String(item?.className || ""), Number(item?.level), item?.cursed === true, item?.cursedKnown === true
+  ]);
+  const itemCounts = (heap: any) => {
+    const counts = new Map<string, number>();
+    for (const item of Array.isArray(heap?.items) ? heap.items : []) {
+      const key = itemKind(item);
+      counts.set(key, (counts.get(key) || 0) + Number(item.quantity || 0));
+    }
+    return counts;
+  };
+  for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
+    const oldHeap = before.get(pos), newHeap = after.get(pos);
+    if (same(oldHeap, newHeap)) continue;
+    if (distance(pos, target) > 12) return false;
+    if (!oldHeap || !newHeap) {
+      if (oldHeap && !newHeap) {
+        if (!(trapActivatedNearTarget && distance(pos, target) <= 3)) return false;
+        continue;
+      }
+      if (!newHeap || pos !== target || !Array.isArray(newHeap.items) || newHeap.type !== "HEAP"
+          || newHeap.haunted !== false || newHeap.hidden !== false || newHeap.autoExplored !== false
+          || newHeap.items.length === 0 || newHeap.items.length > 3
+          || !newHeap.items.every((item: any) => allowedDrop(item) && Number(item.quantity) >= 1)) return false;
+      continue;
+    }
+    // Seeing a nearby heap may update its visibility flags, but must not change heap identity/type.
+    if (oldHeap.type !== newHeap.type || oldHeap.haunted !== newHeap.haunted) return false;
+    const oldItems = Array.isArray(oldHeap.items) ? oldHeap.items : null;
+    const newItems = Array.isArray(newHeap.items) ? newHeap.items : null;
+    if (!oldItems || !newItems) return false;
+    const oldCounts = itemCounts(oldHeap), newCounts = itemCounts(newHeap);
+    let addedUnits = 0, removedUnits = 0;
+    for (const key of new Set<string>([...oldCounts.keys(), ...newCounts.keys()])) {
+      const delta = (newCounts.get(key) || 0) - (oldCounts.get(key) || 0);
+      if (delta > 0) addedUnits += delta; else removedUnits -= delta;
+    }
+    if (addedUnits > 0) {
+      if (pos !== target || addedUnits > 3
+          || !newItems.every((item: any) => {
+            const oldCount = oldCounts.get(itemKind(item)) || 0;
+            const newCount = newCounts.get(itemKind(item)) || 0;
+            return newCount <= oldCount || allowedDrop(item);
+          })) return false;
+    }
+    if (removedUnits > 0 && !(trapActivatedNearTarget && distance(pos, target) <= 3)) return false;
+    // Existing item bundles may only be rewritten as part of stacking an explicitly allowed drop.
+    const oldBundles = oldItems.map((item: any) => String(item?.serializedBundle || ""));
+    const newBundles = newItems.map((item: any) => String(item?.serializedBundle || ""));
+    if (removedUnits === 0 && addedUnits === 0 && !same(oldBundles.slice().sort(), newBundles.slice().sort())) return false;
+    if (addedUnits === 0 && removedUnits > 0) {
+      const remaining = [...newBundles];
+      for (const bundle of oldBundles) {
+        const idx = remaining.indexOf(bundle);
+        if (idx >= 0) remaining.splice(idx, 1);
+        else if (!trapActivatedNearTarget || distance(pos, target) > 3) return false;
+      }
+    }
+  }
+  return true;
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown): boolean {
@@ -201,6 +347,12 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       || !isValidNativeHeroStateJson(next.heroStateJson, {
         hp: afterHero.hp, ht: afterHero.ht, pos: expectedHeroPos, shielding: afterHero.shielding
       })) return false;
+  const oldTargetTerrain = Number(previous.tiles.find((tile: any) => tile?.pos === Number(target))?.terrain);
+  const newTargetTerrain = Number(next.tiles.find((tile: any) => tile?.pos === Number(target))?.terrain);
+  const consumedNativeWell = action === "MOVE" && oldTargetTerrain === 24 && newTargetTerrain === 3;
+  if (action === "MOVE" && (afterHero.ht !== beforeHero.ht
+      || (afterHero.hp > beforeHero.hp && !consumedNativeWell)
+      || (afterHero.shielding > beforeHero.shielding && !consumedNativeWell))) return false;
   const canonical = (value: any): any => {
     if (Array.isArray(value)) return value.map(canonical);
     if (value && typeof value === "object") {
@@ -236,15 +388,29 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   const oldTiles = new Map<number, any>((previous.tiles || []).map((t: any) => [Number(t.pos), t]));
   const newTiles = new Map<number, any>((next.tiles || []).map((t: any) => [Number(t.pos), t]));
   if (oldTiles.size !== size || newTiles.size !== size) return false;
-  const flags: Record<number, [boolean, boolean, boolean]> = {
-    0:[false,false,true], 1:[true,false,false], 2:[true,false,false], 3:[true,false,false],
-    4:[false,true,false], 5:[true,true,false], 6:[true,false,false], 7:[true,false,false],
-    8:[true,false,false], 9:[true,false,false], 10:[false,true,false], 12:[false,true,false],
-    13:[false,true,false], 14:[true,false,false], 15:[true,false,false], 16:[false,true,false],
-    17:[true,false,false], 18:[false,false,false], 19:[true,false,false], 20:[true,false,false],
-    21:[false,true,false], 22:[true,false,false], 24:[false,false,false], 27:[false,true,false],
-    28:[false,true,false], 29:[true,false,false], 30:[true,false,false], 31:[false,true,false],
-    32:[true,false,false], 35:[false,true,false], 36:[false,true,false], 38:[false,true,false]
+  // Mirrors every static flag in native Terrain.flags: passable, solid, pit,
+  // losBlocking, flammable, secret, avoid and water. Unknown terrain is rejected on change.
+  const terrainFlags: Record<number, [boolean, boolean, boolean, boolean, boolean, boolean, boolean, boolean]> = {
+    0:[false,false,true,false,false,false,true,false], 1:[true,false,false,false,false,false,false,false],
+    2:[true,false,false,false,true,false,false,false], 3:[true,false,false,false,false,false,false,false],
+    4:[false,true,false,true,false,false,false,false], 5:[true,true,false,true,true,false,false,false],
+    6:[true,false,false,false,true,false,false,false], 7:[true,false,false,false,false,false,false,false],
+    8:[true,false,false,false,false,false,false,false], 9:[true,false,false,false,false,false,false,false],
+    10:[false,true,false,true,false,false,false,false], 11:[true,false,false,false,false,false,false,false],
+    12:[false,true,false,true,false,false,false,false], 13:[false,true,false,true,true,false,false,false],
+    14:[true,false,false,false,false,false,false,false], 15:[true,false,false,true,true,false,false,false],
+    16:[false,true,false,true,false,true,false,false], 17:[true,false,false,false,false,true,false,false],
+    18:[false,false,false,false,false,false,true,false], 19:[true,false,false,false,false,false,false,false],
+    20:[true,false,false,false,false,false,false,false], 21:[false,true,false,false,false,false,false,false],
+    22:[true,false,false,false,false,false,false,false], 23:[false,true,false,false,false,false,false,false],
+    24:[false,false,false,false,false,false,true,false], 25:[false,true,false,false,false,false,false,false],
+    26:[false,true,false,false,false,false,false,false], 27:[false,true,false,true,true,false,false,false],
+    28:[false,true,false,false,false,false,false,false], 29:[true,false,false,false,false,false,false,true],
+    30:[true,false,false,true,true,false,false,false], 31:[false,true,false,false,false,false,false,false],
+    32:[true,false,false,false,false,false,false,false], 33:[false,true,false,false,false,false,false,false],
+    34:[false,true,false,false,false,false,false,false], 35:[false,true,false,false,false,false,false,false],
+    36:[false,true,false,false,false,false,false,false], 37:[true,false,false,false,false,false,false,false],
+    38:[false,true,false,true,false,false,false,false]
   };
   const allowedTerrain = (pos: number, a: number, b: number): boolean => {
     if (a === b) return true;
@@ -252,8 +418,9 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       || (pos === Number(target) && a === 24 && b === 3)
       || (pos === Number(target) && ((a === 5 && b === 6)
         || ([2, 15, 30, 9].includes(a) && [2, 9, 15, 30].includes(b))
-        || (a === 16 && b === 5) || (a === 17 && b === 18) || (a === 18 && [19, 1].includes(b))))
-      || (dist(pos, Number(target)) <= 12 && ((a === 16 && b === 5) || (a === 17 && b === 18)));
+        || (a === 16 && b === 5) || (a === 17 && [18, 19, 1].includes(b))
+        || (a === 18 && [19, 1].includes(b))))
+      || (dist(pos, Number(target)) <= 12 && ((a === 16 && b === 5) || (a === 17 && [18, 19].includes(b))));
     if (action === "UNLOCK" && pos === Number(target)) return (a === 10 && b === 5)
       || (a === 38 && b === 5) || (a === 31 && b === 1) || (a === 21 && b === 22);
     if (action === "MINE" && dist(pos, Number(target)) <= 1) return ([4, 12].includes(a) && b === 20)
@@ -269,8 +436,12 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     if (terrainChanged && (dist(pos, Number(target)) > (action === "MOVE" ? 12 : action === "MINE" || action === "INTERACT" ? 1 : 0)
         || !allowedTerrain(pos, Number(a.terrain), Number(b.terrain)))) return false;
     if (terrainChanged) {
-      const expected = flags[Number(b.terrain)];
-      if (expected && (b.passable !== expected[0] || b.solid !== expected[1] || b.pit !== expected[2])) return false;
+      const expected = terrainFlags[Number(b.terrain)];
+      if (!expected) return false;
+      const fields = ["passable", "solid", "pit", "losBlocking", "flammable", "secret", "avoid", "water"];
+      for (let i = 0; i < fields.length; i++) {
+        if (b[fields[i]] !== expected[i]) return false;
+      }
     }
     for (const field of ["passable", "solid", "pit", "losBlocking", "flammable", "secret", "avoid", "water"]) {
       if (!same(a[field], b[field]) && !terrainChanged) return false;
@@ -289,7 +460,9 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   };
   if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
       || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
-  if (action !== "OPEN_CHEST" && action !== "MINE" && !same(previous.heaps, next.heaps)) return false;
+  if (action === "MOVE" && !isValidNativeMovementHeapMutation(previous, next, target)) return false;
+  if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE"
+      && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
@@ -335,9 +508,22 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (action === "MOVE" && !same(previous.blobs, next.blobs)) {
     const old = new Map<string, any>((previous.blobs || []).map((b: any) => [String(b.className), b]));
     const curr = new Map<string, any>((next.blobs || []).map((b: any) => [String(b.className), b]));
+    const oldTrapRows = new Map<number, any>((previous.traps || []).map((t: any) => [Number(t.pos), t]));
+    const newTrapRows = new Map<number, any>((next.traps || []).map((t: any) => [Number(t.pos), t]));
+    const activatedNearTarget = [...new Set<number>([...oldTrapRows.keys(), ...newTrapRows.keys()])].some(pos => {
+      const oldTrap = oldTrapRows.get(pos), newTrap = newTrapRows.get(pos);
+      return dist(pos, Number(target)) <= 3 && !!oldTrap && oldTrap.active === true
+        && (!newTrap || newTrap.active === false);
+    });
+    const trapSpawnedBlobTypes = new Set([
+      "Fire", "ToxicGas", "ParalyticGas", "ConfusionGas", "CorrosiveGas", "StenchGas",
+      "PoisonGas", "Electricity", "Freezing", "Foliage", "SmokeScreen"
+    ]);
     for (const name of new Set<string>([...old.keys(), ...curr.keys()])) {
-      if (!same(old.get(name), curr.get(name)) && (!name.endsWith(".Web")
-          || !old.has(name) || !curr.has(name))) return false;
+      if (same(old.get(name), curr.get(name))) continue;
+      if (name.endsWith(".Web") && old.has(name) && curr.has(name)) continue;
+      const leaf = name.substring(name.lastIndexOf(".") + 1);
+      if (!activatedNearTarget || !name.includes(".actors.blobs.") || !trapSpawnedBlobTypes.has(leaf)) return false;
     }
   }
 
@@ -1734,6 +1920,11 @@ export class MatchRoom {
           return;
         }
         const width = Number(level.width), height = Number(level.height), depth = Number(level.depth);
+        const pendingAtLevelDataRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+        let pendingAtLevelData: any = null;
+        try { pendingAtLevelData = pendingAtLevelDataRow ? JSON.parse(String(pendingAtLevelDataRow.value)) : null; } catch (_) {}
+        const isTransitionDestinationSnapshot = isPendingNativeFloorDestinationSnapshot(
+          this.currentDepth, pendingAtLevelData, depth, level.branch, session.playerId);
         const tiles = level.tiles, transitions = level.transitions;
         const heaps = level.heaps, traps = level.traps, blobs = level.blobs, plants = level.plants;
         let mobs = level.mobs;
@@ -1743,7 +1934,7 @@ export class MatchRoom {
         const boundedArray = (value: unknown, max: number) => Array.isArray(value) && value.length <= max;
         const validPos = (p: number) => Number.isInteger(p) && p >= 0 && p < size;
         if (!hasCompleteNativeLevelSnapshot(level) || Number(level.schemaVersion) !== 1 || Number(level.branch) !== 0 || depth < 1 || depth > 100
-          || depth !== this.currentDepth
+          || (depth !== this.currentDepth && !isTransitionDestinationSnapshot)
           || !Number.isInteger(width) || !Number.isInteger(height) || width < 8 || height < 8
           || width > 100 || height > 100 || !Array.isArray(tiles) || tiles.length !== size
           || !boundedArray(transitions, 128) || !boundedArray(heaps, size)
@@ -1857,7 +2048,7 @@ export class MatchRoom {
             ? this.sql.exec("SELECT player_id,result_json FROM processed_actions WHERE request_id = ?", mutationRequestId).toArray()[0] : null;
           let accepted: any = null;
           try { accepted = acceptedRow ? JSON.parse(String(acceptedRow.result_json)) : null; } catch (_) {}
-          const expectedEvent = mutationAction === "MOVE" ? "PLAYER_MOVED" : "WORLD_ACTION_RESOLVED";
+          const expectedEvent = mutationAction === "MOVE" ? "MOVE_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
           const acceptedPayload = accepted?.action;
           const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
@@ -1870,11 +2061,24 @@ export class MatchRoom {
                 && acceptedPayload?.pos === mutationTarget
               : acceptedPayload?.playerId === session.playerId && acceptedPayload?.actionType === mutationAction
                 && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget);
+          const previousMutationHero: any = (() => {
+            try { return JSON.parse(String(trustedHeroRow?.value || "")); } catch (_) { return null; }
+          })();
+          const mutationExpectedPos = mutationAction === "MOVE" ? Number(mutationTarget) : Number(playerRow?.pos);
+          const previousTargetTerrain = Number(previousSnapshot?.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
+          const submittedTargetTerrain = Number(level.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
+          const consumedNativeWell = mutationAction === "MOVE" && previousTargetTerrain === 24 && submittedTargetTerrain === 3;
+          const heroHpValid = mutationAction === "MOVE"
+            ? Number.isInteger(reportedHero?.hp) && (reportedHero.hp <= Number(playerRow?.hp)
+              || (consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
+            : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
-            && Number(reportedHero.pos) === Number(playerRow.pos)
-            && Number(reportedHero.hp) === Number(playerRow.hp) && Number(reportedHero.ht) === Number(playerRow.ht)
+            && Number(reportedHero.pos) === mutationExpectedPos && heroHpValid
+            && Number(reportedHero.ht) === Number(playerRow.ht)
+            && (mutationAction !== "MOVE" || !!previousMutationHero
+              && (reportedHero.shielding <= Number(previousMutationHero.shielding) || consumedNativeWell))
             && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
-              hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos),
+              hp: Number(reportedHero.hp), ht: Number(reportedHero.ht), pos: mutationExpectedPos,
               shielding: Number(reportedHero.shielding)
             });
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
@@ -1885,7 +2089,7 @@ export class MatchRoom {
             return;
           }
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
-            hp: Number(playerRow.hp), ht: Number(playerRow.ht), pos: Number(playerRow.pos),
+            hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
           }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, true);
           if (merged == null) {
@@ -1944,8 +2148,9 @@ export class MatchRoom {
         let transitionPending: any = null;
         if (transitionPendingRow) {
           try { transitionPending = JSON.parse(String(transitionPendingRow.value)); } catch (_) {}
-          if (!transitionPending || transitionPending.depth !== depth || transitionPending.snapshotReady === true
-              || !Array.isArray(transitions)
+          if (!transitionPending || transitionPending.fromDepth !== this.currentDepth
+              || transitionPending.depth !== depth || transitionPending.snapshotReady === true
+              || !isTransitionDestinationSnapshot || !Array.isArray(transitions)
               || transitions.filter((transition: any) => String(transition?.type) === String(transitionPending.targetType)
                 && Number.isInteger(transition?.pos)).length !== 1) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
@@ -3018,10 +3223,9 @@ export class MatchRoom {
                   && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && !rootBlocked
                   && acceptedFrom && validStep && typeof requestedCost === "number"
                   && Number.isFinite(requestedCost) && requestedCost >= 0 && requestedCost <= 10) {
-                if (data.from === currentPos) {
-                  this.sql.exec("UPDATE players SET pos = ? WHERE player_id = ?", targetPos, session.playerId);
-                }
-                eventType = "PLAYER_MOVED";
+                  // This is only an accepted intent. Do not expose/commit the destination until the
+                // native mutation snapshot has passed complete terrain, occupancy and Hero validation.
+                eventType = "MOVE_INTENT_ACCEPTED";
                 actionResultPayload = { playerId: session.playerId, pos: targetPos, from: data.from,
                   to: targetPos, depth: this.currentDepth, environmentStepConfirmed };
                 actionValid = true;
@@ -3048,9 +3252,8 @@ export class MatchRoom {
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES ('transitionPending',?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`, JSON.stringify(pending));
                 this.sql.exec(`DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'`);
-                this.currentDepth = transition.depth;
-                this.sql.exec(`INSERT INTO room_meta (key,value) VALUES ('depth',?)
-                  ON CONFLICT(key) DO UPDATE SET value=excluded.value`, String(this.currentDepth));
+                // Keep the room on its source depth while the transition barrier is pending.
+                // The destination becomes authoritative only in tryFinalizeLevelTransition().
                 eventType = "LEVEL_TRANSITION";
                 actionResultPayload = { ...transition, playerId: session.playerId };
                 actionValid = true;
@@ -3794,7 +3997,9 @@ export class MatchRoom {
     if (!pendingRow) return;
     let pending: any = null;
     try { pending = JSON.parse(String(pendingRow.value)); } catch (_) { return; }
-    if (!pending || pending.snapshotReady !== true || pending.depth !== this.currentDepth || pending.targetBranch !== 0) return;
+    if (!pending || pending.snapshotReady !== true || pending.fromDepth !== this.currentDepth
+        || pending.depth === this.currentDepth || Math.abs(pending.depth - this.currentDepth) !== 1
+        || pending.targetBranch !== 0) return;
 
     const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${pending.depth}`).toArray()[0];
     let level: any = null;
@@ -3831,8 +4036,17 @@ export class MatchRoom {
       readyStates.push({ playerId, heroStateJson: ready.heroStateJson, hero });
     }
 
-    // Commit player and native hero state only after each connected living peer has generated
-    // the same real SPD destination floor. No action can proceed while this barrier exists.
+    // Keep the barrier closed until the shared destination and every currently connected living
+    // player's native Hero state match the same floor seed, branch, and entrance.
+    if (!canFinalizeNativeFloorTransition(this.currentDepth, pending, pending.snapshotReady,
+        !!level && level.depth === pending.depth && level.branch === 0 && destination.length === 1
+          && destinationTile?.passable === true && destinationTile?.solid === false && destinationTile?.pit === false,
+        readyStates.length, connected.length)) return;
+
+    // Commit room depth and all player states together only after the destination is proven ready.
+    this.currentDepth = pending.depth;
+    this.sql.exec("INSERT INTO room_meta (key,value) VALUES ('depth',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      String(this.currentDepth));
     for (const ready of readyStates) {
       this.sql.exec("UPDATE players SET pos = ?, hp = ?, ht = ?, state = ? WHERE player_id = ?",
         newPos, ready.hero.hp, ready.hero.ht, ready.hero.hp > 0 ? "ALIVE" : "DEAD", ready.playerId);
@@ -3842,6 +4056,7 @@ export class MatchRoom {
 
     this.sql.exec("DELETE FROM room_meta WHERE key = 'transitionPending'");
     this.sql.exec("DELETE FROM room_meta WHERE key LIKE 'transitionReady:%'");
+    this.state.storage.deleteAlarm().catch(() => {});
     this.broadcastCurrentSnapshot(null);
   }
 

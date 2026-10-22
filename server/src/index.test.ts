@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, classifyNativeTransitionRejection, isValidNativeWorldActionIntent, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1351,6 +1351,20 @@ describe('Authoritative native movement and floor transition validation', () => 
     expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, { ...level, locked: true }, 4, 9)).toBe(false);
   });
 
+  it('only admits a destination-floor snapshot from the transition publisher and keeps source depth until commit', () => {
+    const pending = { fromDepth: 4, depth: 5, targetBranch: 0, publisherId: 'publisher-123', snapshotReady: false };
+    expect(isPendingNativeFloorDestinationSnapshot(4, pending, 5, 0, 'publisher-123')).toBe(true);
+    expect(isPendingNativeFloorDestinationSnapshot(4, pending, 5, 1, 'publisher-123')).toBe(false);
+    expect(isPendingNativeFloorDestinationSnapshot(4, pending, 6, 0, 'publisher-123')).toBe(false);
+    expect(isPendingNativeFloorDestinationSnapshot(4, pending, 5, 0, 'guest-456')).toBe(false);
+    expect(isPendingNativeFloorDestinationSnapshot(5, pending, 5, 0, 'publisher-123')).toBe(false);
+    expect(canFinalizeNativeFloorTransition(4, pending, false, true, 2, 2)).toBe(false);
+    expect(canFinalizeNativeFloorTransition(4, { ...pending, snapshotReady: true }, true, false, 2, 2)).toBe(false);
+    expect(canFinalizeNativeFloorTransition(4, { ...pending, snapshotReady: true }, true, true, 1, 2)).toBe(false);
+    expect(canFinalizeNativeFloorTransition(4, { ...pending, snapshotReady: true }, true, true, 2, 2)).toBe(true);
+    expect(canFinalizeNativeFloorTransition(5, { ...pending, snapshotReady: true }, true, true, 2, 2)).toBe(false);
+  });
+
   it('resolves only the matching unlocked regular transition on the current floor', () => {
     const level = { depth: 4, branch: 0, locked: false, transitions: [
       { pos: 23, type: 'REGULAR_EXIT', targetDepth: 5, targetBranch: 0, targetType: 'REGULAR_ENTRANCE' }
@@ -1398,8 +1412,10 @@ describe('Native movement mutation snapshot admission', () => {
   it('accepts the original engine opening a door during an adjacent move', () => {
     const before = level(9);
     const after = level(10);
-    before.tiles[10] = { ...before.tiles[10], terrain: 5, solid: true, losBlocking: true };
-    after.tiles[10] = { ...after.tiles[10], terrain: 6, solid: false, losBlocking: false };
+    before.tiles[10] = { ...before.tiles[10], terrain: 5, passable: true, solid: true,
+      pit: false, losBlocking: true, flammable: true, secret: false, avoid: false, water: false };
+    after.tiles[10] = { ...after.tiles[10], terrain: 6, passable: true, solid: false,
+      pit: false, losBlocking: false, flammable: true, secret: false, avoid: false, water: false };
     expect(admitMove(before, after)).toBe(true);
   });
 
@@ -1414,6 +1430,34 @@ describe('Native movement mutation snapshot admission', () => {
     const forgedInventory = level(10);
     forgedInventory.heroStateJson = heroState(10, { inventoryBundle: 'invented-key-and-loot' });
     expect(admitMove(before, forgedInventory)).toBe(false);
+  });
+
+  it('accepts native high-grass loot and rejects invented loot during movement', () => {
+    const before = level(9);
+    before.tiles[10] = { ...before.tiles[10], terrain: 15, losBlocking: true, flammable: true };
+    const nativeDrop = level(10);
+    nativeDrop.tiles[10] = { ...nativeDrop.tiles[10], terrain: 2, flammable: true };
+    nativeDrop.heaps.push({ pos: 10, type: 'HEAP', seen: true, haunted: false, hidden: false, autoExplored: false,
+      items: [{ className: 'com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop',
+        quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'native-dewdrop-bundle' }] });
+    expect(isValidNativeMovementHeapMutation(before, nativeDrop, 10)).toBe(true);
+    expect(admitMove(before, nativeDrop)).toBe(true);
+
+    const forgedDrop = JSON.parse(JSON.stringify(nativeDrop));
+    forgedDrop.heaps[0].items[0] = { className: 'com.shatteredpixel.shatteredpixeldungeon.items.Ankh',
+      quantity: 1, level: 0, cursed: false, cursedKnown: false, serializedBundle: 'forged-ankh-bundle' };
+    expect(isValidNativeMovementHeapMutation(before, forgedDrop, 10)).toBe(false);
+    expect(admitMove(before, forgedDrop)).toBe(false);
+  });
+
+  it('rejects forged collision, sight, hazard and liquid flags alongside an otherwise allowed terrain change', () => {
+    const before = level(9);
+    before.tiles[10] = { ...before.tiles[10], terrain: 5, passable: true, solid: true,
+      losBlocking: true, flammable: true };
+    const forged = level(10);
+    forged.tiles[10] = { ...forged.tiles[10], terrain: 6, passable: true, solid: false,
+      losBlocking: false, flammable: false };
+    expect(admitMove(before, forged)).toBe(false);
   });
 
   it('requires stable native map coverage and does not permit a teleporting Hero', () => {
