@@ -57,6 +57,7 @@ import com.watabou.utils.Reflection;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.UUID;
 
 public class Item implements Bundlable {
 
@@ -99,6 +100,17 @@ public class Item implements Bundlable {
 	public boolean bones = false;
 
 	public int customNoteID = -1;
+
+	/** Stable multiplayer identity for this concrete item instance, not its class or cell. */
+	private String multiplayerItemId = UUID.randomUUID().toString();
+	public String multiplayerItemId() {
+		if (multiplayerItemId == null || multiplayerItemId.isEmpty()) multiplayerItemId = UUID.randomUUID().toString();
+		return multiplayerItemId;
+	}
+	public void setMultiplayerItemId(String id) {
+		if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerItemId = id;
+	}
+	public void assignNewMultiplayerItemId() { multiplayerItemId = UUID.randomUUID().toString(); }
 	
 	public static final Comparator<Item> itemComparator = new Comparator<Item>() {
 		@Override
@@ -298,6 +310,7 @@ public class Item implements Bundlable {
 			Bundle copy = new Bundle();
 			this.storeInBundle(copy);
 			split.restoreFromBundle(copy);
+			split.assignNewMultiplayerItemId();
 			split.quantity(amount);
 			quantity -= amount;
 			
@@ -313,6 +326,7 @@ public class Item implements Bundlable {
 		Bundle copy = new Bundle();
 		this.storeInBundle(copy);
 		dupe.restoreFromBundle(copy);
+		dupe.assignNewMultiplayerItemId();
 		return dupe;
 	}
 	
@@ -583,6 +597,7 @@ public class Item implements Bundlable {
 	private static final String QUICKSLOT		= "quickslotpos";
 	private static final String KEPT_LOST       = "kept_lost";
 	private static final String CUSTOM_NOTE_ID = "custom_note_id";
+	private static final String MULTIPLAYER_ITEM_ID = "multiplayer_item_id";
 	
 	@Override
 	public void storeInBundle( Bundle bundle ) {
@@ -595,6 +610,7 @@ public class Item implements Bundlable {
 			bundle.put( QUICKSLOT, Dungeon.quickslot.getSlot(this) );
 		}
 		bundle.put( KEPT_LOST, keptThoughLostInvent );
+		bundle.put( MULTIPLAYER_ITEM_ID, multiplayerItemId() );
 		if (customNoteID != -1)     bundle.put(CUSTOM_NOTE_ID, customNoteID);
 	}
 	
@@ -621,6 +637,10 @@ public class Item implements Bundlable {
 		}
 
 		keptThoughLostInvent = bundle.getBoolean( KEPT_LOST );
+		if (bundle.contains(MULTIPLAYER_ITEM_ID)) {
+			String id = bundle.getString(MULTIPLAYER_ITEM_ID);
+			if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerItemId = id;
+		}
 		if (bundle.contains(CUSTOM_NOTE_ID))    customNoteID = bundle.getInt(CUSTOM_NOTE_ID);
 	}
 

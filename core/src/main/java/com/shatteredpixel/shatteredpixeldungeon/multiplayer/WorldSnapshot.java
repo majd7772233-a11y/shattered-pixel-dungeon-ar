@@ -366,7 +366,11 @@ public class WorldSnapshot {
             if (!Float.isFinite(speed) || speed <= 0f || speed > 100f
                     || !Float.isFinite(cooldown) || cooldown < 0f || cooldown > 100000f) return rejectValidation("validator-check-31");
         }
+        java.util.Set<String> stableHeapIds = new java.util.HashSet<>();
+        java.util.Set<String> stableItemIds = new java.util.HashSet<>();
         for (Map<String, Object> heap : snapshot.heaps) {
+            String heapId = String.valueOf(heap.get("heapId") == null ? "" : heap.get("heapId"));
+            if (!heapId.isEmpty() && (heapId.length() < 8 || heapId.length() > 80 || !stableHeapIds.add(heapId))) return rejectValidation("validator-check-32a");
             try { Heap.Type.valueOf(String.valueOf(heap.get("type"))); }
             catch (RuntimeException invalidHeapType) { return rejectValidation("validator-check-32"); }
             Object items = heap.get("items");
@@ -374,6 +378,8 @@ public class WorldSnapshot {
             for (Object raw : (List<?>) items) {
                 if (!(raw instanceof Map)) return rejectValidation("validator-check-34");
                 Map<?, ?> item = (Map<?, ?>) raw;
+                String itemId = String.valueOf(item.get("itemId") == null ? "" : item.get("itemId"));
+                if (!itemId.isEmpty() && (itemId.length() < 8 || itemId.length() > 80 || !stableItemIds.add(itemId))) return rejectValidation("validator-check-34a");
                 if (!bundleContains(item.get("serializedBundle"), "item", Item.class)) return rejectValidation("validator-check-35");
                 int quantity = number(item.get("quantity"), -1);
                 int itemLevel = number(item.get("level"), 0);
@@ -532,6 +538,7 @@ public class WorldSnapshot {
             for (Heap heap : level.heaps.valueList()) {
                 if (heap == null) continue;
                 Map<String, Object> row = new HashMap<>();
+                row.put("heapId", heap.multiplayerHeapId());
                 row.put("pos", heap.pos);
                 row.put("type", heap.type == null ? "HEAP" : heap.type.name());
                 row.put("seen", heap.seen);
@@ -544,11 +551,13 @@ public class WorldSnapshot {
                     Bundle itemBundle = new Bundle();
                     itemBundle.put("item", item);
                     Map<String, Object> itemRow = new HashMap<>();
+                    itemRow.put("itemId", item.multiplayerItemId());
                     itemRow.put("className", item.getClass().getName());
                     itemRow.put("quantity", item.quantity());
                     itemRow.put("level", item.level());
                     itemRow.put("cursed", item.cursed);
                     itemRow.put("cursedKnown", item.cursedKnown);
+                    itemRow.put("stackable", item.stackable);
                     itemRow.put("serializedBundle", itemBundle.toString());
                     items.add(itemRow);
                 }
@@ -904,6 +913,8 @@ public class WorldSnapshot {
                 if (pos < 0 || pos >= Dungeon.level.length()) continue;
                 authoritativeHeapPositions.add(pos);
                 Heap heap = new Heap();
+                String serializedHeapId = String.valueOf(data.get("heapId") == null ? "" : data.get("heapId"));
+                if (!serializedHeapId.isEmpty()) heap.setMultiplayerHeapId(serializedHeapId);
                 heap.pos = pos;
                 heap.type = Heap.Type.valueOf(String.valueOf(data.get("type")));
                 heap.seen = Boolean.TRUE.equals(data.get("seen"));
@@ -924,6 +935,11 @@ public class WorldSnapshot {
                             }
                             if (item == null) {
                                 throw new IllegalStateException("Snapshot item bundle did not contain a native Item at cell " + pos);
+                            }
+                            String serializedItemId = String.valueOf(itemData.get("itemId") == null ? "" : itemData.get("itemId"));
+                            if (!serializedItemId.isEmpty()) {
+                                if (!encoded.contains(serializedItemId)) throw new IllegalStateException("Item identity does not match its native bundle at cell " + pos);
+                                item.setMultiplayerItemId(serializedItemId);
                             }
                             // Snapshot order is already native top-to-bottom heap order.
                             // Heap.drop() inserts most items at the front and can reverse stacks,

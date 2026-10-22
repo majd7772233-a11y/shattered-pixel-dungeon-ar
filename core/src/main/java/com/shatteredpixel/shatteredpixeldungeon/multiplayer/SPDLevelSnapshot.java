@@ -110,15 +110,18 @@ public final class SPDLevelSnapshot {
     }
 
     public static final class ItemData {
+        public String itemId = "";
         public String className;
         public int quantity;
         public int level;
         public boolean cursed;
         public boolean cursedKnown;
+        public boolean stackable;
         public String serializedBundle = "";
     }
 
     public static final class HeapData {
+        public String heapId = "";
         public int pos;
         public String type;
         public boolean seen;
@@ -356,6 +359,7 @@ public final class SPDLevelSnapshot {
         for (Heap heap : level.heaps.valueList()) {
             if (heap == null) continue;
             HeapData h = new HeapData();
+            h.heapId = heap.multiplayerHeapId();
             h.pos = heap.pos;
             h.type = heap.type == null ? "HEAP" : heap.type.name();
             h.seen = heap.seen;
@@ -365,11 +369,13 @@ public final class SPDLevelSnapshot {
             for (Item item : heap.items) {
                 if (item == null) continue;
                 ItemData d = new ItemData();
+                d.itemId = item.multiplayerItemId();
                 d.className = item.getClass().getName();
                 d.quantity = item.quantity();
                 d.level = item.level();
                 d.cursed = item.cursed;
                 d.cursedKnown = item.cursedKnown;
+                d.stackable = item.stackable;
                 Bundle itemBundle = new Bundle();
                 itemBundle.put("item", item);
                 d.serializedBundle = itemBundle.toString();

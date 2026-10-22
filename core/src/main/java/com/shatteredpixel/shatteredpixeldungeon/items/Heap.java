@@ -56,6 +56,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.UUID;
 
 public class Heap implements Bundlable {
 	
@@ -70,6 +71,15 @@ public class Heap implements Bundlable {
 		REMAINS
 	}
 	public Type type = Type.HEAP;
+	/** Stable ID for this physical chest/heap, preserved when its type changes. */
+	private String multiplayerHeapId = UUID.randomUUID().toString();
+	public String multiplayerHeapId() {
+		if (multiplayerHeapId == null || multiplayerHeapId.isEmpty()) multiplayerHeapId = UUID.randomUUID().toString();
+		return multiplayerHeapId;
+	}
+	public void setMultiplayerHeapId(String id) {
+		if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerHeapId = id;
+	}
 	
 	public int pos = 0;
 	
@@ -422,6 +432,7 @@ public class Heap implements Bundlable {
 	private static final String HAUNTED	= "haunted";
 	private static final String AUTO_EXPLORED	= "auto_explored";
 	private static final String HIDDEN	= "hidden";
+	private static final String MULTIPLAYER_HEAP_ID = "multiplayer_heap_id";
 	
 	@SuppressWarnings("unchecked")
 	@Override
@@ -448,6 +459,10 @@ public class Heap implements Bundlable {
 		haunted = bundle.getBoolean( HAUNTED );
 		autoExplored = bundle.getBoolean( AUTO_EXPLORED );
 		hidden = bundle.getBoolean( HIDDEN );
+		if (bundle.contains(MULTIPLAYER_HEAP_ID)) {
+			String id = bundle.getString(MULTIPLAYER_HEAP_ID);
+			if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerHeapId = id;
+		}
 	}
 
 	@Override
@@ -459,6 +474,7 @@ public class Heap implements Bundlable {
 		bundle.put( HAUNTED, haunted );
 		bundle.put( AUTO_EXPLORED, autoExplored );
 		bundle.put( HIDDEN, hidden );
+		bundle.put( MULTIPLAYER_HEAP_ID, multiplayerHeapId() );
 	}
 	
 }
