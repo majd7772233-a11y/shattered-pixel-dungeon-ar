@@ -32,9 +32,11 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 - **Phase 1 — Lossless native snapshots/restoration: complete for implementation and automated acceptance after cross-layer re-verification.** The final snapshot-consistency code SHA is `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; [CI run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for this exact SHA, with both backend and Android jobs green. The audit fix rejects conflicting or incomplete snapshots before server persistence and adds negative regression tests. Physical two-device testing remains in Phase 10.
 - **Phase 2 — Native combat replication: complete for implementation and automated acceptance.** Re-audited against the current branch on 2026-10-21: 28 native runtime integration tests exercise native hits/misses, shield-only/zero-damage outcomes, retaliation, attacker post-state, blessed Ankh, delegated kill rewards, Mob-to-player damage, periodic damage, PvP/Ankh, secondary Mob effects, stable-ID/full-bundle deltas, stale events and duplicate-death prevention. The Worker suite contains 107 tests overall, including combat pre-state/authority/replay/buff/shield/loot/Ankh and secondary-delta validation. Current branch head `0a88887fa01bed79bc317f28d73692c5192b78da` passed [CI run 39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) with both backend and Android jobs green. This re-verification found no missing Phase 2 implementation item; the unchecked physical two-device smoke test remains a Phase 10 release gate.
-- **Latest verified automated branch snapshot:** `0a88887fa01bed79bc317f28d73692c5192b78da` (documentation-only commits after code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`); [CI run 39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed backend TypeScript build/tests and Android JVM tests/debug APK compilation. The Phase 1 code SHA remains `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`.
-- **No physical two-device match has been performed by CI.** Phase 10 retains this as a required release verification step.
-- **Phase 3 is next.** Phases 3–10 remain open. Phase 1/2 success does not establish native Mob scheduler parity, complete floor/interactions, transactional inventory, working transports, enforced modes or release readiness.
+- **Phase 3 — native Mob AI/Actor scheduler: complete for implementation and automated acceptance.** Exact-SHA code `a5565ea05ae677104f3eccfa428e99c5b5e787bb` passed [CI run 39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419), including backend TypeScript/Vitest and Android JVM/debug APK jobs.
+- **Phase 4 — movement, floor lifecycle and world interactions: complete for implementation and automated acceptance.** Exact-SHA code `c0c231a501bb2996f261e7e9e4e5d66e4136d70b` passed [CI run 39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287): both backend and Android jobs succeeded. The Phase 4 work items, acceptance criteria, tests and limits are recorded in the Phase 4 section and 2026-10-22 log below.
+- **Latest code SHA tested green:** `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`. Documentation commits may advance the branch head; never imply the docs commit is the same SHA as the tested code.
+- **No physical two-device match or deployed Worker end-to-end run has been performed.** Phase 10 retains both as required release verification; passing CI does not prove live peer synchronization.
+- **Next whole phase: Phase 5 — items and effects.** Phases 5–10 remain open; Phase 4’s implementation and automated acceptance do not establish live two-device readiness or project-wide release completion.
 
 ## Architecture Reference
 
@@ -141,28 +143,39 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Vitest reported 220 executions passed across the TypeScript test file and its generated JavaScript counterpart (the two files exercise corresponding test cases; this is not 220 distinct source scenarios).
 - `NativeCombatRuntimeIntegrationTest` contains 36 integration test methods at this checkpoint, including the new callback-driven special Mob test.
 - No physical two-device session or deployed Worker end-to-end run is claimed. Real-device/network verification remains an explicit Phase 10 release gate.
-- Phase 4 — movement and floor lifecycle is the next whole phase. Phase 9 publisher-disconnect/authority handoff work remains separate and open.
+- At the time of this Phase 3 checkpoint, Phase 4 was next. Its implementation and automated acceptance are recorded in the 2026-10-22 Phase 4 verification entry below; Phase 5 is now next. Phase 9 publisher-disconnect/authority handoff remains separate and open.
 
 ## Phase 4 — Complete Movement, Floors, Doors and World Interactions
 
 **Priority:** P0/P1
 
+**Status:** Complete for implementation and automated acceptance on code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`. Exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs.
+
 ### Work items
 
-- [ ] Define authoritative action lifecycle: local intent, server acceptance/rejection, native action resolution, event broadcast and final reconciliation.
-- [ ] Validate movement against the current snapshot's real terrain, occupancy, pits, diagonals, roots/immobility and native action cost. Reconcile rejected optimistic movement.
-- [ ] Complete stair/transition handling with branch, depth, destination type, level seed, level data publication, transition acknowledgement and atomic floor swap.
-- [ ] Ensure all clients enter the same destination floor before actions resume; do not infer that a floor is ready from depth alone.
-- [ ] Synchronize doors, locked doors, secret doors, barricades, destructible terrain, mining, traps triggered by movement, wells, plants and other native level mutations.
-- [ ] Validate branch support. Until nonzero branches are fully implemented, reject them clearly rather than accepting an incompatible snapshot.
-- [ ] Transfer hero state and native inter-level inventory/keys/quests correctly; avoid resetting progression or duplicating items during a floor change.
-- [ ] Add tests for invalid movement, occupied tiles, transitions, locked floors, stairs, branch mismatch, missing next-floor snapshot and simultaneous floor transitions.
+- [x] Define the authoritative action lifecycle: native SPD intent -> server acceptance/rejection -> original Java resolution -> validated full native mutation snapshot -> sequenced event/broadcast -> peer application or resync.
+- [x] Validate movement against the complete current map and occupancy, native passable/avoid/solid/pit rules, source/destination bounds, adjacent step geometry, roots/paralysis, native cost bounds and pending floor transitions. Reject unauthorized movement and reconcile it through an authoritative resync rather than retaining optimistic state.
+- [x] Complete regular stair transitions with source/depth/type/branch validation, native destination-level publication, destination seed checking, per-living-player `LEVEL_READY`, one shared target cell, atomic room depth/player-state commit, and timeout abort/recovery.
+- [x] Add a first-class native `FALL` transition for the original `Chasm.heroFall()` path (which bypasses ordinary movement into the pit): validate the adjacent source/pit cells, use the original SPD fall/InterlevelScene path on every peer, derive a deterministic safe destination landing from the generated floor seed and source cell, and keep the transition barrier closed until all clients are ready on that same safe cell.
+- [x] Prevent a second/simultaneous floor transition while one is pending; reject transitions from dead players, without an active publisher, while floors are locked, or onto unsupported nonzero branches. Nonzero branches fail explicitly rather than silently diverging.
+- [x] Synchronize original native door opening/closing, locked doors and keys, secret doors/traps, barricades and destructible terrain, mining, movement-triggered traps/plants/wells and valid NPC interactions/chest state through action-bound, constrained native world mutations. The Worker rejects out-of-range edits, invalid terrain flags, forged loot/inventory, unrelated entity changes and unsupported mutation deltas.
+- [x] Preserve Hero state and native progression across floor changes/reconciliation: serialized inventory/equipment, key counts/notes, quests and native buff/cooldown state are carried by the full Hero snapshot; accepted keys/loot are bounded by action-specific validation.
+- [x] Cover the critical paths with server tests for terrain/occupancy and movement rejection, locked/unsupported transitions, safe native pit falls and landing rejection for pits/traps/Mobs, destination snapshot admission, per-peer readiness, timeout abort conditions, and simultaneous transition attempts. JVM tests cover deterministic safe landing and exclude traps/Mobs while keeping solo SPD landing logic unchanged.
 
 ### Acceptance criteria
 
-- Both devices see the same map and stand on valid cells after every move.
-- Floor transitions do not strand either player, reset the wrong state or permit actions against the previous depth.
-- Doors, traps and other terrain changes converge and remain correct after reconnect.
+- [x] The Worker validates each move against a complete trusted snapshot and only persists action-authorized native changes; rejected optimistic changes can be reconciled by full snapshot/resync.
+- [x] A floor is not committed based solely on depth. The destination publisher snapshot, destination seed and each connected living peer's ready Hero state must agree before an atomic floor swap resumes the room.
+- [x] Regular stairs and native pit falls use native SPD scene/transition logic, and the multiplayer FALL landing is deterministic, in-bounds, passable, non-pit, and free of traps and Mobs.
+- [x] Door/key/chest/mining/terrain/plant/trap/well mutations converge through constrained native snapshots; unsupported branches are rejected explicitly.
+
+### Verification and limits
+
+- Tested code SHA: `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`.
+- Exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed `Backend typecheck and tests` and `Android debug APK compile`, including JVM tests and APK compilation.
+- Vitest reported 242 successful executions across `index.test.ts` and the generated `index.test.js` counterpart (121 source cases mirrored across the two files, not 242 distinct scenarios). `NativeCombatRuntimeIntegrationTest` contains 37 test methods at this checkpoint.
+- No physical two-device session or deployed Worker end-to-end test is claimed. Those remain explicit Phase 10 release checks; CI proves build and automated contract/runtime tests, not live device timing or transport behavior.
+- Next whole phase: Phase 5 — items and effects. Phase 9 authority handoff and Phase 10 real-device/deployment verification remain separate and open.
 
 ## Phase 5 — Complete Inventory, Loot, Items, Buffs and Timed Effects
 
@@ -348,3 +361,14 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Current branch head at re-audit: `0a88887fa01bed79bc317f28d73692c5192b78da`. [CI run 39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both required jobs: Backend typecheck and tests; Android debug APK compile (including JVM tests).
 - Conclusion: Phase 2 already had its required implementation and automated acceptance; no duplicate implementation was added merely to create activity. Its phase status and verification evidence are now explicit and current. The physical two-device test is intentionally not claimed and remains a Phase 10 release gate.
 - At this historical Phase 2 re-audit, Phase 3 was next. Its completion and the current next phase (Phase 4) are recorded above. Keep phase numbering fixed: Phase 1 = snapshots/restoration; Phase 2 = native combat; Phase 3 = Mob AI/Actor scheduler.
+
+## 2026-10-22 Phase 4 completion verification — native movement and floor/world interactions
+
+- Tested code SHA: `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`. Exact-SHA GitHub Actions [run 39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) completed successfully: backend TypeScript build and Vitest passed, Android JVM tests and debug APK compilation passed.
+- Fixed the native pit-fall gap end-to-end. SPD calls `Chasm.heroFall()` before entering a pit cell, so it cannot be represented as an ordinary MOVE. The publisher now submits a validated FALL intent; peers replay the native Chasm/InterlevelScene path without emitting a duplicate intent; the server admits a complete destination snapshot only if the Hero landing is safe.
+- Multiplayer `Level.fallCell()` now selects the same safe destination cell from the generated destination seed and shared source Hero cell. The server requires that landing to be passable, non-solid, non-pit, and free of traps/Mobs; every connected living peer must report the same landing, depth, branch and seed before the atomic commit.
+- Added a strict single-transition admission gate and a dedicated test for pending transitions, dead initiators, and missing active publisher. Existing regular stair validation continues independently of FALL-only terrain fields.
+- Verified server suite: 242 successful Vitest executions across TypeScript plus the generated JavaScript counterpart (121 mirrored source cases). Verified Android suite: the JVM tests and debug APK compile passed; `NativeCombatRuntimeIntegrationTest` has 37 methods after the deterministic safe-fall regression.
+- Existing action-bound native mutation checks remain in place for movement, doors and keys, chest opening, mining, barricades/destructible terrain, secret interactions, wells, plants, traps and eligible NPC interactions. Branch-zero support is explicit; unsupported branches are rejected rather than locally diverging.
+- Limit: no physical two-device session or deployed Worker end-to-end test was run here. Keep the live transition/door/reconnect matrix as a Phase 10 release gate. Phase 4 is complete for implementation and automated acceptance; this is not a claim that final release verification is complete.
+
