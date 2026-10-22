@@ -199,6 +199,13 @@ export function isPendingNativeFloorDestinationSnapshot(currentDepth: unknown, p
     && pending.snapshotReady !== true;
 }
 
+/** Prevents concurrent or unauthorized floor transitions from opening a second barrier. */
+export function canStartNativeFloorTransition(
+  transitionAlreadyPending: unknown, playerState: unknown, publisherConnected: unknown
+): boolean {
+  return transitionAlreadyPending === false && playerState === "ALIVE" && publisherConnected === true;
+}
+
 /** A timed-out regular floor transition may be aborted only while the room is still on its source depth. */
 export function canAbortNativeFloorTransition(currentDepth: unknown, pending: any): boolean {
   return Number.isInteger(currentDepth) && !!pending && pending.fromDepth === currentDepth
@@ -3376,7 +3383,7 @@ export class MatchRoom {
             const activePublisher = publisherRow.length > 0
               && this.sql.exec(`SELECT player_id FROM players WHERE player_id = ? AND connected = 1`, String(publisherRow[0]?.value)).toArray().length > 0;
             const transitionData = payload.data || {};
-            if (!pendingRow.length && playerRow.length > 0 && String(playerRow[0].state) === "ALIVE" && activePublisher) {
+            if (canStartNativeFloorTransition(pendingRow.length > 0, playerRow[0]?.state, activePublisher)) {
               const currentPos = Number(playerRow[0].pos);
               const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, transitionData);
               if (transition) {
