@@ -17,7 +17,7 @@ When the user says “yalla phase N” or asks to finish a phase, implement the 
 - **Phase 2 native combat re-audit:** current branch head `0a88887fa01bed79bc317f28d73692c5192b78da`; CI [39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both jobs. Verified 28 native runtime integration tests and 107 backend tests overall; see the 2026-10-21 Phase 2 re-audit in `ROADMAP.md`.
 - **Final verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for backend TypeScript build/tests and Android JVM tests/debug APK compilation.
 - **Phase 3 native Mob AI/scheduler completion:** tested code SHA `a5565ea05ae677104f3eccfa428e99c5b5e787bb`; exact-SHA CI [39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419) passed backend TypeScript/Vitest and Android JVM/debug APK jobs.
-- **Phase 4 movement/floors/world-interactions completion:** tested code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs, including backend tests, JVM tests and debug APK compilation. `ROADMAP.md` marks Phase 4 complete for implementation and automated acceptance; Phase 5 is next. Physical two-device and deployed Worker E2E verification remain Phase 10.
+- **Phase 4 movement/floors/world-interactions completion:** tested phase-specific code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs. A follow-on combined branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). `ROADMAP.md` marks Phase 4 complete; Phase 5 is next. Physical two-device and deployed Worker E2E verification remain Phase 10.
 - **Roadmap:** read `ROADMAP.md` before starting a task. Phase 1 is complete for implementation and automated acceptance after the final snapshot consistency audit; exact-SHA run [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) passed both backend and Android jobs. Phase 2 remains complete for automated acceptance.
 
 ## 2. Non-Negotiable Product and Engineering Rules
@@ -290,7 +290,7 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - **Runtime scenarios:** NativeCombatRuntimeIntegrationTest contains 36 test methods at this checkpoint. Phase 3 coverage includes sleeping/fleeing/out-of-sight state, stable target rebinding, disconnected targets, native obstacle/diagonal pathing and fleeing, Haste/effective-speed/cooldown round trips, animated attack deferral and special callback-driven effects. Existing native combat tests preserve authoritative/idempotent death, reward and loot behavior.
 - **Backend tests:** CI reported 220 successful Vitest executions across index.test.ts and its generated index.test.js counterpart; those files exercise corresponding test cases, so this is not 220 distinct source scenarios.
 - **Limits:** no physical two-device match or deployed Worker end-to-end test has been performed. Keep both as Phase 10 release verification. Publisher disconnect/authority handoff remains Phase 9 work, not Phase 3.
-- **Current next whole phase:** Phase 4 — movement and floor lifecycle. See ROADMAP.md; do not mark Phase 4 or later complete without its own implementation and exact-SHA verification.
+- At this historical Phase 3 checkpoint, Phase 4 was the next whole phase. That status is superseded by the Phase 4 completion entry below.
 
 ### 2026-10-22 — Phase 4 movement, floor and world-interaction completion
 
@@ -301,4 +301,11 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - **Tests:** Vitest reported 242 successful executions across index.test.ts and its generated JavaScript counterpart (121 mirrored source test cases); NativeCombatRuntimeIntegrationTest has 37 methods, including deterministic safe multiplayer fall landing and hazard-exclusion coverage.
 - **Limits:** no physical two-device session or deployed Worker end-to-end test was performed. Those are still Phase 10 release checks; Phase 4 is complete for implementation and automated acceptance, not complete final-release verification.
 - **Next whole phase:** Phase 5 — items and effects. Publisher handoff remains Phase 9; real-device/deployment evidence remains Phase 10.
+
+### 2026-10-23 — Phase 4 resumed audit and current-branch verification
+
+- Re-read the complete current Worker action branches and Android world-action/transition paths. The server has a shared accepted-action branch for `UNLOCK`, `MINE`, `INTERACT` and `OPEN_CHEST`; peer `MessageRouter` handling for `LEVEL_TRANSITION`/abort is present. The earlier suspicion that those entire handlers were absent came from a partial excerpt and is superseded by this full-source audit.
+- The phase's specific implementation and acceptance remains recorded against `c0c231a501bb2996f261e7e9e4e5d66e4136d70b` and CI `39850368287`. The later branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917`, which includes follow-up stable item identity/pickup/drop work, passed both CI jobs in [39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332).
+- Branch HEAD before this documentation-only audit was `ab81c507c5f1ae0b767732a7247cf7afe5afd917`. No two-device or deployed Worker run is claimed; those remain Phase 10 checks.
+- Phase 4 remains complete for implementation and automated acceptance. The next whole phase is Phase 5 — items and effects.
 
