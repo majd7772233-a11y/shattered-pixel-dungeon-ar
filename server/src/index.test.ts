@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1367,6 +1367,54 @@ describe('Authoritative native movement and floor transition validation', () => 
     expect(canAbortNativeFloorTransition(5, { ...pending, startedAt: 1234 })).toBe(false);
     expect(canAbortNativeFloorTransition(4, { ...pending, targetBranch: 1, startedAt: 1234 })).toBe(false);
     expect(canAbortNativeFloorTransition(4, { ...pending, startedAt: 'invalid' })).toBe(false);
+  });
+
+  it('validates native pit falls separately from regular stair transitions and uses a safe landing', () => {
+    const sourceTiles = Array.from({ length: 64 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, avoid: false
+    }));
+    sourceTiles[10] = { ...sourceTiles[10], terrain: 0, passable: false, solid: false, pit: true, avoid: true };
+    const sourceLevel: any = {
+      depth: 4, branch: 0, width: 8, height: 8, locked: false,
+      tiles: sourceTiles, transitions: []
+    };
+    const fallIntent = {
+      transitionKind: 'FALL', depth: 4, branch: 0, from: 9, to: 9, stairsPos: 9, pitPos: 10
+    };
+    expect(resolveNativeTransitionIntent(sourceLevel, 4, 9, fallIntent)).toEqual({
+      fromDepth: 4, depth: 5, transitionPos: 9, transitionType: 'FALL',
+      targetType: 'FALL', targetBranch: 0, pitPos: 10
+    });
+    expect(resolveNativeTransitionIntent({ ...sourceLevel, locked: true }, 4, 9, fallIntent)).toBeNull();
+    expect(resolveNativeTransitionIntent(sourceLevel, 4, 9, { ...fallIntent, pitPos: 26 })).toBeNull();
+    expect(resolveNativeTransitionIntent(sourceLevel, 4, 9, { ...fallIntent, pitPos: 11 })).toBeNull();
+    expect(resolveNativeTransitionIntent(sourceLevel, 4, 9, { ...fallIntent, branch: 1 })).toBeNull();
+    expect(resolveNativeTransitionIntent(sourceLevel, 4, 8, fallIntent)).toBeNull();
+
+    const landingTiles = Array.from({ length: 64 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false
+    }));
+    landingTiles[10] = { ...landingTiles[10], terrain: 0, passable: false, solid: false, pit: true };
+    const destination: any = {
+      depth: 5, branch: 0, width: 8, height: 8, seed: 713,
+      tiles: landingTiles, transitions: [], traps: [], mobs: [],
+      heroStateJson: JSON.stringify({
+        hp: 20, ht: 20, pos: 9, shielding: 0,
+        combatBundle: 'native-hero-bundle', inventoryBundle: 'native-inventory-bundle', buffCount: 0
+      })
+    };
+    expect(isValidNativeFallLanding(destination, 9)).toBe(true);
+    expect(isValidNativeFallLanding(destination, 10)).toBe(false);
+    expect(isValidNativeFallLanding({ ...destination, traps: [{ pos: 9 }] }, 9)).toBe(false);
+    expect(isValidNativeFallLanding({ ...destination, mobs: [{ pos: 9, hp: 8 }] }, 9)).toBe(false);
+    expect(isValidNativeFallDestinationSnapshot(destination)).toBe(true);
+    expect(isValidNativeFallDestinationSnapshot({
+      ...destination,
+      heroStateJson: JSON.stringify({
+        hp: 20, ht: 20, pos: 10, shielding: 0,
+        combatBundle: 'native-hero-bundle', inventoryBundle: 'native-inventory-bundle', buffCount: 0
+      })
+    })).toBe(false);
   });
 
   it('resolves only the matching unlocked regular transition on the current floor', () => {

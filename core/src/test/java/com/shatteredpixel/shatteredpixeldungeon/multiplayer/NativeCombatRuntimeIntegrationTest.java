@@ -114,6 +114,34 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void multiplayerFallLandingIsDeterministicAndSkipsNativeHazards() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-fall-landing", "client-publisher", new TestTransport());
+
+        Dungeon.depth = 2;
+        TestLevel destination = new TestLevel();
+        int first = destination.fallCell(false);
+        Assert.assertTrue(first >= 0);
+        Assert.assertTrue(destination.passable[first]);
+        Assert.assertFalse(destination.pit[first]);
+
+        destination.traps.put(first, new FrostTrap());
+        int afterTrap = destination.fallCell(false);
+        Assert.assertTrue(afterTrap >= 0);
+        Assert.assertNotEquals("A native fall cannot land on a trap", first, afterTrap);
+
+        destination.traps.remove(first);
+        Rat blocker = new Rat();
+        blocker.pos = afterTrap;
+        destination.mobs.add(blocker);
+        int afterMob = destination.fallCell(false);
+        Assert.assertTrue(afterMob >= 0);
+        Assert.assertNotEquals("A native fall cannot land on a destination Mob", afterTrap, afterMob);
+        Assert.assertEquals("Same seed and initiating cell produce the same shared fall landing",
+                afterMob, destination.fallCell(false));
+    }
+
+    @Test
     public void sharedNativeActorTurnsRunOnlyOnTheLevelPublisher() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         Mob mob = addRat(hero.pos + 1, 18);

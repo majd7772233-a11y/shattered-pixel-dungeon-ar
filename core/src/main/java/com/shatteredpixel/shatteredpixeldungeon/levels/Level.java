@@ -1221,6 +1221,26 @@ public abstract class Level implements Bundlable {
 	}
 	
 	public int fallCell( boolean fallIntoPit ) {
+		if (com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance()
+				.isMultiplayerActive() && Dungeon.branch == 0 && Dungeon.hero != null && length > 0) {
+			// The global RNG differs by device when a fall begins. Derive the group landing from
+			// the generated destination seed and initiating Hero cell so all clients commit one cell.
+			long landingSeed = Dungeon.seedCurDepth()
+					^ ((long) Dungeon.hero.pos * 0x9E3779B97F4A7C15L)
+					^ (fallIntoPit ? 0xD1B54A32D192ED03L : 0L);
+			int start = (int) Math.floorMod(landingSeed, (long) length);
+			for (int offset = 0; offset < length; offset++) {
+				int cell = (start + offset) % length;
+				if (!passable[cell] || solid[cell] || pit[cell]
+						|| (Dungeon.level == this && heroFOV[cell])
+						|| traps.get(cell) != null || findMob(cell) != null) continue;
+				// Do not query Actor.findChar: those characters belong to the source floor and their
+				// local/remote arrangement differs during the barrier. Destination Mobs are checked above.
+				return cell;
+			}
+			return -1;
+		}
+
 		int result;
 		do {
 			result = randomRespawnCell( null );

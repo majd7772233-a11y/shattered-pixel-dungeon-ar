@@ -726,6 +726,28 @@ public final class MessageRouter {
                             || (destinationDepth != sourceDepth + 1 && destinationDepth != sourceDepth - 1)) {
                         transitionManager.requestResync(seq);
                     } else {
+                        if ("FALL".equals(transitionType)) {
+                            int pitPos = intValue(action.get("pitPos"), -1);
+                            boolean validNativePitFall = stairsPos >= 0 && stairsPos < Dungeon.level.length()
+                                    && pitPos >= 0 && pitPos < Dungeon.level.length()
+                                    && Dungeon.level.passable[stairsPos] && !Dungeon.level.pit[stairsPos]
+                                    && Dungeon.level.adjacent(stairsPos, pitPos)
+                                    && Dungeon.level.pit[pitPos] && !Dungeon.level.solid[pitPos]
+                                    && destinationDepth == sourceDepth + 1
+                                    && "FALL".equals(targetType);
+                            if (validNativePitFall) {
+                                int oldPos = Dungeon.hero.pos;
+                                Dungeon.hero.pos = stairsPos;
+                                if (Dungeon.hero.sprite != null && oldPos != stairsPos) {
+                                    Dungeon.hero.sprite.place(stairsPos);
+                                }
+                                com.shatteredpixel.shatteredpixeldungeon.levels.features.Chasm
+                                        .heroFallFromNetwork(pitPos);
+                                transitionManager.updateLastSequence(seq);
+                            } else {
+                                transitionManager.requestResync(seq);
+                            }
+                        } else {
                         com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition transition =
                                 Dungeon.level.getTransition(stairsPos);
                         boolean matchesNativeSource = transition != null && transition.cell() == stairsPos
@@ -752,6 +774,7 @@ public final class MessageRouter {
                             }
                         } else {
                             transitionManager.requestResync(seq);
+                        }
                         }
                     }
                 } else if ("LEVEL_TRANSITION_ABORTED".equals(type)) {

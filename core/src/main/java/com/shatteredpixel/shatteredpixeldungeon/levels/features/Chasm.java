@@ -97,18 +97,42 @@ public class Chasm implements Hero.Doom {
 	}
 	
 	public static void heroFall( int pos ) {
-		
-		jumpConfirmed = false;
-				
-		Sample.INSTANCE.play( Assets.Sounds.FALLING );
+		heroFall(pos, false);
+	}
 
+	/** Applies a publisher-announced native pit fall without emitting a duplicate transition action. */
+	public static void heroFallFromNetwork( int pos ) {
+		heroFall(pos, true);
+	}
+
+	private static void heroFall( int pos, boolean networkReplicated ) {
+
+		jumpConfirmed = false;
+
+		if (Dungeon.hero == null || Dungeon.level == null) return;
+
+		boolean multiplayer = com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager
+				.getInstance().isMultiplayerActive();
+		if (multiplayer && Dungeon.branch != 0) {
+			Dungeon.hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+		// Reserve the room-wide transition before SPD spends partial turns or switches scene.
+		if (multiplayer && !networkReplicated && Dungeon.hero.isAlive()
+				&& !com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerActionDispatcher
+					.onNativePitFall(pos)) {
+			Dungeon.hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
+		Sample.INSTANCE.play( Assets.Sounds.FALLING );
 		Level.beforeTransition();
 
 		if (Dungeon.hero.isAlive()) {
 			Dungeon.hero.interrupt();
 			InterlevelScene.mode = InterlevelScene.Mode.FALL;
 			if (Dungeon.level instanceof RegularLevel &&
-						((RegularLevel)Dungeon.level).room( pos ) instanceof WeakFloorRoom){
+					((RegularLevel)Dungeon.level).room( pos ) instanceof WeakFloorRoom){
 				InterlevelScene.fallIntoPit = true;
 				Notes.remove(Notes.Landmark.DISTANT_WELL);
 			} else {
@@ -116,7 +140,7 @@ public class Chasm implements Hero.Doom {
 			}
 			Game.switchScene( InterlevelScene.class );
 		} else {
-			Dungeon.hero.sprite.visible = false;
+			if (Dungeon.hero.sprite != null) Dungeon.hero.sprite.visible = false;
 		}
 	}
 

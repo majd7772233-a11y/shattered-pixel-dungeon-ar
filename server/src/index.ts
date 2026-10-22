@@ -103,14 +103,35 @@ export function isValidNativeMoveIntent(
 export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: unknown,
   currentPos: unknown, data: any): {
     fromDepth: number; depth: number; transitionPos: number; transitionType: string;
-    targetType: string; targetBranch: number
+    targetType: string; targetBranch: number; pitPos?: number
   } | null {
   if (!levelSnapshot || typeof currentDepth !== "number" || !Number.isInteger(currentDepth)
     || typeof currentPos !== "number" || !Number.isInteger(currentPos)
     || levelSnapshot.depth !== currentDepth || levelSnapshot.branch !== 0 || levelSnapshot.locked !== false
     || data?.depth !== currentDepth || data?.from !== currentPos
     || data?.to !== currentPos || data?.stairsPos !== currentPos
-    || !Array.isArray(levelSnapshot.transitions)) return null;
+    || !Array.isArray(levelSnapshot.transitions) || !Array.isArray(levelSnapshot.tiles)) return null;
+
+  // Native SPD handles pits before moving the Hero into the cell: Chasm.heroFall() runs while
+  // the Hero stays at currentPos. Model that as a separate floor transition, not a stair edge.
+  if (data?.transitionKind === "FALL") {
+    const pitPos = data.pitPos;
+    const width = Number(levelSnapshot.width), height = Number(levelSnapshot.height);
+    const size = width * height;
+    if (currentDepth < 1 || currentDepth >= 100 || data?.branch !== 0
+      || !Number.isInteger(pitPos) || pitPos < 0 || pitPos >= size || pitPos === currentPos) return null;
+    const sourceTiles = levelSnapshot.tiles.filter((tile: any) => tile?.pos === currentPos);
+    const pitTiles = levelSnapshot.tiles.filter((tile: any) => tile?.pos === pitPos);
+    const dx = Math.abs((pitPos % width) - (currentPos % width));
+    const dy = Math.abs(Math.floor(pitPos / width) - Math.floor(currentPos / width));
+    if (sourceTiles.length !== 1 || sourceTiles[0].pit === true || sourceTiles[0].solid === true
+      || pitTiles.length !== 1 || pitTiles[0].pit !== true || pitTiles[0].solid !== false
+      || dx > 1 || dy > 1 || (dx === 0 && dy === 0)) return null;
+    return { fromDepth: currentDepth, depth: currentDepth + 1, transitionPos: currentPos,
+      transitionType: "FALL", targetType: "FALL", targetBranch: 0, pitPos };
+  }
+  if (data?.transitionKind !== undefined && data.transitionKind !== "STAIRS") return null;
+
   const matchingTransitions = levelSnapshot.transitions.filter((item: any) => item?.pos === currentPos);
   if (matchingTransitions.length !== 1) return null;
   const transition = matchingTransitions[0];
@@ -128,9 +149,43 @@ export function resolveNativeTransitionIntent(levelSnapshot: any, currentDepth: 
 }
 
 
+/** Validates a safe native fall landing cell on a full branch-zero snapshot. */
+export function isValidNativeFallLanding(levelSnapshot: any, posValue: unknown): boolean {
+  if (!levelSnapshot || levelSnapshot.branch !== 0
+    || !Number.isInteger(levelSnapshot.width) || levelSnapshot.width < 8 || levelSnapshot.width > 100
+    || !Number.isInteger(levelSnapshot.height) || levelSnapshot.height < 8 || levelSnapshot.height > 100
+    || typeof posValue !== "number" || !Number.isInteger(posValue)
+    || !Array.isArray(levelSnapshot.tiles) || !Array.isArray(levelSnapshot.traps)
+    || !Array.isArray(levelSnapshot.mobs)) return false;
+  const size = Number(levelSnapshot.width) * Number(levelSnapshot.height);
+  if (levelSnapshot.tiles.length !== size || posValue < 0 || posValue >= size) return false;
+  const candidates = levelSnapshot.tiles.filter((tile: any) => tile?.pos === posValue);
+  if (candidates.length !== 1) return false;
+  const tile = candidates[0];
+  if (tile.passable !== true || tile.solid !== false || tile.pit !== false) return false;
+  // Native Level.fallCell() excludes traps and Mobs regardless of a trap's active flag.
+  if (levelSnapshot.traps.some((trap: any) => Number(trap?.pos) === posValue)
+    || levelSnapshot.mobs.some((mob: any) => Number(mob?.pos) === posValue)) return false;
+  return true;
+}
+
+/** The publisher's destination snapshot must carry a valid native Hero landing state. */
+export function isValidNativeFallDestinationSnapshot(levelSnapshot: any): boolean {
+  if (!levelSnapshot || !Number.isInteger(levelSnapshot.depth) || levelSnapshot.depth < 1
+    || levelSnapshot.branch !== 0 || typeof levelSnapshot.heroStateJson !== "string") return false;
+  try {
+    const hero = JSON.parse(levelSnapshot.heroStateJson);
+    return !!hero && isValidNativeHeroStateJson(levelSnapshot.heroStateJson, {
+      hp: hero.hp, ht: hero.ht, pos: hero.pos, shielding: hero.shielding
+    }) && isValidNativeFallLanding(levelSnapshot, hero.pos);
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
- * Only the elected publisher may submit the matching destination floor while a regular
- * transition barrier is pending. The room remains on fromDepth until every living peer is ready.
+ * Only the elected publisher may submit the matching destination floor while a regular stair
+ * or native FALL barrier is pending. The room remains on fromDepth until every living peer is ready.
  */
 export function isPendingNativeFloorDestinationSnapshot(currentDepth: unknown, pending: any,
   submittedDepth: unknown, submittedBranch: unknown, senderId: unknown): boolean {
@@ -2219,11 +2274,15 @@ export class MatchRoom {
         let transitionPending: any = null;
         if (transitionPendingRow) {
           try { transitionPending = JSON.parse(String(transitionPendingRow.value)); } catch (_) {}
+          const validFallDestination = transitionPending?.transitionType === "FALL"
+            && isValidNativeFallDestinationSnapshot(level);
+          const validStairDestination = transitionPending?.transitionType !== "FALL"
+            && Array.isArray(transitions)
+            && transitions.filter((transition: any) => String(transition?.type) === String(transitionPending.targetType)
+              && Number.isInteger(transition?.pos)).length === 1;
           if (!transitionPending || transitionPending.fromDepth !== this.currentDepth
               || transitionPending.depth !== depth || transitionPending.snapshotReady === true
-              || !isTransitionDestinationSnapshot || !Array.isArray(transitions)
-              || transitions.filter((transition: any) => String(transition?.type) === String(transitionPending.targetType)
-                && Number.isInteger(transition?.pos)).length !== 1) {
+              || !isTransitionDestinationSnapshot || (!validFallDestination && !validStairDestination)) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_TRANSITION_DESTINATION_SNAPSHOT" }) }));
             return;
@@ -4071,21 +4130,36 @@ export class MatchRoom {
     try { pending = JSON.parse(String(pendingRow.value)); } catch (_) { return; }
     if (!pending || pending.snapshotReady !== true || pending.fromDepth !== this.currentDepth
         || pending.depth === this.currentDepth || Math.abs(pending.depth - this.currentDepth) !== 1
-        || pending.targetBranch !== 0) return;
+        || pending.targetBranch !== 0
+        || (pending.transitionType === "FALL" && pending.depth !== pending.fromDepth + 1)) return;
 
     const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${pending.depth}`).toArray()[0];
     let level: any = null;
     try { level = savedRow ? JSON.parse(String(savedRow.value)) : null; } catch (_) { return; }
     if (!level || level.depth !== pending.depth || level.branch !== 0 || !Array.isArray(level.transitions)) return;
-    const destination = level.transitions.filter((transition: any) =>
-      String(transition?.type) === String(pending.targetType) && Number.isInteger(transition?.pos));
-    if (destination.length !== 1) return;
-    const newPos = Number(destination[0].pos);
-    const size = Number(level.width) * Number(level.height);
-    const destinationTile = Array.isArray(level.tiles)
-      ? level.tiles.find((tile: any) => tile?.pos === newPos) : null;
-    if (newPos < 0 || newPos >= size || !destinationTile || destinationTile.passable !== true
-        || destinationTile.solid !== false || destinationTile.pit !== false) return;
+
+    const isFall = pending.transitionType === "FALL";
+    let newPos = -1;
+    let destinationValid = false;
+    if (isFall) {
+      if (!isValidNativeFallDestinationSnapshot(level)) return;
+      try {
+        const publisherHero = JSON.parse(String(level.heroStateJson));
+        newPos = Number(publisherHero.pos);
+      } catch (_) { return; }
+      destinationValid = isValidNativeFallLanding(level, newPos);
+    } else {
+      const destination = level.transitions.filter((transition: any) =>
+        String(transition?.type) === String(pending.targetType) && Number.isInteger(transition?.pos));
+      if (destination.length !== 1) return;
+      newPos = Number(destination[0].pos);
+      const size = Number(level.width) * Number(level.height);
+      const destinationTile = Array.isArray(level.tiles)
+        ? level.tiles.find((tile: any) => tile?.pos === newPos) : null;
+      destinationValid = newPos >= 0 && newPos < size && !!destinationTile
+        && destinationTile.passable === true && destinationTile.solid === false && destinationTile.pit === false;
+    }
+    if (!destinationValid) return;
 
     const connected = this.sql.exec("SELECT player_id FROM players WHERE state = 'ALIVE' AND connected = 1").toArray();
     const readyStates: Array<{playerId: string; heroStateJson: string; hero: any}> = [];
@@ -4104,16 +4178,15 @@ export class MatchRoom {
           || !Number.isInteger(hero.shielding) || hero.shielding < 0
           || !isValidNativeHeroStateJson(ready.heroStateJson, {
             hp: hero.hp, ht: hero.ht, pos: hero.pos, shielding: hero.shielding
-          })) return;
+          })
+          || (isFall && !isValidNativeFallLanding(level, hero.pos))) return;
       readyStates.push({ playerId, heroStateJson: ready.heroStateJson, hero });
     }
 
-    // Keep the barrier closed until the shared destination and every currently connected living
-    // player's native Hero state match the same floor seed, branch, and entrance.
+    // Keep the barrier closed until the shared destination and every connected living player's
+    // native Hero state agree on branch, seed, landing cell and serialized progression.
     if (!canFinalizeNativeFloorTransition(this.currentDepth, pending, pending.snapshotReady,
-        !!level && level.depth === pending.depth && level.branch === 0 && destination.length === 1
-          && destinationTile?.passable === true && destinationTile?.solid === false && destinationTile?.pit === false,
-        readyStates.length, connected.length)) return;
+        destinationValid, readyStates.length, connected.length)) return;
 
     // Commit room depth and all player states together only after the destination is proven ready.
     this.currentDepth = pending.depth;

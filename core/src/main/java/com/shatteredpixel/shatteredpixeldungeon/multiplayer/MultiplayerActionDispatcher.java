@@ -76,6 +76,30 @@ public class MultiplayerActionDispatcher {
         manager.sendAction(actionType, details, heroStateBefore);
     }
 
+    /** Submits SPD's native Chasm fall path without pretending the Hero walked into the pit cell. */
+    public static boolean onNativePitFall(int pitPos) {
+        Hero hero = Dungeon.hero;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (!manager.isMultiplayerActive() || hero == null || Dungeon.level == null || Dungeon.branch != 0
+                || Dungeon.level.locked || pitPos < 0 || pitPos >= Dungeon.level.length()
+                || !Dungeon.level.adjacent(hero.pos, pitPos)
+                || !Dungeon.level.pit[pitPos] || Dungeon.level.solid[pitPos]) return false;
+
+        int sourcePos = hero.pos;
+        String details = "{\"transitionKind\":\"FALL\",\"from\":" + sourcePos
+                + ",\"to\":" + sourcePos + ",\"stairsPos\":" + sourcePos
+                + ",\"pitPos\":" + pitPos + ",\"depth\":" + Dungeon.depth
+                + ",\"branch\":" + Dungeon.branch + "}";
+        manager.markFloorTransitionPending();
+        String requestId = manager.sendAction(NetworkActionType.LVL_TRANSITION, details,
+                SPDLevelSnapshot.currentHeroStateJson(hero));
+        if (requestId == null) {
+            manager.markFloorTransitionComplete();
+            return false;
+        }
+        return true;
+    }
+
     /** Reports one cell actually entered by SPD, including its native environment effects. */
     public static void onNativeMovementStep(int from, int to, float nativeActionCost, String heroStateBefore) {
         Hero hero = Dungeon.hero;
