@@ -1526,7 +1526,7 @@ describe('Native movement mutation snapshot admission', () => {
     expect(hasCompleteNativeLevelSnapshot(legacy)).toBe(true);
 
     const modern = level(9);
-    modern.heaps = [{
+    (modern as any).heaps = [{
       heapId: 'stable-heap-0001', pos: 9, type: 'HEAP', seen: true, haunted: false,
       hidden: false, autoExplored: false,
       items: [{
