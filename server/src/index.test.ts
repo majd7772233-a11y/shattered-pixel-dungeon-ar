@@ -1381,6 +1381,7 @@ describe('Native movement mutation snapshot admission', () => {
     schemaVersion: 1, depth: 1, branch: 0, width: 8, height: 8, seed: 713,
     entrancePos: 9, exitPos: 54, locked: false, feeling: 'NONE',
     nativeLevelMetadataBundle: 'native-level-metadata',
+    nativeWorldMutation: false,
     tiles: Array.from({ length: 64 }, (_, pos) => ({
       pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
       flammable: false, secret: false, avoid: false, water: false,
