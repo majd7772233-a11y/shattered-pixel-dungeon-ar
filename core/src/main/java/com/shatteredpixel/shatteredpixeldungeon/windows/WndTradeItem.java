@@ -290,16 +290,87 @@ public class WndTradeItem extends WndInfoItem {
 	}
 	
 	private void buy( Heap heap ) {
-		
+		com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero = Dungeon.hero;
+		if (hero == null || Dungeon.level == null || heap == null || heap.type != Heap.Type.FOR_SALE
+				|| heap.size() != 1 || heap.peek() == null) return;
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+		boolean trackBuy = hero == Dungeon.hero && manager.isMultiplayerActive();
+		if (trackBuy && (Dungeon.branch != 0 || Dungeon.level.locked)) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+		Item offered = heap.peek();
+		int position = heap.pos;
+		String heapId = heap.multiplayerHeapId();
+		String itemId = offered.multiplayerItemId();
+		String itemClass = offered.getClass().getName();
+		int itemQuantity = offered.quantity();
+		int itemLevel = offered.level();
+		boolean itemStackable = offered.stackable;
+		boolean cursed = offered.cursed;
+		boolean cursedKnown = offered.cursedKnown;
+		int price = Shopkeeper.sellPrice(offered);
+		if (price < 0 || Dungeon.gold < price) return;
+		String heroStateBefore = trackBuy
+				? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(hero) : null;
+		float cooldownBefore = trackBuy ? hero.cooldown() : 0f;
+		Item priorStack = null;
+		int priorStackQuantity = 0;
+		String priorStackId = "";
+		if (itemStackable) {
+			for (Item owned : hero.belongings.getAllItems(Item.class)) {
+				if (owned != null && owned.stackable && owned.isSimilar(offered)) {
+					priorStack = owned;
+					priorStackQuantity = owned.quantity();
+					priorStackId = owned.multiplayerItemId();
+					break;
+				}
+			}
+		}
 		Item item = heap.pickUp();
 		if (item == null) return;
-		
-		int price = Shopkeeper.sellPrice( item );
 		Dungeon.gold -= price;
 		Catalog.countUses(Gold.class, price);
-		
-		if (!item.doPickUp( Dungeon.hero )) {
-			Dungeon.level.drop( item, heap.pos ).sprite.drop();
+		boolean collected = item.doPickUp(hero);
+		if (!collected) Dungeon.level.drop(item, position).sprite.drop();
+		if (trackBuy) {
+			boolean acquiredByInventory = false;
+			String resultItemId = itemId;
+			java.util.ArrayList<Item> ownedAfter = hero.belongings.getAllItems(Item.class);
+			if (collected && ownedAfter.contains(item) && item.quantity() > 0) {
+				acquiredByInventory = true;
+			} else if (collected && priorStack != null && ownedAfter.contains(priorStack)
+					&& priorStack.quantity() == priorStackQuantity + itemQuantity) {
+				acquiredByInventory = true;
+				resultItemId = priorStackId;
+			}
+			com.shatteredpixel.shatteredpixeldungeon.items.Heap floorHeap = Dungeon.level.heaps.get(position);
+			String resultHeapId = "";
+			if (!acquiredByInventory) {
+				if (floorHeap == null || floorHeap.peek() == null
+						|| !itemId.equals(floorHeap.peek().multiplayerItemId())) {
+					manager.requestResync(manager.getLastSequence());
+					return;
+				}
+				resultHeapId = floorHeap.multiplayerHeapId();
+			}
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			String details = "{\"heapId\":" + json.toJson(heapId)
+					+ ",\"itemId\":" + json.toJson(itemId)
+					+ ",\"itemClass\":" + json.toJson(itemClass)
+					+ ",\"expectedQuantity\":" + itemQuantity
+					+ ",\"sourceQuantityBefore\":" + itemQuantity
+					+ ",\"stackable\":" + itemStackable
+					+ ",\"itemLevel\":" + itemLevel
+					+ ",\"cursed\":" + cursed
+					+ ",\"cursedKnown\":" + cursedKnown
+					+ ",\"price\":" + price
+					+ ",\"resultItemId\":" + json.toJson(resultItemId)
+					+ ",\"resultHeapId\":" + json.toJson(resultHeapId)
+					+ ",\"acquiredByInventory\":" + acquiredByInventory + "}";
+			hero.queueNativeWorldMutation("BUY", position, position, cooldownBefore, heroStateBefore, details);
+			hero.publishPendingNativeWorldMutation();
 		}
 	}
 }

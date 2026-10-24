@@ -247,7 +247,7 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP"]
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY"]
         },
         "nativeMutationRequestId": {
           "type": "string",
@@ -314,6 +314,12 @@
             "stackable": {"type":"boolean"},
             "resultItemId": {"type":"string","minLength":8,"maxLength":80},
             "sourceQuantityBefore": {"type":"integer","minimum":1,"maximum":100000},
+            "itemLevel": {"type":"integer","minimum":-100,"maximum":10000},
+            "cursed": {"type":"boolean"},
+            "cursedKnown": {"type":"boolean"},
+            "price": {"type":"integer","minimum":0,"maximum":10000000},
+            "acquiredByInventory": {"type":"boolean"},
+            "resultHeapId": {"type":"string","minLength":0,"maxLength":80},
             "expectedEquipped": {"type":"boolean"},
             "heapType": {"type":"string","enum":["CHEST","LOCKED_CHEST","CRYSTAL_CHEST"]}
           }
@@ -1714,6 +1720,12 @@
         },
         "stackable": {
           "type": "boolean"
+        },
+        "shopPrice": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 10000000,
+          "description": "Native Shopkeeper.sellPrice(item) for FOR_SALE heaps, otherwise -1."
         },
         "serializedBundle": {
           "type": "string",

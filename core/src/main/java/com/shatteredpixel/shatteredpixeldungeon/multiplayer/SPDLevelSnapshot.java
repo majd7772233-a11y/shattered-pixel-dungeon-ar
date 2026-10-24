@@ -120,6 +120,8 @@ public final class SPDLevelSnapshot {
         public boolean cursed;
         public boolean cursedKnown;
         public boolean stackable;
+        /** Native Shopkeeper.sellPrice(item) for FOR_SALE heaps, otherwise -1. */
+        public int shopPrice = -1;
         public String serializedBundle = "";
     }
 
@@ -379,6 +381,8 @@ public final class SPDLevelSnapshot {
                 d.cursed = item.cursed;
                 d.cursedKnown = item.cursedKnown;
                 d.stackable = item.stackable;
+                d.shopPrice = heap.type == Heap.Type.FOR_SALE
+                        ? item.value() * 5 * (Dungeon.depth / 5 + 1) : -1;
                 Bundle itemBundle = new Bundle();
                 itemBundle.put("item", item);
                 d.serializedBundle = itemBundle.toString();
