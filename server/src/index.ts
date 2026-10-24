@@ -383,6 +383,147 @@ export function isValidNativeChestHeapMutation(previousHeaps: any, nextHeaps: an
   return true;
 }
 
+
+/** The buy quote must match native pricing on the exact single-item FOR_SALE heap. */
+export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
+  playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
+  const data: any = dataValue, depth = Number(currentDepthValue), playerId = String(playerIdValue || "");
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
+      || typeof heroStateValue !== "string") return false;
+  const pos = Number(player.pos), heapId = String(data.heapId || ""), itemId = String(data.itemId || "");
+  const itemClass = String(data.itemClass || ""), quantity = Number(data.expectedQuantity), price = Number(data.price);
+  const resultItemId = String(data.resultItemId || ""), resultHeapId = String(data.resultHeapId || "");
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth || data.branch !== 0
+      || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
+      || resultItemId.length < 8 || resultItemId.length > 80 || itemClass.length < 1 || itemClass.length > 256
+      || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000 || data.sourceQuantityBefore !== quantity
+      || typeof data.stackable !== "boolean" || !Number.isInteger(price) || price < 0 || price > 10000000
+      || !Number.isInteger(data.itemLevel) || data.itemLevel < -100 || data.itemLevel > 10000
+      || typeof data.cursed !== "boolean" || typeof data.cursedKnown !== "boolean"
+      || typeof data.acquiredByInventory !== "boolean" || !Number.isFinite(data.engineActionCost)
+      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
+  const matches = level.heaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
+  if (matches.length !== 1) return false;
+  const heap = matches[0];
+  if (Number(heap.pos) !== pos || String(heap.type) !== "FOR_SALE" || !Array.isArray(heap.items) || heap.items.length !== 1) return false;
+  const item = heap.items[0];
+  if (String(item?.itemId || "") !== itemId || String(item?.className || "") !== itemClass
+      || Number(item?.quantity) !== quantity || item?.stackable !== data.stackable || item?.shopPrice !== price
+      || Number(item?.level) !== data.itemLevel || item?.cursed !== data.cursed || item?.cursedKnown !== data.cursedKnown
+      || typeof item?.serializedBundle !== "string" || !item.serializedBundle.includes(itemId)) return false;
+  if (data.acquiredByInventory && resultHeapId !== "") return false;
+  if (!data.acquiredByInventory && (resultHeapId.length < 8 || resultHeapId.length > 80 || resultItemId !== itemId)) return false;
+  let hero: any;
+  try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
+  return Number(hero?.pos) === pos && Number.isInteger(hero?.gold) && hero.gold >= price
+    && Number.isInteger(hero?.hp) && hero.hp > 0
+    && !!parseNativeInventoryIndex(hero) && !!parseNativeQuickslotIndex(hero);
+}
+
+/** Deducts precisely the native sale price and adds/merges the exact bought item, or retains inventory if full. */
+export function isValidNativeBuyInventoryMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); } catch (_) { return false; }
+  const details: any = detailsValue, accepted: any = acceptedValue;
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  if (!details || !accepted || accepted.actionType !== "BUY" || !before || !after
+      || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
+      || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
+      || accepted.price !== details.price || accepted.stackable !== details.stackable
+      || accepted.resultItemId !== details.resultItemId || accepted.resultHeapId !== details.resultHeapId
+      || accepted.acquiredByInventory !== details.acquiredByInventory
+      || !Number.isInteger(details.price) || details.price < 0 || !Number.isInteger(previous.gold)
+      || !Number.isInteger(next.gold) || previous.gold - next.gold !== details.price || next.gold < 0) return false;
+  const sourceId = String(details.itemId || ""), resultId = String(details.resultItemId || "");
+  const itemClass = String(details.itemClass || ""), quantity = Number(details.expectedQuantity);
+  if (sourceId.length < 8 || sourceId.length > 80 || resultId.length < 8 || resultId.length > 80
+      || itemClass.length < 1 || itemClass.length > 256 || !Number.isInteger(quantity) || quantity < 1) return false;
+  const beforeById = new Map<string, any>(before.map((item: any) => [String(item.itemId), item]));
+  const afterById = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  if (!beforeSlots || !afterSlots) return false;
+  const slotShape = (entries: any[], mutableId: string) => entries
+    .map((entry: any) => ({ slot: entry.slot, itemId: entry.itemId, className: entry.className,
+      quantity: String(entry.itemId) === mutableId ? 0 : entry.quantity,
+      serializedBundle: String(entry.itemId) === mutableId ? "" : entry.serializedBundle }))
+    .sort((a: any, b: any) => a.slot - b.slot);
+  if (!details.acquiredByInventory) {
+    return previous.inventoryBundle === next.inventoryBundle && sameNativeItemValue(before, after)
+      && previous.quickslotsJson === next.quickslotsJson && sameNativeItemValue(beforeSlots, afterSlots);
+  }
+  if (previous.inventoryBundle === next.inventoryBundle || beforeById.has(sourceId)) return false;
+  let merged = false;
+  if (resultId === sourceId) {
+    const target = afterById.get(sourceId);
+    if (!target || after.length !== before.length + 1 || String(target.className) !== itemClass
+        || target.quantity !== quantity || target.stackable !== details.stackable
+        || target.level !== details.itemLevel || target.cursed !== details.cursed
+        || target.cursedKnown !== details.cursedKnown
+        || !sameNativeItemValue(before, after.filter((item: any) => String(item.itemId) !== sourceId))) return false;
+  } else {
+    const oldTarget = beforeById.get(resultId), target = afterById.get(resultId);
+    if (!details.stackable || !oldTarget || !target || oldTarget.stackable !== true || target.stackable !== true
+        || String(oldTarget.className) !== itemClass || String(target.className) !== itemClass
+        || target.quantity !== oldTarget.quantity + quantity
+        || !sameNativeItemValue(itemValueWithout(oldTarget, ["quantity", "serializedBundle"]),
+          itemValueWithout(target, ["quantity", "serializedBundle"]))
+        || before.length !== after.length
+        || !sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== resultId),
+          after.filter((item: any) => String(item.itemId) !== resultId))) return false;
+    merged = true;
+  }
+  return sameNativeItemValue(slotShape(beforeSlots, merged ? resultId : ""), slotShape(afterSlots, merged ? resultId : ""));
+}
+
+/** Only the exact sale heap can disappear; a full backpack may replace it with a heap holding the paid item. */
+export function isValidNativeBuyHeapMutation(previousHeaps: any, nextHeaps: any, targetValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  const target = Number(targetValue), details: any = detailsValue, accepted: any = acceptedValue;
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+      || !Number.isInteger(target) || accepted.actionType !== "BUY" || accepted.targetPos !== target
+      || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
+      || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
+      || accepted.price !== details.price || accepted.resultItemId !== details.resultItemId
+      || accepted.resultHeapId !== details.resultHeapId || accepted.acquiredByInventory !== details.acquiredByInventory) return false;
+  const heapId = String(details.heapId || ""), itemId = String(details.itemId || "");
+  const oldAt = previousHeaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
+  if (heapId.length < 8 || oldAt.length !== 1 || Number(oldAt[0].pos) !== target || String(oldAt[0].type) !== "FOR_SALE"
+      || !Array.isArray(oldAt[0].items) || oldAt[0].items.length !== 1) return false;
+  const source = oldAt[0].items[0];
+  if (String(source?.itemId || "") !== itemId || String(source?.className || "") !== String(details.itemClass || "")
+      || Number(source?.quantity) !== Number(details.expectedQuantity) || source?.shopPrice !== details.price
+      || source?.stackable !== details.stackable || Number(source?.level) !== Number(details.itemLevel)
+      || source?.cursed !== details.cursed || source?.cursedKnown !== details.cursedKnown) return false;
+  const afterAt = nextHeaps.filter((heap: any) => Number(heap?.pos) === target);
+  if (details.acquiredByInventory) {
+    if (afterAt.length !== 0) return false;
+  } else {
+    const resultHeapId = String(details.resultHeapId || "");
+    if (afterAt.length !== 1 || String(afterAt[0].heapId || "") !== resultHeapId
+        || resultHeapId.length < 8 || resultHeapId.length > 80 || resultHeapId === heapId
+        || String(afterAt[0].type) !== "HEAP" || !Array.isArray(afterAt[0].items) || afterAt[0].items.length !== 1) return false;
+    const dropped = afterAt[0].items[0];
+    if (String(dropped?.itemId || "") !== itemId || String(dropped?.className || "") !== String(details.itemClass || "")
+        || Number(dropped?.quantity) !== Number(details.expectedQuantity) || dropped?.stackable !== details.stackable
+        || dropped?.shopPrice !== -1 || typeof dropped?.serializedBundle !== "string"
+        || !dropped.serializedBundle.includes(itemId)) return false;
+  }
+  for (const old of previousHeaps) {
+    if (String(old?.heapId || "") === heapId) continue;
+    const matching = nextHeaps.filter((heap: any) => String(heap?.heapId || "") === String(old?.heapId || ""));
+    if (matching.length !== 1 || !sameNativeItemValue(old, matching[0])) return false;
+  }
+  for (const current of nextHeaps) {
+    if (!details.acquiredByInventory && String(current?.heapId || "") === String(details.resultHeapId || "")) continue;
+    if (String(current?.heapId || "") === heapId
+        || previousHeaps.filter((heap: any) => String(heap?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
+  }
+  return true;
+}
+
 /** Validates the intent against the authoritative floor, not the caller's claimed target alone. */
 export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, levelSnapshot: any,
   currentDepth: unknown, currentPos: unknown): boolean {
@@ -765,7 +906,7 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
   const matches = level.heaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
   if (matches.length !== 1) return false;
   const heap = matches[0];
-  if (Number(heap.pos) !== pos || !Array.isArray(heap.items) || heap.items.length === 0) return false;
+  if (Number(heap.pos) !== pos || String(heap.type) !== "HEAP" || !Array.isArray(heap.items) || heap.items.length === 0) return false;
   const top = heap.items[0];
   return String(top?.itemId || "") === itemId && String(top?.className || "") === itemClass
     && Number(top?.quantity) === quantity && top?.stackable === stackable
@@ -825,7 +966,7 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -972,6 +1113,10 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       next.heroStateJson, next.nativeMutationDetails)
       || !isValidNativeDropHeapMutation(previous.heaps, next.heaps, target,
         next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
+  if (action === "BUY" && (!isValidNativeBuyInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
+      next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !isValidNativeBuyHeapMutation(previous.heaps, next.heaps, target,
+        next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
   if ((action === "EQUIP" || action === "UNEQUIP") && !isValidNativeEquipmentMutation(
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, action,
       next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
@@ -979,7 +1124,7 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       next.nativeMutationDetails, acceptedPickupIntentValue,
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
-      && action !== "DROP" && !same(previous.heaps, next.heaps)) return false;
+      && action !== "DROP" && action !== "BUY" && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
@@ -1049,7 +1194,7 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       || !Number.isInteger(afterHero[field]) || afterHero[field] < 0) return false;
   if (typeof beforeHero.inventoryBundle !== "string" || typeof afterHero.inventoryBundle !== "string") return false;
   if (action !== "INTERACT" && action !== "MINE" && action !== "PICKUP" && action !== "DROP"
-      && action !== "EQUIP" && action !== "UNEQUIP"
+      && action !== "EQUIP" && action !== "UNEQUIP" && action !== "BUY"
       && beforeHero.inventoryBundle !== afterHero.inventoryBundle) return false;
   if (action === "PICKUP" && beforeHero.inventoryBundle === afterHero.inventoryBundle
       && beforeHero.notesBundle === afterHero.notesBundle && beforeHero.questStateBundle === afterHero.questStateBundle
@@ -1164,7 +1309,9 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
       if (itemId) stableItemIds.add(itemId);
       if (!bundle(item?.serializedBundle) || !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > 100000
         || !Number.isInteger(item?.level) || item.level < -100 || item.level > 10000
-        || typeof item?.cursed !== "boolean" || typeof item?.cursedKnown !== "boolean") return false;
+        || typeof item?.cursed !== "boolean" || typeof item?.cursedKnown !== "boolean"
+        || (item.shopPrice !== undefined && (!Number.isInteger(item.shopPrice) || item.shopPrice < -1 || item.shopPrice > 10000000))
+        || (String(heap.type) === "FOR_SALE" && (!Number.isInteger(item.shopPrice) || item.shopPrice < 0))) return false;
     }
   }
   for (const trap of level.traps) {
@@ -2668,7 +2815,7 @@ export class MatchRoom {
             : mutationAction === "PICKUP" ? "ITEM_PICKUP_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
           const acceptedPayload = accepted?.action;
           const mutationDetails = level.nativeMutationDetails || null;
-          const pickupClaim = mutationAction === "PICKUP" && mutationDetails
+          const pickupClaim = (mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
                 depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
           const chestClaim = mutationAction === "OPEN_CHEST" && mutationDetails
@@ -2702,6 +2849,17 @@ export class MatchRoom {
                   && acceptedPayload?.itemId === mutationDetails.itemId
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
                   && acceptedPayload?.expectedEquipped === mutationDetails.expectedEquipped)
+                && (mutationAction !== "BUY" || mutationDetails != null && pickupClaim
+                  && String(pickupClaim.claimed_by) === session.playerId
+                  && String(pickupClaim.request_id) === mutationRequestId
+                  && acceptedPayload?.heapId === mutationDetails.heapId
+                  && acceptedPayload?.itemId === mutationDetails.itemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
+                  && acceptedPayload?.price === mutationDetails.price
+                  && acceptedPayload?.resultItemId === mutationDetails.resultItemId
+                  && acceptedPayload?.resultHeapId === mutationDetails.resultHeapId
+                  && acceptedPayload?.acquiredByInventory === mutationDetails.acquiredByInventory)
                 && (mutationAction !== "DROP" || mutationDetails != null
                   && acceptedPayload?.heapId === mutationDetails.heapId
                   && acceptedPayload?.itemId === mutationDetails.itemId
@@ -2740,7 +2898,7 @@ export class MatchRoom {
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
               || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
-            if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
+            if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
@@ -2753,9 +2911,9 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY");
           if (merged == null) {
-            if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
+            if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
@@ -2774,7 +2932,8 @@ export class MatchRoom {
           }
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
           if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
-              || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP") {
+              || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP"
+              || mutationAction === "BUY") {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
@@ -2885,7 +3044,7 @@ export class MatchRoom {
             this.worldTime + initialCooldown, nativeState);
         }
         if (isNativeWorldMutation) {
-          if (verifiedMutationAction === "PICKUP" && verifiedMutationDetails) this.sql.exec(
+          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(
             "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
             depth, String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
             session.playerId, verifiedMutationRequestId);
@@ -4520,6 +4679,40 @@ export class MatchRoom {
                 targetPos:Number(playerRow.pos), depth:this.currentDepth, heapId:String(data.heapId), itemId:String(data.itemId),
                 resultItemId:String(data.resultItemId), itemClass:String(data.itemClass),
                 expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore), stackable:data.stackable };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
+            }
+          } else if (actionStr === "BUY") {
+            const data = payload.data || {};
+            const requestId = String(msg.requestId || "");
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeBuyIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
+              this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
+              this.sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
+                this.currentDepth, String(data.heapId), String(data.itemId), session.playerId, requestId);
+              const reserved = this.sql.exec(
+                "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
+                this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
+              if (!reserved || String(reserved.claimed_by) !== session.playerId || String(reserved.request_id) !== requestId) {
+                ws.send(JSON.stringify({ protocolVersion:"1.0.0", messageType:"ERROR", requestId:msg.requestId,
+                  sequence:this.currentSequence, payloadJson:JSON.stringify({error:"ITEM_ALREADY_CLAIMED",heapId:data.heapId,itemId:data.itemId}) }));
+                return;
+              }
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:"BUY", from:Number(playerRow.pos),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, heapId:String(data.heapId), itemId:String(data.itemId),
+                itemClass:String(data.itemClass), expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore),
+                stackable:data.stackable, itemLevel:Number(data.itemLevel), cursed:data.cursed, cursedKnown:data.cursedKnown,
+                price:Number(data.price), resultItemId:String(data.resultItemId), resultHeapId:String(data.resultHeapId || ""),
+                acquiredByInventory:data.acquiredByInventory };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }
