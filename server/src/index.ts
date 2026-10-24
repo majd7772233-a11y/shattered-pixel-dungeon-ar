@@ -2572,7 +2572,7 @@ export class MatchRoom {
             if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
-            ws.send((JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
             return;
           }
@@ -2584,7 +2584,7 @@ export class MatchRoom {
             if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
-            ws.send((JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
             return;
           }
