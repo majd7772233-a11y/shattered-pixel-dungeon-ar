@@ -5621,7 +5621,6 @@ export class MatchRoom {
             gameMode: this.gameMode,
             players,
             mobs,
-            claims,
             events,
             worldTime: this.worldTime,
             level: this.getCurrentLevelSnapshot()
