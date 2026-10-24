@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1647,6 +1647,59 @@ describe("Native pickup inventory transaction validation", () => {
     const newSkin=row("stable-skin-001","com.shatteredpixel.shatteredpixeldungeon.items.Waterskin",1,false,"water=1 stable-skin-001");
     expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([oldSkin])),JSON.stringify(hero([newSkin])),dew)).toBe(true);
     expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([oldSkin])),JSON.stringify(hero([newSkin,row("stable-forged-001")])),dew)).toBe(false);
+  });
+});
+
+
+describe("Native equipment, quickslot, and chest transactions", () => {
+  const cls = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger";
+  const item = (itemId:string, className=cls, quantity=1, equipped=false, bundle?:string) => ({
+    itemId,className,quantity,level:0,cursed:false,cursedKnown:false,stackable:false,equipped,
+    serializedBundle:bundle || "native-bundle-item-id:"+itemId
+  });
+  const hero = (items:any[], extra:Record<string,any>={}) => ({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,
+    inventoryBundle:"native-inventory-bundle",inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",
+    notesBundle:"native-notes",questStateBundle:"native-quests",...extra
+  });
+  const quickslots=(slot:number,id:string,cls:string,quantity:number,bundle:string) =>
+    JSON.stringify([{slot,itemId:id,className:cls,quantity,serializedBundle:bundle}]);
+  it("validates quickslots against exact inventory rows and rejects duplicate slots or forged IDs",()=>{
+    const itemRow=item("stable-dagger-001");
+    const valid=hero([itemRow],{quickslotsJson:quickslots(0,itemRow.itemId,itemRow.className,itemRow.quantity,itemRow.serializedBundle)});
+    expect(parseNativeQuickslotIndex(valid)).not.toBeNull();
+    valid.quickslotsJson=JSON.stringify([
+      {slot:0,itemId:itemRow.itemId,className:itemRow.className,quantity:1,serializedBundle:itemRow.serializedBundle},
+      {slot:0,itemId:"stable-other-001",className:cls,quantity:1,serializedBundle:"native-bundle-item-id:stable-other-001"}
+    ]);
+    expect(parseNativeQuickslotIndex(valid)).toBeNull();
+  });
+  it("accepts a native equipment toggle but rejects added inventory or changed HP",()=>{
+    const id="stable-dagger-001";
+    const before=hero([item(id,cls,1,false)]);
+    const after=hero([item(id,cls,1,true)]);
+    const detail={itemId:id,itemClass:cls,expectedEquipped:true};
+    expect(isValidNativeEquipmentIntent(JSON.stringify(before),
+      {...detail,depth:4,from:9,to:9,targetPos:9,engineActionCost:1},"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(true);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(after),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(true);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true),item("stable-forged-001","com.example.Forged")])),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true)],{hp:9})),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
+  });
+  it("opens one stable chest without losing or creating items and enforces exact key consumption",()=>{
+    const contents=[{itemId:"stable-chest-loot-001",className:"com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing",
+      quantity:1,level:0,cursed:false,cursedKnown:false,stackable:false,
+      serializedBundle:"native-bundle-item-id:stable-chest-loot-001"}];
+    const oldHeap={heapId:"stable-chest-001",pos:10,type:"LOCKED_CHEST",seen:true,haunted:false,hidden:false,autoExplored:false,items:contents};
+    const newHeap={...oldHeap,type:"HEAP"};
+    const before=hero([],{goldenKeyCount:1});
+    const after=hero([],{goldenKeyCount:0,notesBundle:"native-notes-after-key"});
+    const details={heapId:"stable-chest-001",heapType:"LOCKED_CHEST"};
+    const accepted={...details,actionType:"OPEN_CHEST",targetPos:10};
+    expect(isValidNativeChestHeapMutation([oldHeap],[newHeap],10,details,accepted,JSON.stringify(before),JSON.stringify(after))).toBe(true);
+    expect(isValidNativeChestHeapMutation([oldHeap],[{...newHeap,items:[]}],10,details,accepted,JSON.stringify(before),JSON.stringify(after))).toBe(false);
+    expect(isValidNativeChestHeapMutation([oldHeap],[{...newHeap,heapId:"stable-forged-chest"}],10,details,accepted,JSON.stringify(before),JSON.stringify(after))).toBe(false);
+    const unspent=hero([],{goldenKeyCount:1});
+    expect(isValidNativeChestHeapMutation([oldHeap],[newHeap],10,details,accepted,JSON.stringify(before),JSON.stringify(unspent))).toBe(false);
   });
 });
 

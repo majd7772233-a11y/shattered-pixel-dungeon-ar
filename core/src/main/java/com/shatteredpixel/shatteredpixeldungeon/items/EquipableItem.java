@@ -69,6 +69,20 @@ public abstract class EquipableItem extends Item {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+        boolean equipmentAction = AC_EQUIP.equals(action) || AC_UNEQUIP.equals(action);
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager multiplayer =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        boolean trackEquipment = equipmentAction && hero == Dungeon.hero && multiplayer.isMultiplayerActive();
+        if (trackEquipment && (Dungeon.branch != 0 || Dungeon.level == null || Dungeon.level.locked)) {
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        String heroStateBefore = trackEquipment
+                ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(hero) : null;
+        float cooldownBefore = trackEquipment ? hero.cooldown() : 0f;
+        String itemIdBefore = trackEquipment ? multiplayerItemId() : null;
+        String itemClassBefore = trackEquipment ? getClass().getName() : null;
+
 		super.execute( hero, action );
 
 		if (action.equals( AC_EQUIP )) {
@@ -76,7 +90,7 @@ public abstract class EquipableItem extends Item {
 			//This is a special case as the item is being removed from inventory, but is staying with the hero.
 			int slot = Dungeon.quickslot.getSlot( this );
 			slotOfUnequipped = -1;
-			doEquip(hero);
+            boolean equipSucceeded = doEquip(hero);
 			if (slot != -1) {
 				Dungeon.quickslot.setSlot( slot, this );
 				updateQuickslot();
@@ -86,10 +100,32 @@ public abstract class EquipableItem extends Item {
 				Dungeon.quickslot.setSlot( slotOfUnequipped, this );
 				updateQuickslot();
 			}
+            if (trackEquipment && equipSucceeded && isEquipped(hero)) {
+                publishMultiplayerEquipmentMutation(hero, AC_EQUIP, heroStateBefore, cooldownBefore, itemIdBefore, itemClassBefore, true);
+            }
 		} else if (action.equals( AC_UNEQUIP )) {
+            boolean wasEquipped = isEquipped(hero);
 			doUnequip( hero, true );
+            if (trackEquipment && wasEquipped && !isEquipped(hero) && hero.belongings.backpack.contains(this)) {
+                publishMultiplayerEquipmentMutation(hero, AC_UNEQUIP, heroStateBefore, cooldownBefore, itemIdBefore, itemClassBefore, false);
+            } else if (trackEquipment && wasEquipped && !isEquipped(hero)) {
+                // A full inventory may make native SPD drop the unequipped item. Do not submit
+                // an equipment-only mutation for that compound world change.
+                multiplayer.requestResync(multiplayer.getLastSequence());
+            }
 		}
 	}
+
+    private static void publishMultiplayerEquipmentMutation(Hero hero, String action, String heroStateBefore,
+            float cooldownBefore, String itemId, String itemClass, boolean equipped) {
+        if (hero == null || heroStateBefore == null || itemId == null || itemClass == null || Dungeon.level == null) return;
+        com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+        String details = "{\\\"itemId\\\":" + json.toJson(itemId)
+                + ",\\\"itemClass\\\":" + json.toJson(itemClass)
+                + ",\\\"expectedEquipped\\\":" + equipped + "}";
+        hero.queueNativeWorldMutation(action, hero.pos, hero.pos, cooldownBefore, heroStateBefore, details);
+        hero.publishPendingNativeWorldMutation();
+    }
 
 	@Override
 	public void doDrop( Hero hero ) {

@@ -242,6 +242,147 @@ export function classifyNativeTransitionRejection(levelSnapshot: any, currentDep
   return "INVALID_TRANSITION";
 }
 
+
+/** Validates quickslot links against native inventory IDs; only zero-quantity placeholders may be unowned. */
+export function parseNativeQuickslotIndex(heroValue: any): any[] | null {
+  if (!heroValue || typeof heroValue !== "object") return null;
+  if (heroValue.quickslotsJson === undefined) return [];
+  if (typeof heroValue.quickslotsJson !== "string" || heroValue.quickslotsJson.length > 200000) return null;
+  const inventory = parseNativeInventoryIndex(heroValue);
+  if (!inventory) return null;
+  let slots: any;
+  try { slots = JSON.parse(heroValue.quickslotsJson); } catch (_) { return null; }
+  if (!Array.isArray(slots) || slots.length > 6) return null;
+  const usedSlots = new Set<number>(), usedIds = new Set<string>();
+  const inventoryById = new Map<string, any>(inventory.map((item: any) => [String(item.itemId), item]));
+  for (const entry of slots) {
+    const slot = entry?.slot, id = String(entry?.itemId || ""), cls = String(entry?.className || "");
+    const quantity = entry?.quantity, bundle = entry?.serializedBundle;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= 6 || usedSlots.has(slot)
+        || id.length < 8 || id.length > 80 || usedIds.has(id)
+        || cls.length < 1 || cls.length > 256 || !Number.isInteger(quantity) || quantity < 0 || quantity > 100000
+        || typeof bundle !== "string" || bundle.length < 1 || bundle.length > 200000 || !bundle.includes(id)) return null;
+    const inventoryItem = inventoryById.get(id);
+    if (quantity > 0 && (!inventoryItem || String(inventoryItem.className) !== cls
+        || Number(inventoryItem.quantity) !== quantity || String(inventoryItem.serializedBundle) !== bundle)) return null;
+    if (quantity === 0 && inventoryItem) return null;
+    usedSlots.add(slot);
+    usedIds.add(id);
+  }
+  return slots;
+}
+
+/** Equipment intents must identify the exact owned item and the authenticated hero's current cell. */
+export function isValidNativeEquipmentIntent(heroStateValue: unknown, dataValue: unknown, actionValue: unknown,
+  currentDepthValue: unknown, player: any): boolean {
+  const data: any = dataValue, action = String(actionValue || ""), depth = Number(currentDepthValue);
+  if (!["EQUIP", "UNEQUIP"].includes(action) || typeof heroStateValue !== "string" || !data || !player
+      || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
+      || Number(data.depth) !== depth || data.from !== Number(player.pos) || data.to !== Number(player.pos)
+      || data.targetPos !== Number(player.pos) || typeof data.itemId !== "string"
+      || data.itemId.length < 8 || data.itemId.length > 80 || typeof data.itemClass !== "string"
+      || data.itemClass.length < 1 || data.itemClass.length > 256
+      || data.expectedEquipped !== (action === "EQUIP") || !Number.isFinite(data.engineActionCost)
+      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
+  let hero: any;
+  try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
+  if (Number(hero?.pos) !== Number(player.pos) || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  const inventory = parseNativeInventoryIndex(hero);
+  if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
+  const target = inventory.filter((item: any) => String(item.itemId) === data.itemId);
+  return target.length === 1 && String(target[0].className) === data.itemClass
+    && target[0].equipped === (action !== "EQUIP");
+}
+
+/** Checks native equip/unequip output without allowing any item, quantity, Gold, HP or shield forgery. */
+export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue: unknown, actionValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); } catch (_) { return false; }
+  const action = String(actionValue || ""), details: any = detailsValue, accepted: any = acceptedValue;
+  if (!["EQUIP", "UNEQUIP"].includes(action) || !details || !accepted
+      || accepted.actionType !== action || accepted.itemId !== details.itemId || accepted.itemClass !== details.itemClass
+      || accepted.expectedEquipped !== details.expectedEquipped || details.expectedEquipped !== (action === "EQUIP")
+      || previous.hp !== next.hp || previous.ht !== next.ht || previous.pos !== next.pos
+      || previous.shielding !== next.shielding || previous.gold !== next.gold
+      || previous.ironKeyCount !== next.ironKeyCount || previous.crystalKeyCount !== next.crystalKeyCount
+      || previous.wornKeyCount !== next.wornKeyCount || previous.goldenKeyCount !== next.goldenKeyCount
+      || previous.notesBundle !== next.notesBundle || previous.questStateBundle !== next.questStateBundle) return false;
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  if (!before || !after || !parseNativeQuickslotIndex(next) || before.length !== after.length) return false;
+  const beforeMap = new Map<string, any>(before.map((item: any) => [String(item.itemId), item]));
+  const afterMap = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
+  if (beforeMap.size !== afterMap.size) return false;
+  let targetFound = false, priorEquipmentUnequipped = 0;
+  for (const old of before) {
+    const current = afterMap.get(String(old.itemId));
+    if (!current) return false;
+    const target = String(old.itemId) === String(details.itemId);
+    if (target) {
+      if (String(old.className) !== String(details.itemClass) || old.equipped !== (action !== "EQUIP")
+          || current.equipped !== (action === "EQUIP")
+          || !sameNativeItemValue(itemValueWithout(old, ["equipped", "cursedKnown", "serializedBundle"]),
+            itemValueWithout(current, ["equipped", "cursedKnown", "serializedBundle"]))
+          || old.cursed !== current.cursed
+          || (old.cursedKnown && !current.cursedKnown)) return false;
+      targetFound = true;
+    } else {
+      if (!sameNativeItemValue(itemValueWithout(old, ["equipped"]), itemValueWithout(current, ["equipped"]))) return false;
+      if (old.equipped !== current.equipped) {
+        if (action !== "EQUIP" || old.equipped !== true || current.equipped !== false) return false;
+        priorEquipmentUnequipped++;
+      }
+    }
+  }
+  return targetFound && priorEquipmentUnequipped <= 1;
+}
+
+/** Chest opening must preserve the same heap/items and consume only the proper key counter. */
+export function isValidNativeChestHeapMutation(previousHeaps: any, nextHeaps: any, targetValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown, previousHeroValue: unknown, nextHeroValue: unknown): boolean {
+  const target = Number(targetValue), details: any = detailsValue, accepted: any = acceptedValue;
+  let beforeHero: any, afterHero: any;
+  try { beforeHero = JSON.parse(String(previousHeroValue || "")); afterHero = JSON.parse(String(nextHeroValue || "")); }
+  catch (_) { return false; }
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+      || accepted.actionType !== "OPEN_CHEST" || accepted.heapId !== details.heapId
+      || accepted.heapType !== details.heapType || accepted.targetPos !== target
+      || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(details.heapType))
+      || beforeHero.gold !== afterHero.gold
+      || beforeHero.inventoryBundle !== afterHero.inventoryBundle
+      || !sameNativeItemValue(parseNativeInventoryIndex(beforeHero), parseNativeInventoryIndex(afterHero))
+      || beforeHero.quickslotsJson !== afterHero.quickslotsJson) return false;
+  const oldAt = previousHeaps.filter((heap: any) => Number(heap?.pos) === target);
+  const newAt = nextHeaps.filter((heap: any) => Number(heap?.pos) === target);
+  if (oldAt.length !== 1 || newAt.length !== 1 || String(oldAt[0].heapId || "") !== String(details.heapId)
+      || String(oldAt[0].type) !== String(details.heapType) || String(newAt[0].heapId || "") !== String(details.heapId)
+      || String(newAt[0].type) !== "HEAP" || !Array.isArray(oldAt[0].items) || !Array.isArray(newAt[0].items)
+      || !sameNativeItemValue(oldAt[0].items, newAt[0].items)
+      || oldAt[0].seen !== newAt[0].seen || oldAt[0].haunted !== newAt[0].haunted
+      || oldAt[0].autoExplored !== newAt[0].autoExplored
+      || !(oldAt[0].hidden === newAt[0].hidden || newAt[0].hidden === false)) return false;
+  for (const old of previousHeaps) {
+    if (Number(old?.pos) === target) continue;
+    const matches = nextHeaps.filter((heap: any) => String(heap?.heapId || "") === String(old?.heapId || ""));
+    if (matches.length !== 1 || !sameNativeItemValue(old, matches[0])) return false;
+  }
+  for (const current of nextHeaps) {
+    if (Number(current?.pos) === target) continue;
+    if (previousHeaps.filter((heap: any) => String(heap?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
+  }
+  for (const field of ["ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
+    const expected = details.heapType === "LOCKED_CHEST" && field === "goldenKeyCount" ? -1
+      : details.heapType === "CRYSTAL_CHEST" && field === "crystalKeyCount" ? -1 : 0;
+    if (!Number.isInteger(beforeHero[field]) || !Number.isInteger(afterHero[field])
+        || afterHero[field] !== beforeHero[field] + expected) return false;
+  }
+  if (details.heapType === "CHEST") {
+    if (beforeHero.notesBundle !== afterHero.notesBundle) return false;
+  } else if (typeof beforeHero.notesBundle !== "string" || typeof afterHero.notesBundle !== "string"
+      || beforeHero.notesBundle === afterHero.notesBundle) return false;
+  return true;
+}
+
 /** Validates the intent against the authoritative floor, not the caller's claimed target alone. */
 export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, levelSnapshot: any,
   currentDepth: unknown, currentPos: unknown): boolean {
@@ -264,8 +405,11 @@ export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, 
   if (action === "UNLOCK") return [10, 21, 31, 38].includes(terrain);
   if (action === "MINE") return [4, 12, 35, 36].includes(terrain);
   if (action === "OPEN_CHEST") {
-    const heap = levelSnapshot.heaps.find((row: any) => row?.pos === target);
-    return !!heap && ["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(heap.type));
+    const heaps = levelSnapshot.heaps.filter((row: any) => row?.pos === target);
+    return heaps.length === 1 && ["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(heaps[0].type))
+      && typeof data?.heapId === "string" && data.heapId === String(heaps[0].heapId || "")
+      && typeof data?.heapType === "string" && data.heapType === String(heaps[0].type)
+      && Number.isFinite(data.engineActionCost) && data.engineActionCost >= 0 && data.engineActionCost <= 10;
   }
   return levelSnapshot.mobs.some((mob: any) =>
     Number(mob?.pos) === target && Number(mob?.hp) > 0 && typeof mob?.entityId === "string");
@@ -681,7 +825,7 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -828,6 +972,12 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       next.heroStateJson, next.nativeMutationDetails)
       || !isValidNativeDropHeapMutation(previous.heaps, next.heaps, target,
         next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
+  if ((action === "EQUIP" || action === "UNEQUIP") && !isValidNativeEquipmentMutation(
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, action,
+      next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
+  if (action === "OPEN_CHEST" && !isValidNativeChestHeapMutation(previous.heaps, next.heaps, target,
+      next.nativeMutationDetails, acceptedPickupIntentValue,
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
       && action !== "DROP" && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
@@ -898,7 +1048,8 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   for (const field of keyFields) if (!Number.isInteger(beforeHero[field]) || beforeHero[field] < 0
       || !Number.isInteger(afterHero[field]) || afterHero[field] < 0) return false;
   if (typeof beforeHero.inventoryBundle !== "string" || typeof afterHero.inventoryBundle !== "string") return false;
-  if (action !== "INTERACT" && action !== "MINE" && action !== "PICKUP"
+  if (action !== "INTERACT" && action !== "MINE" && action !== "PICKUP" && action !== "DROP"
+      && action !== "EQUIP" && action !== "UNEQUIP"
       && beforeHero.inventoryBundle !== afterHero.inventoryBundle) return false;
   if (action === "PICKUP" && beforeHero.inventoryBundle === afterHero.inventoryBundle
       && beforeHero.notesBundle === afterHero.notesBundle && beforeHero.questStateBundle === afterHero.questStateBundle
@@ -2056,6 +2207,14 @@ export class MatchRoom {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (depth, heap_id, item_id)
       );
+      CREATE TABLE IF NOT EXISTS claimed_chest_instances (
+        depth INTEGER NOT NULL,
+        heap_id TEXT NOT NULL,
+        claimed_by TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (depth, heap_id)
+      );
       CREATE TABLE IF NOT EXISTS level_transitions (
         transition_id TEXT PRIMARY KEY,
         depth INTEGER,
@@ -2512,6 +2671,9 @@ export class MatchRoom {
           const pickupClaim = mutationAction === "PICKUP" && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
                 depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
+          const chestClaim = mutationAction === "OPEN_CHEST" && mutationDetails
+            ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_chest_instances WHERE depth = ? AND heap_id = ?",
+                depth, String(mutationDetails.heapId || "")).toArray()[0] : null;
           const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
           let reportedHero: any = null;
@@ -2531,6 +2693,15 @@ export class MatchRoom {
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
                   && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
                   && acceptedPayload?.stackable === mutationDetails.stackable)
+                && (mutationAction !== "OPEN_CHEST" || mutationDetails != null && chestClaim
+                  && String(chestClaim.claimed_by) === session.playerId
+                  && String(chestClaim.request_id) === mutationRequestId
+                  && acceptedPayload?.heapId === mutationDetails.heapId
+                  && acceptedPayload?.heapType === mutationDetails.heapType)
+                && ((mutationAction !== "EQUIP" && mutationAction !== "UNEQUIP") || mutationDetails != null
+                  && acceptedPayload?.itemId === mutationDetails.itemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.expectedEquipped === mutationDetails.expectedEquipped)
                 && (mutationAction !== "DROP" || mutationDetails != null
                   && acceptedPayload?.heapId === mutationDetails.heapId
                   && acceptedPayload?.itemId === mutationDetails.itemId
@@ -2572,6 +2743,9 @@ export class MatchRoom {
             if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+            if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
+              "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
             return;
@@ -2584,6 +2758,9 @@ export class MatchRoom {
             if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+            if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
+              "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
             return;
@@ -2596,10 +2773,14 @@ export class MatchRoom {
             }
           }
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
-          if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP" || mutationAction === "DROP") {
+          if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
+              || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP") {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
+            if (typeof reportedHero.quickslotsJson === "string" && parseNativeQuickslotIndex(reportedHero) != null) {
+              mergedHero.quickslotsJson = reportedHero.quickslotsJson;
+            }
           }
           verifiedMutationHeroStateJson = JSON.stringify(mergedHero);
           verifiedMutationAction = mutationAction;
@@ -2708,6 +2889,9 @@ export class MatchRoom {
             "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
             depth, String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
             session.playerId, verifiedMutationRequestId);
+          if (verifiedMutationAction === "OPEN_CHEST" && verifiedMutationDetails) this.sql.exec(
+            "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
+            depth, String(verifiedMutationDetails.heapId || ""), session.playerId, verifiedMutationRequestId);
           this.currentSequence++;
           const mutationEvent = { action: verifiedMutationAction || "WORLD",
             playerId: session.playerId, depth, from: verifiedMutationFrom,
@@ -4300,9 +4484,17 @@ export class MatchRoom {
                 && hasCompleteNativeLevelSnapshot(levelSnapshot)
                 && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow)
                 && itemPos === Number(targetPos)) {
-              if (!existingClaim) this.sql.exec(
-                "INSERT INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
+              this.sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
                 this.currentDepth, String(data.heapId), String(data.itemId), session.playerId, pickupRequestId);
+              const reserved = this.sql.exec(
+                "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
+                this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
+              if (!reserved || String(reserved.claimed_by) !== session.playerId || String(reserved.request_id) !== pickupRequestId) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+                  sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
+                return;
+              }
               eventType = "ITEM_PICKUP_INTENT_ACCEPTED";
               actionResultPayload = {
                 playerId: session.playerId, actionType: "PICKUP", from: itemPos, targetPos: itemPos,
@@ -4331,8 +4523,57 @@ export class MatchRoom {
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }
+          } else if (actionStr === "EQUIP" || actionStr === "UNEQUIP") {
+            const data = payload.data || {};
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && playerRow && heroRow
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeEquipmentIntent(heroRow.value, data, actionStr, this.currentDepth, playerRow)) {
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:actionStr, from:Number(playerRow.pos),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, itemId:String(data.itemId),
+                itemClass:String(data.itemClass), expectedEquipped:data.expectedEquipped };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
+            }
           } else if (actionStr === "OPEN_CHEST") {
-            const itemPos = Number(payload.data?.itemPos ?? targetPos);
+            const data = payload.data || {};
+            const itemPos = Number(data.targetPos ?? targetPos);
+            const requestId = String(msg.requestId || "");
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            const validIntent = !pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
+              && hasCompleteNativeLevelSnapshot(levelSnapshot)
+              && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+              && isValidNativeWorldActionIntent("OPEN_CHEST", data, levelSnapshot, this.currentDepth, Number(playerRow.pos))
+              && itemPos === Number(data.targetPos);
+            if (validIntent) {
+              this.sql.exec("DELETE FROM claimed_chest_instances WHERE created_at < datetime('now', '-2 minutes')");
+              this.sql.exec("INSERT OR IGNORE INTO claimed_chest_instances (depth,heap_id,claimed_by,request_id) VALUES (?,?,?,?)",
+                this.currentDepth, String(data.heapId), session.playerId, requestId);
+              const claim = this.sql.exec(
+                "SELECT claimed_by,request_id FROM claimed_chest_instances WHERE depth = ? AND heap_id = ?",
+                this.currentDepth, String(data.heapId)).toArray()[0];
+              if (!claim || String(claim.claimed_by) !== session.playerId || String(claim.request_id) !== requestId) {
+                ws.send(JSON.stringify({ protocolVersion:"1.0.0", messageType:"ERROR", requestId:msg.requestId,
+                  sequence:this.currentSequence, payloadJson:JSON.stringify({error:"CHEST_ALREADY_CLAIMED",heapId:data.heapId}) }));
+                return;
+              }
+              const chest = levelSnapshot.heaps.find((heap: any) => Number(heap?.pos) === itemPos);
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:"OPEN_CHEST",
+                from:Number(playerRow.pos), targetPos:itemPos, depth:this.currentDepth,
+                heapId:String(data.heapId), heapType:String(chest?.type || "") };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
+            }
+          }
             const existingClaim = this.sql.exec(`SELECT claimed_by FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth).toArray();
             if (existingClaim.length > 0) {
               ws.send(JSON.stringify({

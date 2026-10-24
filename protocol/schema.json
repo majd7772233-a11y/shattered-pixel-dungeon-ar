@@ -247,7 +247,7 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP"]
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP"]
         },
         "nativeMutationRequestId": {
           "type": "string",
@@ -313,7 +313,9 @@
             "expectedQuantity": {"type":"integer","minimum":1,"maximum":100000},
             "stackable": {"type":"boolean"},
             "resultItemId": {"type":"string","minLength":8,"maxLength":80},
-            "sourceQuantityBefore": {"type":"integer","minimum":1,"maximum":100000}
+            "sourceQuantityBefore": {"type":"integer","minimum":1,"maximum":100000},
+            "expectedEquipped": {"type":"boolean"},
+            "heapType": {"type":"string","enum":["CHEST","LOCKED_CHEST","CRYSTAL_CHEST"]}
           }
         }
       }

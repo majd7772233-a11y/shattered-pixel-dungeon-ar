@@ -57,7 +57,21 @@ public class MultiplayerActionDispatcher {
                 targetPos = ((HeroAction.Interact) action).ch == null ? -1 : ((HeroAction.Interact) action).ch.pos;
             }
             if (targetPos < 0 || Dungeon.level.distance(currentPos, targetPos) > 1) return;
-            hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore);
+            if (action instanceof HeroAction.OpenChest) {
+                com.shatteredpixel.shatteredpixeldungeon.items.Heap chest = Dungeon.level.heaps.get(targetPos);
+                if (chest == null || !(chest.type == com.shatteredpixel.shatteredpixeldungeon.items.Heap.Type.CHEST
+                        || chest.type == com.shatteredpixel.shatteredpixeldungeon.items.Heap.Type.LOCKED_CHEST
+                        || chest.type == com.shatteredpixel.shatteredpixeldungeon.items.Heap.Type.CRYSTAL_CHEST)) {
+                    hero.rejectUnsupportedMultiplayerWorldAction();
+                    return;
+                }
+                com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+                String chestDetails = "{\\\"heapId\\\":" + json.toJson(chest.multiplayerHeapId())
+                        + ",\\\"heapType\\\":" + json.toJson(chest.type.name()) + "}";
+                hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore, chestDetails);
+            } else {
+                hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore);
+            }
             return;
         }
 
