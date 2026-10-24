@@ -392,6 +392,145 @@ export function isValidNativeMovementHeapMutation(previous: any, next: any, targ
 }
 
 
+
+function parseNativeInventoryIndex(heroValue: any): any[] | null {
+  if (!heroValue || typeof heroValue !== "object" || typeof heroValue.inventoryItemsJson !== "string"
+      || heroValue.inventoryItemsJson.length < 2 || heroValue.inventoryItemsJson.length > 200000) return null;
+  try {
+    const rows = JSON.parse(heroValue.inventoryItemsJson), ids = new Set<string>();
+    if (!Array.isArray(rows) || rows.length > 1024) return null;
+    for (const item of rows) {
+      const id = String(item?.itemId || ""), cls = String(item?.className || "");
+      if (id.length < 8 || id.length > 80 || ids.has(id) || cls.length < 1 || cls.length > 256
+          || !Number.isInteger(item?.quantity) || item.quantity < 1 || item.quantity > 100000
+          || !Number.isInteger(item?.level) || item.level < -1000 || item.level > 10000
+          || typeof item?.stackable !== "boolean" || typeof item?.cursed !== "boolean"
+          || typeof item?.cursedKnown !== "boolean" || typeof item?.equipped !== "boolean"
+          || typeof item?.serializedBundle !== "string" || item.serializedBundle.length < 1
+          || item.serializedBundle.length > 200000 || !item.serializedBundle.includes(id)) return null;
+      ids.add(id);
+    }
+    return rows;
+  } catch (_) { return null; }
+}
+function itemValueWithout(value: any, ignored: string[]): any {
+  const result: any = {};
+  for (const key of Object.keys(value || {})) if (!ignored.includes(key)) result[key] = value[key];
+  return result;
+}
+function sameNativeItemValue(a: any, b: any): boolean {
+  const canonical = (v: any): any => {
+    if (Array.isArray(v)) return v.map(canonical);
+    if (v && typeof v === "object") {
+      const out: any = {};
+      for (const key of Object.keys(v).sort()) out[key] = canonical(v[key]);
+      return out;
+    }
+    return v;
+  };
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+/** The hero may drop only a full, exact item instance from the trusted inventory at its current cell. */
+export function isValidNativeDropIntent(level: any, dataValue: unknown, depthValue: unknown,
+  playerIdValue: unknown, player: any, heroValue: unknown): boolean {
+  const data: any = dataValue, depth = Number(depthValue);
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || !String(playerIdValue || "") || String(player.state) !== "ALIVE"
+      || !Number.isInteger(player.pos) || typeof heroValue !== "string") return false;
+  const pos = Number(player.pos), heapId = String(data.heapId || ""), itemId = String(data.itemId || "");
+  const resultId = String(data.resultItemId || ""), cls = String(data.itemClass || ""), quantity = data.expectedQuantity;
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth
+      || data.branch !== 0 || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
+      || resultId.length < 8 || resultId.length > 80 || cls.length < 1 || cls.length > 256
+      || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
+      || !Number.isInteger(data.sourceQuantityBefore) || data.sourceQuantityBefore !== quantity
+      || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
+      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
+  let hero: any;
+  try { hero = JSON.parse(heroValue); } catch (_) { return false; }
+  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  const inventory = parseNativeInventoryIndex(hero);
+  if (!inventory) return false;
+  const source = inventory.filter((item: any) => String(item.itemId) === itemId);
+  if (source.length !== 1 || String(source[0].className) !== cls || source[0].quantity !== quantity
+      || source[0].stackable !== data.stackable) return false;
+  const heapsAtCell = level.heaps.filter((heap: any) => Number(heap?.pos) === pos);
+  if (heapsAtCell.length > 1) return false;
+  const targetHeap = heapsAtCell[0] || null;
+  if (targetHeap && String(targetHeap.heapId || "") !== heapId) return false;
+  if (!targetHeap && (resultId !== itemId
+      || level.heaps.some((heap: any) => String(heap?.heapId || "") === heapId))) return false;
+  if (targetHeap) {
+    if (!Array.isArray(targetHeap.items)) return false;
+    const match = targetHeap.items.filter((item: any) => String(item?.itemId || "") === resultId);
+    if (match.length > 1 || (match.length === 1 && (!data.stackable || match[0].stackable !== true
+        || String(match[0].className || "") !== cls)) || (match.length === 0 && resultId !== itemId)) return false;
+  }
+  return true;
+}
+/** A full drop removes its source item and leaves every other inventory row and Gold untouched. */
+export function isValidNativeDropInventoryMutation(beforeValue: unknown, afterValue: unknown, detailsValue: unknown): boolean {
+  let beforeHero: any, afterHero: any;
+  try { beforeHero = JSON.parse(String(beforeValue || "")); afterHero = JSON.parse(String(afterValue || "")); } catch (_) { return false; }
+  const details: any = detailsValue, before = parseNativeInventoryIndex(beforeHero), after = parseNativeInventoryIndex(afterHero);
+  if (!details || !before || !after || beforeHero.gold !== afterHero.gold) return false;
+  const id = String(details.itemId || ""), cls = String(details.itemClass || "");
+  const source = before.filter((item: any) => String(item.itemId) === id);
+  if (source.length !== 1 || String(source[0].className) !== cls
+      || source[0].quantity !== Number(details.sourceQuantityBefore) || source[0].quantity !== Number(details.expectedQuantity)
+      || source[0].stackable !== details.stackable || after.some((item: any) => String(item.itemId) === id)) return false;
+  return sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== id), after);
+}
+/** The destination heap may gain one identified item or increase one compatible stack by exactly the dropped quantity. */
+export function isValidNativeDropHeapMutation(before: any[], after: any[], targetValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
+  if (!Array.isArray(before) || !Array.isArray(after) || !details || !accepted || !Number.isInteger(target) || target < 0
+      || accepted.actionType !== "DROP" || accepted.from !== target || accepted.targetPos !== target
+      || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
+      || accepted.resultItemId !== details.resultItemId || accepted.itemClass !== details.itemClass
+      || accepted.expectedQuantity !== details.expectedQuantity || accepted.sourceQuantityBefore !== details.sourceQuantityBefore
+      || accepted.stackable !== details.stackable) return false;
+  const heapId = String(details.heapId || ""), resultId = String(details.resultItemId || "");
+  const cls = String(details.itemClass || ""), qty = Number(details.expectedQuantity);
+  if (heapId.length < 8 || heapId.length > 80 || resultId.length < 8 || resultId.length > 80
+      || cls.length < 1 || cls.length > 256 || !Number.isInteger(qty) || qty < 1) return false;
+  const oldAt = before.filter((h: any) => Number(h?.pos) === target);
+  const newAt = after.filter((h: any) => Number(h?.pos) === target);
+  if (oldAt.length > 1 || newAt.length !== 1 || String(newAt[0].heapId || "") !== heapId
+      || !Array.isArray(newAt[0].items) || newAt[0].items.length === 0) return false;
+  const oldHeap = oldAt[0] || null, newHeap = newAt[0];
+  if (oldHeap) {
+    if (String(oldHeap.heapId || "") !== heapId || oldHeap.type !== newHeap.type || oldHeap.seen !== newHeap.seen
+        || oldHeap.haunted !== newHeap.haunted || oldHeap.autoExplored !== newHeap.autoExplored
+        || !(oldHeap.hidden === newHeap.hidden || newHeap.hidden === false) || !Array.isArray(oldHeap.items)) return false;
+  } else if (newHeap.type !== "HEAP") return false;
+  for (const old of before) {
+    if (oldHeap && String(old.heapId || "") === heapId) continue;
+    const matching = after.filter((h: any) => String(h?.heapId || "") === String(old?.heapId || ""));
+    if (matching.length !== 1 || !sameNativeItemValue(old, matching[0])) return false;
+  }
+  for (const current of after) {
+    if (String(current?.heapId || "") === heapId) continue;
+    if (before.filter((h: any) => String(h?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
+  }
+  const oldItems: any[] = oldHeap ? oldHeap.items : [];
+  const results = newHeap.items.filter((i: any) => String(i?.itemId || "") === resultId);
+  if (results.length !== 1) return false;
+  const result = results[0], oldResult = oldItems.filter((i: any) => String(i?.itemId || "") === resultId);
+  if (String(result.className || "") !== cls || result.stackable !== details.stackable
+      || !Number.isInteger(result.quantity) || typeof result.serializedBundle !== "string"
+      || !result.serializedBundle.includes(resultId)) return false;
+  if (!sameNativeItemValue(oldItems.filter((i: any) => String(i?.itemId || "") !== resultId),
+      newHeap.items.filter((i: any) => String(i?.itemId || "") !== resultId))) return false;
+  if (oldResult.length === 0) return result.quantity === qty;
+  return oldResult.length === 1 && details.stackable === true && oldResult[0].stackable === true
+    && String(oldResult[0].className) === cls && result.quantity === Number(oldResult[0].quantity) + qty
+    && sameNativeItemValue(itemValueWithout(oldResult[0], ["quantity","serializedBundle"]),
+      itemValueWithout(result, ["quantity","serializedBundle"]));
+}
+
 /** Validates a pickup request against one exact stable heap and its current top item. */
 export function isValidNativePickupIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
   playerIdValue: unknown, player: any): boolean {
@@ -474,7 +613,7 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -615,8 +754,12 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (action === "MOVE" && !isValidNativeMovementHeapMutation(previous, next, target)) return false;
   if (action === "PICKUP" && !isValidNativePickupHeapMutation(previous.heaps, next.heaps, target,
       next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
+  if (action === "DROP" && (!isValidNativeDropInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
+      next.heroStateJson, next.nativeMutationDetails)
+      || !isValidNativeDropHeapMutation(previous.heaps, next.heaps, target,
+        next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
   if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
-      && !same(previous.heaps, next.heaps)) return false;
+      && action !== "DROP" && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
@@ -2301,6 +2444,14 @@ export class MatchRoom {
                   && acceptedPayload?.itemId === mutationDetails.itemId
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
                   && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
+                  && acceptedPayload?.stackable === mutationDetails.stackable)
+                && (mutationAction !== "DROP" || mutationDetails != null
+                  && acceptedPayload?.heapId === mutationDetails.heapId
+                  && acceptedPayload?.itemId === mutationDetails.itemId
+                  && acceptedPayload?.resultItemId === mutationDetails.resultItemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
+                  && acceptedPayload?.sourceQuantityBefore === mutationDetails.sourceQuantityBefore
                   && acceptedPayload?.stackable === mutationDetails.stackable));
           const previousMutationHero: any = (() => {
             try { return JSON.parse(String(trustedHeroRow?.value || "")); } catch (_) { return null; }
@@ -2333,7 +2484,7 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP");
           if (merged == null) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
@@ -2347,7 +2498,11 @@ export class MatchRoom {
             }
           }
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
-          if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP") mergedHero.inventoryBundle = reportedHero.inventoryBundle;
+          if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP" || mutationAction === "DROP") {
+            mergedHero.inventoryBundle = reportedHero.inventoryBundle;
+            mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
+            mergedHero.gold = reportedHero.gold;
+          }
           verifiedMutationHeroStateJson = JSON.stringify(mergedHero);
           verifiedMutationAction = mutationAction;
           verifiedMutationFrom = Number(mutationFrom);
@@ -4034,6 +4189,25 @@ export class MatchRoom {
                 itemPos, depth: this.currentDepth, heapId: String(data.heapId), itemId: String(data.itemId),
                 itemClass: String(data.itemClass), expectedQuantity: Number(data.expectedQuantity), stackable: data.stackable
               };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
+            }
+          } else if (actionStr === "DROP") {
+            const data = payload.data || {};
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && hasCompleteNativeLevelSnapshot(levelSnapshot) && playerRow && heroRow
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeDropIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:"DROP", from:Number(playerRow.pos),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, heapId:String(data.heapId), itemId:String(data.itemId),
+                resultItemId:String(data.resultItemId), itemClass:String(data.itemClass),
+                expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore), stackable:data.stackable };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }

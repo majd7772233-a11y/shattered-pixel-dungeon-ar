@@ -247,14 +247,7 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": [
-            "MOVE",
-            "UNLOCK",
-            "MINE",
-            "INTERACT",
-            "OPEN_CHEST",
-            "PICKUP"
-          ]
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP"]
         },
         "nativeMutationRequestId": {
           "type": "string",
@@ -314,29 +307,13 @@
           "additionalProperties": false,
           "description": "Stable identity for a native item/heap mutation; present only on the action-bound post-state snapshot.",
           "properties": {
-            "heapId": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 80
-            },
-            "itemId": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 80
-            },
-            "itemClass": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 256
-            },
-            "expectedQuantity": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100000
-            },
-            "stackable": {
-              "type": "boolean"
-            }
+            "heapId": {"type":"string","minLength":8,"maxLength":80},
+            "itemId": {"type":"string","minLength":8,"maxLength":80},
+            "itemClass": {"type":"string","minLength":1,"maxLength":256},
+            "expectedQuantity": {"type":"integer","minimum":1,"maximum":100000},
+            "stackable": {"type":"boolean"},
+            "resultItemId": {"type":"string","minLength":8,"maxLength":80},
+            "sourceQuantityBefore": {"type":"integer","minimum":1,"maximum":100000}
           }
         }
       }

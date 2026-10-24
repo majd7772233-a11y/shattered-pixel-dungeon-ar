@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1570,6 +1570,37 @@ describe('Native movement mutation snapshot admission', () => {
   });
 });
 
+
+
+describe("Native item DROP ownership validation", () => {
+  const cls = "com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing";
+  const item = (id:string, itemClass=cls) => ({itemId:id,className:itemClass,quantity:1,level:0,cursed:false,cursedKnown:false,
+    stackable:false,equipped:false,serializedBundle:"stable-bundle-item-id:"+id});
+  const hero = (items:any[]) => JSON.stringify({hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inv",
+    inventoryItemsJson:JSON.stringify(items)});
+  const hItem = (id:string) => ({itemId:id,className:cls,quantity:1,level:0,cursed:false,cursedKnown:false,
+    stackable:false,serializedBundle:"stable-bundle-item-id:"+id});
+  const heap = (heapId:string,pos:number,items:any[]) => ({heapId,pos,type:"HEAP",seen:false,haunted:false,hidden:false,autoExplored:false,items});
+  const details = (extra:Record<string,any>={}) => ({from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:1,
+    heapId:"stable-heap-001",itemId:"stable-item-001",resultItemId:"stable-item-001",itemClass:cls,
+    expectedQuantity:1,sourceQuantityBefore:1,stackable:false,...extra});
+  it("accepts only a trusted owned item at the correct depth and cell",()=>{
+    const prior=hero([item("stable-item-001")]), level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeDropIntent(level,details(),4,"player-001",{pos:9,state:"ALIVE"},prior)).toBe(true);
+    expect(isValidNativeDropIntent(level,details({itemId:"stable-forged-01"}),4,"player-001",{pos:9,state:"ALIVE"},prior)).toBe(false);
+    expect(isValidNativeDropIntent(level,details({depth:5}),4,"player-001",{pos:9,state:"ALIVE"},prior)).toBe(false);
+  });
+  it("requires exact source removal plus the same stable instance in the floor heap",()=>{
+    const prior=hero([item("stable-item-001"),item("stable-other-001","com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify")]);
+    const after=hero([item("stable-other-001","com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify")]);
+    const d=details(), accepted={...d,actionType:"DROP"};
+    expect(isValidNativeDropInventoryMutation(prior,after,d)).toBe(true);
+    expect(isValidNativeDropInventoryMutation(prior,prior,d)).toBe(false);
+    expect(isValidNativeDropHeapMutation([], [heap("stable-heap-001",9,[hItem("stable-item-001")])],9,d,accepted)).toBe(true);
+    expect(isValidNativeDropHeapMutation([], [heap("different-heap-001",9,[hItem("stable-item-001")])],9,d,accepted)).toBe(false);
+    expect(isValidNativeDropHeapMutation([], [heap("stable-heap-001",9,[hItem("stable-forged-01")])],9,d,accepted)).toBe(false);
+  });
+});
 
 describe('Stable native pickup transactions', () => {
   const item = (itemId: string, className = 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing', quantity = 1, stackable = false) => ({

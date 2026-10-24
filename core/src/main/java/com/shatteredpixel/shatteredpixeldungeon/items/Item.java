@@ -186,23 +186,49 @@ public class Item implements Bundlable {
 			int dropPos = hero.pos;
 			String itemId = multiplayerItemId();
 			String itemClass = getClass().getName();
-			int itemQuantity = quantity();
+			int sourceQuantityBefore = quantity();
 			boolean itemStackable = stackable;
 			float cooldownBefore = hero.cooldown();
 			String heroStateBefore = trackDrop ? SPDLevelSnapshot.currentHeroStateJson(hero) : null;
+			com.shatteredpixel.shatteredpixeldungeon.items.Heap beforeHeap =
+					Dungeon.level == null ? null : Dungeon.level.heaps.get(dropPos);
+			java.util.HashMap<String, Integer> oldQuantities = new java.util.HashMap<>();
+			if (beforeHeap != null) for (Item oldItem : beforeHeap.items) {
+				if (oldItem != null) oldQuantities.put(oldItem.multiplayerItemId(), oldItem.quantity());
+			}
 			if (trackDrop) hero.queueNativeWorldMutation("DROP", dropPos, dropPos, cooldownBefore, heroStateBefore);
 			doDrop(hero);
 			if (trackDrop) {
 				boolean stillOwned = hero.belongings.getAllItems(Item.class).contains(this) || isEquipped(hero);
-				com.shatteredpixel.shatteredpixeldungeon.items.Heap droppedHeap = Dungeon.level == null ? null : Dungeon.level.heaps.get(dropPos);
-				if (stillOwned || droppedHeap == null) {
+				int remainingQuantity = stillOwned ? Math.max(0, quantity()) : 0;
+				int droppedQuantity = sourceQuantityBefore - remainingQuantity;
+				com.shatteredpixel.shatteredpixeldungeon.items.Heap droppedHeap =
+						Dungeon.level == null ? null : Dungeon.level.heaps.get(dropPos);
+				Item resultItem = null;
+				if (droppedHeap != null && droppedQuantity > 0) for (Item candidate : droppedHeap.items) {
+					if (candidate == null || !itemClass.equals(candidate.getClass().getName())) continue;
+					String candidateId = candidate.multiplayerItemId();
+					Integer previousQuantity = oldQuantities.get(candidateId);
+					if (itemId.equals(candidateId) && candidate.quantity() == droppedQuantity) {
+						resultItem = candidate;
+						break;
+					}
+					if (itemStackable && previousQuantity != null && candidate.isSimilar(this)
+							&& candidate.quantity() == previousQuantity + droppedQuantity) {
+						resultItem = candidate;
+						break;
+					}
+				}
+				if (droppedHeap == null || droppedQuantity <= 0 || resultItem == null) {
 					hero.discardPendingNativeWorldMutation();
 				} else {
 					com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
 					String details = "{\"heapId\":" + json.toJson(droppedHeap.multiplayerHeapId())
 							+ ",\"itemId\":" + json.toJson(itemId)
+							+ ",\"resultItemId\":" + json.toJson(resultItem.multiplayerItemId())
 							+ ",\"itemClass\":" + json.toJson(itemClass)
-							+ ",\"expectedQuantity\":" + itemQuantity
+							+ ",\"expectedQuantity\":" + droppedQuantity
+							+ ",\"sourceQuantityBefore\":" + sourceQuantityBefore
 							+ ",\"stackable\":" + itemStackable + "}";
 					hero.queueNativeWorldMutation("DROP", dropPos, dropPos, cooldownBefore, heroStateBefore, details);
 					hero.publishPendingNativeWorldMutation();

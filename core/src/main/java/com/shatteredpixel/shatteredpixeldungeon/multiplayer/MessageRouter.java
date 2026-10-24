@@ -688,26 +688,9 @@ public final class MessageRouter {
                     // Inventory, quickslots, and native heap stacks must converge from one committed snapshot.
                     MultiplayerManager.getInstance().requestResync(seq);
                 } else if ("ITEM_PICKED_UP".equals(type)) {
-                    int itemPos = intValue(action.get("itemPos"), -1);
-                    if (itemPos >= 0 && Dungeon.level != null) {
-                        com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(itemPos);
-                        if (heap != null) {
-                            String itemClass = stringValue(action.get("itemClass"), "");
-                            Item picked = null;
-                            for (Item item : new java.util.ArrayList<>(heap.items)) {
-                                if (itemClass.isEmpty() || item.getClass().getName().equals(itemClass)) { picked = item; break; }
-                            }
-                            if (picked == null) picked = heap.peek();
-                            if (picked != null) heap.items.remove(picked);
-                            int remaining = intValue(action.get("remainingItemCount"), heap.items.size());
-                            if (remaining <= 0 || heap.items.isEmpty()) {
-                                Dungeon.level.heaps.remove(itemPos);
-                                if (heap.sprite != null) heap.sprite.remove();
-                            } else {
-                                GameScene.updateMap(itemPos);
-                            }
-                        }
-                    }
+                    // Legacy event payloads do not identify one exact stack. The committed native
+                    // world snapshot is the single authority for item ownership and heap contents.
+                    MultiplayerManager.getInstance().requestResync(seq);
                 } else if ("CHEST_OPENED".equals(type)) {
                     int itemPos = intValue(action.get("itemPos"), -1);
                     if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
