@@ -1722,7 +1722,7 @@ describe("Native self-buff armor ability transactions", () => {
   const ability = "com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.warrior.Endure";
   const tracker = ability + "$EndureTracker";
   const armorClass = "com.shatteredpixel.shatteredpixeldungeon.items.armor.WarriorArmor";
-  const armorBundle = (charge:number) => JSON.stringify({item:{__className:armorClass,charge,armortier:4,
+  const armorBundle = (charge:number, itemId="native-class-armor-001") => JSON.stringify({item:{__className:armorClass,itemId,charge,armortier:4,
     level:0,cursed:false,cursedKnown:true}});
   const armor = (charge:number) => ({itemId:"native-class-armor-001",className:armorClass,quantity:1,level:0,
     cursed:false,cursedKnown:true,stackable:false,equipped:true,serializedBundle:armorBundle(charge)});
@@ -1777,7 +1777,7 @@ describe("Native self-buff armor ability transactions", () => {
   it("accepts Nature's Power only for the real Huntress ability and matching tracker",()=>{
     const nature="com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.huntress.NaturesPower";
     const natureArmor="com.shatteredpixel.shatteredpixeldungeon.items.armor.HuntressArmor";
-    const armorBundleFor=(charge:number)=>JSON.stringify({item:{__className:natureArmor,charge,armortier:4}});
+    const armorBundleFor=(charge:number,itemId="native-huntress-armor-001")=>JSON.stringify({item:{__className:natureArmor,itemId,charge,armortier:4}});
     const source={...armor(65),className:natureArmor,itemId:"native-huntress-armor-001",serializedBundle:armorBundleFor(65)};
     const before=hero([source],{combatBundle:JSON.stringify({class:"HUNTRESS",
       armorAbility:{__className:nature},armor:JSON.parse(armorBundleFor(65)).item,talents_tier_4:{}})});
