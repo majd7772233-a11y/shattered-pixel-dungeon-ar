@@ -26,6 +26,9 @@ public class MultiplayerActionDispatcher {
 
         if (action instanceof HeroAction.Attack) return;
         if (action instanceof HeroAction.Move) return;
+        // The purchase is committed only when WndTradeItem has resolved its native price,
+        // inventory merge/full-bag outcome, and stable item IDs.
+        if (action instanceof HeroAction.Buy) return;
 
         if (action instanceof HeroAction.LvlTransition) {
             if (currentPos != targetPos) return; // native SPD still walks to the stair and reports that step.
