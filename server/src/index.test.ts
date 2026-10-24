@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1599,6 +1599,54 @@ describe("Native item DROP ownership validation", () => {
     expect(isValidNativeDropHeapMutation([], [heap("stable-heap-001",9,[hItem("stable-item-001")])],9,d,accepted)).toBe(true);
     expect(isValidNativeDropHeapMutation([], [heap("different-heap-001",9,[hItem("stable-item-001")])],9,d,accepted)).toBe(false);
     expect(isValidNativeDropHeapMutation([], [heap("stable-heap-001",9,[hItem("stable-forged-01")])],9,d,accepted)).toBe(false);
+  });
+});
+
+
+describe("Native pickup inventory transaction validation", () => {
+  const potion = "com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing";
+  const row = (id:string, cls=potion, quantity=1, stackable=false, bundle?:string) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
+    serializedBundle:bundle || "bundle-item-id:"+id+"-quantity-"+quantity
+  });
+  const hero = (items:any[], extra:Record<string,any>={}) => ({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,
+    inventoryItemsJson:JSON.stringify(items),...extra
+  });
+  const pickup = (id:string, cls=potion, quantity=1, stackable=false) => ({
+    actionType:"PICKUP",itemId:id,itemClass:cls,expectedQuantity:quantity,stackable
+  });
+  it("accepts one new item but rejects unrelated additions and forged IDs",()=>{
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),
+      JSON.stringify(hero([row("stable-potion-001")])),pickup("stable-potion-001"))).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),
+      JSON.stringify(hero([row("stable-potion-001"),row("stable-forged-001")])),pickup("stable-potion-001"))).toBe(false);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),
+      JSON.stringify(hero([row("stable-other-001")])),pickup("stable-potion-001"))).toBe(false);
+  });
+  it("allows exactly the expected quantity increase to one existing stack",()=>{
+    const old=row("stable-stack-001",potion,3,true,"old bundle stable-stack-001");
+    const updated=row("stable-stack-001",potion,5,true,"new bundle stable-stack-001");
+    const accepted=pickup("stable-picked-001",potion,2,true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([old])),JSON.stringify(hero([updated])),accepted)).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([old])),
+      JSON.stringify(hero([row("stable-stack-001",potion,6,true)])),accepted)).toBe(false);
+  });
+  it("checks exact Gold changes and a single matching key counter",()=>{
+    const gold=pickup("stable-gold-001","com.shatteredpixel.shatteredpixeldungeon.items.Gold",3,true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{gold:3})),gold)).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{gold:4})),gold)).toBe(false);
+    const key=pickup("stable-key-001","com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey");
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{ironKeyCount:1})),key)).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{ironKeyCount:1,goldenKeyCount:1})),key)).toBe(false);
+  });
+  it("allows Dewdrop consumption or filling a Waterskin without unrelated inventory changes",()=>{
+    const dew=pickup("stable-dew-001","com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop",1,true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([])),dew)).toBe(true);
+    const oldSkin=row("stable-skin-001","com.shatteredpixel.shatteredpixeldungeon.items.Waterskin",1,false,"water=0 stable-skin-001");
+    const newSkin=row("stable-skin-001","com.shatteredpixel.shatteredpixeldungeon.items.Waterskin",1,false,"water=1 stable-skin-001");
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([oldSkin])),JSON.stringify(hero([newSkin])),dew)).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([oldSkin])),JSON.stringify(hero([newSkin,row("stable-forged-001")])),dew)).toBe(false);
   });
 });
 

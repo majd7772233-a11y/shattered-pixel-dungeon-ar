@@ -531,6 +531,74 @@ export function isValidNativeDropHeapMutation(before: any[], after: any[], targe
       itemValueWithout(result, ["quantity","serializedBundle"]));
 }
 
+
+/** Validates that an accepted pickup changes only the owning hero's expected inventory fields. */
+export function isValidNativePickupInventoryMutation(previousValue: unknown, nextValue: unknown,
+  acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); }
+  catch (_) { return false; }
+  const accepted: any = acceptedValue, before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  if (!accepted || accepted.actionType !== "PICKUP" || !before || !after) return false;
+  const id = String(accepted.itemId || ""), cls = String(accepted.itemClass || ""), amount = Number(accepted.expectedQuantity);
+  if (id.length < 8 || id.length > 80 || cls.length < 1 || cls.length > 256 || !Number.isInteger(amount)
+      || amount < 1 || amount > 100000 || !Number.isInteger(previous.gold) || !Number.isInteger(next.gold)) return false;
+  const beforeMap = new Map<string, any>(before.map((item: any) => [String(item.itemId), item]));
+  const afterMap = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
+  if (cls.endsWith(".Gold")) return next.gold === previous.gold + amount && sameNativeItemValue(before, after);
+  if (previous.gold !== next.gold) return false;
+  if (cls.includes(".items.keys.")) {
+    const field = cls.endsWith("IronKey") ? "ironKeyCount" : cls.endsWith("CrystalKey") ? "crystalKeyCount"
+      : cls.endsWith("WornKey") ? "wornKeyCount" : cls.endsWith("GoldenKey") ? "goldenKeyCount" : "";
+    if (!field || !sameNativeItemValue(before, after)) return false;
+    for (const key of ["ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
+      const oldCount = Number(previous[key]), newCount = Number(next[key]);
+      if (!Number.isInteger(oldCount) || !Number.isInteger(newCount)
+          || newCount !== oldCount + (key === field ? 1 : 0)) return false;
+    }
+    return true;
+  }
+  if (cls.endsWith(".Guidebook")) return sameNativeItemValue(before, after);
+  const carrierPattern = cls.endsWith(".Dewdrop") ? /\.Waterskin$/
+    : cls.endsWith("TimekeepersHourglass$sandBag") ? /\.TimekeepersHourglass$/
+      : cls.endsWith("DriedRose$Petal") ? /\.DriedRose$/ : null;
+  if (carrierPattern) {
+    if (sameNativeItemValue(before, after)) return true;
+    if (before.length !== after.length) return false;
+    let changed = 0;
+    for (const old of before) {
+      const current = afterMap.get(String(old.itemId));
+      if (!current) return false;
+      if (sameNativeItemValue(old, current)) continue;
+      if (!carrierPattern.test(String(old.className))
+          || !sameNativeItemValue(itemValueWithout(old, ["serializedBundle"]),
+            itemValueWithout(current, ["serializedBundle"]))) return false;
+      changed++;
+    }
+    return changed === 1;
+  }
+  if (beforeMap.has(id)) return false;
+  const changedStacks = before.filter((old: any) => {
+    const current = afterMap.get(String(old.itemId));
+    return !!current && !sameNativeItemValue(old, current);
+  });
+  if (changedStacks.length === 1) {
+    const old = changedStacks[0], current = afterMap.get(String(old.itemId));
+    return old.stackable === true && accepted.stackable === true && String(old.className) === cls
+      && current.quantity === old.quantity + amount && current.stackable === true
+      && sameNativeItemValue(itemValueWithout(old, ["quantity", "serializedBundle"]),
+        itemValueWithout(current, ["quantity", "serializedBundle"]))
+      && before.length === after.length
+      && sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== String(old.itemId)),
+        after.filter((item: any) => String(item.itemId) !== String(old.itemId)));
+  }
+  if (changedStacks.length > 0 || after.length !== before.length + 1) return false;
+  const added = after.filter((item: any) => !beforeMap.has(String(item.itemId)));
+  return added.length === 1 && String(added[0].itemId) === id && String(added[0].className) === cls
+    && added[0].quantity === amount && added[0].stackable === accepted.stackable
+    && sameNativeItemValue(before, after.filter((item: any) => String(item.itemId) !== id));
+}
+
 /** Validates a pickup request against one exact stable heap and its current top item. */
 export function isValidNativePickupIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
   playerIdValue: unknown, player: any): boolean {
@@ -752,8 +820,10 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
       || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
   if (action === "MOVE" && !isValidNativeMovementHeapMutation(previous, next, target)) return false;
-  if (action === "PICKUP" && !isValidNativePickupHeapMutation(previous.heaps, next.heaps, target,
-      next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
+  if (action === "PICKUP" && (!isValidNativePickupHeapMutation(previous.heaps, next.heaps, target,
+      next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !isValidNativePickupInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
+        next.heroStateJson, acceptedPickupIntentValue))) return false;
   if (action === "DROP" && (!isValidNativeDropInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
       next.heroStateJson, next.nativeMutationDetails)
       || !isValidNativeDropHeapMutation(previous.heaps, next.heaps, target,
@@ -2460,8 +2530,13 @@ export class MatchRoom {
           const previousTargetTerrain = Number(previousSnapshot?.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
           const submittedTargetTerrain = Number(level.tiles?.find((tile: any) => tile?.pos === Number(mutationTarget))?.terrain);
           const consumedNativeWell = mutationAction === "MOVE" && previousTargetTerrain === 24 && submittedTargetTerrain === 3;
+          const pickupDewdrop = mutationAction === "PICKUP"
+            && String(mutationDetails?.itemClass || "").endsWith(".Dewdrop");
+          const maxDewEffect = pickupDewdrop ? Math.round(Number(playerRow?.ht) * 0.05) : 0;
           const heroHpValid = mutationAction === "MOVE" || mutationAction === "PICKUP"
             ? Number.isInteger(reportedHero?.hp) && (reportedHero.hp <= Number(playerRow?.hp)
+              || (pickupDewdrop && reportedHero.hp <= Number(playerRow?.hp) + maxDewEffect
+                && reportedHero.hp <= Number(reportedHero.ht))
               || (mutationAction === "MOVE" && consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
             : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
@@ -2469,7 +2544,8 @@ export class MatchRoom {
             && Number(reportedHero.ht) === Number(playerRow.ht)
             && ((mutationAction !== "MOVE" && mutationAction !== "PICKUP") || !!previousMutationHero
               && (reportedHero.shielding <= Number(previousMutationHero.shielding)
-                || (mutationAction === "MOVE" && consumedNativeWell)))
+                || (mutationAction === "MOVE" && consumedNativeWell)
+                || (pickupDewdrop && reportedHero.shielding <= Number(previousMutationHero.shielding) + maxDewEffect)))
             && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
               hp: Number(reportedHero.hp), ht: Number(reportedHero.ht), pos: mutationExpectedPos,
               shielding: Number(reportedHero.shielding)
