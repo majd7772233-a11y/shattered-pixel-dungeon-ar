@@ -29,6 +29,8 @@ public class MultiplayerActionDispatcher {
         // The purchase is committed only when WndTradeItem has resolved its native price,
         // inventory merge/full-bag outcome, and stable item IDs.
         if (action instanceof HeroAction.Buy) return;
+        // Opening the alchemy UI is not a world mutation. AlchemyScene publishes only the resolved recipe.
+        if (action instanceof HeroAction.Alchemy) return;
 
         if (action instanceof HeroAction.LvlTransition) {
             if (currentPos != targetPos) return; // native SPD still walks to the stair and reports that step.

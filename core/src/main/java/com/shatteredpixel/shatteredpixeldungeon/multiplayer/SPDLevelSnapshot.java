@@ -446,6 +446,7 @@ public final class SPDLevelSnapshot {
         heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
         if (hero == Dungeon.hero) {
             heroState.put("gold", Dungeon.gold);
+            heroState.put("alchemyEnergy", Dungeon.energy);
             List<Map<String, Object>> quickslotIndex = new ArrayList<>();
             if (Dungeon.quickslot != null) {
                 for (int slot = 0; slot < QuickSlot.SIZE; slot++) {

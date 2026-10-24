@@ -252,6 +252,7 @@ public class WorldSnapshot {
         if (inventory != null) hero.belongings.restoreFromBundle(inventory);
         if (hero == Dungeon.hero) {
             if (heroState.contains("gold")) Dungeon.gold = Math.max(0, heroState.getInt("gold"));
+            if (heroState.contains("alchemyEnergy")) Dungeon.energy = Math.max(0, heroState.getInt("alchemyEnergy"));
             restoreHeroQuickSlots(hero, quickslotEntries);
         }
         for (Buff oldBuff : new java.util.ArrayList<>(hero.buffs())) oldBuff.detach();
