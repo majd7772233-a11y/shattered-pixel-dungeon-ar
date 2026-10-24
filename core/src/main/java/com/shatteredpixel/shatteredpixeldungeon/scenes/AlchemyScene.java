@@ -1104,9 +1104,9 @@ public void populate(ArrayList<Item> toFind, Belongings inventory){
 				}
 			}
 		}
-$1nativeAlchemySourceByDetachedId.clear();
-$1cancel.enable(false);
-$1repeat.enable(lastRecipe != null);
+		nativeAlchemySourceByDetachedId.clear();
+		cancel.enable(false);
+		repeat.enable(lastRecipe != null);
 		if (alchGuide != null){
 			alchGuide.updateList();
 		}
