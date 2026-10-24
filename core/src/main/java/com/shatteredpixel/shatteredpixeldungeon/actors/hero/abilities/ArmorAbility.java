@@ -21,6 +21,8 @@
 
 package com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities;
 
+import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
@@ -33,11 +35,24 @@ import com.shatteredpixel.shatteredpixeldungeon.ui.HeroIcon;
 import com.watabou.utils.Bundlable;
 import com.watabou.utils.Bundle;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public abstract class ArmorAbility implements Bundlable {
 
 	protected float baseChargeUse = 35;
 
 	public void use( ClassArmor armor, Hero hero ){
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        if (manager.isMultiplayerActive() && hero == Dungeon.hero) {
+            if (!isSupportedNativeMultiplayerAbility(armor, hero)) {
+                hero.rejectUnsupportedMultiplayerWorldAction();
+                return;
+            }
+            useAndPublishNativeMultiplayerAbility(armor, hero);
+            return;
+        }
 		if (targetingPrompt() == null){
 			activate(armor, hero, hero.pos);
 		} else {
@@ -54,6 +69,72 @@ public abstract class ArmorAbility implements Bundlable {
 			});
 		}
 	}
+
+    /**
+     * Only self-buff abilities whose native effects can be validated without replaying the
+     * entire world's combat/scheduler are admitted. Targeted or world-mutating abilities remain
+     * blocked in multiplayer until they have their own transaction protocol.
+     */
+    private boolean isSupportedNativeMultiplayerAbility(ClassArmor armor, Hero hero) {
+        if (armor == null || hero == null || hero != Dungeon.hero || Dungeon.level == null
+                || Dungeon.branch != 0 || Dungeon.level.locked || hero.armorAbility != this
+                || !hero.belongings.contains(armor) || !armor.isEquipped(hero)
+                || targetingPrompt() != null) return false;
+
+        String abilityClass = getClass().getName();
+        boolean supported = abilityClass.equals("com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.warrior.Endure")
+                || abilityClass.equals("com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.huntress.NaturesPower");
+        if (!supported) return false;
+
+        // These two abilities would otherwise mutate unrelated timed state as a side effect.
+        for (com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff buff : hero.buffs()) {
+            String className = buff == null ? "" : buff.getClass().getName();
+            if (className.endsWith(".Invisibility")) return false;
+            if (abilityClass.endsWith(".Endure")
+                    && className.equals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Combo")) return false;
+        }
+        return armor.charge >= chargeUse(hero);
+    }
+
+    private void useAndPublishNativeMultiplayerAbility(ClassArmor armor, Hero hero) {
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        String heroStateBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(hero);
+        if (heroStateBefore == null || heroStateBefore.isEmpty()) {
+            manager.requestResync(manager.getLastSequence());
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+
+        final int depthBefore = Dungeon.depth;
+        final int posBefore = hero.pos;
+        final float cooldownBefore = hero.cooldown();
+        final float armorChargeBefore = armor.charge;
+        final float armorChargeUse = chargeUse(hero);
+        final String armorItemId = armor.multiplayerItemId();
+        final String abilityClass = getClass().getName();
+
+        activate(armor, hero, hero.pos);
+
+        if (Dungeon.level == null || Dungeon.depth != depthBefore || Dungeon.branch != 0
+                || hero.pos != posBefore || armorChargeBefore - armor.charge < 0f
+                || Math.abs((armorChargeBefore - armor.charge) - armorChargeUse) > 0.05f) {
+            manager.requestResync(manager.getLastSequence());
+            return;
+        }
+
+        com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+        Map<String, Object> details = new HashMap<>();
+        details.put("abilityClass", abilityClass);
+        details.put("armorItemId", armorItemId);
+        details.put("armorClass", armor.getClass().getName());
+        details.put("armorChargeBefore", armorChargeBefore);
+        details.put("armorChargeAfter", armor.charge);
+        details.put("armorChargeUse", armorChargeUse);
+        hero.queueNativeWorldMutation("USE_ABILITY", posBefore, posBefore, cooldownBefore,
+                heroStateBefore, json.toJson(details));
+        hero.publishPendingNativeWorldMutation();
+    }
 
 	//leave null for no targeting
 	public String targetingPrompt(){
