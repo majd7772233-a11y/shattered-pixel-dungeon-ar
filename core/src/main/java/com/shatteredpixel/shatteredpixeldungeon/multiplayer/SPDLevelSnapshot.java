@@ -2,6 +2,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.QuickSlot;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
@@ -439,7 +440,24 @@ public final class SPDLevelSnapshot {
             inventoryIndex.add(entry);
         }
         heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
-        if (hero == Dungeon.hero) heroState.put("gold", Dungeon.gold);
+        if (hero == Dungeon.hero) {
+            heroState.put("gold", Dungeon.gold);
+            List<Map<String, Object>> quickslotIndex = new ArrayList<>();
+            if (Dungeon.quickslot != null) {
+                for (int slot = 0; slot < QuickSlot.SIZE; slot++) {
+                    Item quickItem = Dungeon.quickslot.getItem(slot);
+                    if (quickItem == null) continue;
+                    Map<String, Object> entry = new HashMap<>();
+                    entry.put("slot", slot);
+                    entry.put("itemId", quickItem.multiplayerItemId());
+                    entry.put("className", quickItem.getClass().getName());
+                    entry.put("quantity", quickItem.quantity());
+                    entry.put("serializedBundle", currentItemBundle(quickItem));
+                    quickslotIndex.add(entry);
+                }
+            }
+            heroState.put("quickslotsJson", new Json().toJson(quickslotIndex));
+        }
         heroState.put("hp", hero.HP);
         heroState.put("ht", hero.HT);
         heroState.put("pos", hero.pos);

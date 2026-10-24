@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.QuickSlot;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
@@ -148,10 +149,97 @@ public class WorldSnapshot {
         restoreHeroState(hero, encodedState);
     }
 
+    private static final class QuickSlotRestoreEntry {
+        final int slot;
+        final String itemId;
+        final String className;
+        final Item decodedItem;
+        QuickSlotRestoreEntry(int slot, String itemId, String className, Item decodedItem) {
+            this.slot = slot;
+            this.itemId = itemId;
+            this.className = className;
+            this.decodedItem = decodedItem;
+        }
+    }
+
+    /** Parse and validate the slot set before mutating the live Hero. */
+    private static List<QuickSlotRestoreEntry> parseQuickSlotEntries(Bundle heroState) {
+        if (heroState == null || !heroState.contains("quickslotsJson")) return null; // legacy snapshot
+        String encoded = heroState.getString("quickslotsJson");
+        if (encoded == null || encoded.length() > 200000) throw new IllegalStateException("Invalid native quickslot state");
+        JsonValue root;
+        try { root = new JsonReader().parse(encoded); }
+        catch (RuntimeException malformed) { throw new IllegalStateException("Invalid native quickslot JSON", malformed); }
+        if (root == null || !root.isArray() || root.size > QuickSlot.SIZE) {
+            throw new IllegalStateException("Invalid native quickslot array");
+        }
+        List<QuickSlotRestoreEntry> result = new ArrayList<>();
+        boolean[] usedSlots = new boolean[QuickSlot.SIZE];
+        java.util.HashSet<String> usedItems = new java.util.HashSet<>();
+        for (JsonValue value = root.child; value != null; value = value.next) {
+            if (!value.isObject()) throw new IllegalStateException("Invalid native quickslot entry");
+            JsonValue slotValue = value.get("slot"), idValue = value.get("itemId");
+            JsonValue classValue = value.get("className"), quantityValue = value.get("quantity");
+            JsonValue bundleValue = value.get("serializedBundle");
+            if (slotValue == null || !slotValue.isNumber() || idValue == null || !idValue.isString()
+                    || classValue == null || !classValue.isString() || quantityValue == null || !quantityValue.isNumber()
+                    || bundleValue == null || !bundleValue.isString()) {
+                throw new IllegalStateException("Incomplete native quickslot entry");
+            }
+            int slot = slotValue.asInt(), quantity = quantityValue.asInt();
+            String id = idValue.asString(), className = classValue.asString(), bundleText = bundleValue.asString();
+            if (slot < 0 || slot >= QuickSlot.SIZE || usedSlots[slot]
+                    || id.length() < 8 || id.length() > 80 || !usedItems.add(id)
+                    || className.isEmpty() || className.length() > 256 || quantity < 0 || quantity > 100000
+                    || bundleText.isEmpty() || bundleText.length() > 200000 || !bundleText.contains(id)) {
+                throw new IllegalStateException("Malformed native quickslot entry");
+            }
+            Bundle itemBundle = readBundle(bundleText);
+            Object itemValue = itemBundle == null ? null : itemBundle.get("item");
+            if (!(itemValue instanceof Item)) throw new IllegalStateException("Quickslot bundle did not contain an Item");
+            Item decoded = (Item) itemValue;
+            if (!id.equals(decoded.multiplayerItemId()) || !className.equals(decoded.getClass().getName())
+                    || decoded.quantity() != quantity) {
+                throw new IllegalStateException("Quickslot item identity does not match its native bundle");
+            }
+            usedSlots[slot] = true;
+            result.add(new QuickSlotRestoreEntry(slot, id, className, decoded));
+        }
+        return result;
+    }
+
+    /** Rebind slots to restored inventory objects, retaining only real zero-quantity placeholders. */
+    private static void restoreHeroQuickSlots(Hero hero, List<QuickSlotRestoreEntry> entries) {
+        if (hero == null || hero != Dungeon.hero || entries == null || Dungeon.quickslot == null) return;
+        Map<String, Item> ownedItems = new HashMap<>();
+        for (Item item : hero.belongings.getAllItems(Item.class)) {
+            if (item != null && item.quantity() > 0) ownedItems.put(item.multiplayerItemId(), item);
+        }
+        Item[] restored = new Item[QuickSlot.SIZE];
+        for (QuickSlotRestoreEntry entry : entries) {
+            Item item = ownedItems.get(entry.itemId);
+            if (item != null) {
+                if (!entry.className.equals(item.getClass().getName())) {
+                    throw new IllegalStateException("Quickslot item class does not match inventory");
+                }
+                restored[entry.slot] = item;
+            } else if (entry.decodedItem.quantity() == 0) {
+                restored[entry.slot] = entry.decodedItem;
+            } else {
+                throw new IllegalStateException("Quickslot references an item absent from restored inventory");
+            }
+        }
+        Dungeon.quickslot.reset();
+        for (int slot = 0; slot < restored.length; slot++) {
+            if (restored[slot] != null) Dungeon.quickslot.setSlot(slot, restored[slot]);
+        }
+    }
+
     private static void restoreHeroState(Hero hero, String encodedState) {
         if (hero == null || encodedState == null || encodedState.isEmpty()) return;
         Bundle heroState = readBundle(encodedState);
         if (heroState == null) return;
+        List<QuickSlotRestoreEntry> quickslotEntries = hero == Dungeon.hero ? parseQuickSlotEntries(heroState) : null;
         hero.HT = Math.max(1, heroState.getInt("ht"));
         hero.HP = Math.max(0, Math.min(heroState.getInt("hp"), hero.HT));
         int nativePos = heroState.getInt("pos");
@@ -162,6 +250,10 @@ public class WorldSnapshot {
         if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
         Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
         if (inventory != null) hero.belongings.restoreFromBundle(inventory);
+        if (hero == Dungeon.hero) {
+            if (heroState.contains("gold")) Dungeon.gold = Math.max(0, heroState.getInt("gold"));
+            restoreHeroQuickSlots(hero, quickslotEntries);
+        }
         for (Buff oldBuff : new java.util.ArrayList<>(hero.buffs())) oldBuff.detach();
         int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount")));
         for (int i = 0; i < buffCount; i++) {
