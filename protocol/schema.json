@@ -247,7 +247,7 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW", "ALCHEMY"]
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"]
         },
         "nativeMutationRequestId": {
           "type": "string",
@@ -337,7 +337,13 @@
             "resultItemClass":{"type":"string","minLength":1,"maxLength":256},
             "resultQuantity":{"type":"integer","minimum":1,"maximum":100000},
             "resultStackable":{"type":"boolean"},
-            "resultLocation":{"type":"string","enum":["INVENTORY","HEAP"]}
+            "resultLocation":{"type":"string","enum":["INVENTORY","HEAP"]},
+            "abilityClass":{"type":"string","minLength":1,"maxLength":256},
+            "armorItemId":{"type":"string","minLength":8,"maxLength":80},
+            "armorClass":{"type":"string","minLength":1,"maxLength":256},
+            "armorChargeBefore":{"type":"number","minimum":0,"maximum":100},
+            "armorChargeAfter":{"type":"number","minimum":0,"maximum":100},
+            "armorChargeUse":{"type":"number","exclusiveMinimum":0,"maximum":100}
           }
         }
       }

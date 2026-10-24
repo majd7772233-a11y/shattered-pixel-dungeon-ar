@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
+  isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
@@ -1715,6 +1716,86 @@ describe("Native equipment, quickslot, and chest transactions", () => {
 
 
 
+
+
+describe("Native self-buff armor ability transactions", () => {
+  const ability = "com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.warrior.Endure";
+  const tracker = ability + "$EndureTracker";
+  const armorClass = "com.shatteredpixel.shatteredpixeldungeon.items.armor.WarriorArmor";
+  const armorBundle = (charge:number) => JSON.stringify({item:{__className:armorClass,charge,armortier:4,
+    level:0,cursed:false,cursedKnown:true}});
+  const armor = (charge:number) => ({itemId:"native-class-armor-001",className:armorClass,quantity:1,level:0,
+    cursed:false,cursedKnown:true,stackable:false,equipped:true,serializedBundle:armorBundle(charge)});
+  const hero = (items:any[],extra:Record<string,any>={}) => ({
+    hp:20,ht:20,pos:9,shielding:0,gold:0,cooldown:0,inventoryBundle:"hero-inventory-before",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",buffCount:0,
+    combatBundle:JSON.stringify({class:"WARRIOR",armorAbility:{__className:ability},armor:JSON.parse(armorBundle(100)).item,
+      talents_tier_4:{}}),...extra
+  });
+  const details = (extra:Record<string,any>={}) => ({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:3,
+    abilityClass:ability,armorItemId:"native-class-armor-001",armorClass,
+    armorChargeBefore:100,armorChargeAfter:50,armorChargeUse:50,...extra
+  });
+  const buffBundle = JSON.stringify({buff:{__className:tracker,enduring:true,damage_bonus:0,hits_left:0}});
+  it("validates the real equipped armor, native ability class, hero class, and talent-derived charge cost",()=>{
+    const before=JSON.stringify(hero([armor(100)]));
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeAbilityIntent(level,details(),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeAbilityIntent(level,details({abilityClass:"com.example.ForgedAbility"}),4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeAbilityIntent(level,details({armorChargeUse:1}),4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeAbilityIntent(level,details({armorItemId:"native-forged-armor-001"}),4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+  });
+  it("accepts only the exact armor-charge decrease and expected native tracker",()=>{
+    const before=hero([armor(100)]);
+    const after=hero([armor(50)],{cooldown:3,inventoryBundle:"hero-inventory-after",
+      combatBundle:JSON.stringify({class:"WARRIOR",armorAbility:{__className:ability},armor:JSON.parse(armorBundle(50)).item,
+        talents_tier_4:{}}),buffCount:1,buff_0:buffBundle,buffCooldown_0:12});
+    const accepted={...details(),actionType:"USE_ABILITY"};
+    const nativeDetails={abilityClass:ability,armorItemId:"native-class-armor-001",armorClass,
+      armorChargeBefore:100,armorChargeAfter:50,armorChargeUse:50};
+    expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(after),nativeDetails,accepted)).toBe(true);
+    const forgedCharge=hero([armor(49)],{cooldown:3,inventoryBundle:"hero-inventory-after",
+      combatBundle:JSON.stringify({class:"WARRIOR",armorAbility:{__className:ability},armor:JSON.parse(armorBundle(49)).item,
+        talents_tier_4:{}}),buffCount:1,buff_0:buffBundle,buffCooldown_0:12});
+    expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(forgedCharge),nativeDetails,accepted)).toBe(false);
+    const forgedBuff=hero([armor(50)],{cooldown:3,inventoryBundle:"hero-inventory-after",
+      combatBundle:JSON.stringify({class:"WARRIOR",armorAbility:{__className:ability},armor:JSON.parse(armorBundle(50)).item,
+        talents_tier_4:{}}),buffCount:1,
+      buff_0:JSON.stringify({buff:{__className:tracker,enduring:true,damage_bonus:999,hits_left:9}}),buffCooldown_0:12});
+    expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(forgedBuff),nativeDetails,accepted)).toBe(false);
+    const forgedInventory=hero([armor(50),{itemId:"native-forged-001",className:"com.example.Forged",quantity:1,
+      level:0,cursed:false,cursedKnown:false,stackable:false,equipped:false,serializedBundle:"bundle-native-forged-001"}],
+      {cooldown:3,inventoryBundle:"hero-inventory-after",
+      combatBundle:JSON.stringify({class:"WARRIOR",armorAbility:{__className:ability},armor:JSON.parse(armorBundle(50)).item,
+        talents_tier_4:{}}),buffCount:1,buff_0:buffBundle,buffCooldown_0:12});
+    expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(forgedInventory),nativeDetails,accepted)).toBe(false);
+  });
+  it("accepts Nature's Power only for the real Huntress ability and matching tracker",()=>{
+    const nature="com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.huntress.NaturesPower";
+    const natureArmor="com.shatteredpixel.shatteredpixeldungeon.items.armor.HuntressArmor";
+    const armorBundleFor=(charge:number)=>JSON.stringify({item:{__className:natureArmor,charge,armortier:4}});
+    const source={...armor(65),className:natureArmor,itemId:"native-huntress-armor-001",serializedBundle:armorBundleFor(65)};
+    const before=hero([source],{combatBundle:JSON.stringify({class:"HUNTRESS",
+      armorAbility:{__className:nature},armor:JSON.parse(armorBundleFor(65)).item,talents_tier_4:{}})});
+    const data={...details({abilityClass:nature,armorItemId:"native-huntress-armor-001",armorClass:natureArmor,
+      armorChargeBefore:65,armorChargeAfter:30,armorChargeUse:35,engineActionCost:1})};
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeAbilityIntent(level,data,4,"player-001",{pos:9,state:"ALIVE"},JSON.stringify(before))).toBe(true);
+    const output={...source,serializedBundle:armorBundleFor(30)};
+    const next=hero([output],{cooldown:1,inventoryBundle:"hero-inventory-after",
+      combatBundle:JSON.stringify({class:"HUNTRESS",armorAbility:{__className:nature},
+        armor:JSON.parse(armorBundleFor(30)).item,talents_tier_4:{}}),buffCount:1,
+      buff_0:JSON.stringify({buff:{__className:nature+"$naturesPowerTracker"}}),buffCooldown_0:8});
+    const accepted={...data,actionType:"USE_ABILITY"};
+    const nativeDetails={abilityClass:nature,armorItemId:"native-huntress-armor-001",armorClass:natureArmor,
+      armorChargeBefore:65,armorChargeAfter:30,armorChargeUse:35};
+    expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(next),nativeDetails,accepted)).toBe(true);
+  });
+});
 
 describe("Native alchemy transaction validation", () => {
   const sourceClass="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
