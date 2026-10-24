@@ -39,6 +39,10 @@ import com.shatteredpixel.shatteredpixeldungeon.items.artifacts.AlchemistsToolki
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.trinkets.TrinketCatalyst;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkActionType;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot;
+import com.shatteredpixel.shatteredpixeldungeon.utils.GLog;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Document;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Journal;
@@ -83,6 +87,8 @@ import com.watabou.utils.RectF;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 public class AlchemyScene extends PixelScene {
 
@@ -114,13 +120,43 @@ public class AlchemyScene extends PixelScene {
 
 	private static final int BTN_SIZE	= 28;
 
+    private String nativeAlchemyTrustedHeroStateJson;
+    private final Map<String, NativeAlchemySource> nativeAlchemySourceByDetachedId = new HashMap<>();
+
+    private static final class NativeAlchemySource {
+        final String itemId;
+        final String itemClass;
+        final boolean stackable;
+        NativeAlchemySource(Item item) {
+            itemId = item.multiplayerItemId();
+            itemClass = item.getClass().getName();
+            stackable = item.stackable;
+        }
+    }
+
+    private static final class NativeAlchemyInput {
+        final Item item;
+        final int quantityBefore;
+        final NativeAlchemySource source;
+        NativeAlchemyInput(Item item, NativeAlchemySource source) {
+            this.item = item;
+            this.quantityBefore = item.quantity();
+            this.source = source;
+        }
+    }
+
 	{
 		inGameScene = true;
 	}
 	
 	@Override
 	public void create() {
-		super.create();
+        super.create();
+        nativeAlchemySourceByDetachedId.clear();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        nativeAlchemyTrustedHeroStateJson = manager.isMultiplayerActive()
+                && Dungeon.level != null && Dungeon.branch == 0 && !Dungeon.level.locked
+                ? SPDLevelSnapshot.currentHeroStateJson(Dungeon.hero) : null;
 
 		int w = Camera.main.width;
 		int h = Camera.main.height;
@@ -307,15 +343,19 @@ public class AlchemyScene extends PixelScene {
 											synchronized (inputs) {
 												if (item != null && inputs[0] != null) {
 													for (int i = 0; i < inputs.length; i++) {
-														if (inputs[i].item() == null) {
-															if (item instanceof LiquidMetal || item instanceof MissileWeapon){
-																inputs[i].item(item.detachAll(Dungeon.hero.belongings.backpack));
-															} else {
-																inputs[i].item(item.detach(Dungeon.hero.belongings.backpack));
-															}
-															break;
-														}
-													}
+                        if (inputs[i].item() == null) {
+                            NativeAlchemySource source = new NativeAlchemySource(item);
+                            Item detached;
+                            if (item instanceof LiquidMetal || item instanceof MissileWeapon) {
+                                detached = item.detachAll(Dungeon.hero.belongings.backpack);
+                            } else {
+                                detached = item.detach(Dungeon.hero.belongings.backpack);
+                            }
+                            inputs[i].item(detached);
+                            if (detached != null) nativeAlchemySourceByDetachedId.put(detached.multiplayerItemId(), source);
+                            break;
+                        }
+                    }
 													updateState();
 												}
 											}
@@ -675,9 +715,35 @@ public class AlchemyScene extends PixelScene {
 	}
 	
 	private void combine( int slot ){
-		
-		ArrayList<Item> ingredients = filterInput(Item.class);
-		if (ingredients.isEmpty()) return;
+
+        ArrayList<Item> ingredients = filterInput(Item.class);
+        if (ingredients.isEmpty()) return;
+
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        boolean track = manager.isMultiplayerActive() && Dungeon.hero != null && Dungeon.level != null
+                && Dungeon.branch == 0 && !Dungeon.level.locked;
+        if (track && (toolkit != null || Dungeon.hero.buff(AlchemistsToolkit.kitEnergy.class) != null)) {
+            GLog.w("اللعب الجماعي لا يزامن طاقة عدة الخيمياء بعد؛ لم يتم تنفيذ التصنيع.");
+            return;
+        }
+        String beforeState = nativeAlchemyTrustedHeroStateJson;
+        ArrayList<NativeAlchemyInput> trackedInputs = new ArrayList<>();
+        if (track) {
+            if (beforeState == null) {
+                manager.requestResync(manager.getLastSequence());
+                GLog.w("تعذرت مزامنة حالة الخيمياء الحالية.");
+                return;
+            }
+            for (Item item : ingredients) {
+                NativeAlchemySource source = nativeAlchemySourceByDetachedId.get(item.multiplayerItemId());
+                if (source == null) {
+                    manager.requestResync(manager.getLastSequence());
+                    GLog.w("تعذر التحقق من مصدر أحد مكونات الخيمياء.");
+                    return;
+                }
+                trackedInputs.add(new NativeAlchemyInput(item, source));
+            }
+        }
 
 		lastIngredients.clear();
 		for (Item i : ingredients){
@@ -718,11 +784,10 @@ public class AlchemyScene extends PixelScene {
 			result = recipe.brew(ingredients);
 		}
 		
-		if (result != null){
-
-			craftItem(ingredients, result);
-
-		}
+		if (result != null) {
+            craftItem(ingredients, result);
+            if (track) publishNativeAlchemyMutation(result, trackedInputs, beforeState);
+        }
 
 		boolean foundItems = true;
 		for (Item i : lastIngredients){
@@ -792,7 +857,176 @@ public class AlchemyScene extends PixelScene {
 		outputs[0].item(result);
 	}
 	
-	public void populate(ArrayList<Item> toFind, Belongings inventory){
+	
+    @SuppressWarnings("unchecked")
+    private void publishNativeAlchemyMutation(Item result, ArrayList<NativeAlchemyInput> trackedInputs,
+                                              String heroStateBefore) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (!manager.isMultiplayerActive() || Dungeon.hero == null || Dungeon.level == null
+                || Dungeon.branch != 0 || Dungeon.level.locked || result == null) return;
+
+        ArrayList<Item> remainingForUi = new ArrayList<>();
+        synchronized (inputs) {
+            for (InputButton input : inputs) {
+                Item item = input == null ? null : input.item();
+                if (item != null && item.quantity() > 0) remainingForUi.add(item.duplicate());
+            }
+        }
+        int outputQuantity = result.quantity();
+        String outputClass = result.getClass().getName();
+        boolean outputStackable = result.stackable;
+        String outputId = result.multiplayerItemId();
+        int sourcePos = Dungeon.hero.pos, sourceDepth = Dungeon.depth;
+        clearSlots();
+        if (Dungeon.depth != sourceDepth || Dungeon.branch != 0 || Dungeon.level == null || Dungeon.hero.pos != sourcePos) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+
+        String heroStateAfter = SPDLevelSnapshot.currentHeroStateJson(Dungeon.hero);
+        Map<String, Map<String,Object>> beforeItems = nativeAlchemyInventory(heroStateBefore);
+        Map<String, Map<String,Object>> afterItems = nativeAlchemyInventory(heroStateAfter);
+        if (beforeItems == null || afterItems == null) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+        Map<String,Integer> consumed = new HashMap<>();
+        Map<String,NativeAlchemySource> sourceById = new HashMap<>();
+        for (NativeAlchemyInput input : trackedInputs) {
+            int amount = Math.max(0, input.quantityBefore - input.item.quantity());
+            if (amount > 0) {
+                consumed.put(input.source.itemId, consumed.getOrDefault(input.source.itemId, 0) + amount);
+                sourceById.put(input.source.itemId, input.source);
+            }
+        }
+        if (consumed.isEmpty()) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+
+        ArrayList<Map<String,Object>> ingredientDetails = new ArrayList<>();
+        for (Map.Entry<String,Integer> entry : consumed.entrySet()) {
+            Map<String,Object> sourceRow = beforeItems.get(entry.getKey());
+            NativeAlchemySource source = sourceById.get(entry.getKey());
+            if (sourceRow == null || source == null || !source.itemClass.equals(sourceRow.get("className"))) {
+                manager.requestResync(manager.getLastSequence());
+                if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+                return;
+            }
+            int quantityBefore = ((Number)sourceRow.get("quantity")).intValue();
+            if (entry.getValue() < 1 || entry.getValue() > quantityBefore) {
+                manager.requestResync(manager.getLastSequence());
+                if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+                return;
+            }
+            Map<String,Object> detail = new HashMap<>();
+            detail.put("itemId",entry.getKey());
+            detail.put("itemClass",source.itemClass);
+            detail.put("sourceQuantityBefore",quantityBefore);
+            detail.put("consumedQuantity",entry.getValue());
+            detail.put("stackable",source.stackable);
+            ingredientDetails.add(detail);
+        }
+
+        String location = "INVENTORY", heapId = "", outputItemId = null;
+        for (Map.Entry<String,Map<String,Object>> entry : afterItems.entrySet()) {
+            Map<String,Object> post = entry.getValue();
+            if (!outputClass.equals(post.get("className")) || !Boolean.valueOf(outputStackable).equals(post.get("stackable"))) continue;
+            Map<String,Object> pre = beforeItems.get(entry.getKey());
+            int beforeQty = pre == null ? 0 : ((Number)pre.get("quantity")).intValue();
+            int postQty = ((Number)post.get("quantity")).intValue();
+            int consumedQty = consumed.getOrDefault(entry.getKey(), 0);
+            if (postQty - beforeQty + consumedQty == outputQuantity) {
+                if (outputItemId != null) { outputItemId = null; break; }
+                outputItemId = entry.getKey();
+            }
+        }
+        if (outputItemId == null) {
+            com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(sourcePos);
+            if (heap != null) for (Item item : heap.items) {
+                if (item != null && outputId.equals(item.multiplayerItemId())
+                        && outputClass.equals(item.getClass().getName()) && item.quantity() == outputQuantity) {
+                    location = "HEAP";
+                    heapId = heap.multiplayerHeapId();
+                    outputItemId = item.multiplayerItemId();
+                    break;
+                }
+            }
+        }
+        if (outputItemId == null) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+
+        com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+        Map<String,Object> beforeState;
+        try { beforeState = json.fromJson(Map.class, heroStateBefore); }
+        catch (RuntimeException malformed) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+        Object oldEnergy = beforeState.get("alchemyEnergy");
+        int energyBefore = oldEnergy instanceof Number ? ((Number)oldEnergy).intValue() : -1;
+        int energyAfter = Dungeon.energy;
+        if (energyBefore < 0 || energyAfter < 0 || energyAfter > energyBefore) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+
+        Map<String,Object> details = new HashMap<>();
+        details.put("from",sourcePos);
+        details.put("to",sourcePos);
+        details.put("targetPos",sourcePos);
+        details.put("depth",sourceDepth);
+        details.put("branch",Dungeon.branch);
+        details.put("engineActionCost",0f);
+        details.put("alchemyEnergyBefore",energyBefore);
+        details.put("alchemyEnergyAfter",energyAfter);
+        details.put("ingredients",ingredientDetails);
+        details.put("resultItemId",outputItemId);
+        details.put("resultItemClass",outputClass);
+        details.put("resultQuantity",outputQuantity);
+        details.put("resultStackable",outputStackable);
+        details.put("resultLocation",location);
+        details.put("resultHeapId",heapId);
+        String detailsJson = json.toJson(details);
+        String requestId = manager.sendAction(NetworkActionType.ALCHEMY,detailsJson,heroStateBefore);
+        if (requestId == null) {
+            manager.requestResync(manager.getLastSequence());
+        } else {
+            manager.publishNativeWorldMutation(requestId,"ALCHEMY",sourcePos,sourcePos,detailsJson);
+            nativeAlchemyTrustedHeroStateJson = heroStateAfter;
+        }
+        nativeAlchemySourceByDetachedId.clear();
+        if (!remainingForUi.isEmpty()) populate(remainingForUi,Dungeon.hero.belongings);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String,Map<String,Object>> nativeAlchemyInventory(String heroStateJson) {
+        try {
+            com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+            Map<String,Object> state = json.fromJson(Map.class,heroStateJson);
+            Object encoded = state == null ? null : state.get("inventoryItemsJson");
+            if (!(encoded instanceof String)) return null;
+            ArrayList<Map> rows = json.fromJson(ArrayList.class,(String)encoded);
+            if (rows == null) return null;
+            Map<String,Map<String,Object>> index = new HashMap<>();
+            for (Map raw : rows) {
+                if (raw == null || !(raw.get("itemId") instanceof String)) return null;
+                String id = (String)raw.get("itemId");
+                if (id.length() < 8 || index.put(id,(Map<String,Object>)raw) != null) return null;
+            }
+            return index;
+        } catch (RuntimeException malformed) { return null; }
+    }
+
+public void populate(ArrayList<Item> toFind, Belongings inventory){
 		clearSlots();
 		
 		int curslot = 0;
@@ -800,13 +1034,16 @@ public class AlchemyScene extends PixelScene {
 			int needed = finding.quantity();
 			ArrayList<Item> found = inventory.getAllSimilar(finding);
 			while (!found.isEmpty() && needed > 0){
-				Item detached;
-				if (finding instanceof LiquidMetal || finding instanceof MissileWeapon) {
-					detached = found.get(0).detachAll(inventory.backpack);
-				} else {
-					detached = found.get(0).detach(inventory.backpack);
-				}
-				inputs[curslot].item(detached);
+				Item sourceItem = found.get(0);
+                NativeAlchemySource source = new NativeAlchemySource(sourceItem);
+                Item detached;
+                if (finding instanceof LiquidMetal || finding instanceof MissileWeapon) {
+                    detached = sourceItem.detachAll(inventory.backpack);
+                } else {
+                    detached = sourceItem.detach(inventory.backpack);
+                }
+                inputs[curslot].item(detached);
+                if (detached != null) nativeAlchemySourceByDetachedId.put(detached.multiplayerItemId(), source);
 				curslot++;
 				needed -= detached.quantity();
 				if (detached == found.get(0)) {
@@ -855,8 +1092,8 @@ public class AlchemyScene extends PixelScene {
 		super.destroy();
 	}
 	
-	public void clearSlots(){
-		synchronized ( inputs ) {
+	public void clearSlots() {
+        synchronized ( inputs ) {
 			for (int i = 0; i < inputs.length; i++) {
 				if (inputs[i] != null && inputs[i].item() != null) {
 					Item item = inputs[i].item();
@@ -867,8 +1104,9 @@ public class AlchemyScene extends PixelScene {
 				}
 			}
 		}
-		cancel.enable(false);
-		repeat.enable(lastRecipe != null);
+$1nativeAlchemySourceByDetachedId.clear();
+$1cancel.enable(false);
+$1repeat.enable(lastRecipe != null);
 		if (alchGuide != null){
 			alchGuide.updateList();
 		}
