@@ -996,11 +996,19 @@ public class AlchemyScene extends PixelScene {
         details.put("resultLocation",location);
         details.put("resultHeapId",heapId);
         String detailsJson = json.toJson(details);
+        Map<String,Object> mutationDetails = new HashMap<>(details);
+        mutationDetails.remove("from");
+        mutationDetails.remove("to");
+        mutationDetails.remove("targetPos");
+        mutationDetails.remove("depth");
+        mutationDetails.remove("branch");
+        mutationDetails.remove("engineActionCost");
+        String mutationDetailsJson = json.toJson(mutationDetails);
         String requestId = manager.sendAction(NetworkActionType.ALCHEMY,detailsJson,heroStateBefore);
         if (requestId == null) {
             manager.requestResync(manager.getLastSequence());
         } else {
-            manager.publishNativeWorldMutation(requestId,"ALCHEMY",sourcePos,sourcePos,detailsJson);
+            manager.publishNativeWorldMutation(requestId,"ALCHEMY",sourcePos,sourcePos,mutationDetailsJson);
             nativeAlchemyTrustedHeroStateJson = heroStateAfter;
         }
         nativeAlchemySourceByDetachedId.clear();
