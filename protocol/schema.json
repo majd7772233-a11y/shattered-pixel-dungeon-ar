@@ -247,7 +247,7 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM"]
+          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW"]
         },
         "nativeMutationRequestId": {
           "type": "string",

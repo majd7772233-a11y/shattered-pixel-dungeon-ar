@@ -713,9 +713,18 @@ public class Item implements Bundlable {
 	}
 	
 	public void cast( final Hero user, final int dst ) {
-		
-		final int cell = throwPos( user, dst );
-		user.sprite.zap( cell );
+        MultiplayerManager multiplayer = MultiplayerManager.getInstance();
+        boolean multiplayerHero = user == Dungeon.hero && multiplayer.isMultiplayerActive();
+        if (multiplayerHero && !(this instanceof MissileWeapon)) {
+            user.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        if (multiplayerHero && (Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked)) {
+            user.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        final int cell = throwPos( user, dst );
+        user.sprite.zap( cell );
 		user.busy();
 
 		throwSound();
@@ -724,6 +733,14 @@ public class Item implements Bundlable {
 		QuickSlotButton.target(enemy);
 		
 		final float delay = castDelay(user, cell);
+        final boolean publishMissileLanding = multiplayerHero && enemy == null;
+        final int sourcePosBefore = user.pos;
+        final int sourceDepthBefore = Dungeon.depth;
+        final float sourceCooldownBefore = user.cooldown();
+        final String sourceHeroStateBefore = publishMissileLanding ? SPDLevelSnapshot.currentHeroStateJson(user) : null;
+        final String sourceItemIdBefore = multiplayerItemId();
+        final String sourceItemClassBefore = getClass().getName();
+        final int sourceQuantityBefore = quantity();
 
 		if (enemy != null) {
 			((MissileSprite) user.sprite.parent.recycle(MissileSprite.class)).
@@ -763,9 +780,49 @@ public class Item implements Bundlable {
 						public void call() {
 							curUser = user;
 							Item i = Item.this.detach(user.belongings.backpack);
-							user.spend(delay);
-							if (i != null) i.onThrow(cell);
-							user.next();
+                            user.spend(delay);
+                            Heap beforeHeap = Dungeon.level == null ? null : Dungeon.level.heaps.get(cell);
+                            java.util.HashMap<String, Integer> oldHeapQuantities = new java.util.HashMap<>();
+                            if (beforeHeap != null) for (Item oldItem : beforeHeap.items) {
+                                if (oldItem != null) oldHeapQuantities.put(oldItem.multiplayerItemId(), oldItem.quantity());
+                            }
+                            if (i != null) i.onThrow(cell);
+                            if (publishMissileLanding && i != null && Dungeon.level != null
+                                    && Dungeon.depth == sourceDepthBefore && Dungeon.branch == 0
+                                    && user.pos == sourcePosBefore && sourceHeroStateBefore != null) {
+                                Heap landedHeap = Dungeon.level.heaps.get(cell);
+                                Item resultItem = null;
+                                if (landedHeap != null) for (Item candidate : landedHeap.items) {
+                                    if (candidate == null || !sourceItemClassBefore.equals(candidate.getClass().getName())) continue;
+                                    String candidateId = candidate.multiplayerItemId();
+                                    Integer oldQuantity = oldHeapQuantities.get(candidateId);
+                                    if (candidateId.equals(i.multiplayerItemId()) && candidate.quantity() == 1) {
+                                        resultItem = candidate;
+                                        break;
+                                    }
+                                    if (i.stackable && oldQuantity != null && candidate.isSimilar(i)
+                                            && candidate.quantity() == oldQuantity + 1) {
+                                        resultItem = candidate;
+                                        break;
+                                    }
+                                }
+                                if (resultItem == null || landedHeap == null) {
+                                    multiplayer.requestResync(multiplayer.getLastSequence());
+                                } else {
+                                    com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+                                    String details = "{\"heapId\":" + json.toJson(landedHeap.multiplayerHeapId())
+                                            + ",\"itemId\":" + json.toJson(sourceItemIdBefore)
+                                            + ",\"resultItemId\":" + json.toJson(resultItem.multiplayerItemId())
+                                            + ",\"itemClass\":" + json.toJson(sourceItemClassBefore)
+                                            + ",\"expectedQuantity\":1"
+                                            + ",\"sourceQuantityBefore\":" + sourceQuantityBefore
+                                            + ",\"stackable\":" + Item.this.stackable + "}";
+                                    user.queueNativeWorldMutation("THROW", sourcePosBefore, cell, sourceCooldownBefore,
+                                            sourceHeroStateBefore, details);
+                                    user.publishPendingNativeWorldMutation();
+                                }
+                            }
+                            user.next();
 						}
 					});
 		}
