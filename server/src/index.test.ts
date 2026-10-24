@@ -1714,7 +1714,7 @@ describe("Native equipment, quickslot, and chest transactions", () => {
 describe("Native shop purchase transaction validation", () => {
   const potion = "com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing";
   const item = (id:string, quantity=1, itemClass=potion, stackable=false, shopPrice=-1) => ({
-    itemId:id,className:itemClass,quantity,level:0,cursed:false,cursedKnown:false,stackable,shopPrice,
+    itemId:id,className:itemClass,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,shopPrice,
     serializedBundle:"native-bundle-item-id:"+id+"-quantity-"+quantity
   });
   const hero = (items:any[], extra:Record<string,any>={}) => ({
