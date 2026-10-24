@@ -2958,12 +2958,6 @@ export class MatchRoom {
         next_act_at REAL DEFAULT 0.0,
         state TEXT DEFAULT 'HUNTING'
       );
-      CREATE TABLE IF NOT EXISTS claimed_items (
-        item_pos INTEGER PRIMARY KEY,
-        depth INTEGER DEFAULT 1,
-        claimed_by TEXT,
-        claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
       CREATE TABLE IF NOT EXISTS claimed_item_instances (
         depth INTEGER NOT NULL,
         heap_id TEXT NOT NULL,
@@ -3266,7 +3260,6 @@ export class MatchRoom {
               return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
             });
             const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
-            const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray();
 
             ws.send(JSON.stringify({
               protocolVersion: "1.0.0",
@@ -3279,7 +3272,6 @@ export class MatchRoom {
                 gameMode: this.gameMode,
                 players,
                 mobs,
-                claims,
                 worldTime: this.worldTime,
                 level: this.getCurrentLevelSnapshot()
               })
@@ -3607,6 +3599,7 @@ export class MatchRoom {
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
             if (mutationAction === "ALCHEMY") mergedHero.alchemyEnergy = reportedHero.alchemyEnergy;
+            if (mutationAction === "USE_ABILITY") mergedHero.combatBundle = reportedHero.combatBundle;
             if (typeof reportedHero.quickslotsJson === "string" && parseNativeQuickslotIndex(reportedHero) != null) {
               mergedHero.quickslotsJson = reportedHero.quickslotsJson;
             }
@@ -3769,10 +3762,9 @@ export class MatchRoom {
             return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
           });
           const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
-          const claims = this.sql.exec("SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?", this.currentDepth).toArray();
           const snapshotPayload = {
             sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
-            players, mobs: liveMobs, claims, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
+            players, mobs: liveMobs, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
           };
           const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
             senderId: session.playerId, sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
@@ -4030,12 +4022,6 @@ export class MatchRoom {
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
-                if (secondaryDeathPositions.length > 0) {
-                  for (const deadPos of secondaryDeathPositions) {
-                    this.sql.exec("DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?",
-                      deadPos, this.currentDepth);
-                  }
-                }
               }
               this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
@@ -4157,8 +4143,6 @@ export class MatchRoom {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + String(authorityPending.attackerId), mergedAttackerState as string);
                 this.clearPendingCombat(authorityPending);
-                if (allDeaths.length > 0) for (const deadPos of allDeaths) this.sql.exec(
-                  "DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?", deadPos, this.currentDepth);
                 eventType = "PLAYER_ATTACKED";
                 actionResultPayload = {
                   attackerId, attackerType: "PLAYER", targetId: data.targetEntityId, targetType: "MOB",
@@ -4239,12 +4223,6 @@ export class MatchRoom {
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
-              if (deadPositions.length > 0) {
-                for (const deadPos of deadPositions) {
-                  this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
-                    deadPos, this.currentDepth);
-                }
-              }
               eventType = "CHAR_DAMAGED";
               actionResultPayload = {
                 targetId: data.entityId, targetType: "MOB",
@@ -4526,10 +4504,6 @@ export class MatchRoom {
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(sourceLevel));
-                if (committedSourceMobHp <= 0) {
-                  this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
-                    committedSourceMobPos, this.currentDepth);
-                }
               }
               if (oldState !== "DEAD" && oldState !== "SPECTATOR" && (newState === "DEAD" || newState === "SPECTATOR")) {
                 this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, damageTargetId);
@@ -4655,8 +4629,6 @@ export class MatchRoom {
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
-                this.sql.exec(`DELETE FROM claimed_items WHERE depth = ? AND item_pos = ?`,
-                  this.currentDepth, posBefore);
               }
               eventType = "PLAYER_REVIVED";
               actionResultPayload = {
@@ -5235,12 +5207,6 @@ export class MatchRoom {
                       this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                         ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                         `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
-                      if (allDeathPositions.length > 0) {
-                        for (const deadPos of allDeathPositions) {
-                          this.sql.exec(`DELETE FROM claimed_items WHERE item_pos = ? AND depth = ?`,
-                            deadPos, this.currentDepth);
-                        }
-                      }
                       // A direct native attack can also damage/heal the attacker via thorns,
                       // life-link, weapon procs, or consume a thrown weapon. Persist that exact
                       // post-state in the same commit as the target's result; the generic action
@@ -5643,7 +5609,6 @@ export class MatchRoom {
               return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
             });
         const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
-        const claims = this.sql.exec(`SELECT item_pos, claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray();
 
         ws.send(JSON.stringify({
           protocolVersion: "1.0.0",
@@ -5688,10 +5653,9 @@ export class MatchRoom {
       return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
     });
     const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
-    const claims = this.sql.exec("SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?", this.currentDepth).toArray();
     const snapshotPayload = {
       sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
-      players, mobs: liveMobs, claims, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
+      players, mobs: liveMobs, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
     };
     const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
       sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
@@ -5839,8 +5803,7 @@ export class MatchRoom {
       heaps: Array.isArray(original.heaps) ? original.heaps : [],
       traps: Array.isArray(original.traps) ? original.traps : [],
       blobs: Array.isArray(original.blobs) ? original.blobs : [],
-      plants: Array.isArray(original.plants) ? original.plants : [],
-      claims: this.sql.exec(`SELECT item_pos,claimed_by FROM claimed_items WHERE depth = ?`, this.currentDepth).toArray()
+      plants: Array.isArray(original.plants) ? original.plants : []
     };
   }
 

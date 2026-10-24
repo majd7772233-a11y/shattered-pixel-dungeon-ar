@@ -891,6 +891,37 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativeHeroTimedBuffRestorePreservesBundleAndDoesNotResurrectExpiredEffects() {
+        Haste active = Buff.affect(hero, Haste.class, Haste.DURATION);
+        Assert.assertNotNull(active);
+        active.restoreMultiplayerCooldown(7.25f);
+        String activeHeroState = SPDLevelSnapshot.currentHeroStateJson(hero);
+        float expectedCooldown = active.cooldown();
+
+        active.detach();
+        Assert.assertNull(hero.buff(Haste.class));
+        WorldSnapshot.restoreRemoteHeroState(hero, activeHeroState);
+        Haste restored = hero.buff(Haste.class);
+        Assert.assertNotNull("The authoritative native timed buff must be restored", restored);
+        Assert.assertEquals("The native remaining duration must survive snapshot restoration",
+                expectedCooldown, restored.cooldown(), 0.02f);
+        int hasteCount = 0;
+        for (Buff buff : hero.buffs()) if (buff instanceof Haste) hasteCount++;
+        Assert.assertEquals("Only one Haste instance may be attached after restoration", 1, hasteCount);
+
+        restored.detach();
+        String expiredHeroState = SPDLevelSnapshot.currentHeroStateJson(hero);
+        Assert.assertNull(hero.buff(Haste.class));
+        Buff.affect(hero, Haste.class, Haste.DURATION);
+        Assert.assertNotNull("The fixture must contain a stale local effect before reconciliation", hero.buff(Haste.class));
+        WorldSnapshot.restoreRemoteHeroState(hero, expiredHeroState);
+        Assert.assertNull("An effect absent from the trusted snapshot must not be resurrected",
+                hero.buff(Haste.class));
+        WorldSnapshot.restoreRemoteHeroState(hero, expiredHeroState);
+        Assert.assertNull("Repeated restoration of the expired state remains idempotent", hero.buff(Haste.class));
+    }
+
+    @Test
     public void originalNativeHeroAttackAppliesRealHitAndDamage() {
         hero.invisible = 1;
         DeterministicRat target = addDeterministicRat(hero.pos + 1, 100);

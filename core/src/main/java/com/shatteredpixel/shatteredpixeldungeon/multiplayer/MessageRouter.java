@@ -479,14 +479,6 @@ public final class MessageRouter {
                 }
             }
 
-            JsonValue claims = root.get("claims");
-            if (claims != null && claims.isArray()) {
-                for (JsonValue claim = claims.child; claim != null; claim = claim.next) {
-                    int pos = intValue(claim.get("item_pos"), -1);
-                    if (pos >= 0) snapshot.claimedItemPositions.add(pos);
-                }
-            }
-
             JsonValue mobs = root.get("mobs");
             if (mobs != null && mobs.isArray()) {
                 for (JsonValue mob = mobs.child; mob != null; mob = mob.next) {

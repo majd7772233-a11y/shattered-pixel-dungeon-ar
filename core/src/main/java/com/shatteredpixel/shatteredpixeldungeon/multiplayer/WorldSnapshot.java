@@ -67,7 +67,6 @@ public class WorldSnapshot {
     public List<Map<String, Object>> plants = new ArrayList<>();
     public List<Map<String, Object>> transitions = new ArrayList<>();
     public Map<String, String> playerStateJson = new HashMap<>();
-    public List<Integer> claimedItemPositions = new ArrayList<>();
 
     public WorldSnapshot() {}
 
@@ -356,8 +355,7 @@ public class WorldSnapshot {
         if (snapshot.transitions == null || snapshot.heaps == null || snapshot.traps == null
                 || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
                 || snapshot.playerPositions == null || snapshot.playerHp == null || snapshot.playerHt == null
-                || snapshot.playerClasses == null || snapshot.playerStateJson == null
-                || snapshot.claimedItemPositions == null) return rejectValidation("validator-check-12");
+                || snapshot.playerClasses == null || snapshot.playerStateJson == null) return rejectValidation("validator-check-12");
         if (!validPositions(snapshot.transitions, length, "pos", false)
                 || !validPositions(snapshot.heaps, length, "pos", true)
                 || !validPositions(snapshot.traps, length, "pos", true)
@@ -402,9 +400,6 @@ public class WorldSnapshot {
                 }
             }
         }
-        java.util.Set<Integer> claimed = new java.util.HashSet<>();
-        for (Integer pos : snapshot.claimedItemPositions)
-            if (pos == null || pos < 0 || pos >= length || !claimed.add(pos)) return rejectValidation("validator-check-23");
         java.util.Set<Integer> mobIds = new java.util.HashSet<>();
         java.util.Set<Integer> mobPositions = new java.util.HashSet<>();
         java.util.Set<String> serverEntityIds = new java.util.HashSet<>();
@@ -1130,21 +1125,6 @@ public class WorldSnapshot {
                 return false;
             }
             if (!dimensionsChanged) GameScene.refreshMultiplayerCustomVisuals();
-        }
-
-        // Remove heaps already claimed by the authoritative server.
-        if (Dungeon.level != null && snapshot.claimedItemPositions != null) {
-            for (Integer itemPos : snapshot.claimedItemPositions) {
-                if (itemPos != null && itemPos >= 0) {
-                    Heap heap = Dungeon.level.heaps.get(itemPos);
-                    if (heap != null) {
-                        Dungeon.level.heaps.remove(itemPos);
-                        if (heap.sprite != null) {
-                            heap.sprite.remove();
-                        }
-                    }
-                }
-            }
         }
 
         // Restore Remote Players
