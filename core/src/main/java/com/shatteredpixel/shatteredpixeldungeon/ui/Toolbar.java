@@ -177,7 +177,14 @@ public class Toolbar extends Component {
 								});
 							} else {
 
-								item.execute(Dungeon.hero);
+								if (item.defaultAction() == null) {
+                                    item.execute(Dungeon.hero);
+                                } else {
+                                    com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemActionPublisher.execute(
+                                            Dungeon.hero, item, item.defaultAction(), new Runnable() {
+                                                @Override public void run() { item.execute(Dungeon.hero); }
+                                            });
+                                }
 								if (item.usesTargeting) {
 									QuickSlotButton.useTargeting(idx);
 								}
