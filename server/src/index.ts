@@ -1170,11 +1170,190 @@ export function isValidNativeThrowHeapMutation(previousHeaps: any[], nextHeaps: 
       itemValueWithout(result, ["quantity", "serializedBundle"]));
 }
 
+
+export function isValidNativeAlchemyIntent(level: any, dataValue: unknown, depthValue: unknown,
+  playerIdValue: unknown, player: any, trustedHeroStateValue: unknown): boolean {
+  const data: any = dataValue, depth = Number(depthValue), playerId = String(playerIdValue || "");
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
+      || typeof trustedHeroStateValue !== "string") return false;
+  const pos = Number(player.pos), beforeEnergy = Number(data.alchemyEnergyBefore), afterEnergy = Number(data.alchemyEnergyAfter);
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth || data.branch !== 0
+      || !Number.isFinite(data.engineActionCost) || data.engineActionCost < 0 || data.engineActionCost > 10
+      || !Number.isInteger(beforeEnergy) || beforeEnergy < 0 || beforeEnergy > 1000000
+      || !Number.isInteger(afterEnergy) || afterEnergy < 0 || afterEnergy > beforeEnergy
+      || !Array.isArray(data.ingredients) || data.ingredients.length < 1 || data.ingredients.length > 3
+      || typeof data.resultItemId !== "string" || data.resultItemId.length < 8 || data.resultItemId.length > 80
+      || typeof data.resultItemClass !== "string" || data.resultItemClass.length < 1 || data.resultItemClass.length > 256
+      || !Number.isInteger(data.resultQuantity) || data.resultQuantity < 1 || data.resultQuantity > 100000
+      || typeof data.resultStackable !== "boolean"
+      || !["INVENTORY", "HEAP"].includes(String(data.resultLocation))
+      || typeof data.resultHeapId !== "string"
+      || (data.resultLocation === "INVENTORY" && data.resultHeapId !== "")
+      || (data.resultLocation === "HEAP" && (data.resultHeapId.length < 8 || data.resultHeapId.length > 80))) return false;
+  let hero: any;
+  try { hero = JSON.parse(trustedHeroStateValue); } catch (_) { return false; }
+  if (Number(hero.pos) !== pos || !Number.isInteger(hero.hp) || hero.hp <= 0
+      || !Number.isInteger(hero.alchemyEnergy) || hero.alchemyEnergy !== beforeEnergy) return false;
+  const inventory = parseNativeInventoryIndex(hero);
+  if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
+  const used = new Set<string>();
+  for (const source of data.ingredients) {
+    const id = String(source && source.itemId || ""), cls = String(source && source.itemClass || "");
+    if (id.length < 8 || id.length > 80 || used.has(id) || cls.length < 1 || cls.length > 256
+        || !Number.isInteger(source.sourceQuantityBefore) || source.sourceQuantityBefore < 1
+        || source.sourceQuantityBefore > 100000 || !Number.isInteger(source.consumedQuantity)
+        || source.consumedQuantity < 1 || source.consumedQuantity > source.sourceQuantityBefore
+        || typeof source.stackable !== "boolean") return false;
+    const old = inventory.filter((item: any) => String(item.itemId) === id);
+    if (old.length !== 1 || String(old[0].className) !== cls
+        || Number(old[0].quantity) !== source.sourceQuantityBefore || old[0].stackable !== source.stackable) return false;
+    used.add(id);
+  }
+  if (!used.size) return false;
+  if (data.resultLocation === "INVENTORY") {
+    const match = inventory.filter((item: any) => String(item.itemId) === data.resultItemId);
+    if (match.length > 1 || (match.length === 1 && (String(match[0].className) !== data.resultItemClass
+        || match[0].stackable !== data.resultStackable))) return false;
+    return !level.heaps.some((heap: any) => (Array.isArray(heap.items) ? heap.items : [])
+      .some((item: any) => String(item.itemId || "") === data.resultItemId));
+  }
+  const at = level.heaps.filter((heap: any) => Number(heap.pos) === pos);
+  if (at.length > 1 || (at.length === 1 && (String(at[0].heapId || "") !== data.resultHeapId
+      || String(at[0].type) !== "HEAP" || !Array.isArray(at[0].items)))
+      || (at.length === 0 && level.heaps.some((heap: any) => String(heap.heapId || "") === data.resultHeapId))) return false;
+  const existing = at.length ? at[0].items.filter((item: any) => String(item.itemId || "") === data.resultItemId) : [];
+  if (existing.length > 1 || (existing.length === 1 && (!data.resultStackable || existing[0].stackable !== true
+      || String(existing[0].className || "") !== data.resultItemClass))) return false;
+  return existing.length === 1 || !level.heaps.some((heap: any) => (Array.isArray(heap.items) ? heap.items : [])
+    .some((item: any) => String(item.itemId || "") === data.resultItemId));
+}
+
+function nativeAlchemyBuffsEqual(previous: any, next: any): boolean {
+  if (!Number.isInteger(previous?.buffCount) || previous.buffCount < 0 || previous.buffCount > 256
+      || previous.buffCount !== next?.buffCount) return false;
+  for (let i = 0; i < previous.buffCount; i++) {
+    if (previous["buff_" + i] !== next["buff_" + i]
+        || Number(previous["buffCooldown_" + i]) !== Number(next["buffCooldown_" + i])) return false;
+  }
+  return true;
+}
+
+export function isValidNativeAlchemyInventoryMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); } catch (_) { return false; }
+  const details: any = detailsValue, accepted: any = acceptedValue;
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  if (!details || !accepted || accepted.actionType !== "ALCHEMY" || !before || !after
+      || !Array.isArray(details.ingredients) || !Array.isArray(accepted.ingredients)
+      || !sameNativeItemValue(accepted.ingredients, details.ingredients)
+      || accepted.resultItemId !== details.resultItemId || accepted.resultItemClass !== details.resultItemClass
+      || accepted.resultQuantity !== details.resultQuantity || accepted.resultStackable !== details.resultStackable
+      || accepted.resultLocation !== details.resultLocation || accepted.resultHeapId !== details.resultHeapId
+      || accepted.alchemyEnergyBefore !== details.alchemyEnergyBefore || accepted.alchemyEnergyAfter !== details.alchemyEnergyAfter
+      || !Number.isInteger(previous.alchemyEnergy) || previous.alchemyEnergy !== details.alchemyEnergyBefore
+      || !Number.isInteger(next.alchemyEnergy) || next.alchemyEnergy !== details.alchemyEnergyAfter
+      || next.alchemyEnergy < 0 || next.alchemyEnergy > previous.alchemyEnergy || previous.gold !== next.gold
+      || previous.inventoryBundle === next.inventoryBundle || !nativeAlchemyBuffsEqual(previous, next)) return false;
+  const beforeById = new Map<string, any>(), afterById = new Map<string, any>(), consumed = new Map<string, any>();
+  for (const item of before) { const id = String(item.itemId || ""); if (beforeById.has(id)) return false; beforeById.set(id,item); }
+  for (const item of after) { const id = String(item.itemId || ""); if (afterById.has(id)) return false; afterById.set(id,item); }
+  for (const source of details.ingredients) {
+    const id = String(source.itemId || ""), old = beforeById.get(id);
+    if (consumed.has(id) || !old || String(old.className) !== String(source.itemClass)
+        || old.quantity !== source.sourceQuantityBefore || old.stackable !== source.stackable
+        || !Number.isInteger(source.consumedQuantity) || source.consumedQuantity < 1
+        || source.consumedQuantity > old.quantity) return false;
+    consumed.set(id, source);
+  }
+  if (!consumed.size) return false;
+  const outputId = String(details.resultItemId), toInventory = details.resultLocation === "INVENTORY";
+  const expected = new Set<string>();
+  for (const old of before) {
+    const id = String(old.itemId), spent = Number(consumed.get(id)?.consumedQuantity || 0);
+    let quantity = Number(old.quantity) - spent;
+    if (toInventory && id === outputId) {
+      if (String(old.className) !== String(details.resultItemClass) || old.stackable !== details.resultStackable) return false;
+      quantity += Number(details.resultQuantity);
+    }
+    const actual = afterById.get(id);
+    if (quantity <= 0) { if (actual) return false; continue; }
+    if (!actual || actual.quantity !== quantity
+        || !sameNativeItemValue(itemValueWithout(old, ["quantity","serializedBundle"]),
+          itemValueWithout(actual, ["quantity","serializedBundle"]))) return false;
+    expected.add(id);
+  }
+  if (toInventory && !beforeById.has(outputId)) {
+    const output = afterById.get(outputId);
+    if (!output || String(output.className) !== String(details.resultItemClass)
+        || output.quantity !== details.resultQuantity || output.stackable !== details.resultStackable) return false;
+    expected.add(outputId);
+  }
+  if ((toInventory && !afterById.has(outputId)) || (!toInventory && afterById.has(outputId))
+      || expected.size !== afterById.size) return false;
+  for (const id of afterById.keys()) if (!expected.has(id)) return false;
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  if (!beforeSlots || !afterSlots) return false;
+  const allowed = new Set<string>([...consumed.keys(), outputId]);
+  const stable = (slots: any[]) => slots.filter((slot: any) => !allowed.has(String(slot.itemId)))
+    .map((slot: any) => ({slot:slot.slot,itemId:slot.itemId,className:slot.className,
+      quantity:slot.quantity,serializedBundle:slot.serializedBundle})).sort((a: any,b: any) => Number(a.slot)-Number(b.slot));
+  return sameNativeItemValue(stable(beforeSlots),stable(afterSlots));
+}
+
+export function isValidNativeAlchemyHeapMutation(previousHeaps: any[], nextHeaps: any[], targetValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+      || accepted.actionType !== "ALCHEMY" || accepted.resultLocation !== details.resultLocation
+      || accepted.resultItemId !== details.resultItemId || accepted.resultItemClass !== details.resultItemClass
+      || accepted.resultQuantity !== details.resultQuantity || accepted.resultStackable !== details.resultStackable
+      || accepted.resultHeapId !== details.resultHeapId) return false;
+  if (details.resultLocation === "INVENTORY") return sameNativeItemValue(previousHeaps,nextHeaps);
+  if (details.resultLocation !== "HEAP" || !Number.isInteger(target) || target < 0) return false;
+  const oldAt = previousHeaps.filter((heap: any) => Number(heap.pos) === target);
+  const newAt = nextHeaps.filter((heap: any) => Number(heap.pos) === target);
+  if (oldAt.length > 1 || newAt.length !== 1 || String(newAt[0].heapId || "") !== String(details.resultHeapId)
+      || String(newAt[0].type) !== "HEAP" || !Array.isArray(newAt[0].items)) return false;
+  const oldHeap = oldAt[0] || null, newHeap = newAt[0];
+  if (oldHeap && (String(oldHeap.heapId || "") !== String(details.resultHeapId) || String(oldHeap.type) !== "HEAP"
+      || oldHeap.seen !== newHeap.seen || oldHeap.haunted !== newHeap.haunted
+      || oldHeap.hidden !== newHeap.hidden || oldHeap.autoExplored !== newHeap.autoExplored || !Array.isArray(oldHeap.items))) return false;
+  if (!oldHeap && previousHeaps.some((heap: any) => String(heap.heapId || "") === String(details.resultHeapId))) return false;
+  for (const old of previousHeaps) {
+    if (oldHeap && String(old.heapId || "") === String(details.resultHeapId)) continue;
+    const found = nextHeaps.filter((heap: any) => String(heap.heapId || "") === String(old.heapId || ""));
+    if (found.length !== 1 || !sameNativeItemValue(old,found[0])) return false;
+  }
+  for (const current of nextHeaps) {
+    if (String(current.heapId || "") === String(details.resultHeapId)) continue;
+    if (previousHeaps.filter((heap: any) => String(heap.heapId || "") === String(current.heapId || "")).length !== 1) return false;
+  }
+  const oldItems: any[] = oldHeap ? oldHeap.items : [];
+  const oldOutput = oldItems.filter((item: any) => String(item.itemId || "") === String(details.resultItemId));
+  const newOutput = newHeap.items.filter((item: any) => String(item.itemId || "") === String(details.resultItemId));
+  if (newOutput.length !== 1) return false;
+  const output = newOutput[0];
+  if (String(output.className || "") !== String(details.resultItemClass) || output.stackable !== details.resultStackable
+      || !Number.isInteger(output.quantity) || output.quantity < 1
+      || typeof output.serializedBundle !== "string" || !output.serializedBundle.includes(String(details.resultItemId))) return false;
+  if (!sameNativeItemValue(oldItems.filter((item: any) => String(item.itemId || "") !== String(details.resultItemId)),
+      newHeap.items.filter((item: any) => String(item.itemId || "") !== String(details.resultItemId)))) return false;
+  if (!oldOutput.length) return output.quantity === Number(details.resultQuantity);
+  return oldOutput.length === 1 && details.resultStackable === true && oldOutput[0].stackable === true
+    && String(oldOutput[0].className || "") === String(details.resultItemClass)
+    && output.quantity === Number(oldOutput[0].quantity) + Number(details.resultQuantity)
+    && sameNativeItemValue(itemValueWithout(oldOutput[0], ["quantity","serializedBundle"]),
+      itemValueWithout(output, ["quantity","serializedBundle"]));
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW", "ALCHEMY"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -1337,6 +1516,15 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       || !same(previous.transitions, next.transitions)
       || !same(previous.visitedPositions, next.visitedPositions)
       || !same(previous.mappedPositions, next.mappedPositions))) return false;
+  if (action === "ALCHEMY" && (!isValidNativeAlchemyInventoryMutation(
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !isValidNativeAlchemyHeapMutation(previous.heaps, next.heaps, target,
+        next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !same(previous.tiles, next.tiles) || !same(previous.traps, next.traps)
+      || !same(previous.plants, next.plants) || !same(previous.blobs, next.blobs)
+      || !same(previous.transitions, next.transitions)
+      || !same(previous.visitedPositions, next.visitedPositions)
+      || !same(previous.mappedPositions, next.mappedPositions))) return false;
   if ((action === "EQUIP" || action === "UNEQUIP") && !isValidNativeEquipmentMutation(
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, action,
       next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
@@ -1344,7 +1532,8 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       next.nativeMutationDetails, acceptedPickupIntentValue,
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
-      && action !== "DROP" && action !== "BUY" && action !== "THROW" && !same(previous.heaps, next.heaps)) return false;
+      && action !== "DROP" && action !== "BUY" && action !== "THROW" && action !== "ALCHEMY"
+      && !same(previous.heaps, next.heaps)) return false;
   if (action === "OPEN_CHEST" || action === "MINE") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
@@ -1852,6 +2041,8 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
       && Number.isInteger(state?.shielding) && state.shielding === expected.shielding
       && typeof state?.combatBundle === "string" && state.combatBundle.length > 0
       && typeof state?.inventoryBundle === "string" && state.inventoryBundle.length > 0
+      && (state?.alchemyEnergy === undefined || (Number.isInteger(state.alchemyEnergy)
+        && state.alchemyEnergy >= 0 && state.alchemyEnergy <= 1000000))
       && Number.isInteger(state?.buffCount) && state.buffCount >= 0 && state.buffCount <= 256;
   } catch (_) { return false; }
 }
@@ -2041,6 +2232,8 @@ export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, autho
     if (Number(reported[key]) !== Number(authoritative[key])) return false;
   }
   if (!hasMatchingNativeHeroEquipmentState(JSON.stringify(reported), authoritative)) return false;
+  if ((reported.alchemyEnergy !== undefined || authoritative.alchemyEnergy !== undefined)
+      && (!Number.isInteger(reported.alchemyEnergy) || reported.alchemyEnergy !== authoritative.alchemyEnergy)) return false;
   if (!Number.isFinite(Number(reported.cooldown)) || Number(reported.cooldown) !== Number(authoritative.cooldown)) return false;
   for (let i = 0; i < Number(authoritative.buffCount); i++) {
     if (reported[`buff_${i}`] !== authoritative[`buff_${i}`]
@@ -3102,7 +3295,17 @@ export class MatchRoom {
                   && acceptedPayload?.resultItemId === mutationDetails.resultItemId
                   && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
                   && acceptedPayload?.sourceQuantityBefore === mutationDetails.sourceQuantityBefore
-                  && acceptedPayload?.stackable === mutationDetails.stackable));
+                  && acceptedPayload?.stackable === mutationDetails.stackable)
+                && (mutationAction !== "ALCHEMY" || mutationDetails != null
+                  && sameNativeItemValue(acceptedPayload?.ingredients, mutationDetails.ingredients)
+                  && acceptedPayload?.alchemyEnergyBefore === mutationDetails.alchemyEnergyBefore
+                  && acceptedPayload?.alchemyEnergyAfter === mutationDetails.alchemyEnergyAfter
+                  && acceptedPayload?.resultItemId === mutationDetails.resultItemId
+                  && acceptedPayload?.resultItemClass === mutationDetails.resultItemClass
+                  && acceptedPayload?.resultQuantity === mutationDetails.resultQuantity
+                  && acceptedPayload?.resultStackable === mutationDetails.resultStackable
+                  && acceptedPayload?.resultLocation === mutationDetails.resultLocation
+                  && acceptedPayload?.resultHeapId === mutationDetails.resultHeapId));
           const previousMutationHero: any = (() => {
             try { return JSON.parse(String(trustedHeroRow?.value || "")); } catch (_) { return null; }
           })();
@@ -3162,7 +3365,7 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW" && mutationAction !== "ALCHEMY");
           if (merged == null) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
@@ -3184,10 +3387,11 @@ export class MatchRoom {
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
           if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
               || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP"
-              || mutationAction === "BUY" || mutationAction === "USE_ITEM" || mutationAction === "THROW") {
+              || mutationAction === "BUY" || mutationAction === "USE_ITEM" || mutationAction === "THROW" || mutationAction === "ALCHEMY") {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
+            if (mutationAction === "ALCHEMY") mergedHero.alchemyEnergy = reportedHero.alchemyEnergy;
             if (typeof reportedHero.quickslotsJson === "string" && parseNativeQuickslotIndex(reportedHero) != null) {
               mergedHero.quickslotsJson = reportedHero.quickslotsJson;
             }
@@ -4869,6 +5073,29 @@ export class MatchRoom {
               actionResultPayload = { playerId: session.playerId };
               actionValid = true;
               actionCost = 1.0;
+            }
+          } else if (actionStr === "ALCHEMY") {
+            const data = payload.data || {};
+            const requestId = String(msg.requestId || "");
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeAlchemyIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:"ALCHEMY",
+                from:Number(playerRow.pos), targetPos:Number(playerRow.pos), depth:this.currentDepth,
+                ingredients:data.ingredients, alchemyEnergyBefore:data.alchemyEnergyBefore, alchemyEnergyAfter:data.alchemyEnergyAfter,
+                resultItemId:String(data.resultItemId), resultItemClass:String(data.resultItemClass),
+                resultQuantity:Number(data.resultQuantity), resultStackable:data.resultStackable,
+                resultLocation:String(data.resultLocation), resultHeapId:String(data.resultHeapId || "") };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
             }
           } else if (actionStr === "THROW") {
             const data = payload.data || {};

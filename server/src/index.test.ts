@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
+  isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
@@ -1713,6 +1714,63 @@ describe("Native equipment, quickslot, and chest transactions", () => {
 
 
 
+
+
+describe("Native alchemy transaction validation", () => {
+  const sourceClass="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const outputClass="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+  const row=(id:string,cls=sourceClass,quantity=1,stackable=false)=>({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
+    serializedBundle:"alchemy-item:"+id+":q="+quantity
+  });
+  const hero=(items:any[],energy=5,extra:Record<string,any>={})=>({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,alchemyEnergy:energy,inventoryBundle:"inventory-before",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",buffCount:0,...extra
+  });
+  const heapItem=(id:string,cls=outputClass,quantity=1,stackable=false)=>({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,
+    serializedBundle:"alchemy-item:"+id+":q="+quantity
+  });
+  const heap=(id:string,pos:number,items:any[])=>({
+    heapId:id,pos,type:"HEAP",seen:false,haunted:false,hidden:false,autoExplored:false,items
+  });
+  const details=(extra:Record<string,any>={})=>({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:0,
+    alchemyEnergyBefore:5,alchemyEnergyAfter:3,
+    ingredients:[{itemId:"alchemy-source-001",itemClass:sourceClass,sourceQuantityBefore:2,consumedQuantity:1,stackable:false}],
+    resultItemId:"alchemy-result-001",resultItemClass:outputClass,resultQuantity:1,resultStackable:false,
+    resultLocation:"INVENTORY",resultHeapId:"",...extra
+  });
+  it("checks ownership, depth and non-increasing energy",()=>{
+    const before=JSON.stringify(hero([row("alchemy-source-001",sourceClass,2)]));
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeAlchemyIntent(level,details(),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeAlchemyIntent(level,details({ingredients:[{itemId:"alchemy-forged-001",itemClass:sourceClass,sourceQuantityBefore:2,consumedQuantity:1,stackable:false}]}),
+      4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeAlchemyIntent(level,details({alchemyEnergyAfter:6}),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+  });
+  it("requires the exact ingredient decrement and one inventory output",()=>{
+    const before=JSON.stringify(hero([row("alchemy-source-001",sourceClass,2)]));
+    const after=JSON.stringify(hero([row("alchemy-source-001",sourceClass,1),row("alchemy-result-001",outputClass)],3,
+      {inventoryBundle:"inventory-after"}));
+    const data=details(),accepted={...data,actionType:"ALCHEMY"};
+    expect(isValidNativeAlchemyInventoryMutation(before,after,data,accepted)).toBe(true);
+    expect(isValidNativeAlchemyInventoryMutation(before,JSON.stringify(hero([
+      row("alchemy-source-001",sourceClass,1),row("alchemy-result-001",outputClass),row("alchemy-forged-001")
+    ],3,{inventoryBundle:"inventory-after"})),data,accepted)).toBe(false);
+    expect(isValidNativeAlchemyInventoryMutation(before,JSON.stringify(hero([
+      row("alchemy-source-001",sourceClass,0),row("alchemy-result-001",outputClass)
+    ],3,{inventoryBundle:"inventory-after"})),data,accepted)).toBe(false);
+  });
+  it("allows output to land only on the exact player heap",()=>{
+    const before=JSON.stringify(hero([row("alchemy-source-001",sourceClass,2)]));
+    const after=JSON.stringify(hero([row("alchemy-source-001",sourceClass,1)],3,{inventoryBundle:"inventory-after"}));
+    const data=details({resultLocation:"HEAP",resultHeapId:"alchemy-floor-001"}),accepted={...data,actionType:"ALCHEMY"};
+    expect(isValidNativeAlchemyInventoryMutation(before,after,data,accepted)).toBe(true);
+    expect(isValidNativeAlchemyHeapMutation([], [heap("alchemy-floor-001",9,[heapItem("alchemy-result-001")])],9,data,accepted)).toBe(true);
+    expect(isValidNativeAlchemyHeapMutation([], [heap("other-floor-001",9,[heapItem("alchemy-result-001")])],9,data,accepted)).toBe(false);
+  });
+});
 
 describe("Native missile throw transaction validation", () => {
   const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.Dart";
