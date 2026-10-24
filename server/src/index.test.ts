@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1710,6 +1710,48 @@ describe("Native equipment, quickslot, and chest transactions", () => {
   });
 });
 
+
+
+describe("Native item consumption transaction validation", () => {
+  const potion = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const food = "com.shatteredpixel.shatteredpixeldungeon.items.food.Ration";
+  const row = (id:string, cls=potion, quantity=1, stackable=false) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
+    serializedBundle:"native-item-bundle:"+id+":quantity="+quantity
+  });
+  const hero = (items:any[], extra:Record<string,any>={}) => ({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
+  });
+  const intent = (id:string, cls=potion, action="DRINK", quantity=1, stackable=false) => ({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:1,
+    itemId:id,itemClass:cls,itemAction:action,expectedQuantity:1,sourceQuantityBefore:quantity,stackable
+  });
+  it("accepts only one owned DRINK/EAT intent at the authenticated hero's cell",()=>{
+    const before=JSON.stringify(hero([row("native-potion-001",potion)]));
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeUseItemIntent(level,intent("native-potion-001"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-forged-001"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("native-potion-001",potion,"EAT"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("native-food-001",food,"EAT"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+  });
+  it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
+    const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
+    const after=JSON.stringify(hero([row("native-other-001",food)],{inventoryBundle:"inventory-after"}));
+    const d=intent("native-potion-001"),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,before,d,accepted)).toBe(false);
+    expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-other-001",food)],{gold:1,inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
+    expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-other-001",food),row("native-forged-001")],{inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
+  });
+  it("accepts a one-unit stack decrement only when the same stable source ID remains",()=>{
+    const before=JSON.stringify(hero([row("native-food-stack-001",food,4,true)]));
+    const after=JSON.stringify(hero([row("native-food-stack-001",food,3,true)],{inventoryBundle:"inventory-after"}));
+    const d=intent("native-food-stack-001",food,"EAT",4,true),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-food-stack-001",food,2,true)],{inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
+  });
+});
 
 describe("Native shop purchase transaction validation", () => {
   const potion = "com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing";

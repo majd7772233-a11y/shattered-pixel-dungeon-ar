@@ -384,6 +384,74 @@ export function isValidNativeChestHeapMutation(previousHeaps: any, nextHeaps: an
 }
 
 
+
+/** A consume intent must identify one item already owned by the authenticated hero. */
+export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
+  playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
+  const data: any = dataValue, depth = Number(depthValue), playerId = String(playerIdValue || "");
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
+      || typeof heroStateValue !== "string") return false;
+  const pos = Number(player.pos), id = String(data.itemId || ""), cls = String(data.itemClass || "");
+  const itemAction = String(data.itemAction || "");
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth
+      || data.branch !== 0 || id.length < 8 || id.length > 80 || cls.length < 1 || cls.length > 256
+      || !["DRINK", "EAT"].includes(itemAction) || data.expectedQuantity !== 1
+      || !Number.isInteger(data.sourceQuantityBefore) || data.sourceQuantityBefore < 1 || data.sourceQuantityBefore > 100000
+      || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
+      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
+  if (itemAction === "DRINK" && !cls.includes(".items.potions.")) return false;
+  if (itemAction === "EAT" && !cls.includes(".items.food.")) return false;
+  let hero: any;
+  try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
+  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  const inventory = parseNativeInventoryIndex(hero);
+  if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
+  const source = inventory.filter((item: any) => String(item.itemId) === id);
+  return source.length === 1 && String(source[0].className) === cls
+    && Number(source[0].quantity) === Number(data.sourceQuantityBefore)
+    && source[0].stackable === data.stackable;
+}
+
+/** A validated consume removes one source unit and cannot rewrite unrelated inventory or quickslots. */
+export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); } catch (_) { return false; }
+  const details: any = detailsValue, accepted: any = acceptedValue;
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  if (!details || !accepted || accepted.actionType !== "USE_ITEM" || !before || !after
+      || accepted.itemId !== details.itemId || accepted.itemClass !== details.itemClass
+      || accepted.itemAction !== details.itemAction || accepted.expectedQuantity !== details.expectedQuantity
+      || accepted.sourceQuantityBefore !== details.sourceQuantityBefore || accepted.stackable !== details.stackable
+      || !["DRINK", "EAT"].includes(String(details.itemAction)) || details.expectedQuantity !== 1
+      || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
+      || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle) return false;
+  const id = String(details.itemId || ""), cls = String(details.itemClass || "");
+  const oldSource = before.filter((item: any) => String(item.itemId) === id);
+  const newSource = after.filter((item: any) => String(item.itemId) === id);
+  if (oldSource.length !== 1 || String(oldSource[0].className) !== cls
+      || oldSource[0].quantity !== Number(details.sourceQuantityBefore) || oldSource[0].stackable !== details.stackable) return false;
+  if (oldSource[0].quantity === 1) {
+    if (newSource.length !== 0) return false;
+  } else {
+    if (newSource.length !== 1 || newSource[0].quantity !== oldSource[0].quantity - 1
+        || !sameNativeItemValue(itemValueWithout(oldSource[0], ["quantity", "serializedBundle", "cursedKnown"]),
+          itemValueWithout(newSource[0], ["quantity", "serializedBundle", "cursedKnown"]))
+        || (oldSource[0].cursedKnown && !newSource[0].cursedKnown)) return false;
+  }
+  if (!sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== id),
+      after.filter((item: any) => String(item.itemId) !== id))) return false;
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  if (!beforeSlots || !afterSlots) return false;
+  const unrelatedSlots = (slots: any[]) => slots.filter((slot: any) => String(slot.itemId) !== id)
+    .map((slot: any) => ({slot:slot.slot,itemId:slot.itemId,className:slot.className,
+      quantity:slot.quantity,serializedBundle:slot.serializedBundle}))
+    .sort((a: any,b: any) => Number(a.slot)-Number(b.slot));
+  return sameNativeItemValue(unrelatedSlots(beforeSlots), unrelatedSlots(afterSlots));
+}
+
 /** The buy quote must match native pricing on the exact single-item FOR_SALE heap. */
 export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -966,7 +1034,7 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -1117,6 +1185,9 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
       || !isValidNativeBuyHeapMutation(previous.heaps, next.heaps, target,
         next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
+  if (action === "USE_ITEM" && !isValidNativeUseItemMutation(
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson,
+      next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
   if ((action === "EQUIP" || action === "UNEQUIP") && !isValidNativeEquipmentMutation(
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, action,
       next.nativeMutationDetails, acceptedPickupIntentValue)) return false;
@@ -2867,6 +2938,13 @@ export class MatchRoom {
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
                   && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
                   && acceptedPayload?.sourceQuantityBefore === mutationDetails.sourceQuantityBefore
+                  && acceptedPayload?.stackable === mutationDetails.stackable)
+                && (mutationAction !== "USE_ITEM" || mutationDetails != null
+                  && acceptedPayload?.itemId === mutationDetails.itemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.itemAction === mutationDetails.itemAction
+                  && acceptedPayload?.expectedQuantity === mutationDetails.expectedQuantity
+                  && acceptedPayload?.sourceQuantityBefore === mutationDetails.sourceQuantityBefore
                   && acceptedPayload?.stackable === mutationDetails.stackable));
           const previousMutationHero: any = (() => {
             try { return JSON.parse(String(trustedHeroRow?.value || "")); } catch (_) { return null; }
@@ -2878,19 +2956,35 @@ export class MatchRoom {
           const pickupDewdrop = mutationAction === "PICKUP"
             && String(mutationDetails?.itemClass || "").endsWith(".Dewdrop");
           const maxDewEffect = pickupDewdrop ? Math.round(Number(playerRow?.ht) * 0.05) : 0;
+          const useItemDetails: any = mutationAction === "USE_ITEM" ? mutationDetails : null;
+          const useItemHealing = !!useItemDetails && useItemDetails.itemAction === "DRINK"
+            && String(useItemDetails.itemClass || "").endsWith(".PotionOfHealing");
+          const useItemMight = !!useItemDetails && useItemDetails.itemAction === "DRINK"
+            && String(useItemDetails.itemClass || "").endsWith(".PotionOfMight");
           const heroHpValid = mutationAction === "MOVE" || mutationAction === "PICKUP"
             ? Number.isInteger(reportedHero?.hp) && (reportedHero.hp <= Number(playerRow?.hp)
               || (pickupDewdrop && reportedHero.hp <= Number(playerRow?.hp) + maxDewEffect
                 && reportedHero.hp <= Number(reportedHero.ht))
               || (mutationAction === "MOVE" && consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
-            : Number(reportedHero?.hp) === Number(playerRow?.hp);
+            : mutationAction === "USE_ITEM" && useItemHealing
+              ? Number.isInteger(reportedHero?.hp) && reportedHero.hp >= Number(playerRow?.hp)
+                && reportedHero.hp <= Number(reportedHero.ht)
+              : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
             && Number(reportedHero.pos) === mutationExpectedPos && heroHpValid
-            && Number(reportedHero.ht) === Number(playerRow.ht)
-            && ((mutationAction !== "MOVE" && mutationAction !== "PICKUP") || !!previousMutationHero
+            && (Number(reportedHero.ht) === Number(playerRow.ht)
+              || (mutationAction === "USE_ITEM" && useItemMight
+                && Number.isInteger(reportedHero.ht) && reportedHero.ht > Number(playerRow.ht)
+                && reportedHero.ht <= Number(playerRow.ht) + 10))
+            && ((mutationAction === "MOVE" || mutationAction === "PICKUP") ? !!previousMutationHero
               && (reportedHero.shielding <= Number(previousMutationHero.shielding)
                 || (mutationAction === "MOVE" && consumedNativeWell)
-                || (pickupDewdrop && reportedHero.shielding <= Number(previousMutationHero.shielding) + maxDewEffect)))
+                || (pickupDewdrop && reportedHero.shielding <= Number(previousMutationHero.shielding) + maxDewEffect))
+              : mutationAction === "USE_ITEM" && useItemDetails
+                ? Number.isInteger(reportedHero.shielding) && reportedHero.shielding >= 0
+                  && reportedHero.shielding <= Number(previousMutationHero?.shielding || 0)
+                    + (String(useItemDetails.itemClass || "").endsWith(".PotionOfShielding") ? 1000 : 0)
+                : !!previousMutationHero && reportedHero.shielding === Number(previousMutationHero.shielding))
             && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
               hp: Number(reportedHero.hp), ht: Number(reportedHero.ht), pos: mutationExpectedPos,
               shielding: Number(reportedHero.shielding)
@@ -2911,7 +3005,7 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "USE_ITEM");
           if (merged == null) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
@@ -2933,7 +3027,7 @@ export class MatchRoom {
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
           if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
               || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP"
-              || mutationAction === "BUY") {
+              || mutationAction === "BUY" || mutationAction === "USE_ITEM") {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
@@ -4618,6 +4712,28 @@ export class MatchRoom {
               actionResultPayload = { playerId: session.playerId };
               actionValid = true;
               actionCost = 1.0;
+            }
+          } else if (actionStr === "USE_ITEM") {
+            const data = payload.data || {};
+            const requestId = String(msg.requestId || "");
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeUseItemIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = { playerId:session.playerId, actionType:"USE_ITEM", from:Number(playerRow.pos),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, itemId:String(data.itemId),
+                itemClass:String(data.itemClass), itemAction:String(data.itemAction),
+                expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore),
+                stackable:data.stackable };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
             }
           } else if (actionStr === "PICKUP") {
             const data = payload.data || {};
