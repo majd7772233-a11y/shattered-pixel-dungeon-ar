@@ -120,9 +120,9 @@ public abstract class EquipableItem extends Item {
             float cooldownBefore, String itemId, String itemClass, boolean equipped) {
         if (hero == null || heroStateBefore == null || itemId == null || itemClass == null || Dungeon.level == null) return;
         com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-        String details = "{\\\"itemId\\\":" + json.toJson(itemId)
-                + ",\\\"itemClass\\\":" + json.toJson(itemClass)
-                + ",\\\"expectedEquipped\\\":" + equipped + "}";
+        String details = "{\"itemId\":" + json.toJson(itemId)
+                + ",\"itemClass\":" + json.toJson(itemClass)
+                + ",\"expectedEquipped\":" + equipped + "}";
         hero.queueNativeWorldMutation(action, hero.pos, hero.pos, cooldownBefore, heroStateBefore, details);
         hero.publishPendingNativeWorldMutation();
     }

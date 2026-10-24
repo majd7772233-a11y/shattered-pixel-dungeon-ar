@@ -4574,23 +4574,6 @@ export class MatchRoom {
               actionCost = Number(data.engineActionCost);
             }
           }
-            const existingClaim = this.sql.exec(`SELECT claimed_by FROM claimed_items WHERE item_pos = ? AND depth = ?`, itemPos, this.currentDepth).toArray();
-            if (existingClaim.length > 0) {
-              ws.send(JSON.stringify({
-                protocolVersion: "1.0.0",
-                messageType: "ERROR",
-                requestId: msg.requestId,
-                sequence: this.currentSequence,
-                payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos })
-              }));
-              return;
-            }
-            this.sql.exec(`INSERT INTO claimed_items (item_pos, depth, claimed_by) VALUES (?, ?, ?)`, itemPos, this.currentDepth, session.playerId);
-            eventType = "CHEST_OPENED";
-            actionResultPayload = { itemPos, claimedBy: session.playerId };
-            actionValid = true;
-            actionCost = 1.0;
-          }
           if (actionValid && typeof payload.heroStateJson === "string"
               && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000) {
             // Movement/WAIT advances native cooldowns and buffs. Refresh only from a well-formed

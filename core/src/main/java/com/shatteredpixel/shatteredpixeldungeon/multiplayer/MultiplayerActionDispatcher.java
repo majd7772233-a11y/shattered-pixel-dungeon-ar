@@ -66,8 +66,8 @@ public class MultiplayerActionDispatcher {
                     return;
                 }
                 com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
-                String chestDetails = "{\\\"heapId\\\":" + json.toJson(chest.multiplayerHeapId())
-                        + ",\\\"heapType\\\":" + json.toJson(chest.type.name()) + "}";
+                String chestDetails = "{\"heapId\":" + json.toJson(chest.multiplayerHeapId())
+                        + ",\"heapType\":" + json.toJson(chest.type.name()) + "}";
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore, chestDetails);
             } else {
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore);

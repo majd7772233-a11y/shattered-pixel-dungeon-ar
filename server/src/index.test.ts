@@ -1342,8 +1342,15 @@ describe('Authoritative native movement and floor transition validation', () => 
     expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
     expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 11 }, level, 4, 9)).toBe(false);
     level.tiles[10].terrain = 1;
-    level.heaps.push({ pos: 10, type: "LOCKED_CHEST" });
-    expect(isValidNativeWorldActionIntent("OPEN_CHEST", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
+    level.heaps.push({ heapId: "stable-lock-chest-001", pos: 10, type: "LOCKED_CHEST", items: [] });
+    expect(isValidNativeWorldActionIntent("OPEN_CHEST", {
+      depth: 4, from: 9, targetPos: 10, heapId: "stable-lock-chest-001",
+      heapType: "LOCKED_CHEST", engineActionCost: 1
+    }, level, 4, 9)).toBe(true);
+    expect(isValidNativeWorldActionIntent("OPEN_CHEST", {
+      depth: 4, from: 9, targetPos: 10, heapId: "different-chest-001",
+      heapType: "LOCKED_CHEST", engineActionCost: 1
+    }, level, 4, 9)).toBe(false);
     level.heaps = [];
     level.mobs.push({ pos: 10, hp: 4, entityId: "stable-world-npc-0001" });
     expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
