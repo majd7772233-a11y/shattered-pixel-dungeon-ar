@@ -2047,6 +2047,15 @@ export class MatchRoom {
         claimed_by TEXT,
         claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS claimed_item_instances (
+        depth INTEGER NOT NULL,
+        heap_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        claimed_by TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (depth, heap_id, item_id)
+      );
       CREATE TABLE IF NOT EXISTS level_transitions (
         transition_id TEXT PRIMARY KEY,
         depth INTEGER,
@@ -2484,6 +2493,8 @@ export class MatchRoom {
         let verifiedMutationAction = "";
         let verifiedMutationFrom = -1;
         let verifiedMutationTargetPos = -1;
+        let verifiedMutationDetails: any = null;
+        let verifiedMutationRequestId = "";
         if (isNativeWorldMutation) {
           const mutationAction = String(level.nativeMutationAction || "");
           const mutationRequestId = String(level.nativeMutationRequestId || "");
@@ -2498,6 +2509,9 @@ export class MatchRoom {
             : mutationAction === "PICKUP" ? "ITEM_PICKUP_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
           const acceptedPayload = accepted?.action;
           const mutationDetails = level.nativeMutationDetails || null;
+          const pickupClaim = mutationAction === "PICKUP" && mutationDetails
+            ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
+                depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
           const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
           let reportedHero: any = null;
@@ -2509,7 +2523,9 @@ export class MatchRoom {
                 && acceptedPayload?.pos === mutationTarget
               : acceptedPayload?.playerId === session.playerId && acceptedPayload?.actionType === mutationAction
                 && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget
-                && (mutationAction !== "PICKUP" || mutationDetails != null
+                && (mutationAction !== "PICKUP" || mutationDetails != null && pickupClaim
+                  && String(pickupClaim.claimed_by) === session.playerId
+                  && String(pickupClaim.request_id) === mutationRequestId
                   && acceptedPayload?.heapId === mutationDetails.heapId
                   && acceptedPayload?.itemId === mutationDetails.itemId
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
@@ -2553,7 +2569,10 @@ export class MatchRoom {
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
               || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
-            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
+              "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+            ws.send((JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
             return;
           }
@@ -2562,7 +2581,10 @@ export class MatchRoom {
             shielding: Number(reportedHero.shielding)
           }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP");
           if (merged == null) {
-            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            if (mutationAction === "PICKUP" && mutationDetails) this.sql.exec(
+              "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+            ws.send((JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
             return;
           }
@@ -2583,6 +2605,8 @@ export class MatchRoom {
           verifiedMutationAction = mutationAction;
           verifiedMutationFrom = Number(mutationFrom);
           verifiedMutationTargetPos = Number(mutationTarget);
+          verifiedMutationDetails = mutationDetails;
+          verifiedMutationRequestId = mutationRequestId;
           const submittedMobs = Array.isArray(level.mobs) ? level.mobs : [];
           mobs = Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs.map((previousMob: any) => {
             if (mutationAction !== "INTERACT" || Number(previousMob?.pos) !== Number(mutationTarget)) return previousMob;
@@ -2680,6 +2704,10 @@ export class MatchRoom {
             this.worldTime + initialCooldown, nativeState);
         }
         if (isNativeWorldMutation) {
+          if (verifiedMutationAction === "PICKUP" && verifiedMutationDetails) this.sql.exec(
+            "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+            depth, String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
+            session.playerId, verifiedMutationRequestId);
           this.currentSequence++;
           const mutationEvent = { action: verifiedMutationAction || "WORLD",
             playerId: session.playerId, depth, from: verifiedMutationFrom,
@@ -4256,9 +4284,25 @@ export class MatchRoom {
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
             const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const transitionPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
-            if (!transitionPending && hasCompleteNativeLevelSnapshot(levelSnapshot)
+            const pickupRequestId = String(msg.requestId || "");
+            this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
+            const existingClaim = this.sql.exec(
+              "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
+              this.currentDepth, String(data.heapId || ""), String(data.itemId || "")).toArray()[0];
+            if (existingClaim && (String(existingClaim.claimed_by) !== session.playerId
+                || String(existingClaim.request_id) !== pickupRequestId)) {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+                sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
+              return;
+            }
+            if (!transitionPending && pickupRequestId.length > 0 && pickupRequestId.length <= 128
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
                 && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow)
                 && itemPos === Number(targetPos)) {
+              if (!existingClaim) this.sql.exec(
+                "INSERT INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
+                this.currentDepth, String(data.heapId), String(data.itemId), session.playerId, pickupRequestId);
               eventType = "ITEM_PICKUP_INTENT_ACCEPTED";
               actionResultPayload = {
                 playerId: session.playerId, actionType: "PICKUP", from: itemPos, targetPos: itemPos,
