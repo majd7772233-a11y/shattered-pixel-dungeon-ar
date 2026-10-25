@@ -419,9 +419,9 @@ function nativeUseItemCombatBundleMatches(previousHero: any, nextHero: any, item
     for (const key of keys) delete copy[key];
     return copy;
   };
-  // Hero.storeInBundle writes Belongings directly into the same Bundle. These exact keys
-  // can change when the source consumable leaves the backpack; all combat/talent fields cannot.
-  const inventoryKeys = ["items"];
+  // Hero.storeInBundle writes the backpack and native Buff collection into its root bundle.
+  // Both are independently validated below from exact item rows and flattened buff snapshots.
+  const inventoryKeys = ["items", "buffs"];
   const strengthPotion = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
   if (strengthPotion) {
     if (!Number.isInteger(previous.STR) || !Number.isInteger(next.STR) || next.STR !== previous.STR + 1) return false;
@@ -446,6 +446,12 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste") {
     allowed = new Set([base + "Haste"]);
   } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
+    allowed = new Set([base + "Invisibility"]);
+  } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation") {
+    allowed = new Set([base + "Levitation"]);
+  } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength") {
     allowed = new Set();
   } else if (action === "DRINK"
@@ -461,9 +467,15 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       newRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})))) return false;
   }
 
-  if (action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste") {
-    const name = base + "Haste", oldRows = before.get(name) || [], newRows = after.get(name) || [];
-    if (newRows.length !== 1) return false;
+  const timedPotionBuff: Record<string, string> = {
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste": base + "Haste",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility": base + "Invisibility",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": base + "Levitation"
+  };
+  const timedBuffName = timedPotionBuff[itemClass];
+  if (action === "DRINK" && timedBuffName) {
+    const oldRows = before.get(timedBuffName) || [], newRows = after.get(timedBuffName) || [];
+    if (oldRows.length > 1 || newRows.length !== 1) return false;
     const nextRow = newRows[0], nextData = nextRow.data;
     const allowedFields = new Set(["__className", "time", "id", "mnemonic_extended"]);
     if (Object.keys(nextData).some((key: string) => !allowedFields.has(key))
@@ -481,7 +493,7 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
         return result;
       };
       if (!sameNativeItemValue(stripTime(oldData), stripTime(nextData))) return false;
-    } else if (oldRows.length !== 0) return false;
+    }
   }
 
   if (action === "EAT") {
@@ -572,6 +584,8 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   const supportedDrink = itemAction === "DRINK" && [
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
   ].includes(cls);
