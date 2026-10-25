@@ -419,12 +419,15 @@ function nativeUseItemCombatBundleMatches(previousHero: any, nextHero: any, item
     for (const key of keys) delete copy[key];
     return copy;
   };
+  // Hero.storeInBundle writes Belongings directly into the same Bundle. These exact keys
+  // can change when the source consumable leaves the backpack; all combat/talent fields cannot.
+  const inventoryKeys = ["items", "weapon", "armor", "artifact", "misc", "ring", "second_wep"];
   const strengthPotion = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
   if (strengthPotion) {
     if (!Number.isInteger(previous.STR) || !Number.isInteger(next.STR) || next.STR !== previous.STR + 1) return false;
-    return sameNativeItemValue(strip(previous, ["STR", "belongings"]), strip(next, ["STR", "belongings"]));
+    return sameNativeItemValue(strip(previous, [...inventoryKeys, "STR"]), strip(next, [...inventoryKeys, "STR"]));
   }
-  return sameNativeItemValue(strip(previous, ["belongings"]), strip(next, ["belongings"]));
+  return sameNativeItemValue(strip(previous, inventoryKeys), strip(next, inventoryKeys));
 }
 
 /** Allows only the exact native buff classes that the whitelisted consumable can touch. */
