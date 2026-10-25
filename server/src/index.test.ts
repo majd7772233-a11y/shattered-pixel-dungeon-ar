@@ -1921,13 +1921,14 @@ describe("Native missile throw transaction validation", () => {
 
 describe("Native item consumption transaction validation", () => {
   const potion = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
-  const food = "com.shatteredpixel.shatteredpixeldungeon.items.food.Ration";
+  const food = "com.shatteredpixel.shatteredpixeldungeon.items.food.Food";
   const row = (id:string, cls=potion, quantity=1, stackable=false) => ({
     itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
     serializedBundle:"native-item-bundle:"+id+":quantity="+quantity
   });
   const hero = (items:any[], extra:Record<string,any>={}) => ({
     hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
+    combatBundle:JSON.stringify({STR:10,belongings:"inventory-before"}),buffCount:0,
     inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
   });
   const intent = (id:string, cls=potion, action="DRINK", quantity=1, stackable=false) => ({
@@ -1941,6 +1942,15 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemIntent(level,intent("native-forged-001"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
     expect(isValidNativeUseItemIntent(level,intent("native-potion-001",potion,"EAT"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
     expect(isValidNativeUseItemIntent(level,intent("native-food-001",food,"EAT"),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("native-potion-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste","DRINK"),4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    const foodBefore=JSON.stringify(hero([row("native-food-001",food,1,true)]));
+    expect(isValidNativeUseItemIntent(level,intent("native-food-001",food,"EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},foodBefore)).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-food-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation","EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},foodBefore)).toBe(false);
   });
   it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
     const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
@@ -1950,6 +1960,51 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemMutation(before,before,d,accepted)).toBe(false);
     expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-other-001",food)],{gold:1,inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
     expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-other-001",food),row("native-forged-001")],{inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
+  });
+
+  it("accepts only the native Hunger delta for plain Food and rejects injected buffs",()=>{
+    const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+    const serialized=(className:string,fields:Record<string,any>={})=>JSON.stringify({buff:{__className:className,...fields}});
+    const before=JSON.stringify(hero([row("native-food-plain-001",food,1,true)],{
+      buffCount:1,buff_0:serialized(hunger,{level:55,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      buffCount:1,buff_0:serialized(hunger,{level:25,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const d=intent("native-food-plain-001",food,"EAT",1,true), accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      buffCount:2,buff_0:serialized(hunger,{level:25,partialDamage:0.25}),buffCooldown_0:0,
+      buff_1:serialized("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",{}),buffCooldown_1:5
+    }));
+    expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
+  });
+  it("validates PotionOfHealing's native Healing buff and rejects unrelated combat bundle edits",()=>{
+    const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
+    const before=JSON.stringify(hero([row("native-healing-001",potion)]));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:1,
+      buff_0:JSON.stringify({buff:{__className:healing,left:22,percent:0.25,flat:0,healing_limited:false}}),
+      buffCooldown_0:0
+    }));
+    const d=intent("native-healing-001"),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      combatBundle:JSON.stringify({STR:10,belongings:"inventory-after",attackSkill:999})
+    }));
+    expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
+  });
+  it("persists PotionOfStrength only as an exact native STR increase of one",()=>{
+    const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
+    const before=JSON.stringify(hero([row("native-strength-001",strength)]));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      combatBundle:JSON.stringify({STR:11,belongings:"inventory-after"})
+    }));
+    const d=intent("native-strength-001",strength),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      combatBundle:JSON.stringify({STR:12,belongings:"inventory-after"})
+    }));
+    expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
   it("accepts a one-unit stack decrement only when the same stable source ID remains",()=>{
     const before=JSON.stringify(hero([row("native-food-stack-001",food,4,true)]));
