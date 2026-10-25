@@ -45,40 +45,40 @@ public final class NativeItemActionPublisher {
         return false;
     }
 
-    public static void execute(Hero hero, Item item, String action, Runnable nativeAction) {
-        if (nativeAction == null) return;
+    public static boolean execute(Hero hero, Item item, String action, Runnable nativeAction) {
+        if (nativeAction == null) return false;
         MultiplayerManager manager = MultiplayerManager.getInstance();
         boolean multiplayerHero = hero != null && hero == Dungeon.hero && manager.isMultiplayerActive();
         if (!multiplayerHero) {
             nativeAction.run();
-            return;
+            return true;
         }
         if (Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
             hero.rejectUnsupportedMultiplayerWorldAction();
-            return;
+            return false;
         }
 
         // Drop and missile throws already publish from Item's real native callbacks.
         // Do not wrap them as USE_ITEM or allow other throwable classes to consume locally.
         if ("DROP".equals(action)) {
             nativeAction.run();
-            return;
+            return true;
         }
         if ("THROW".equals(action)) {
             if (!(item instanceof MissileWeapon)) {
                 hero.rejectUnsupportedMultiplayerWorldAction();
-                return;
+                return false;
             }
             nativeAction.run();
-            return;
+            return true;
         }
 
         boolean consumeAction = "DRINK".equals(action) || "EAT".equals(action);
         if (!consumeAction || !supportedSynchronousConsumption(hero, item, action)) {
             hero.rejectUnsupportedMultiplayerWorldAction();
-            return;
+            return false;
         }
-        if (!hero.belongings.contains(item)) return;
+        if (!hero.belongings.contains(item)) return false;
 
         String itemId = item.multiplayerItemId();
         String itemClass = item.getClass().getName();
@@ -92,7 +92,7 @@ public final class NativeItemActionPublisher {
         if (heroStateBefore == null || Dungeon.level == null || Dungeon.depth != depthBefore
                 || Dungeon.branch != 0 || hero.pos != posBefore) {
             if (Dungeon.level != null) manager.requestResync(manager.getLastSequence());
-            return;
+            return false;
         }
 
         int quantityAfter = 0;
@@ -102,7 +102,7 @@ public final class NativeItemActionPublisher {
                 break;
             }
         }
-        if (quantityBefore - quantityAfter != 1) return;
+        if (quantityBefore - quantityAfter != 1) return true;
 
         Json json = new Json();
         String details = "{\"itemId\":" + json.toJson(itemId)
@@ -113,5 +113,6 @@ public final class NativeItemActionPublisher {
                 + ",\"stackable\":" + item.stackable + "}";
         hero.queueNativeWorldMutation("USE_ITEM", posBefore, posBefore, cooldownBefore, heroStateBefore, details);
         hero.publishPendingNativeWorldMutation();
+        return true;
     }
 }
