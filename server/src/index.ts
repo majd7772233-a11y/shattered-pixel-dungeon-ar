@@ -595,6 +595,11 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
+    let combat: any;
+    try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }
+    if (String(combat?.subClass || "") === "ASSASSIN") return false;
+  }
   const inventory = parseNativeInventoryIndex(hero);
   if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
   const source = inventory.filter((item: any) => String(item.itemId) === id);
