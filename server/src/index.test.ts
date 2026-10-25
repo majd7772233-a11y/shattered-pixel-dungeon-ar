@@ -1845,6 +1845,17 @@ describe("Native alchemy transaction validation", () => {
       4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
     expect(isValidNativeAlchemyIntent(level,details({alchemyEnergyAfter:6}),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
   });
+  it("rejects unsupported branches, locked floors, and duplicate source identities",()=>{
+    const before=JSON.stringify(hero([row("alchemy-source-001",sourceClass,2)]));
+    const data=details();
+    expect(isValidNativeAlchemyIntent({depth:4,branch:1,locked:false,heaps:[]},data,4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeAlchemyIntent({depth:4,branch:0,locked:true,heaps:[]},data,4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeAlchemyIntent({depth:4,branch:0,locked:false,heaps:[]},
+      details({ingredients:[...data.ingredients,...data.ingredients]}),4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+  });
   it("requires the exact ingredient decrement and one inventory output",()=>{
     const before=JSON.stringify(hero([row("alchemy-source-001",sourceClass,2)]));
     const after=JSON.stringify(hero([row("alchemy-source-001",sourceClass,1),row("alchemy-result-001",outputClass)],3,
