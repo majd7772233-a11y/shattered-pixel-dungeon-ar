@@ -8,6 +8,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.Food;
+import com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation;
+import com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility;
@@ -40,7 +42,10 @@ public final class NativeItemActionPublisher {
     private static boolean supportedSynchronousConsumption(Hero hero, Item item, String action) {
         if (item == null || action == null) return false;
         if ("EAT".equals(action)) {
-            return item.getClass() == Food.class && !hasUnsupportedMealTalent(hero);
+            boolean simpleFood = item.getClass() == Food.class
+                    || item.getClass() == SmallRation.class
+                    || item.getClass() == StewedMeat.class;
+            return simpleFood && !hasUnsupportedMealTalent(hero);
         }
         if ("DRINK".equals(action)) {
             return item.getClass() == PotionOfHealing.class
