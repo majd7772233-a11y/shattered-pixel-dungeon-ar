@@ -436,7 +436,12 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   if (!before || !after) return false;
   const base = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.";
   let allowed: Set<string>;
-  if (action === "EAT" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food") {
+  const simpleFoodClasses = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.Food",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat"
+  ]);
+  if (action === "EAT" && simpleFoodClasses.has(itemClass)) {
     allowed = new Set([base + "Hunger"]);
   } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing") {
@@ -501,10 +506,14 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     if (newRows.length > 1 || (oldRows.length === 0 && newRows.length !== 1)) return false;
     if (oldRows.length === 1 && newRows.length === 1) {
       const oldData = oldRows[0].data, newData = newRows[0].data;
+      const maxFoodEnergy = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food" ? 300
+        : 150;
       if (!Number.isFinite(Number(oldData.level)) || !Number.isFinite(Number(newData.level))
           || Number(newData.level) < 0 || Number(newData.level) > Number(oldData.level)
+          || Number(oldData.level) - Number(newData.level) > maxFoodEnergy + 0.01
           || !Number.isFinite(Number(oldData.partialDamage)) || !Number.isFinite(Number(newData.partialDamage))
-          || Number(newData.partialDamage) > Number(oldData.partialDamage)) return false;
+          || Number(newData.partialDamage) > Number(oldData.partialDamage)
+          || Number(newData.partialDamage) !== Number(oldData.partialDamage)) return false;
     } else if (newRows.length === 1) {
       const data = newRows[0].data;
       if (!Number.isFinite(Number(data.level)) || Number(data.level) < 0 || Number(data.level) > 100
@@ -589,8 +598,11 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
   ].includes(cls);
-  const supportedFood = itemAction === "EAT"
-    && cls === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food";
+  const supportedFood = itemAction === "EAT" && [
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.Food",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat"
+  ].includes(cls);
   if (!supportedDrink && !supportedFood) return false;
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
