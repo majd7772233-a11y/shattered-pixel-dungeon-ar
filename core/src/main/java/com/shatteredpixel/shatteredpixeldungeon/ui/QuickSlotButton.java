@@ -99,14 +99,10 @@ public class QuickSlotButton extends Button {
 					Item item = select(slotNum);
 					if (Dungeon.hero.belongings.contains(item) && !GameScene.cancel()) {
 						GameScene.centerNextWndOnInvPane();
-						if (item.defaultAction() == null) {
-                            item.execute(Dungeon.hero);
-                        } else {
-                            com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemActionPublisher.execute(
-                                    Dungeon.hero, item, item.defaultAction(), new Runnable() {
-                                        @Override public void run() { item.execute(Dungeon.hero); }
-                                    });
-                        }
+						com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemActionPublisher.execute(
+                                Dungeon.hero, item, item.defaultAction(), new Runnable() {
+                                    @Override public void run() { item.execute(Dungeon.hero); }
+                                });
 						if (item.usesTargeting) {
 							useTargeting();
 						}
