@@ -226,6 +226,9 @@ public class Item implements Bundlable {
 					if (Dungeon.level != null) manager.requestResync(manager.getLastSequence());
 				} else {
 					com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+					if (droppedQuantity < sourceQuantityBefore && itemId.equals(resultItem.multiplayerItemId())) {
+						resultItem.assignNewMultiplayerItemId();
+					}
 					String details = "{\"heapId\":" + json.toJson(droppedHeap.multiplayerHeapId())
 							+ ",\"itemId\":" + json.toJson(itemId)
 							+ ",\"resultItemId\":" + json.toJson(resultItem.multiplayerItemId())

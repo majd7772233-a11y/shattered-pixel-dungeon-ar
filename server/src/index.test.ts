@@ -1960,6 +1960,67 @@ describe("Native alchemy transaction validation", () => {
   });
 });
 
+
+describe("Partial stack DROP transactions", () => {
+  const cls = "com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify";
+  const row = (id:string, quantity:number) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,equipped:false,
+    serializedBundle:"native-stack:"+id+":q="+quantity
+  });
+  const hero = (items:any[], slots:any[] = []) => JSON.stringify({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-state",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:JSON.stringify(slots)
+  });
+  const heapItem = (id:string, quantity:number) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,
+    serializedBundle:"native-stack:"+id+":q="+quantity
+  });
+  const heap = (heapId:string,pos:number,items:any[]) => ({
+    heapId,pos,type:"HEAP",seen:false,haunted:false,hidden:false,autoExplored:false,items
+  });
+  const details = (extra:Record<string,any> = {}) => ({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:1,
+    heapId:"stable-heap-001",itemId:"stable-source-stack-001",resultItemId:"stable-floor-stack-001",
+    itemClass:cls,expectedQuantity:2,sourceQuantityBefore:5,stackable:true,...extra
+  });
+
+  it("accepts only the exact partial quantity and preserves the source remainder and quickslot",()=>{
+    const before = hero([row("stable-source-stack-001",5)], [{
+      slot:0,itemId:"stable-source-stack-001",className:cls,quantity:5,
+      serializedBundle:"native-stack:stable-source-stack-001:q=5"
+    }]);
+    const after = hero([row("stable-source-stack-001",3)], [{
+      slot:0,itemId:"stable-source-stack-001",className:cls,quantity:3,
+      serializedBundle:"native-stack:stable-source-stack-001:q=3"
+    }]);
+    const d=details(), accepted={...d,actionType:"DROP"};
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    expect(isValidNativeDropIntent(level,d,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeDropInventoryMutation(before,after,d)).toBe(true);
+    expect(isValidNativeDropInventoryMutation(before,hero([row("stable-source-stack-001",2)],[{
+      slot:0,itemId:"stable-source-stack-001",className:cls,quantity:2,
+      serializedBundle:"native-stack:stable-source-stack-001:q=2"
+    }]),d)).toBe(false);
+    expect(isValidNativeDropHeapMutation([],[
+      heap("stable-heap-001",9,[heapItem("stable-floor-stack-001",2)])
+    ],9,d,accepted)).toBe(true);
+  });
+
+  it("accepts a partial drop merged into exactly one compatible destination stack",()=>{
+    const before=hero([row("stable-source-stack-001",5)]);
+    const after=hero([row("stable-source-stack-001",3)]);
+    const d=details({resultItemId:"stable-target-stack-001"});
+    const prior=heap("stable-heap-001",9,[heapItem("stable-target-stack-001",4)]);
+    const next=heap("stable-heap-001",9,[heapItem("stable-target-stack-001",6)]);
+    const accepted={...d,actionType:"DROP"};
+    expect(isValidNativeDropInventoryMutation(before,after,d)).toBe(true);
+    expect(isValidNativeDropHeapMutation([prior],[next],9,d,accepted)).toBe(true);
+    expect(isValidNativeDropHeapMutation([prior],[
+      heap("stable-heap-001",9,[heapItem("stable-target-stack-001",7)])
+    ],9,d,accepted)).toBe(false);
+  });
+});
+
 describe("Native missile throw transaction validation", () => {
   const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.Dart";
   const row=(id:string,quantity=1)=>({itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,
