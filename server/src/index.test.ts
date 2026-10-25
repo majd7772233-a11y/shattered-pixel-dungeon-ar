@@ -1952,9 +1952,18 @@ describe("Native item consumption transaction validation", () => {
     const foodBefore=JSON.stringify(hero([row("native-food-001",food,1,true)]));
     expect(isValidNativeUseItemIntent(level,intent("native-food-001",food,"EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},foodBefore)).toBe(true);
-    expect(isValidNativeUseItemIntent(level,intent("native-food-001",
+    expect(isValidNativeUseItemIntent(level,intent("native-small-ration-001",
       "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation","EAT",1,true),4,
-      "player-001",{pos:9,state:"ALIVE"},foodBefore)).toBe(false);
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-small-ration-001",
+        "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",1,true)])))).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-stewed-meat-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat","EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-stewed-meat-001",
+        "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",1,true)])))).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-mystery-meat-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat","EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-mystery-meat-001",
+        "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat",1,true)])))).toBe(false);
   });
   it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
     const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
@@ -1982,6 +1991,19 @@ describe("Native item consumption transaction validation", () => {
       buff_1:serialized("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",{}),buffCooldown_1:5
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
+  });
+  it("rejects food recovery above the native SmallRation energy",()=>{
+    const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+    const serialized=(className:string,fields:Record<string,any>={})=>JSON.stringify({buff:{__className:className,...fields}});
+    const smallRation="com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation";
+    const before=JSON.stringify(hero([row("native-small-ration-energy-001",smallRation,1,true)],{
+      buffCount:1,buff_0:serialized(hunger,{level:280,partialDamage:0}),buffCooldown_0:0
+    }));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      buffCount:1,buff_0:serialized(hunger,{level:0,partialDamage:0}),buffCooldown_0:0
+    }));
+    const d=intent("native-small-ration-energy-001",smallRation,"EAT",1,true);
+    expect(isValidNativeUseItemMutation(before,after,d,{...d,actionType:"USE_ITEM"})).toBe(false);
   });
   it("accepts PotionOfHaste only with one bounded native Haste buff and no unrelated effect",()=>{
     const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
