@@ -442,8 +442,11 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat"
   ]);
+  const meatPieClass = "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie";
   if (action === "EAT" && simpleFoodClasses.has(itemClass)) {
     allowed = new Set([base + "Hunger"]);
+  } else if (action === "EAT" && itemClass === meatPieClass) {
+    allowed = new Set([base + "Hunger", base + "WellFed"]);
   } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing") {
     allowed = new Set([base + "Healing", base + "Poison", base + "Cripple", base + "Weakness",
@@ -508,9 +511,10 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     if (oldRows.length === 1 && newRows.length === 1) {
       const oldData = oldRows[0].data, newData = newRows[0].data;
       const maxFoodEnergy = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food" ? 300
-        : 150;
-      if (!Number.isFinite(Number(oldData.level)) || !Number.isFinite(Number(newData.level))
-          || Number(newData.level) < 0 || Number(newData.level) > Number(oldData.level)
+        : itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie" ? 900 : 150;
+      if (!Number.isFinite(Number(oldData.level)) || Number(oldData.level) < 0 || Number(oldData.level) > 450
+          || !Number.isFinite(Number(newData.level)) || Number(newData.level) < 0
+          || Number(newData.level) > Number(oldData.level)
           || Number(oldData.level) - Number(newData.level) > maxFoodEnergy + 0.01
           || !Number.isFinite(Number(oldData.partialDamage)) || !Number.isFinite(Number(newData.partialDamage))
           || Number(newData.partialDamage) > Number(oldData.partialDamage)
@@ -519,6 +523,25 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       const data = newRows[0].data;
       if (!Number.isFinite(Number(data.level)) || Number(data.level) < 0 || Number(data.level) > 100
           || !Number.isFinite(Number(data.partialDamage)) || Number(data.partialDamage) < 0 || Number(data.partialDamage) > 1) return false;
+    }
+  }
+
+  if (action === "EAT" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie") {
+    const name = base + "WellFed", oldRows = before.get(name) || [], newRows = after.get(name) || [];
+    if (oldRows.length > 1 || newRows.length !== 1) return false;
+    const oldRow = oldRows[0] || null, newRow = newRows[0], data = newRow.data;
+    const allowedFields = new Set(["__className", "time", "id", "left", "mnemonic_extended"]);
+    if (Object.keys(data).some((key: string) => !allowedFields.has(key))
+        || !Number.isInteger(data.id) || data.id < 0 || !Number.isFinite(Number(data.time))
+        || Number(data.time) < 0 || Number(data.time) > 20
+        || !Number.isInteger(data.left) || ![150, 450].includes(Number(data.left))
+        || (data.mnemonic_extended !== undefined && typeof data.mnemonic_extended !== "boolean")) return false;
+    const oldCooldown = Number(oldRow?.cooldown || 0), nextCooldown = Number(newRow.cooldown);
+    if (!Number.isFinite(nextCooldown) || nextCooldown < 0 || nextCooldown > Math.max(oldCooldown, 20) + 0.05) return false;
+    if (oldRow) {
+      if (Number(data.id) !== Number(oldRow.data.id)) return false;
+      const withoutLeft = (value: any) => { const copy = {...value}; delete copy.left; return copy; };
+      if (!sameNativeItemValue(withoutLeft(oldRow.data), withoutLeft(data))) return false;
     }
   }
 
@@ -603,7 +626,8 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     "com.shatteredpixel.shatteredpixeldungeon.items.food.Food",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",
-    "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat"
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie"
   ].includes(cls);
   if (!supportedDrink && !supportedFood) return false;
   let hero: any;

@@ -9,6 +9,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.Food;
+import com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
@@ -46,7 +47,8 @@ public final class NativeItemActionPublisher {
             boolean simpleFood = item.getClass() == Food.class
                     || item.getClass() == SmallRation.class
                     || item.getClass() == StewedMeat.class
-                    || item.getClass() == ChargrilledMeat.class;
+                    || item.getClass() == ChargrilledMeat.class
+                    || item.getClass() == MeatPie.class;
             return simpleFood && !hasUnsupportedMealTalent(hero);
         }
         if ("DRINK".equals(action)) {

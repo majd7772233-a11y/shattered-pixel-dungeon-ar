@@ -1968,6 +1968,10 @@ describe("Native item consumption transaction validation", () => {
       "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat","EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-mystery-meat-001",
         "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat",1,true)])))).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("native-meat-pie-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie","EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-meat-pie-001",
+        "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie",1,true)])))).toBe(true);
   });
   it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
     const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
@@ -2013,6 +2017,32 @@ describe("Native item consumption transaction validation", () => {
     const accepted={...data,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,validAfter,data,accepted)).toBe(true);
     expect(isValidNativeUseItemMutation(before,tooMuchAfter,data,accepted)).toBe(false);
+  });
+  it("accepts exact MeatPie Hunger recovery and a native WellFed reset only",()=>{
+    const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+    const wellFed="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed";
+    const meatPie="com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie";
+    const serialized=(className:string,fields:Record<string,any>={})=>JSON.stringify({buff:{__className:className,...fields}});
+    const before=JSON.stringify(hero([row("native-meat-pie-state-001",meatPie,1,true)],{
+      buffCount:1,buff_0:serialized(hunger,{level:400,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const validAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:serialized(hunger,{level:0,partialDamage:0.25}),buffCooldown_0:0,
+      buff_1:serialized(wellFed,{id:71,time:0,left:450}),buffCooldown_1:0
+    }));
+    const overlong=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:serialized(hunger,{level:0,partialDamage:0.25}),buffCooldown_0:0,
+      buff_1:serialized(wellFed,{id:71,time:0,left:999}),buffCooldown_1:0
+    }));
+    const injected=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:3,
+      buff_0:serialized(hunger,{level:0,partialDamage:0.25}),buffCooldown_0:0,
+      buff_1:serialized(wellFed,{id:71,time:0,left:450}),buffCooldown_1:0,
+      buff_2:serialized("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",{id:72,time:0}),buffCooldown_2:0
+    }));
+    const data=intent("native-meat-pie-state-001",meatPie,"EAT",1,true),accepted={...data,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,validAfter,data,accepted)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,overlong,data,accepted)).toBe(false);
+    expect(isValidNativeUseItemMutation(before,injected,data,accepted)).toBe(false);
   });
   it("rejects food recovery above the native SmallRation energy",()=>{
     const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
