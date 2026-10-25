@@ -1183,6 +1183,15 @@ export function isValidNativeMovementHeapMutation(previous: any, next: any, targ
 
 
 
+/** A reserved item can be retried only by the exact same player and request ID. */
+export function isNativeLootClaimConflict(claimValue: unknown, playerIdValue: unknown, requestIdValue: unknown): boolean {
+  if (claimValue == null) return false;
+  const claim: any = claimValue;
+  const playerId = String(playerIdValue || ""), requestId = String(requestIdValue || "");
+  if (!playerId || !requestId || requestId.length > 128) return true;
+  return String(claim.claimed_by || "") !== playerId || String(claim.request_id || "") !== requestId;
+}
+
 function parseNativeInventoryIndex(heroValue: any): any[] | null {
   if (!heroValue || typeof heroValue !== "object" || typeof heroValue.inventoryItemsJson !== "string"
       || heroValue.inventoryItemsJson.length < 2 || heroValue.inventoryItemsJson.length > 200000) return null;
@@ -5949,8 +5958,7 @@ export class MatchRoom {
             const existingClaim = this.sql.exec(
               "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
               this.currentDepth, String(data.heapId || ""), String(data.itemId || "")).toArray()[0];
-            if (existingClaim && (String(existingClaim.claimed_by) !== session.playerId
-                || String(existingClaim.request_id) !== pickupRequestId)) {
+            if (isNativeLootClaimConflict(existingClaim, session.playerId, pickupRequestId)) {
               ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
                 sequence: this.currentSequence,
                 payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
@@ -5965,7 +5973,7 @@ export class MatchRoom {
               const reserved = this.sql.exec(
                 "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
                 this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
-              if (!reserved || String(reserved.claimed_by) !== session.playerId || String(reserved.request_id) !== pickupRequestId) {
+              if (!reserved || isNativeLootClaimConflict(reserved, session.playerId, pickupRequestId)) {
                 ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
                   sequence: this.currentSequence,
                   payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
@@ -6018,7 +6026,7 @@ export class MatchRoom {
               const reserved = this.sql.exec(
                 "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
                 this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
-              if (!reserved || String(reserved.claimed_by) !== session.playerId || String(reserved.request_id) !== requestId) {
+              if (!reserved || isNativeLootClaimConflict(reserved, session.playerId, requestId)) {
                 ws.send(JSON.stringify({ protocolVersion:"1.0.0", messageType:"ERROR", requestId:msg.requestId,
                   sequence:this.currentSequence, payloadJson:JSON.stringify({error:"ITEM_ALREADY_CLAIMED",heapId:data.heapId,itemId:data.itemId}) }));
                 return;
