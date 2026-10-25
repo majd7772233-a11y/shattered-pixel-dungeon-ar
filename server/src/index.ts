@@ -385,6 +385,135 @@ export function isValidNativeChestHeapMutation(previousHeaps: any, nextHeaps: an
 
 
 
+
+function nativeUseItemBuffMap(hero: any): Map<string, any[]> | null {
+  if (!hero || !Number.isInteger(hero.buffCount) || hero.buffCount < 0 || hero.buffCount > 256) return null;
+  const result = new Map<string, any[]>();
+  for (let i = 0; i < hero.buffCount; i++) {
+    const serializedBundle = hero["buff_" + i], cooldown = Number(hero["buffCooldown_" + i]);
+    if (typeof serializedBundle !== "string" || serializedBundle.length < 2 || serializedBundle.length > 200000
+        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000) return null;
+    let root: any;
+    try { root = JSON.parse(serializedBundle); } catch (_) { return null; }
+    const buff = root && root.buff;
+    const className = String(buff && buff.__className || "");
+    if (!className || className.length > 256 || !buff || typeof buff !== "object") return null;
+    const rows = result.get(className) || [];
+    rows.push({serializedBundle, cooldown, data:buff});
+    result.set(className, rows);
+  }
+  for (const rows of result.values()) rows.sort((a: any, b: any) =>
+    String(a.serializedBundle).localeCompare(String(b.serializedBundle)) || a.cooldown - b.cooldown);
+  return result;
+}
+
+function nativeUseItemCombatBundleMatches(previousHero: any, nextHero: any, itemClass: string): boolean {
+  let previous: any, next: any;
+  try {
+    previous = JSON.parse(String(previousHero?.combatBundle || ""));
+    next = JSON.parse(String(nextHero?.combatBundle || ""));
+  } catch (_) { return false; }
+  if (!previous || typeof previous !== "object" || !next || typeof next !== "object") return false;
+  const strip = (value: any, keys: string[]) => {
+    const copy: any = {...value};
+    for (const key of keys) delete copy[key];
+    return copy;
+  };
+  const strengthPotion = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
+  if (strengthPotion) {
+    if (!Number.isInteger(previous.STR) || !Number.isInteger(next.STR) || next.STR !== previous.STR + 1) return false;
+    return sameNativeItemValue(strip(previous, ["STR", "belongings"]), strip(next, ["STR", "belongings"]));
+  }
+  return sameNativeItemValue(strip(previous, ["belongings"]), strip(next, ["belongings"]));
+}
+
+/** Allows only the exact native buff classes that the whitelisted consumable can touch. */
+function isValidNativeUseItemBuffMutation(previous: any, next: any, action: string, itemClass: string): boolean {
+  const before = nativeUseItemBuffMap(previous), after = nativeUseItemBuffMap(next);
+  if (!before || !after) return false;
+  const base = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.";
+  let allowed: Set<string>;
+  if (action === "EAT" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food") {
+    allowed = new Set([base + "Hunger"]);
+  } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing") {
+    allowed = new Set([base + "Healing", base + "Poison", base + "Cripple", base + "Weakness",
+      base + "Vulnerable", base + "Bleeding", base + "Blindness", base + "Drowsy", base + "Slow", base + "Vertigo"]);
+  } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength") {
+    allowed = new Set();
+  } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
+    allowed = new Set([base + "Barrier", base + "Poison"]);
+  } else return false;
+
+  const allClasses = new Set<string>([...before.keys(), ...after.keys()]);
+  for (const name of allClasses) {
+    const oldRows = before.get(name) || [], newRows = after.get(name) || [];
+    if (allowed.has(name)) continue;
+    if (!sameNativeItemValue(oldRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
+      newRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})))) return false;
+  }
+
+  if (action === "EAT") {
+    const name = base + "Hunger", oldRows = before.get(name) || [], newRows = after.get(name) || [];
+    if (newRows.length > 1 || (oldRows.length === 0 && newRows.length !== 1)) return false;
+    if (oldRows.length === 1 && newRows.length === 1) {
+      const oldData = oldRows[0].data, newData = newRows[0].data;
+      if (!Number.isFinite(Number(oldData.level)) || !Number.isFinite(Number(newData.level))
+          || Number(newData.level) < 0 || Number(newData.level) > Number(oldData.level)
+          || !Number.isFinite(Number(oldData.partialDamage)) || !Number.isFinite(Number(newData.partialDamage))
+          || Number(newData.partialDamage) > Number(oldData.partialDamage)) return false;
+    } else if (newRows.length === 1) {
+      const data = newRows[0].data;
+      if (!Number.isFinite(Number(data.level)) || Number(data.level) < 0 || Number(data.level) > 100
+          || !Number.isFinite(Number(data.partialDamage)) || Number(data.partialDamage) < 0 || Number(data.partialDamage) > 1) return false;
+    }
+  }
+
+  if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing" && action === "DRINK") {
+    const removed = [base + "Cripple", base + "Weakness", base + "Vulnerable", base + "Bleeding",
+      base + "Blindness", base + "Drowsy", base + "Slow", base + "Vertigo"];
+    for (const name of removed) if ((after.get(name) || []).length !== 0) return false;
+    const healing = after.get(base + "Healing") || [];
+    if (healing.length > 1) return false;
+    if (healing.length === 1) {
+      const current = healing[0].data;
+      const old = (before.get(base + "Healing") || [])[0]?.data;
+      const maxLeft = Math.max(Number(old?.left || 0), Math.floor(0.8 * Number(previous.ht) + 14));
+      const maxPercent = Math.max(Number(old?.percent || 0), 0.25);
+      const maxFlat = Math.max(Number(old?.flat || 0), 0);
+      if (!Number.isFinite(Number(current.left)) || Number(current.left) < 0 || Number(current.left) > maxLeft
+          || !Number.isFinite(Number(current.percent)) || Number(current.percent) < 0 || Number(current.percent) > maxPercent
+          || !Number.isFinite(Number(current.flat)) || Number(current.flat) < 0 || Number(current.flat) > maxFlat
+          || typeof current.healing_limited !== "boolean") return false;
+    }
+  }
+
+  if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
+      && action === "DRINK") {
+    const name = base + "Barrier", barriers = after.get(name) || [], oldBarriers = before.get(name) || [];
+    if (barriers.length > 1) return false;
+    if (barriers.length === 1) {
+      const shielding = Number(barriers[0].data.shielding);
+      const oldShielding = Number(oldBarriers[0]?.data?.shielding || 0);
+      const expected = Math.floor(0.6 * Number(previous.ht) + 10);
+      if (!Number.isInteger(shielding) || shielding < 0 || shielding > Math.max(oldShielding, expected)) return false;
+    }
+  }
+
+  if (action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing"
+      || action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
+    const poison = after.get(base + "Poison") || [], oldPoison = before.get(base + "Poison") || [];
+    if (poison.length > 1) return false;
+    if (poison.length === 1) {
+      const left = Number(poison[0].data.left), oldLeft = Number(oldPoison[0]?.data?.left || 0);
+      if (!Number.isFinite(left) || left < 0 || left > Math.max(oldLeft, 30)) return false;
+    }
+  }
+  return true;
+}
+
 /** A consume intent must identify one item already owned by the authenticated hero. */
 export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -401,8 +530,14 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
       || !Number.isInteger(data.sourceQuantityBefore) || data.sourceQuantityBefore < 1 || data.sourceQuantityBefore > 100000
       || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
       || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
-  if (itemAction === "DRINK" && !cls.includes(".items.potions.")) return false;
-  if (itemAction === "EAT" && !cls.includes(".items.food.")) return false;
+  const supportedDrink = itemAction === "DRINK" && [
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
+  ].includes(cls);
+  const supportedFood = itemAction === "EAT"
+    && cls === "com.shatteredpixel.shatteredpixeldungeon.items.food.Food";
+  if (!supportedDrink && !supportedFood) return false;
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
@@ -427,7 +562,9 @@ export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: 
       || accepted.sourceQuantityBefore !== details.sourceQuantityBefore || accepted.stackable !== details.stackable
       || !["DRINK", "EAT"].includes(String(details.itemAction)) || details.expectedQuantity !== 1
       || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
-      || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle) return false;
+      || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle
+      || !nativeUseItemCombatBundleMatches(previous, next, String(details.itemClass || ""))
+      || !isValidNativeUseItemBuffMutation(previous, next, String(details.itemAction), String(details.itemClass || ""))) return false;
   const id = String(details.itemId || ""), cls = String(details.itemClass || "");
   const oldSource = before.filter((item: any) => String(item.itemId) === id);
   const newSource = after.filter((item: any) => String(item.itemId) === id);
