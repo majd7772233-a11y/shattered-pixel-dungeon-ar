@@ -7,6 +7,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.Food;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
+import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
@@ -39,6 +40,7 @@ public final class NativeItemActionPublisher {
         }
         if ("DRINK".equals(action)) {
             return item.getClass() == PotionOfHealing.class
+                    || item.getClass() == PotionOfHaste.class
                     || item.getClass() == PotionOfStrength.class
                     || item.getClass() == PotionOfShielding.class;
         }
