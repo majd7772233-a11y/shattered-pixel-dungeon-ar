@@ -1913,7 +1913,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   ]);
   if (simpleExpiry.has(buffClass)) {
     return !result && source.time <= before.clock + 0.06
-      && hpAfter === hpBefore && shieldAfter === shieldBefore;
+      && Number(after.state.hp) === Number(before.state.hp)
+      && Number(after.state.shielding) === Number(before.state.shielding);
   }
   if (![
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",
