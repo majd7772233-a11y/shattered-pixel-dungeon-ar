@@ -1831,6 +1831,11 @@ function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:N
 
 function nativeHeroBuffTickStableState(stateValue: any): any | null {
   const state = {...stateValue};
+  // These values may change only through the per-buff rules below. Comparing them here
+  // would reject legitimate WellFed/Healing HP gains and Barrier/Poison shield/damage ticks
+  // before their class-specific bounds can be checked.
+  delete state.hp;
+  delete state.shielding;
   delete state.cooldown;
   delete state.buffCount;
   for (const key of Object.keys(state)) if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete state[key];
