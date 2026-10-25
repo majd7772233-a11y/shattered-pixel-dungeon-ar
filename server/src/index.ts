@@ -421,7 +421,7 @@ function nativeUseItemCombatBundleMatches(previousHero: any, nextHero: any, item
   };
   // Hero.storeInBundle writes Belongings directly into the same Bundle. These exact keys
   // can change when the source consumable leaves the backpack; all combat/talent fields cannot.
-  const inventoryKeys = ["items", "weapon", "armor", "artifact", "misc", "ring", "second_wep"];
+  const inventoryKeys = ["items"];
   const strengthPotion = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
   if (strengthPotion) {
     if (!Number.isInteger(previous.STR) || !Number.isInteger(next.STR) || next.STR !== previous.STR + 1) return false;
@@ -496,13 +496,23 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
       && action === "DRINK") {
     const name = base + "Barrier", barriers = after.get(name) || [], oldBarriers = before.get(name) || [];
-    if (barriers.length > 1) return false;
+    const poisonName = base + "Poison", poisons = after.get(poisonName) || [], oldPoisons = before.get(poisonName) || [];
+    if (barriers.length > 1 || poisons.length > 1) return false;
+    const oldShielding = Number(oldBarriers[0]?.data?.shielding || 0);
+    const nextShielding = Number(barriers[0]?.data?.shielding || 0);
+    const expected = Math.floor(0.6 * Number(previous.ht) + 10);
     if (barriers.length === 1) {
-      const shielding = Number(barriers[0].data.shielding);
-      const oldShielding = Number(oldBarriers[0]?.data?.shielding || 0);
-      const expected = Math.floor(0.6 * Number(previous.ht) + 10);
-      if (!Number.isInteger(shielding) || shielding < 0 || shielding > Math.max(oldShielding, expected)) return false;
-    }
+      if (!Number.isInteger(nextShielding) || nextShielding < 0
+          || nextShielding > Math.max(oldShielding, expected)
+          || Number(next.shielding) !== Number(previous.shielding) + nextShielding - oldShielding) return false;
+    } else if (Number(next.shielding) !== Number(previous.shielding)) return false;
+    const barrierChanged = !sameNativeItemValue(
+      (oldBarriers).map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
+      barriers.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})));
+    const poisonChanged = !sameNativeItemValue(
+      oldPoisons.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
+      poisons.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})));
+    if (barrierChanged && poisonChanged) return false;
   }
 
   if (action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing"
@@ -3675,8 +3685,6 @@ export class MatchRoom {
             && String(mutationDetails?.itemClass || "").endsWith(".Dewdrop");
           const maxDewEffect = pickupDewdrop ? Math.round(Number(playerRow?.ht) * 0.05) : 0;
           const useItemDetails: any = mutationAction === "USE_ITEM" ? mutationDetails : null;
-          const useItemHealing = !!useItemDetails && useItemDetails.itemAction === "DRINK"
-            && String(useItemDetails.itemClass || "").endsWith(".PotionOfHealing");
           const useItemStrength = !!useItemDetails && useItemDetails.itemAction === "DRINK"
             && String(useItemDetails.itemClass || "") === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
           const heroHpValid = mutationAction === "MOVE" || mutationAction === "PICKUP"
@@ -3684,10 +3692,7 @@ export class MatchRoom {
               || (pickupDewdrop && reportedHero.hp <= Number(playerRow?.hp) + maxDewEffect
                 && reportedHero.hp <= Number(reportedHero.ht))
               || (mutationAction === "MOVE" && consumedNativeWell && reportedHero.hp <= Number(reportedHero.ht)))
-            : mutationAction === "USE_ITEM" && useItemHealing
-              ? Number.isInteger(reportedHero?.hp) && reportedHero.hp >= Number(playerRow?.hp)
-                && reportedHero.hp <= Number(reportedHero.ht)
-              : Number(reportedHero?.hp) === Number(playerRow?.hp);
+            : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
             && Number(reportedHero.pos) === mutationExpectedPos && heroHpValid
             && Number(reportedHero.ht) === Number(playerRow.ht)
