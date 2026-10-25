@@ -58,8 +58,9 @@ public class WndUseItem extends WndInfoItem {
 					protected void onClick() {
 						hide();
 						if (owner != null && owner.parent != null) owner.hide();
+						boolean actionAccepted = false;
 						if (Dungeon.hero.isAlive() && Dungeon.hero.belongings.contains(item)) {
-							boolean actionAccepted = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemActionPublisher.execute(
+							actionAccepted = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemActionPublisher.execute(
                                 Dungeon.hero, item, action, new Runnable() {
                                     @Override public void run() { item.execute(Dungeon.hero, action); }
                                 });
