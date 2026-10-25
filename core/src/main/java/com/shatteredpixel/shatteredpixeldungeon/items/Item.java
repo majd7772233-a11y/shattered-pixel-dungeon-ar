@@ -220,7 +220,10 @@ public class Item implements Bundlable {
 					}
 				}
 				if (droppedHeap == null || droppedQuantity <= 0 || resultItem == null) {
+					// The native drop has already happened. Never silently abandon its transaction:
+					// restore the last authoritative inventory/heap state if stable identity is ambiguous.
 					hero.discardPendingNativeWorldMutation();
+					if (Dungeon.level != null) manager.requestResync(manager.getLastSequence());
 				} else {
 					com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
 					String details = "{\"heapId\":" + json.toJson(droppedHeap.multiplayerHeapId())

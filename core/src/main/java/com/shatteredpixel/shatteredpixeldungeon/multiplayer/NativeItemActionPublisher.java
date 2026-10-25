@@ -117,7 +117,12 @@ public final class NativeItemActionPublisher {
                 break;
             }
         }
-        if (quantityBefore - quantityAfter != 1) return true;
+        if (quantityBefore - quantityAfter != 1) {
+            // Supported synchronous consumables must remove exactly one source unit.
+            // If native SPD did something unexpected, do not leave an unbroadcast local state.
+            manager.requestResync(manager.getLastSequence());
+            return false;
+        }
 
         Json json = new Json();
         String details = "{\"itemId\":" + json.toJson(itemId)
