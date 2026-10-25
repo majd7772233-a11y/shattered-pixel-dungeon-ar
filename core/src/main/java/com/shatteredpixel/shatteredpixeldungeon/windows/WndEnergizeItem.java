@@ -29,6 +29,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.EquipableItem;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.trinkets.Trinket;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.AlchemyScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.ItemSprite;
@@ -131,7 +132,14 @@ public class WndEnergizeItem extends WndInfoItem {
 		}
 	}
 
+	private static boolean rejectUnsynchronizedMultiplayerEnergize() {
+		if (!MultiplayerManager.getInstance().isMultiplayerActive()) return false;
+		GLog.w(Messages.get(WndEnergizeItem.class, "multiplayer_unsupported"));
+		return true;
+	}
+
 	public static void energizeAll(Item item ) {
+		if (rejectUnsynchronizedMultiplayerEnergize()) return;
 
 		if (item.isEquipped( Dungeon.hero ) && !((EquipableItem)item).doUnequip( Dungeon.hero, false )) {
 			return;
@@ -141,6 +149,7 @@ public class WndEnergizeItem extends WndInfoItem {
 	}
 
 	public static void energizeOne( Item item ) {
+		if (rejectUnsynchronizedMultiplayerEnergize()) return;
 
 		if (item.quantity() <= 1) {
 			energizeAll( item );

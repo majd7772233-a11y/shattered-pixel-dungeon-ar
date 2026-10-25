@@ -1099,6 +1099,17 @@ export function isValidNativePickupInventoryMutation(previousValue: unknown, nex
   const afterMap = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
   if (cls.endsWith(".Gold")) return next.gold === previous.gold + amount && sameNativeItemValue(before, after);
   if (previous.gold !== next.gold) return false;
+  if (cls.endsWith(".EnergyCrystal")) {
+    const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+    return previous.inventoryBundle === next.inventoryBundle
+      && Number.isInteger(previous.alchemyEnergy) && previous.alchemyEnergy >= 0
+      && Number.isInteger(next.alchemyEnergy)
+      && next.alchemyEnergy === previous.alchemyEnergy + amount
+      && next.alchemyEnergy <= 1000000
+      && sameNativeItemValue(before, after)
+      && beforeSlots != null && afterSlots != null
+      && sameNativeItemValue(beforeSlots, afterSlots);
+  }
   if (cls.includes(".items.keys.")) {
     const field = cls.endsWith("IronKey") ? "ironKeyCount" : cls.endsWith("CrystalKey") ? "crystalKeyCount"
       : cls.endsWith("WornKey") ? "wornKeyCount" : cls.endsWith("GoldenKey") ? "goldenKeyCount" : "";
@@ -3598,7 +3609,10 @@ export class MatchRoom {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.gold = reportedHero.gold;
-            if (mutationAction === "ALCHEMY") mergedHero.alchemyEnergy = reportedHero.alchemyEnergy;
+            if (mutationAction === "ALCHEMY"
+                || (mutationAction === "PICKUP" && String(mutationDetails?.itemClass || "").endsWith(".EnergyCrystal"))) {
+              mergedHero.alchemyEnergy = reportedHero.alchemyEnergy;
+            }
             if (mutationAction === "USE_ABILITY") mergedHero.combatBundle = reportedHero.combatBundle;
             if (typeof reportedHero.quickslotsJson === "string" && parseNativeQuickslotIndex(reportedHero) != null) {
               mergedHero.quickslotsJson = reportedHero.quickslotsJson;

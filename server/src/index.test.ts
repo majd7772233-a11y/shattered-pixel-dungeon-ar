@@ -1650,6 +1650,21 @@ describe("Native pickup inventory transaction validation", () => {
     expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{ironKeyCount:1})),key)).toBe(true);
     expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([],{ironKeyCount:1,goldenKeyCount:1})),key)).toBe(false);
   });
+  it("commits EnergyCrystal pickup as an exact energy increase without adding a backpack item",()=>{
+    const energyClass="com.shatteredpixel.shatteredpixeldungeon.items.EnergyCrystal";
+    const before=JSON.stringify(hero([],{inventoryBundle:"same-native-inventory",alchemyEnergy:4,quickslotsJson:"[]"}));
+    const after=JSON.stringify(hero([],{inventoryBundle:"same-native-inventory",alchemyEnergy:7,quickslotsJson:"[]"}));
+    const energy=pickup("stable-energy-001",energyClass,3,true);
+    expect(isValidNativePickupInventoryMutation(before,after,energy)).toBe(true);
+    expect(isValidNativePickupInventoryMutation(before,JSON.stringify(
+      hero([],{inventoryBundle:"same-native-inventory",alchemyEnergy:8,quickslotsJson:"[]"})),energy)).toBe(false);
+    expect(isValidNativePickupInventoryMutation(before,JSON.stringify(
+      hero([],{inventoryBundle:"same-native-inventory",alchemyEnergy:4,quickslotsJson:"[]"})),energy)).toBe(false);
+    expect(isValidNativePickupInventoryMutation(before,JSON.stringify(
+      hero([row("stable-energy-001",energyClass,3,true)],{inventoryBundle:"inventory-forged",alchemyEnergy:7,quickslotsJson:"[]"})),energy)).toBe(false);
+    expect(isValidNativePickupInventoryMutation(before,JSON.stringify(
+      hero([],{inventoryBundle:"inventory-forged",alchemyEnergy:7,quickslotsJson:"[]"})),energy)).toBe(false);
+  });
   it("allows Dewdrop consumption or filling a Waterskin without unrelated inventory changes",()=>{
     const dew=pickup("stable-dew-001","com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop",1,true);
     expect(isValidNativePickupInventoryMutation(JSON.stringify(hero([])),JSON.stringify(hero([])),dew)).toBe(true);
