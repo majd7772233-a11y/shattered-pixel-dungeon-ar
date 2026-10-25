@@ -145,6 +145,16 @@ public class AlchemyScene extends PixelScene {
         }
     }
 
+    /** Tracks the real inventory instance before SPD detaches or splits an alchemy input. */
+    private Item detachAndTrackAlchemyItem(Item sourceItem, Bag container) {
+        if (sourceItem == null || container == null) return null;
+        NativeAlchemySource source = new NativeAlchemySource(sourceItem);
+        Item detached = sourceItem instanceof LiquidMetal || sourceItem instanceof MissileWeapon
+                ? sourceItem.detachAll(container) : sourceItem.detach(container);
+        if (detached != null) nativeAlchemySourceByDetachedId.put(detached.multiplayerItemId(), source);
+        return detached;
+    }
+
 	{
 		inGameScene = true;
 	}
@@ -344,15 +354,7 @@ public class AlchemyScene extends PixelScene {
 												if (item != null && inputs[0] != null) {
 													for (int i = 0; i < inputs.length; i++) {
                         if (inputs[i].item() == null) {
-                            NativeAlchemySource source = new NativeAlchemySource(item);
-                            Item detached;
-                            if (item instanceof LiquidMetal || item instanceof MissileWeapon) {
-                                detached = item.detachAll(Dungeon.hero.belongings.backpack);
-                            } else {
-                                detached = item.detach(Dungeon.hero.belongings.backpack);
-                            }
-                            inputs[i].item(detached);
-                            if (detached != null) nativeAlchemySourceByDetachedId.put(detached.multiplayerItemId(), source);
+                            inputs[i].item(detachAndTrackAlchemyItem(item, Dungeon.hero.belongings.backpack));
                             break;
                         }
                     }
@@ -619,13 +621,9 @@ public class AlchemyScene extends PixelScene {
 				if (item != null && inputs[0] != null) {
 					for (int i = 0; i < inputs.length; i++) {
 						if (inputs[i].item() == null) {
-							if (item instanceof LiquidMetal || item instanceof MissileWeapon){
-								inputs[i].item(item.detachAll(Dungeon.hero.belongings.backpack));
-							} else {
-								inputs[i].item(item.detach(Dungeon.hero.belongings.backpack));
-							}
-							break;
-						}
+                            inputs[i].item(detachAndTrackAlchemyItem(item, Dungeon.hero.belongings.backpack));
+                            break;
+                        }
 					}
 					updateState();
 				}
@@ -720,8 +718,13 @@ public class AlchemyScene extends PixelScene {
         if (ingredients.isEmpty()) return;
 
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        boolean track = manager.isMultiplayerActive() && Dungeon.hero != null && Dungeon.level != null
-                && Dungeon.branch == 0 && !Dungeon.level.locked;
+        boolean multiplayer = manager.isMultiplayerActive();
+        if (multiplayer && (Dungeon.hero == null || Dungeon.level == null
+                || Dungeon.branch != 0 || Dungeon.level.locked)) {
+            GLog.w("الخيمياء غير مدعومة في هذا الفرع أو حالة الطابق في اللعب الجماعي؛ لم يتم تنفيذ التصنيع.");
+            return;
+        }
+        boolean track = multiplayer;
         if (track && (toolkit != null || Dungeon.hero.buff(AlchemistsToolkit.kitEnergy.class) != null)) {
             GLog.w("اللعب الجماعي لا يزامن طاقة عدة الخيمياء بعد؛ لم يتم تنفيذ التصنيع.");
             return;
@@ -1043,15 +1046,8 @@ public void populate(ArrayList<Item> toFind, Belongings inventory){
 			ArrayList<Item> found = inventory.getAllSimilar(finding);
 			while (!found.isEmpty() && needed > 0){
 				Item sourceItem = found.get(0);
-                NativeAlchemySource source = new NativeAlchemySource(sourceItem);
-                Item detached;
-                if (finding instanceof LiquidMetal || finding instanceof MissileWeapon) {
-                    detached = sourceItem.detachAll(inventory.backpack);
-                } else {
-                    detached = sourceItem.detach(inventory.backpack);
-                }
+                Item detached = detachAndTrackAlchemyItem(sourceItem, inventory.backpack);
                 inputs[curslot].item(detached);
-                if (detached != null) nativeAlchemySourceByDetachedId.put(detached.multiplayerItemId(), source);
 				curslot++;
 				needed -= detached.quantity();
 				if (detached == found.get(0)) {
