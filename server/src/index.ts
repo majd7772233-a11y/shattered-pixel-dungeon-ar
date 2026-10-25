@@ -1906,7 +1906,16 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
 
   const buffClass = data.buffClass, buffId = Number(data.buffId), key = buffClass+"#"+buffId;
   const source = preRows.get(key), prior = oldRows.get(key), result = afterRows.get(key);
-  if (!source || !prior || ![
+  if (!source || !prior) return false;
+  const simpleExpiry = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility"
+  ]);
+  if (simpleExpiry.has(buffClass)) {
+    return !result && source.time <= before.clock + 0.06
+      && hpAfter === hpBefore && shieldAfter === shieldBefore;
+  }
+  if (![
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
@@ -4710,7 +4719,64 @@ export class MatchRoom {
             }
           } else if (actionStr === "SYNC_HERO_STATE" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data;
-            if (data?.sourceType === "ENVIRONMENT") {
+            if (data?.sourceType === "BUFF_TICK") {
+              const playerRow = this.sql.exec(
+                "SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId
+              ).toArray()[0];
+              const previousHeroRow = this.sql.exec(
+                "SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId
+              ).toArray()[0];
+              const savedLevelRow = this.sql.exec(
+                "SELECT value FROM room_meta WHERE key = ?", "levelSnapshot:" + this.currentDepth
+              ).toArray()[0];
+              let previousHeroState: any = null, beforeHeroState: any = null;
+              let afterHeroState: any = null, levelSnapshot: any = null;
+              try {
+                previousHeroState = previousHeroRow && typeof previousHeroRow.value === "string"
+                  ? JSON.parse(String(previousHeroRow.value)) : null;
+                beforeHeroState = typeof data.heroStateBeforeJson === "string"
+                  ? JSON.parse(data.heroStateBeforeJson) : null;
+                afterHeroState = typeof payload.heroStateJson === "string"
+                  ? JSON.parse(payload.heroStateJson) : null;
+                levelSnapshot = savedLevelRow && typeof savedLevelRow.value === "string"
+                  ? JSON.parse(String(savedLevelRow.value)) : null;
+              } catch (_) {
+                previousHeroState = null;
+                beforeHeroState = null;
+                afterHeroState = null;
+                levelSnapshot = null;
+              }
+              const validHeroBuffTick = !!playerRow && !!previousHeroState && !!beforeHeroState && !!afterHeroState
+                && String(playerRow.state) === "ALIVE"
+                && Number(previousHeroState.hp) === Number(playerRow.hp)
+                && Number(previousHeroState.ht) === Number(playerRow.ht)
+                && Number(previousHeroState.pos) === Number(playerRow.pos)
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && Number(levelSnapshot.depth) === this.currentDepth
+                && Number(levelSnapshot.branch) === 0 && levelSnapshot.locked === false
+                && isValidNativeHeroStateJson(payload.heroStateJson, {
+                  hp: Number(afterHeroState.hp), ht: Number(playerRow.ht),
+                  pos: Number(playerRow.pos), shielding: Number(afterHeroState.shielding)
+                })
+                && isValidNativeHeroBuffTick(previousHeroRow.value, data.heroStateBeforeJson,
+                  payload.heroStateJson, data);
+              if (validHeroBuffTick) {
+                const storedHeroState = String(payload.heroStateJson);
+                this.sql.exec("UPDATE players SET hp = ? WHERE player_id = ?",
+                  Number(afterHeroState.hp), session.playerId);
+                this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                  "heroState:" + session.playerId, storedHeroState);
+                eventType = "HERO_BUFF_TICKED";
+                actionResultPayload = {
+                  playerId: session.playerId, sourceType: "BUFF_TICK",
+                  buffClass: String(data.buffClass), buffId: Number(data.buffId),
+                  targetHp: Number(afterHeroState.hp), targetShielding: Number(afterHeroState.shielding),
+                  targetHeroStateJson: storedHeroState
+                };
+                actionValid = true;
+                actionCost = 0;
+              }
+            } else if (data?.sourceType === "ENVIRONMENT") {
               const playerRow = this.sql.exec(
                 `SELECT pos, hp, ht, state FROM players WHERE player_id = ?`, session.playerId
               ).toArray()[0];

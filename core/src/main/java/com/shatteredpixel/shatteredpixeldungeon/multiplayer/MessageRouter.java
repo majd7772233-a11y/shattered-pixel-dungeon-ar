@@ -676,6 +676,10 @@ public final class MessageRouter {
                     } else if (playerId != null && hp >= 0) {
                         applyPlayerHp(playerId, hp);
                     }
+                } else if ("HERO_BUFF_TICKED".equals(type)) {
+                    // Timed effects can update HP, shielding, and native Buff bundles together.
+                    // Reconcile the full accepted Hero state instead of applying scalar deltas.
+                    MultiplayerManager.getInstance().requestResync(seq);
                 } else if ("NATIVE_WORLD_MUTATION".equals(type)) {
                     // Inventory, quickslots, and native heap stacks must converge from one committed snapshot.
                     MultiplayerManager.getInstance().requestResync(seq);

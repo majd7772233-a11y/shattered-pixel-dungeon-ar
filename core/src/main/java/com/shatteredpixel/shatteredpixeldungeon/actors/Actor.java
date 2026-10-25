@@ -28,6 +28,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeHeroBuffTickPublisher;
 import com.watabou.noosa.Game;
 import com.watabou.utils.Bundlable;
 import com.watabou.utils.Bundle;
@@ -387,7 +388,10 @@ public abstract class Actor implements Bundlable {
 					doNext = false;
 					current = null;
 				} else {
-					doNext = acting.act();
+					NativeHeroBuffTickPublisher.TickCapture heroBuffTick =
+                            NativeHeroBuffTickPublisher.capture(acting);
+                    doNext = acting.act();
+                    if (heroBuffTick != null) NativeHeroBuffTickPublisher.publish(heroBuffTick);
                     if (doNext) {
                         if (shouldPublishMultiplayerSharedActorResult(acting)) {
                             MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);
