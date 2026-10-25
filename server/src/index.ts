@@ -3674,8 +3674,8 @@ export class MatchRoom {
           const useItemDetails: any = mutationAction === "USE_ITEM" ? mutationDetails : null;
           const useItemHealing = !!useItemDetails && useItemDetails.itemAction === "DRINK"
             && String(useItemDetails.itemClass || "").endsWith(".PotionOfHealing");
-          const useItemMight = !!useItemDetails && useItemDetails.itemAction === "DRINK"
-            && String(useItemDetails.itemClass || "").endsWith(".PotionOfMight");
+          const useItemStrength = !!useItemDetails && useItemDetails.itemAction === "DRINK"
+            && String(useItemDetails.itemClass || "") === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
           const heroHpValid = mutationAction === "MOVE" || mutationAction === "PICKUP"
             ? Number.isInteger(reportedHero?.hp) && (reportedHero.hp <= Number(playerRow?.hp)
               || (pickupDewdrop && reportedHero.hp <= Number(playerRow?.hp) + maxDewEffect
@@ -3687,10 +3687,7 @@ export class MatchRoom {
               : Number(reportedHero?.hp) === Number(playerRow?.hp);
           const heroStateValid = !!playerRow && String(playerRow.state) === "ALIVE" && !!reportedHero
             && Number(reportedHero.pos) === mutationExpectedPos && heroHpValid
-            && (Number(reportedHero.ht) === Number(playerRow.ht)
-              || (mutationAction === "USE_ITEM" && useItemMight
-                && Number.isInteger(reportedHero.ht) && reportedHero.ht > Number(playerRow.ht)
-                && reportedHero.ht <= Number(playerRow.ht) + 10))
+            && Number(reportedHero.ht) === Number(playerRow.ht)
             && ((mutationAction === "MOVE" || mutationAction === "PICKUP") ? !!previousMutationHero
               && (reportedHero.shielding <= Number(previousMutationHero.shielding)
                 || (mutationAction === "MOVE" && consumedNativeWell)
@@ -3698,7 +3695,8 @@ export class MatchRoom {
               : mutationAction === "USE_ITEM" && useItemDetails
                 ? Number.isInteger(reportedHero.shielding) && reportedHero.shielding >= 0
                   && reportedHero.shielding <= Number(previousMutationHero?.shielding || 0)
-                    + (String(useItemDetails.itemClass || "").endsWith(".PotionOfShielding") ? 1000 : 0)
+                    + (String(useItemDetails.itemClass || "") === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
+                      ? Math.floor(0.6 * Number(reportedHero.ht) + 10) : 0)
                 : !!previousMutationHero && reportedHero.shielding === Number(previousMutationHero.shielding))
             && isValidNativeHeroStateJson(String(level.heroStateJson || ""), {
               hp: Number(reportedHero.hp), ht: Number(reportedHero.ht), pos: mutationExpectedPos,
@@ -3750,7 +3748,10 @@ export class MatchRoom {
                 || (mutationAction === "PICKUP" && String(mutationDetails?.itemClass || "").endsWith(".EnergyCrystal"))) {
               mergedHero.alchemyEnergy = reportedHero.alchemyEnergy;
             }
-            if (mutationAction === "USE_ABILITY") mergedHero.combatBundle = reportedHero.combatBundle;
+            if (mutationAction === "USE_ABILITY"
+                || (mutationAction === "USE_ITEM" && useItemStrength)) {
+              mergedHero.combatBundle = reportedHero.combatBundle;
+            }
             if (typeof reportedHero.quickslotsJson === "string" && parseNativeQuickslotIndex(reportedHero) != null) {
               mergedHero.quickslotsJson = reportedHero.quickslotsJson;
             }
