@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
-  isValidNativeAbilityIntent, isValidNativeAbilityMutation,
+  isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
@@ -1809,6 +1809,76 @@ describe("Native self-buff armor ability transactions", () => {
     const nativeDetails={abilityClass:nature,armorItemId:"native-huntress-armor-001",armorClass:natureArmor,
       armorChargeBefore:65,armorChargeAfter:30,armorChargeUse:35};
     expect(isValidNativeAbilityMutation(JSON.stringify(before),JSON.stringify(next),nativeDetails,accepted)).toBe(true);
+  });
+});
+
+
+describe("Native Hero Buff tick reconciliation", () => {
+  const buffs="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.";
+  const hero=(extra:Record<string,any>={})=>({
+    hp:10,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
+    inventoryBundle:"native-inventory",inventoryItemsJson:"[]",quickslotsJson:"[]",
+    notesBundle:"notes",questStateBundle:"quests",ankhCount:0,blessedAnkhCount:0,
+    cooldown:2,combatBundle:JSON.stringify({time:10,STR:10,items:"native-inventory",buffs:[]}),
+    buffCount:1,
+    buff_0:JSON.stringify({buff:{__className:buffs+"Hunger",id:12,time:9,level:200,partialDamage:0}}),
+    buffCooldown_0:1,
+    ...extra
+  });
+  const stateWithBuff=(buffClass:string,id:number,time:number,data:Record<string,any>,extra:Record<string,any>={})=>({
+    hp:10,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
+    inventoryBundle:"native-inventory",inventoryItemsJson:"[]",quickslotsJson:"[]",
+    notesBundle:"notes",questStateBundle:"quests",ankhCount:0,blessedAnkhCount:0,
+    cooldown:1,combatBundle:JSON.stringify({time:10,STR:10,items:"native-inventory",buffs:[]}),
+    buffCount:1,
+    buff_0:JSON.stringify({buff:{__className:buffClass,id,time,...data}}),
+    buffCooldown_0:Math.max(0,time-9),
+    ...extra
+  });
+  const tick=(buffClass:string,buffId:number,actorClockBefore=9)=>({sourceType:"BUFF_TICK",buffClass,buffId,actorClockBefore});
+  it("accepts one native WellFed tick with its exact one-HP healing threshold",()=>{
+    const cls=buffs+"WellFed";
+    const previous=stateWithBuff(cls,22,9,{left:19},{cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(cls,22,9,{left:19},{cooldown:1,buffCooldown_0:0,hp:10});
+    const after=stateWithBuff(cls,22,10,{left:18},{cooldown:1,buffCooldown_0:1,hp:11});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(after),tick(cls,22))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...after,hp:15}),tick(cls,22))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...after,inventoryBundle:"forged-inventory"}),tick(cls,22))).toBe(false);
+  });
+  it("accepts Hunger advance within the native clock and rejects forged healing or item deltas",()=>{
+    const cls=buffs+"Hunger";
+    const previous=stateWithBuff(cls,12,9,{level:200,partialDamage:0},{cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(cls,12,9,{level:200,partialDamage:0},{cooldown:1,buffCooldown_0:0,hp:10});
+    const after=stateWithBuff(cls,12,10,{level:201,partialDamage:0},{cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(after),tick(cls,12))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify({...after,hp:11}),tick(cls,12))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...after,inventoryItemsJson:"[forged]"}),tick(cls,12))).toBe(false);
+  });
+  it("validates bounded Healing and Poison ticks and rejects unrelated buff injection",()=>{
+    const healing=buffs+"Healing";
+    const old=stateWithBuff(healing,31,9,{left:5,percent:0.2,flat:0,healing_limited:false},{cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(healing,31,9,{left:5,percent:0.2,flat:0,healing_limited:false},{cooldown:1,buffCooldown_0:0,hp:10});
+    const after=stateWithBuff(healing,31,10,{left:4,percent:0.2,flat:0,healing_limited:false},{cooldown:1,buffCooldown_0:1,hp:11});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(old),JSON.stringify(before),JSON.stringify(after),tick(healing,31))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(old),JSON.stringify(before),JSON.stringify({...after,hp:20}),tick(healing,31))).toBe(false);
+    const poison=buffs+"Poison";
+    const pOld=stateWithBuff(poison,44,9,{left:9},{cooldown:2,buffCooldown_0:1,hp:10});
+    const pBefore=stateWithBuff(poison,44,9,{left:9},{cooldown:1,buffCooldown_0:0,hp:10});
+    const pAfter=stateWithBuff(poison,44,10,{left:8},{cooldown:1,buffCooldown_0:1,hp:9});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(pOld),JSON.stringify(pBefore),JSON.stringify(pAfter),tick(poison,44))).toBe(true);
+    const forged={...after,buffCount:2,buff_1:JSON.stringify({buff:{__className:buffs+"Haste",id:87,time:13}}),buffCooldown_1:4};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(old),JSON.stringify(before),JSON.stringify(forged),tick(healing,31))).toBe(false);
+  });
+  it("validates Barrier decay only as one shield point or unchanged shielding",()=>{
+    const cls=buffs+"Barrier";
+    const previous=stateWithBuff(cls,50,9,{shielding:5,partialLostShield:0.7},{cooldown:2,buffCooldown_0:1,hp:10,shielding:5});
+    const before=stateWithBuff(cls,50,9,{shielding:5,partialLostShield:0.7},{cooldown:1,buffCooldown_0:0,hp:10,shielding:5});
+    const after=stateWithBuff(cls,50,10,{shielding:4,partialLostShield:0},{cooldown:1,buffCooldown_0:1,hp:10,shielding:4});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(after),tick(cls,50))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify({...after,shielding:2}),tick(cls,50))).toBe(false);
   });
 });
 

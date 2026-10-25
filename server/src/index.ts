@@ -1797,6 +1797,222 @@ export function isValidNativeAlchemyHeapMutation(previousHeaps: any[], nextHeaps
       itemValueWithout(output, ["quantity","serializedBundle"]));
 }
 
+
+type NativeHeroBuffTickRow = {className:string,id:number,time:number,cooldown:number,bundle:string,data:any};
+
+function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:NativeHeroBuffTickRow[]} | null {
+  let state:any;
+  try { state = typeof value === "string" ? JSON.parse(value) : value; } catch (_) { return null; }
+  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+  const combat = parseNativeBundleObject(state.combatBundle);
+  const heroTime = Number(combat?.time), heroCooldown = Number(state.cooldown);
+  const clock = heroTime - heroCooldown;
+  if (!Number.isFinite(heroTime) || !Number.isFinite(heroCooldown) || heroCooldown < 0
+      || heroCooldown > 100000 || !Number.isFinite(clock) || clock < 0) return null;
+  if (!Number.isInteger(state.buffCount) || state.buffCount < 0 || state.buffCount > 256) return null;
+  const rows: NativeHeroBuffTickRow[] = [];
+  const keys = new Set<string>();
+  for (let i=0;i<state.buffCount;i++) {
+    const bundle = state["buff_"+i], cooldown = Number(state["buffCooldown_"+i]);
+    const root = parseNativeBundleObject(bundle), data = root && root.buff;
+    const className = String(data?.__className || ""), id = Number(data?.id), time = Number(data?.time);
+    if (typeof bundle !== "string" || bundle.length < 1 || bundle.length > 200000
+        || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.")
+        || !Number.isInteger(id) || id < 0 || !Number.isFinite(time)
+        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
+        || Math.abs(cooldown - Math.max(0,time-clock)) > 0.06) return null;
+    const key = className+"#"+id;
+    if (keys.has(key)) return null;
+    keys.add(key);
+    rows.push({className,id,time,cooldown,bundle,data});
+  }
+  return {state,clock,rows};
+}
+
+function nativeHeroBuffTickStableState(stateValue: any): any | null {
+  const state = {...stateValue};
+  delete state.cooldown;
+  delete state.buffCount;
+  for (const key of Object.keys(state)) if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete state[key];
+  const combat = parseNativeBundleObject(state.combatBundle);
+  if (!combat) return null;
+  // Actor buffs are validated separately. Keep the native hero clock, equipment, class,
+  // talents, and every other combat field intact.
+  delete combat.buffs;
+  state.combatBundle = combat;
+  return state;
+}
+
+function nativeHeroBuffTickRowsByKey(rows: NativeHeroBuffTickRow[]): Map<string,NativeHeroBuffTickRow> {
+  return new Map(rows.map(row=>[row.className+"#"+row.id,row]));
+}
+
+/** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
+export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
+  afterValue: unknown, dataValue: unknown): boolean {
+  const previous = nativeHeroBuffTickState(previousValue);
+  const before = nativeHeroBuffTickState(beforeValue);
+  const after = nativeHeroBuffTickState(afterValue);
+  const data:any = dataValue;
+  if (!previous || !before || !after || !data || typeof data !== "object"
+      || typeof data.buffClass !== "string" || !Number.isInteger(data.buffId) || data.buffId < 0
+      || !Number.isFinite(data.actorClockBefore)
+      || Math.abs(Number(data.actorClockBefore)-before.clock) > 0.06
+      || Math.abs(before.clock-previous.clock) > 10000
+      || Math.abs(after.clock-before.clock) > 0.06
+      || !sameNativeItemValue(nativeHeroBuffTickStableState(previous.state),nativeHeroBuffTickStableState(before.state))
+      || !sameNativeItemValue(nativeHeroBuffTickStableState(before.state),nativeHeroBuffTickStableState(after.state))
+      || Number(previous.state.hp) !== Number(before.state.hp)
+      || Number(previous.state.ht) !== Number(before.state.ht)
+      || Number(previous.state.pos) !== Number(before.state.pos)
+      || Number(previous.state.shielding) !== Number(before.state.shielding)
+      || Number(before.state.ht) < 1 || !Number.isInteger(before.state.hp)
+      || before.state.hp <= 0 || before.state.hp > before.state.ht
+      || !Number.isInteger(after.state.hp) || after.state.hp <= 0 || after.state.hp > after.state.ht
+      || Number(after.state.ht) !== Number(before.state.ht) || Number(after.state.pos) !== Number(before.state.pos)
+      || !Number.isInteger(after.state.shielding) || after.state.shielding < 0 || after.state.shielding > 100000
+      || previous.state.gold !== before.state.gold || previous.state.alchemyEnergy !== before.state.alchemyEnergy
+      || before.state.gold !== after.state.gold || before.state.alchemyEnergy !== after.state.alchemyEnergy
+      || before.state.inventoryBundle !== after.state.inventoryBundle
+      || before.state.inventoryItemsJson !== after.state.inventoryItemsJson
+      || before.state.quickslotsJson !== after.state.quickslotsJson
+      || before.state.ankhCount !== after.state.ankhCount
+      || before.state.blessedAnkhCount !== after.state.blessedAnkhCount) return false;
+
+  // Between native actor turns the scheduler clock may advance, but serialized native
+  // Buff bundles remain identical until that Buff itself acts. Only already-expired simple
+  // flavour timers may disappear before the current tick.
+  const oldRows = nativeHeroBuffTickRowsByKey(previous.rows), preRows = nativeHeroBuffTickRowsByKey(before.rows);
+  const afterRows = nativeHeroBuffTickRowsByKey(after.rows);
+  const expirable = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation"
+  ]);
+  for (const [key,row] of oldRows) {
+    const current = preRows.get(key);
+    if (!current) {
+      if (!expirable.has(row.className) || row.time > before.clock + 0.06) return false;
+      continue;
+    }
+    if (row.bundle !== current.bundle) return false;
+  }
+  for (const [key] of preRows) if (!oldRows.has(key)) return false;
+
+  const buffClass = data.buffClass, buffId = Number(data.buffId), key = buffClass+"#"+buffId;
+  const source = preRows.get(key), prior = oldRows.get(key), result = afterRows.get(key);
+  if (!source || !prior || ![
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier"
+  ].includes(buffClass)) return false;
+  if (source.bundle !== prior.bundle || before.state.inventoryBundle !== after.state.inventoryBundle
+      || !sameNativeItemValue(
+        before.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)),
+        after.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)))) return false;
+
+  const hpBefore = Number(before.state.hp), hpAfter = Number(after.state.hp), ht = Number(before.state.ht);
+  const shieldBefore = Number(before.state.shielding), shieldAfter = Number(after.state.shielding);
+  const oldData = source.data, newData = result?.data;
+  const className = buffClass;
+  const timeDelta = result ? result.time-source.time : null;
+  const isSameTimeTick = (min:number,max:number) => result != null && timeDelta! >= min && timeDelta! <= max;
+  const hasWellFed = before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed");
+  const near = (a:number,b:number,tolerance=0.03) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a-b)<=tolerance;
+
+  if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed") {
+    const left = Number(oldData.left);
+    if (!Number.isInteger(left) || left < 0 || left > 450) return false;
+    if (left === 0) {
+      return !result && shieldAfter === shieldBefore && hpAfter === hpBefore;
+    }
+    const expectedLeft = left-1;
+    if (!result || Number(newData.left)!==expectedLeft || !isSameTimeTick(0.2,3)
+        || shieldAfter !== shieldBefore) return false;
+    const expectedHeal = expectedLeft%18===0 && hpBefore<ht ? 1 : 0;
+    return hpAfter === Math.min(ht,hpBefore+expectedHeal);
+  }
+
+  if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger") {
+    if (!result || !isSameTimeTick(0.9,1.1)
+        || !Number.isFinite(Number(oldData.level)) || !Number.isFinite(Number(newData.level))
+        || !Number.isFinite(Number(oldData.partialDamage)) || !Number.isFinite(Number(newData.partialDamage))
+        || Number(oldData.level)<0 || Number(oldData.level)>450
+        || Number(newData.level)<0 || Number(newData.level)>450
+        || Number(oldData.partialDamage)<0 || Number(oldData.partialDamage)>1.5
+        || Number(newData.partialDamage)<0 || Number(newData.partialDamage)>1.5) return false;
+    if (hasWellFed) return Number(newData.level)===Number(oldData.level)
+      && near(Number(newData.partialDamage),Number(oldData.partialDamage))
+      && hpAfter===hpBefore && shieldAfter===shieldBefore;
+    if (Number(oldData.level)<450) {
+      const expectedLevel = Math.min(450,Number(oldData.level)+2);
+      if (Number(newData.level)<Number(oldData.level)-0.01
+          || Number(newData.level)>expectedLevel+0.01
+          || !near(Number(newData.partialDamage),Number(oldData.partialDamage))) return false;
+      if (Number(newData.level)>=450 && Number(oldData.level)<450) {
+        return hpAfter===hpBefore-1 && shieldAfter===shieldBefore;
+      }
+      return hpAfter===hpBefore && shieldAfter===shieldBefore;
+    }
+    if (Number(newData.level)!==450) return false;
+    const raw = Number(oldData.partialDamage)+ht/1000;
+    const expectedDamage = raw>1 ? Math.floor(raw) : 0;
+    const expectedPartial = raw>1 ? raw-expectedDamage : raw;
+    return near(Number(newData.partialDamage),expectedPartial,0.06)
+      && hpAfter===hpBefore-expectedDamage && shieldAfter===shieldBefore;
+  }
+
+  if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing") {
+    const left = Number(oldData.left), percent = Number(oldData.percent), flat = Number(oldData.flat);
+    if (!Number.isInteger(left) || left < 1 || left > 100000
+        || !Number.isFinite(percent) || percent < 0 || percent > 1
+        || !Number.isInteger(flat) || flat < 0 || flat > 100000
+        || typeof oldData.healing_limited !== "boolean") return false;
+    const computed = Math.max(1,Math.min(left,Math.round(left*percent)+flat));
+    const tick = result ? left-Number(newData.left) : left;
+    if (!Number.isInteger(tick) || tick < 1 || tick > computed
+        || (result && (!isSameTimeTick(0.9,1.1)
+          || Number(newData.left)!==left-tick
+          || Number(newData.percent)!==percent || Number(newData.flat)!==flat
+          || newData.healing_limited!==oldData.healing_limited))
+        || (!result && left-tick>0) || shieldAfter!==shieldBefore) return false;
+    return hpAfter===Math.min(ht,hpBefore+tick);
+  }
+
+  if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison") {
+    const left = Number(oldData.left);
+    if (!Number.isFinite(left) || left <= 0 || left > 100000) return false;
+    const expectedLeft = left-1;
+    if (result) {
+      if (!isSameTimeTick(0.9,1.1) || !near(Number(newData.left),expectedLeft)) return false;
+    } else if (expectedLeft>0) return false;
+    const effective = hpBefore+shieldBefore-hpAfter-shieldAfter;
+    const maxDamage = Math.floor(left/3)+1;
+    return Number.isInteger(effective) && effective>=0 && effective<=maxDamage;
+  }
+
+  if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier") {
+    const oldShield = Number(oldData.shielding), oldPartial = Number(oldData.partialLostShield);
+    if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000
+        || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return false;
+    if (result) {
+      if (!isSameTimeTick(0.9,1.1)
+          || !Number.isInteger(newData.shielding) || newData.shielding < 0
+          || newData.shielding > oldShield || oldShield-newData.shielding > 1
+          || !Number.isFinite(Number(newData.partialLostShield))) return false;
+      if (oldShield-newData.shielding===1) {
+        if (!near(Number(newData.partialLostShield),0)) return false;
+      } else if (Number(newData.partialLostShield)<oldPartial
+          || Number(newData.partialLostShield)>=1) return false;
+    } else if (oldShield>1 || shieldAfter!==shieldBefore-oldShield) return false;
+    if (hpAfter!==hpBefore) return false;
+    return shieldAfter===shieldBefore-(oldShield-(result?Number(newData.shielding):0));
+  }
+  return false;
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
