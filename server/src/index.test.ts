@@ -2001,6 +2001,42 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(before,overlong,d,accepted)).toBe(false);
   });
+  it("accepts Invisibility and Levitation only for their native single-buff effects",()=>{
+    const invisibility="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility";
+    const levitation="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation";
+    const invisBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility";
+    const levBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation";
+    const roots="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots";
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const beforeInvisibility=JSON.stringify(hero([row("native-invisibility-001",invisibility)]));
+    const afterInvisibility=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:invisBuff,time:20,id:61}}),buffCooldown_1:20
+    }));
+    const invisIntent=intent("native-invisibility-001",invisibility),invisAccepted={...invisIntent,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemIntent(level,invisIntent,4,"player-001",{pos:9,state:"ALIVE"},beforeInvisibility)).toBe(true);
+    expect(isValidNativeUseItemMutation(beforeInvisibility,afterInvisibility,invisIntent,invisAccepted)).toBe(true);
+    const assassin=JSON.stringify(hero([row("native-invisibility-assassin-001",invisibility)],{
+      combatBundle:JSON.stringify({STR:10,items:"inventory-before",subClass:"ASSASSIN"})
+    }));
+    expect(isValidNativeUseItemIntent(level,intent("native-invisibility-assassin-001",invisibility),4,
+      "player-001",{pos:9,state:"ALIVE"},assassin)).toBe(false);
+
+    const beforeLevitation=JSON.stringify(hero([row("native-levitation-001",levitation)]));
+    const afterLevitation=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:levBuff,time:20,id:62}}),buffCooldown_1:20
+    }));
+    const levIntent=intent("native-levitation-001",levitation),levAccepted={...levIntent,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemIntent(level,levIntent,4,"player-001",{pos:9,state:"ALIVE"},beforeLevitation)).toBe(true);
+    expect(isValidNativeUseItemMutation(beforeLevitation,afterLevitation,levIntent,levAccepted)).toBe(true);
+    const rooted=JSON.stringify(hero([row("native-levitation-rooted-001",levitation)],{
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:roots,time:3,id:63}}),buffCooldown_1:3
+    }));
+    expect(isValidNativeUseItemIntent(level,intent("native-levitation-rooted-001",levitation),4,
+      "player-001",{pos:9,state:"ALIVE"},rooted)).toBe(false);
+  });
   it("validates PotionOfHealing's native Healing buff and rejects unrelated combat bundle edits",()=>{
     const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
     const before=JSON.stringify(hero([row("native-healing-001",potion)]));
