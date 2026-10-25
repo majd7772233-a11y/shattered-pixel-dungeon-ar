@@ -2,12 +2,16 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.food.Food;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste;
+import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility;
+import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
@@ -41,6 +45,8 @@ public final class NativeItemActionPublisher {
         if ("DRINK".equals(action)) {
             return item.getClass() == PotionOfHealing.class
                     || item.getClass() == PotionOfHaste.class
+                    || (item.getClass() == PotionOfInvisibility.class && hero.subClass != HeroSubClass.ASSASSIN)
+                    || (item.getClass() == PotionOfLevitation.class && hero.buff(Roots.class) == null)
                     || item.getClass() == PotionOfStrength.class
                     || item.getClass() == PotionOfShielding.class;
         }
