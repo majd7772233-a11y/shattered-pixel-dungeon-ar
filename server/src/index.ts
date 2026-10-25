@@ -1906,7 +1906,11 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
 
   const buffClass = data.buffClass, buffId = Number(data.buffId), key = buffClass+"#"+buffId;
   const source = preRows.get(key), prior = oldRows.get(key), result = afterRows.get(key);
-  if (!source || !prior) return false;
+  if (!source || !prior || source.bundle !== prior.bundle
+      || before.state.inventoryBundle !== after.state.inventoryBundle
+      || !sameNativeItemValue(
+        before.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)),
+        after.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)))) return false;
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility"
@@ -1923,11 +1927,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier"
   ].includes(buffClass)) return false;
-  if (source.bundle !== prior.bundle || before.state.inventoryBundle !== after.state.inventoryBundle
-      || !sameNativeItemValue(
-        before.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)),
-        after.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)))) return false;
-
   const hpBefore = Number(before.state.hp), hpAfter = Number(after.state.hp), ht = Number(before.state.ht);
   const shieldBefore = Number(before.state.shielding), shieldAfter = Number(after.state.shielding);
   const oldData = source.data, newData = result?.data;
