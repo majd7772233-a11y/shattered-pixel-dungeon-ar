@@ -1983,6 +1983,24 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
+  it("accepts PotionOfHaste only with one bounded native Haste buff and no unrelated effect",()=>{
+    const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
+    const hasteBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste";
+    const before=JSON.stringify(hero([row("native-haste-001",haste)]));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:20,id:52}}),buffCooldown_1:20
+    }));
+    const d=intent("native-haste-001",haste),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemIntent({depth:4,branch:0,locked:false,heaps:[]},d,4,
+      "player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+    const overlong=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:45,id:52}}),buffCooldown_1:45
+    }));
+    expect(isValidNativeUseItemMutation(before,overlong,d,accepted)).toBe(false);
+  });
   it("validates PotionOfHealing's native Healing buff and rejects unrelated combat bundle edits",()=>{
     const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
     const before=JSON.stringify(hero([row("native-healing-001",potion)]));
