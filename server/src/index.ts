@@ -600,6 +600,10 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }
     if (String(combat?.subClass || "") === "ASSASSIN") return false;
   }
+  if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation") {
+    const buffs = nativeUseItemBuffMap(hero);
+    if (!buffs || buffs.has("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots")) return false;
+  }
   const inventory = parseNativeInventoryIndex(hero);
   if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
   const source = inventory.filter((item: any) => String(item.itemId) === id);
