@@ -1926,9 +1926,13 @@ describe("Native item consumption transaction validation", () => {
     itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
     serializedBundle:"native-item-bundle:"+id+":quantity="+quantity
   });
+  const defaultHungerBundle = JSON.stringify({buff:{
+    __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",level:55,partialDamage:0
+  }});
   const hero = (items:any[], extra:Record<string,any>={}) => ({
     hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
-    combatBundle:JSON.stringify({STR:10,items:"inventory-before"}),buffCount:0,
+    combatBundle:JSON.stringify({STR:10,items:"inventory-before"}),
+    buffCount:1,buff_0:defaultHungerBundle,buffCooldown_0:0,
     inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
   });
   const intent = (id:string, cls=potion, action="DRINK", quantity=1, stackable=false) => ({
@@ -1982,9 +1986,10 @@ describe("Native item consumption transaction validation", () => {
   it("validates PotionOfHealing's native Healing buff and rejects unrelated combat bundle edits",()=>{
     const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
     const before=JSON.stringify(hero([row("native-healing-001",potion)]));
-    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:1,
-      buff_0:JSON.stringify({buff:{__className:healing,left:22,percent:0.25,flat:0,healing_limited:false}}),
-      buffCooldown_0:0
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:healing,left:22,percent:0.25,flat:0,healing_limited:false}}),
+      buffCooldown_1:0
     }));
     const d=intent("native-healing-001"),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
