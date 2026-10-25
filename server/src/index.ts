@@ -443,6 +443,9 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     allowed = new Set([base + "Healing", base + "Poison", base + "Cripple", base + "Weakness",
       base + "Vulnerable", base + "Bleeding", base + "Blindness", base + "Drowsy", base + "Slow", base + "Vertigo"]);
   } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste") {
+    allowed = new Set([base + "Haste"]);
+  } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength") {
     allowed = new Set();
   } else if (action === "DRINK"
@@ -456,6 +459,29 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     if (allowed.has(name)) continue;
     if (!sameNativeItemValue(oldRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
       newRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})))) return false;
+  }
+
+  if (action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste") {
+    const name = base + "Haste", oldRows = before.get(name) || [], newRows = after.get(name) || [];
+    if (newRows.length !== 1) return false;
+    const nextRow = newRows[0], nextData = nextRow.data;
+    const allowedFields = new Set(["__className", "time", "id", "mnemonic_extended"]);
+    if (Object.keys(nextData).some((key: string) => !allowedFields.has(key))
+        || !Number.isFinite(Number(nextData.time)) || !Number.isInteger(nextData.id) || Number(nextData.id) < 0
+        || (nextData.mnemonic_extended !== undefined && typeof nextData.mnemonic_extended !== "boolean")) return false;
+    const nextCooldown = Number(nextRow.cooldown), oldCooldown = Number(oldRows[0]?.cooldown || 0);
+    if (!Number.isFinite(nextCooldown) || nextCooldown < 0
+        || nextCooldown > Math.max(oldCooldown, 20) + 0.05) return false;
+    if (oldRows.length === 1) {
+      const oldData = oldRows[0].data;
+      if (Number(nextData.id) !== Number(oldData.id)) return false;
+      const stripTime = (value: any) => {
+        const result: any = {...value};
+        delete result.time;
+        return result;
+      };
+      if (!sameNativeItemValue(stripTime(oldData), stripTime(nextData))) return false;
+    } else if (oldRows.length !== 0) return false;
   }
 
   if (action === "EAT") {
@@ -545,6 +571,7 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
       || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
   const supportedDrink = itemAction === "DRINK" && [
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
   ].includes(cls);
