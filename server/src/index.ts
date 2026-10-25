@@ -439,7 +439,8 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   const simpleFoodClasses = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.items.food.Food",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",
-    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat"
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat"
   ]);
   if (action === "EAT" && simpleFoodClasses.has(itemClass)) {
     allowed = new Set([base + "Hunger"]);
@@ -601,7 +602,8 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   const supportedFood = itemAction === "EAT" && [
     "com.shatteredpixel.shatteredpixeldungeon.items.food.Food",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation",
-    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat"
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",
+    "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat"
   ].includes(cls);
   if (!supportedDrink && !supportedFood) return false;
   let hero: any;

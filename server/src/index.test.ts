@@ -1960,6 +1960,10 @@ describe("Native item consumption transaction validation", () => {
       "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat","EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-stewed-meat-001",
         "com.shatteredpixel.shatteredpixeldungeon.items.food.StewedMeat",1,true)])))).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-chargrilled-meat-001",
+      "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat","EAT",1,true),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-chargrilled-meat-001",
+        "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat",1,true)])))).toBe(true);
     expect(isValidNativeUseItemIntent(level,intent("native-mystery-meat-001",
       "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat","EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-mystery-meat-001",
@@ -1991,6 +1995,24 @@ describe("Native item consumption transaction validation", () => {
       buff_1:serialized("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",{}),buffCooldown_1:5
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
+  });
+  it("accepts the exact ChargrilledMeat Hunger recovery and rejects extra recovery",()=>{
+    const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+    const chargrilled="com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat";
+    const serialized=(className:string,fields:Record<string,any>={})=>JSON.stringify({buff:{__className:className,...fields}});
+    const before=JSON.stringify(hero([row("native-chargrilled-energy-001",chargrilled,1,true)],{
+      buffCount:1,buff_0:serialized(hunger,{level:220,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const validAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      buffCount:1,buff_0:serialized(hunger,{level:70,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const tooMuchAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      buffCount:1,buff_0:serialized(hunger,{level:69,partialDamage:0.25}),buffCooldown_0:0
+    }));
+    const data=intent("native-chargrilled-energy-001",chargrilled,"EAT",1,true);
+    const accepted={...data,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,validAfter,data,accepted)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,tooMuchAfter,data,accepted)).toBe(false);
   });
   it("rejects food recovery above the native SmallRation energy",()=>{
     const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
