@@ -1928,7 +1928,7 @@ describe("Native item consumption transaction validation", () => {
   });
   const hero = (items:any[], extra:Record<string,any>={}) => ({
     hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
-    combatBundle:JSON.stringify({STR:10,belongings:"inventory-before"}),buffCount:0,
+    combatBundle:JSON.stringify({STR:10,items:"inventory-before"}),buffCount:0,
     inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
   });
   const intent = (id:string, cls=potion, action="DRINK", quantity=1, stackable=false) => ({
@@ -1989,7 +1989,7 @@ describe("Native item consumption transaction validation", () => {
     const d=intent("native-healing-001"),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      combatBundle:JSON.stringify({STR:10,belongings:"inventory-after",attackSkill:999})
+      combatBundle:JSON.stringify({STR:10,items:"inventory-after",attackSkill:999})
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
@@ -1997,12 +1997,12 @@ describe("Native item consumption transaction validation", () => {
     const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
     const before=JSON.stringify(hero([row("native-strength-001",strength)]));
     const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      combatBundle:JSON.stringify({STR:11,belongings:"inventory-after"})
+      combatBundle:JSON.stringify({STR:11,items:"inventory-after"})
     }));
     const d=intent("native-strength-001",strength),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      combatBundle:JSON.stringify({STR:12,belongings:"inventory-after"})
+      combatBundle:JSON.stringify({STR:12,items:"inventory-after"})
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
