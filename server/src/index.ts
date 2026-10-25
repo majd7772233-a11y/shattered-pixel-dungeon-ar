@@ -1220,7 +1220,7 @@ function sameNativeItemValue(a: any, b: any): boolean {
   };
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
-/** The hero may drop only a full, exact item instance from the trusted inventory at its current cell. */
+/** The hero may drop an owned item quantity from the trusted inventory at its current cell. */
 export function isValidNativeDropIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroValue: unknown): boolean {
   const data: any = dataValue, depth = Number(depthValue);
@@ -1229,12 +1229,14 @@ export function isValidNativeDropIntent(level: any, dataValue: unknown, depthVal
       || !player || !String(playerIdValue || "") || String(player.state) !== "ALIVE"
       || !Number.isInteger(player.pos) || typeof heroValue !== "string") return false;
   const pos = Number(player.pos), heapId = String(data.heapId || ""), itemId = String(data.itemId || "");
-  const resultId = String(data.resultItemId || ""), cls = String(data.itemClass || ""), quantity = data.expectedQuantity;
+  const resultId = String(data.resultItemId || ""), cls = String(data.itemClass || "");
+  const quantity = Number(data.expectedQuantity), sourceQuantity = Number(data.sourceQuantityBefore);
   if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth
-      || data.branch !== 0 || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
-      || resultId.length < 8 || resultId.length > 80 || cls.length < 1 || cls.length > 256
-      || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
-      || !Number.isInteger(data.sourceQuantityBefore) || data.sourceQuantityBefore !== quantity
+      || data.branch !== 0 || heapId.length < 8 || heapId.length > 80
+      || itemId.length < 8 || itemId.length > 80 || resultId.length < 8 || resultId.length > 80
+      || cls.length < 1 || cls.length > 256 || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
+      || !Number.isInteger(sourceQuantity) || sourceQuantity < quantity || sourceQuantity > 100000
+      || (quantity < sourceQuantity && data.stackable !== true)
       || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
       || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
   let hero: any;
@@ -1243,34 +1245,83 @@ export function isValidNativeDropIntent(level: any, dataValue: unknown, depthVal
   const inventory = parseNativeInventoryIndex(hero);
   if (!inventory) return false;
   const source = inventory.filter((item: any) => String(item.itemId) === itemId);
-  if (source.length !== 1 || String(source[0].className) !== cls || source[0].quantity !== quantity
+  if (source.length !== 1 || String(source[0].className) !== cls || source[0].quantity !== sourceQuantity
       || source[0].stackable !== data.stackable) return false;
+
   const heapsAtCell = level.heaps.filter((heap: any) => Number(heap?.pos) === pos);
   if (heapsAtCell.length > 1) return false;
   const targetHeap = heapsAtCell[0] || null;
-  if (targetHeap && String(targetHeap.heapId || "") !== heapId) return false;
-  if (!targetHeap && (resultId !== itemId
-      || level.heaps.some((heap: any) => String(heap?.heapId || "") === heapId))) return false;
-  if (targetHeap) {
-    if (!Array.isArray(targetHeap.items)) return false;
-    const match = targetHeap.items.filter((item: any) => String(item?.itemId || "") === resultId);
-    if (match.length > 1 || (match.length === 1 && (!data.stackable || match[0].stackable !== true
-        || String(match[0].className || "") !== cls)) || (match.length === 0 && resultId !== itemId)) return false;
+  if (targetHeap && (String(targetHeap.heapId || "") !== heapId
+      || String(targetHeap.type) !== "HEAP" || !Array.isArray(targetHeap.items))) return false;
+  if (!targetHeap && level.heaps.some((heap: any) => String(heap?.heapId || "") === heapId)) return false;
+  const resultAlreadyElsewhere = level.heaps.some((heap: any) =>
+    (!targetHeap || String(heap?.heapId || "") !== heapId)
+      && (Array.isArray(heap?.items) ? heap.items : []).some((item: any) => String(item?.itemId || "") === resultId));
+  if (resultAlreadyElsewhere) return false;
+
+  const targetItems: any[] = targetHeap ? targetHeap.items : [];
+  const resultMatches = targetItems.filter((item: any) => String(item?.itemId || "") === resultId);
+  if (resultMatches.length > 1) return false;
+  if (resultMatches.length === 1) {
+    if (resultId === itemId || data.stackable !== true || resultMatches[0].stackable !== true
+        || String(resultMatches[0].className || "") !== cls
+        || !Number.isInteger(resultMatches[0].quantity) || resultMatches[0].quantity < 1) return false;
+  } else if (quantity === sourceQuantity ? resultId !== itemId : resultId === itemId) {
+    return false;
   }
   return true;
 }
-/** A full drop removes its source item and leaves every other inventory row and Gold untouched. */
+/** A drop removes its exact quantity while preserving unrelated inventory rows and quickslots. */
 export function isValidNativeDropInventoryMutation(beforeValue: unknown, afterValue: unknown, detailsValue: unknown): boolean {
   let beforeHero: any, afterHero: any;
-  try { beforeHero = JSON.parse(String(beforeValue || "")); afterHero = JSON.parse(String(afterValue || "")); } catch (_) { return false; }
+  try { beforeHero = JSON.parse(String(beforeValue || "")); afterHero = JSON.parse(String(afterValue || "")); }
+  catch (_) { return false; }
   const details: any = detailsValue, before = parseNativeInventoryIndex(beforeHero), after = parseNativeInventoryIndex(afterHero);
   if (!details || !before || !after || beforeHero.gold !== afterHero.gold) return false;
   const id = String(details.itemId || ""), cls = String(details.itemClass || "");
-  const source = before.filter((item: any) => String(item.itemId) === id);
-  if (source.length !== 1 || String(source[0].className) !== cls
-      || source[0].quantity !== Number(details.sourceQuantityBefore) || source[0].quantity !== Number(details.expectedQuantity)
-      || source[0].stackable !== details.stackable || after.some((item: any) => String(item.itemId) === id)) return false;
-  return sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== id), after);
+  const dropped = Number(details.expectedQuantity), sourceQuantity = Number(details.sourceQuantityBefore);
+  if (!Number.isInteger(dropped) || dropped < 1 || !Number.isInteger(sourceQuantity) || sourceQuantity < dropped
+      || (dropped < sourceQuantity && details.stackable !== true)) return false;
+  const oldRows = before.filter((item: any) => String(item.itemId) === id);
+  const newRows = after.filter((item: any) => String(item.itemId) === id);
+  if (oldRows.length !== 1 || String(oldRows[0].className) !== cls
+      || oldRows[0].quantity !== sourceQuantity || oldRows[0].stackable !== details.stackable) return false;
+  const remainder = sourceQuantity - dropped;
+  if (remainder === 0) {
+    if (newRows.length !== 0) return false;
+  } else if (newRows.length !== 1 || newRows[0].quantity !== remainder
+      || !sameNativeItemValue(itemValueWithout(oldRows[0], ["quantity", "serializedBundle"]),
+        itemValueWithout(newRows[0], ["quantity", "serializedBundle"]))) {
+    return false;
+  }
+  if (!sameNativeItemValue(before.filter((item: any) => String(item.itemId) !== id),
+      after.filter((item: any) => String(item.itemId) !== id))) return false;
+
+  const beforeSlots = parseNativeQuickslotIndex(beforeHero), afterSlots = parseNativeQuickslotIndex(afterHero);
+  if (!beforeSlots || !afterSlots) return false;
+  const oldSourceSlots = beforeSlots.filter((slot: any) => String(slot.itemId) === id);
+  const newSourceSlots = afterSlots.filter((slot: any) => String(slot.itemId) === id);
+  if (remainder > 0) {
+    if (newSourceSlots.length !== oldSourceSlots.length) return false;
+    for (const oldSlot of oldSourceSlots) {
+      const newSlot = newSourceSlots.find((slot: any) => Number(slot.slot) === Number(oldSlot.slot));
+      if (!newSlot || Number(newSlot.quantity) !== remainder || String(newSlot.className) !== cls
+          || String(newSlot.serializedBundle) !== String(newRows[0].serializedBundle)
+          || !sameNativeItemValue(itemValueWithout(oldSlot, ["quantity", "serializedBundle"]),
+            itemValueWithout(newSlot, ["quantity", "serializedBundle"]))) return false;
+    }
+  } else {
+    if (newSourceSlots.length > oldSourceSlots.length) return false;
+    for (const slot of newSourceSlots) {
+      const oldSlot = oldSourceSlots.find((old: any) => Number(old.slot) === Number(slot.slot));
+      if (!oldSlot || Number(slot.quantity) !== 0 || String(slot.className) !== cls
+          || !sameNativeItemValue(itemValueWithout(oldSlot, ["quantity", "serializedBundle"]),
+            itemValueWithout(slot, ["quantity", "serializedBundle"]))) return false;
+    }
+  }
+  const unrelatedSlots = (slots: any[]) => slots.filter((slot: any) => String(slot.itemId) !== id)
+    .slice().sort((a: any,b: any) => Number(a.slot)-Number(b.slot));
+  return sameNativeItemValue(unrelatedSlots(beforeSlots), unrelatedSlots(afterSlots));
 }
 /** The destination heap may gain one identified item or increase one compatible stack by exactly the dropped quantity. */
 export function isValidNativeDropHeapMutation(before: any[], after: any[], targetValue: unknown,
@@ -1314,8 +1365,13 @@ export function isValidNativeDropHeapMutation(before: any[], after: any[], targe
       || !result.serializedBundle.includes(resultId)) return false;
   if (!sameNativeItemValue(oldItems.filter((i: any) => String(i?.itemId || "") !== resultId),
       newHeap.items.filter((i: any) => String(i?.itemId || "") !== resultId))) return false;
-  if (oldResult.length === 0) return result.quantity === qty;
-  return oldResult.length === 1 && details.stackable === true && oldResult[0].stackable === true
+  if (oldResult.length === 0) {
+    return result.quantity === qty
+      && (qty === Number(details.sourceQuantityBefore)
+        ? resultId === String(details.itemId) : resultId !== String(details.itemId));
+  }
+  return oldResult.length === 1 && resultId !== String(details.itemId)
+    && details.stackable === true && oldResult[0].stackable === true
     && String(oldResult[0].className) === cls && result.quantity === Number(oldResult[0].quantity) + qty
     && sameNativeItemValue(itemValueWithout(oldResult[0], ["quantity","serializedBundle"]),
       itemValueWithout(result, ["quantity","serializedBundle"]));
