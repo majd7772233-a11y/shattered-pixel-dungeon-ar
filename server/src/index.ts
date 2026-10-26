@@ -894,13 +894,14 @@ export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDe
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
   const data: any = dataValue, depth = Number(currentDepthValue), playerId = String(playerIdValue || "");
   if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !isValidNativeFloorItemIdentitySet(level.heaps)
       || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
       || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
       || typeof heroStateValue !== "string") return false;
   const pos = Number(player.pos), heapId = String(data.heapId || ""), itemId = String(data.itemId || "");
   const itemClass = String(data.itemClass || ""), quantity = Number(data.expectedQuantity), price = Number(data.price);
   const resultItemId = String(data.resultItemId || ""), resultHeapId = String(data.resultHeapId || "");
-  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth || data.branch !== 0
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || data.depth !== depth || data.branch !== level.branch || data.branch !== 0
       || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
       || resultItemId.length < 8 || resultItemId.length > 80 || itemClass.length < 1 || itemClass.length > 256
       || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000 || data.sourceQuantityBefore !== quantity
@@ -1183,12 +1184,91 @@ export function isValidNativeMovementHeapMutation(previous: any, next: any, targ
 
 
 
+/** Stable identifiers use the same bounded alphabet as native Item/Heap IDs. */
+export function isValidStableMultiplayerId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._:-]{8,80}$/.test(value);
+}
+
+/** Complete native floor snapshots may not omit or duplicate heap/item identities. */
+export function isValidNativeFloorItemIdentitySet(heapsValue: unknown): boolean {
+  if (!Array.isArray(heapsValue) || heapsValue.length > 10000) return false;
+  const heapIds = new Set<string>(), itemIds = new Set<string>();
+  let totalItems = 0;
+  for (const heap of heapsValue) {
+    if (!heap || typeof heap !== "object" || !isValidStableMultiplayerId(heap.heapId)
+        || heapIds.has(heap.heapId) || !Array.isArray(heap.items) || heap.items.length > 512) return false;
+    heapIds.add(heap.heapId);
+    for (const item of heap.items) {
+      if (!item || typeof item !== "object" || ++totalItems > 8192
+          || !isValidStableMultiplayerId(item.itemId) || itemIds.has(item.itemId)
+          || typeof item.className !== "string" || item.className.length < 1 || item.className.length > 256
+          || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100000
+          || !Number.isInteger(item.level) || item.level < -100 || item.level > 10000
+          || typeof item.cursed !== "boolean" || typeof item.cursedKnown !== "boolean"
+          || typeof item.stackable !== "boolean"
+          || typeof item.serializedBundle !== "string" || item.serializedBundle.length < 1
+          || item.serializedBundle.length > 200000 || !item.serializedBundle.includes(item.itemId)) return false;
+      itemIds.add(item.itemId);
+    }
+  }
+  return true;
+}
+
+/** Claim identity excludes cell position and includes room (the Durable Object), depth and branch. */
+export function nativeLootClaimScopeKey(depthValue: unknown, branchValue: unknown,
+  heapIdValue: unknown, itemIdValue: unknown): string | null {
+  if (typeof depthValue !== "number" || !Number.isInteger(depthValue) || depthValue < 1 || depthValue > 100
+      || typeof branchValue !== "number" || !Number.isInteger(branchValue) || branchValue < 0 || branchValue > 32
+      || !isValidStableMultiplayerId(heapIdValue) || !isValidStableMultiplayerId(itemIdValue)) return null;
+  return JSON.stringify([depthValue, branchValue, heapIdValue, itemIdValue]);
+}
+
+export function isNativeLootClaimSchemaCurrent(columnsValue: unknown): boolean {
+  if (!Array.isArray(columnsValue)) return false;
+  const columns: any[] = columnsValue.filter((value: any) => value && typeof value === "object");
+  const branch = columns.find((column: any) => String(column.name) === "branch");
+  if (!branch || Number(branch.notnull) !== 1 || String(branch.dflt_value).replace(/['"]/g, "") !== "0") return false;
+  const primaryKey = columns.filter((column: any) => Number(column.pk) > 0)
+    .sort((a: any, b: any) => Number(a.pk) - Number(b.pk))
+    .map((column: any) => String(column.name));
+  return JSON.stringify(primaryKey) === JSON.stringify(["depth", "branch", "heap_id", "item_id"]);
+}
+
+export interface NativeLootClaimSql {
+  exec(query: string, ...bindings: any[]): any;
+}
+export interface NativeLootClaimTransactionHost {
+  transactionSync<T>(callback: () => T): T;
+}
+
+/** Atomically reserves one stable item instance. Only the same owner/request retry is idempotent. */
+export function reserveNativeLootClaim(storage: NativeLootClaimTransactionHost, sql: NativeLootClaimSql,
+  depthValue: unknown, branchValue: unknown, heapIdValue: unknown, itemIdValue: unknown,
+  playerIdValue: unknown, requestIdValue: unknown): boolean {
+  const scope = nativeLootClaimScopeKey(depthValue, branchValue, heapIdValue, itemIdValue);
+  const playerId = typeof playerIdValue === "string" ? playerIdValue : "";
+  const requestId = typeof requestIdValue === "string" ? requestIdValue : "";
+  if (scope == null || isNativeLootClaimConflict(null, playerId, requestId)) return false;
+  const depth = depthValue as number, branch = branchValue as number;
+  const heapId = heapIdValue as string, itemId = itemIdValue as string;
+  return storage.transactionSync(() => {
+    sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,branch,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?,?)",
+      depth, branch, heapId, itemId, playerId, requestId);
+    const rows = sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ?",
+      depth, branch, heapId, itemId).toArray();
+    return rows.length === 1 && !isNativeLootClaimConflict(rows[0], playerId, requestId);
+  });
+}
+
 /** A reserved item can be retried only by the exact same player and request ID. */
 export function isNativeLootClaimConflict(claimValue: unknown, playerIdValue: unknown, requestIdValue: unknown): boolean {
+  const playerId = typeof playerIdValue === "string" ? playerIdValue : "";
+  const requestId = typeof requestIdValue === "string" ? requestIdValue : "";
+  if (!playerId || playerId.length > 80 || !/^[A-Za-z0-9._:-]+$/.test(playerId)
+      || !requestId || requestId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(requestId)) return true;
   if (claimValue == null) return false;
+  if (typeof claimValue !== "object") return true;
   const claim: any = claimValue;
-  const playerId = String(playerIdValue || ""), requestId = String(requestIdValue || "");
-  if (!playerId || !requestId || requestId.length > 128) return true;
   return String(claim.claimed_by || "") !== playerId || String(claim.request_id || "") !== requestId;
 }
 
@@ -1472,6 +1552,7 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
   const playerId = String(playerIdValue || "");
   const depth = Number(currentDepthValue);
   if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps)
+      || !isValidNativeFloorItemIdentitySet(level.heaps)
       || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
       || !player || playerId.length === 0 || String(player.state) !== "ALIVE"
       || !Number.isInteger(player.pos)) return false;
@@ -1479,7 +1560,7 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
   const itemClass = String(data.itemClass || ""), quantity = data.expectedQuantity, stackable = data.stackable;
   const cost = data.engineActionCost;
   if (!Number.isInteger(pos) || pos !== Number(player.pos) || data.from !== pos || data.to !== pos
-      || data.targetPos !== pos || Number(data.depth) !== depth
+      || data.targetPos !== pos || data.depth !== depth || data.branch !== level.branch || data.branch !== 0
       || heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80
       || itemClass.length === 0 || itemClass.length > 256
       || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
@@ -1499,8 +1580,9 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
   detailsValue: unknown, acceptedValue: unknown): boolean {
   const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
   if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+      || !isValidNativeFloorItemIdentitySet(previousHeaps) || !isValidNativeFloorItemIdentitySet(nextHeaps)
       || !Number.isInteger(target) || target < 0 || accepted.actionType !== "PICKUP"
-      || accepted.targetPos !== target || accepted.from !== target
+      || accepted.branch !== 0 || accepted.targetPos !== target || accepted.from !== target
       || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
       || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
       || accepted.stackable !== details.stackable || !Number.isInteger(accepted.depth) || accepted.depth < 1) return false;
@@ -3448,6 +3530,33 @@ export class MatchRoom {
     return true;
   }
 
+  private migrateClaimedItemInstances(): void {
+    const inspect = () => this.sql.exec("PRAGMA table_info(claimed_item_instances)").toArray();
+    if (isNativeLootClaimSchemaCurrent(inspect())) return;
+    this.state.storage.transactionSync(() => {
+      const columns: any[] = inspect();
+      if (isNativeLootClaimSchemaCurrent(columns)) return;
+      const hasBranch = columns.some((column: any) => String(column.name) === "branch");
+      this.sql.exec("ALTER TABLE claimed_item_instances RENAME TO claimed_item_instances_legacy");
+      this.sql.exec(`CREATE TABLE claimed_item_instances (
+        depth INTEGER NOT NULL,
+        branch INTEGER NOT NULL DEFAULT 0,
+        heap_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        claimed_by TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (depth, branch, heap_id, item_id)
+      )`);
+      const branchExpression = hasBranch ? "branch" : "0";
+      this.sql.exec(`INSERT OR IGNORE INTO claimed_item_instances
+        (depth,branch,heap_id,item_id,claimed_by,request_id,created_at)
+        SELECT depth,${branchExpression},heap_id,item_id,claimed_by,request_id,created_at
+        FROM claimed_item_instances_legacy`);
+      this.sql.exec("DROP TABLE claimed_item_instances_legacy");
+    });
+  }
+
   private initDatabase() {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS room_meta (
@@ -3504,12 +3613,13 @@ export class MatchRoom {
       );
       CREATE TABLE IF NOT EXISTS claimed_item_instances (
         depth INTEGER NOT NULL,
+        branch INTEGER NOT NULL DEFAULT 0,
         heap_id TEXT NOT NULL,
         item_id TEXT NOT NULL,
         claimed_by TEXT NOT NULL,
         request_id TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (depth, heap_id, item_id)
+        PRIMARY KEY (depth, branch, heap_id, item_id)
       );
       CREATE TABLE IF NOT EXISTS claimed_chest_instances (
         depth INTEGER NOT NULL,
@@ -3541,6 +3651,8 @@ export class MatchRoom {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    this.migrateClaimedItemInstances();
 
     const timeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'worldTime'`).toArray();
     this.worldTime = timeRow.length > 0 ? Number(timeRow[0].value) || 0 : 0;
@@ -3923,7 +4035,8 @@ export class MatchRoom {
           }
         }
         const invalidObjects =
-          heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","LOCKED_CHEST","CRYSTAL_CHEST","TOMB","SKELETON","REMAINS"].includes(String(heap?.type))
+          !isValidNativeFloorItemIdentitySet(heaps)
+          || heaps.some((heap: any) => !validPos(Number(heap?.pos)) || !["HEAP","FOR_SALE","CHEST","LOCKED_CHEST","CRYSTAL_CHEST","TOMB","SKELETON","REMAINS"].includes(String(heap?.type))
             || !Array.isArray(heap?.items) || heap.items.length > 512
             || heap.items.some((item: any) => !validBundle(item?.serializedBundle) || !Number.isInteger(Number(item?.quantity)) || Number(item.quantity) < 1 || Number(item.quantity) > 100000))
           || traps.some((trap: any) => !validPos(Number(trap?.pos)) || !validBundle(trap?.serializedBundle))
@@ -3971,8 +4084,8 @@ export class MatchRoom {
           const acceptedPayload = accepted?.action;
           const mutationDetails = level.nativeMutationDetails || null;
           const pickupClaim = (mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails
-            ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
-                depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
+            ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ?",
+                depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
           const chestClaim = mutationAction === "OPEN_CHEST" && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_chest_instances WHERE depth = ? AND heap_id = ?",
                 depth, String(mutationDetails.heapId || "")).toArray()[0] : null;
@@ -3988,6 +4101,7 @@ export class MatchRoom {
               : acceptedPayload?.playerId === session.playerId && acceptedPayload?.actionType === mutationAction
                 && acceptedPayload?.from === mutationFrom && acceptedPayload?.targetPos === mutationTarget
                 && (mutationAction !== "PICKUP" || mutationDetails != null && pickupClaim
+                  && acceptedPayload?.branch === Number(level.branch)
                   && String(pickupClaim.claimed_by) === session.playerId
                   && String(pickupClaim.request_id) === mutationRequestId
                   && acceptedPayload?.heapId === mutationDetails.heapId
@@ -4005,6 +4119,7 @@ export class MatchRoom {
                   && acceptedPayload?.itemClass === mutationDetails.itemClass
                   && acceptedPayload?.expectedEquipped === mutationDetails.expectedEquipped)
                 && (mutationAction !== "BUY" || mutationDetails != null && pickupClaim
+                  && acceptedPayload?.branch === Number(level.branch)
                   && String(pickupClaim.claimed_by) === session.playerId
                   && String(pickupClaim.request_id) === mutationRequestId
                   && acceptedPayload?.heapId === mutationDetails.heapId
@@ -4097,8 +4212,8 @@ export class MatchRoom {
               || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
-              "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-              depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+              "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
@@ -4112,8 +4227,8 @@ export class MatchRoom {
           }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW" && mutationAction !== "ALCHEMY" && mutationAction !== "USE_ABILITY");
           if (merged == null) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
-              "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-              depth, String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+              "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+              depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
@@ -4251,8 +4366,8 @@ export class MatchRoom {
         }
         if (isNativeWorldMutation) {
           if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(
-            "DELETE FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-            depth, String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
+            "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+            depth, Number(level.branch), String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
             session.playerId, verifiedMutationRequestId);
           if (verifiedMutationAction === "OPEN_CHEST" && verifiedMutationDetails) this.sql.exec(
             "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
@@ -5955,25 +6070,13 @@ export class MatchRoom {
             const transitionPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             const pickupRequestId = String(msg.requestId || "");
             this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
-            const existingClaim = this.sql.exec(
-              "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
-              this.currentDepth, String(data.heapId || ""), String(data.itemId || "")).toArray()[0];
-            if (isNativeLootClaimConflict(existingClaim, session.playerId, pickupRequestId)) {
-              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
-                sequence: this.currentSequence,
-                payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
-              return;
-            }
             if (!transitionPending && pickupRequestId.length > 0 && pickupRequestId.length <= 128
                 && hasCompleteNativeLevelSnapshot(levelSnapshot)
                 && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow)
                 && itemPos === Number(targetPos)) {
-              this.sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
-                this.currentDepth, String(data.heapId), String(data.itemId), session.playerId, pickupRequestId);
-              const reserved = this.sql.exec(
-                "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
-                this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
-              if (!reserved || isNativeLootClaimConflict(reserved, session.playerId, pickupRequestId)) {
+              const reserved = reserveNativeLootClaim(this.state.storage, this.sql, this.currentDepth,
+                Number(data.branch), String(data.heapId), String(data.itemId), session.playerId, pickupRequestId);
+              if (!reserved) {
                 ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
                   sequence: this.currentSequence,
                   payloadJson: JSON.stringify({ error: "ITEM_ALREADY_CLAIMED", itemPos, heapId: data.heapId, itemId: data.itemId }) }));
@@ -5982,7 +6085,8 @@ export class MatchRoom {
               eventType = "ITEM_PICKUP_INTENT_ACCEPTED";
               actionResultPayload = {
                 playerId: session.playerId, actionType: "PICKUP", from: itemPos, targetPos: itemPos,
-                itemPos, depth: this.currentDepth, heapId: String(data.heapId), itemId: String(data.itemId),
+                itemPos, depth: this.currentDepth, branch: Number(data.branch),
+                heapId: String(data.heapId), itemId: String(data.itemId),
                 itemClass: String(data.itemClass), expectedQuantity: Number(data.expectedQuantity), stackable: data.stackable
               };
               actionValid = true;
@@ -6021,19 +6125,17 @@ export class MatchRoom {
                 && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
                 && isValidNativeBuyIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
               this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
-              this.sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?)",
-                this.currentDepth, String(data.heapId), String(data.itemId), session.playerId, requestId);
-              const reserved = this.sql.exec(
-                "SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND heap_id = ? AND item_id = ?",
-                this.currentDepth, String(data.heapId), String(data.itemId)).toArray()[0];
-              if (!reserved || isNativeLootClaimConflict(reserved, session.playerId, requestId)) {
+              const reserved = reserveNativeLootClaim(this.state.storage, this.sql, this.currentDepth,
+                Number(data.branch), String(data.heapId), String(data.itemId), session.playerId, requestId);
+              if (!reserved) {
                 ws.send(JSON.stringify({ protocolVersion:"1.0.0", messageType:"ERROR", requestId:msg.requestId,
                   sequence:this.currentSequence, payloadJson:JSON.stringify({error:"ITEM_ALREADY_CLAIMED",heapId:data.heapId,itemId:data.itemId}) }));
                 return;
               }
               eventType = "WORLD_ACTION_RESOLVED";
               actionResultPayload = { playerId:session.playerId, actionType:"BUY", from:Number(playerRow.pos),
-                targetPos:Number(playerRow.pos), depth:this.currentDepth, heapId:String(data.heapId), itemId:String(data.itemId),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, branch:Number(data.branch),
+                heapId:String(data.heapId), itemId:String(data.itemId),
                 itemClass:String(data.itemClass), expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore),
                 stackable:data.stackable, itemLevel:Number(data.itemLevel), cursed:data.cursed, cursedKnown:data.cursedKnown,
                 price:Number(data.price), resultItemId:String(data.resultItemId), resultHeapId:String(data.resultHeapId || ""),

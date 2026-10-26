@@ -247,7 +247,22 @@
         },
         "nativeMutationAction": {
           "type": "string",
-          "enum": ["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"]
+          "enum": [
+            "MOVE",
+            "UNLOCK",
+            "MINE",
+            "INTERACT",
+            "OPEN_CHEST",
+            "PICKUP",
+            "DROP",
+            "EQUIP",
+            "UNEQUIP",
+            "BUY",
+            "USE_ITEM",
+            "THROW",
+            "ALCHEMY",
+            "USE_ABILITY"
+          ]
         },
         "nativeMutationRequestId": {
           "type": "string",
@@ -307,43 +322,175 @@
           "additionalProperties": false,
           "description": "Stable identity for a native item/heap mutation; present only on the action-bound post-state snapshot.",
           "properties": {
-            "heapId": {"type":"string","minLength":8,"maxLength":80},
-            "itemId": {"type":"string","minLength":8,"maxLength":80},
-            "itemClass": {"type":"string","minLength":1,"maxLength":256},
-            "expectedQuantity": {"type":"integer","minimum":1,"maximum":100000},
-            "stackable": {"type":"boolean"},
-            "resultItemId": {"type":"string","minLength":8,"maxLength":80},
-            "sourceQuantityBefore": {"type":"integer","minimum":1,"maximum":100000},
-            "itemLevel": {"type":"integer","minimum":-100,"maximum":10000},
-            "cursed": {"type":"boolean"},
-            "cursedKnown": {"type":"boolean"},
-            "price": {"type":"integer","minimum":0,"maximum":10000000},
-            "acquiredByInventory": {"type":"boolean"},
-            "resultHeapId": {"type":"string","minLength":0,"maxLength":80},
-            "expectedEquipped": {"type":"boolean"},
-            "heapType": {"type":"string","enum":["CHEST","LOCKED_CHEST","CRYSTAL_CHEST"]},
-            "alchemyEnergyBefore": {"type":"integer","minimum":0,"maximum":1000000},
-            "alchemyEnergyAfter": {"type":"integer","minimum":0,"maximum":1000000},
-            "ingredients": {"type":"array","minItems":1,"maxItems":3,
-              "items":{"type":"object","additionalProperties":false,
-                "required":["itemId","itemClass","sourceQuantityBefore","consumedQuantity","stackable"],
-                "properties":{
-                  "itemId":{"type":"string","minLength":8,"maxLength":80},
-                  "itemClass":{"type":"string","minLength":1,"maxLength":256},
-                  "sourceQuantityBefore":{"type":"integer","minimum":1,"maximum":100000},
-                  "consumedQuantity":{"type":"integer","minimum":1,"maximum":100000},
-                  "stackable":{"type":"boolean"}
-                }}},
-            "resultItemClass":{"type":"string","minLength":1,"maxLength":256},
-            "resultQuantity":{"type":"integer","minimum":1,"maximum":100000},
-            "resultStackable":{"type":"boolean"},
-            "resultLocation":{"type":"string","enum":["INVENTORY","HEAP"]},
-            "abilityClass":{"type":"string","minLength":1,"maxLength":256},
-            "armorItemId":{"type":"string","minLength":8,"maxLength":80},
-            "armorClass":{"type":"string","minLength":1,"maxLength":256},
-            "armorChargeBefore":{"type":"number","minimum":0,"maximum":100},
-            "armorChargeAfter":{"type":"number","minimum":0,"maximum":100},
-            "armorChargeUse":{"type":"number","exclusiveMinimum":0,"maximum":100}
+            "heapId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "expectedQuantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "stackable": {
+              "type": "boolean"
+            },
+            "resultItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "sourceQuantityBefore": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "itemLevel": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 10000
+            },
+            "cursed": {
+              "type": "boolean"
+            },
+            "cursedKnown": {
+              "type": "boolean"
+            },
+            "price": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "acquiredByInventory": {
+              "type": "boolean"
+            },
+            "resultHeapId": {
+              "type": "string",
+              "minLength": 0,
+              "maxLength": 80
+            },
+            "expectedEquipped": {
+              "type": "boolean"
+            },
+            "heapType": {
+              "type": "string",
+              "enum": [
+                "CHEST",
+                "LOCKED_CHEST",
+                "CRYSTAL_CHEST"
+              ]
+            },
+            "alchemyEnergyBefore": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "alchemyEnergyAfter": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "ingredients": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "itemId",
+                  "itemClass",
+                  "sourceQuantityBefore",
+                  "consumedQuantity",
+                  "stackable"
+                ],
+                "properties": {
+                  "itemId": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 80
+                  },
+                  "itemClass": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "sourceQuantityBefore": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000
+                  },
+                  "consumedQuantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000
+                  },
+                  "stackable": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "resultItemClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "resultQuantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "resultStackable": {
+              "type": "boolean"
+            },
+            "resultLocation": {
+              "type": "string",
+              "enum": [
+                "INVENTORY",
+                "HEAP"
+              ]
+            },
+            "abilityClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "armorItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "armorClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "armorChargeBefore": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "armorChargeAfter": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "armorChargeUse": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 100
+            }
           }
         }
       }
@@ -1655,14 +1802,15 @@
         "haunted",
         "hidden",
         "autoExplored",
-        "items"
+        "items",
+        "heapId"
       ],
       "properties": {
         "heapId": {
           "type": "string",
           "minLength": 8,
           "maxLength": 80,
-          "description": "Stable physical heap/chest identity; omitted only in legacy snapshots."
+          "description": "Stable physical heap/chest identity required in every complete native snapshot and preserved across moves/restores."
         },
         "pos": {
           "type": "integer",
@@ -1710,14 +1858,16 @@
         "level",
         "cursed",
         "cursedKnown",
-        "serializedBundle"
+        "serializedBundle",
+        "itemId",
+        "stackable"
       ],
       "properties": {
         "itemId": {
           "type": "string",
           "minLength": 8,
           "maxLength": 80,
-          "description": "Stable item instance ID; omitted only in legacy snapshots."
+          "description": "Stable concrete item-instance identity required in every complete native snapshot and preserved across moves/restores."
         },
         "className": {
           "type": "string",

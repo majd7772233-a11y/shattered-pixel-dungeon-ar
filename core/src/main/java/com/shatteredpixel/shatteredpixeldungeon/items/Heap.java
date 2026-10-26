@@ -73,12 +73,16 @@ public class Heap implements Bundlable {
 	public Type type = Type.HEAP;
 	/** Stable ID for this physical chest/heap, preserved when its type changes. */
 	private String multiplayerHeapId = UUID.randomUUID().toString();
+	public static boolean isValidMultiplayerHeapId(String id) {
+		return id != null && id.matches("[A-Za-z0-9._:-]{8,80}");
+	}
+
 	public String multiplayerHeapId() {
-		if (multiplayerHeapId == null || multiplayerHeapId.isEmpty()) multiplayerHeapId = UUID.randomUUID().toString();
+		if (!isValidMultiplayerHeapId(multiplayerHeapId)) multiplayerHeapId = UUID.randomUUID().toString();
 		return multiplayerHeapId;
 	}
 	public void setMultiplayerHeapId(String id) {
-		if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerHeapId = id;
+		if (isValidMultiplayerHeapId(id)) multiplayerHeapId = id;
 	}
 	
 	public int pos = 0;
@@ -461,7 +465,7 @@ public class Heap implements Bundlable {
 		hidden = bundle.getBoolean( HIDDEN );
 		if (bundle.contains(MULTIPLAYER_HEAP_ID)) {
 			String id = bundle.getString(MULTIPLAYER_HEAP_ID);
-			if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerHeapId = id;
+			if (isValidMultiplayerHeapId(id)) multiplayerHeapId = id;
 		}
 	}
 

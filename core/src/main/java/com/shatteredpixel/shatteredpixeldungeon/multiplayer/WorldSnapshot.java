@@ -317,6 +317,74 @@ public class WorldSnapshot {
         return fallback;
     }
 
+    private static boolean isIntegralNumber(Object value) {
+        if (!(value instanceof Number)) return false;
+        double numericValue = ((Number) value).doubleValue();
+        return Double.isFinite(numericValue) && numericValue == Math.rint(numericValue)
+                && numericValue >= Integer.MIN_VALUE && numericValue <= Integer.MAX_VALUE;
+    }
+
+    /**
+     * Validates every floor heap/item identity and native item bundle before the live dungeon
+     * can be mutated. A class name or cell position is never used as item identity.
+     */
+    @SuppressWarnings("unchecked")
+    public static boolean hasValidStableHeapItemIdentities(List<Map<String, Object>> heaps) {
+        if (heaps == null || heaps.size() > 10000) return false;
+        java.util.Set<String> heapIds = new java.util.HashSet<>();
+        java.util.Set<String> itemIds = new java.util.HashSet<>();
+        int totalItems = 0;
+        for (Map<String, Object> heap : heaps) {
+            if (heap == null) return false;
+            Object heapIdValue = heap.get("heapId");
+            if (!(heapIdValue instanceof String)
+                    || !Heap.isValidMultiplayerHeapId((String) heapIdValue)
+                    || !heapIds.add((String) heapIdValue)) return false;
+
+            Object rawItems = heap.get("items");
+            if (!(rawItems instanceof List) || ((List<?>) rawItems).size() > 512) return false;
+            for (Object rawItem : (List<?>) rawItems) {
+                if (!(rawItem instanceof Map) || ++totalItems > 8192) return false;
+                Map<String, Object> itemData = (Map<String, Object>) rawItem;
+                Object itemIdValue = itemData.get("itemId");
+                Object classValue = itemData.get("className");
+                Object quantityValue = itemData.get("quantity");
+                Object levelValue = itemData.get("level");
+                Object cursedValue = itemData.get("cursed");
+                Object cursedKnownValue = itemData.get("cursedKnown");
+                Object stackableValue = itemData.get("stackable");
+                Object encodedValue = itemData.get("serializedBundle");
+                if (!(itemIdValue instanceof String)
+                        || !Item.isValidMultiplayerItemId((String) itemIdValue)
+                        || !itemIds.add((String) itemIdValue)
+                        || !(classValue instanceof String) || ((String) classValue).isEmpty()
+                        || ((String) classValue).length() > 256
+                        || !isIntegralNumber(quantityValue) || number(quantityValue, -1) < 1
+                        || number(quantityValue, -1) > 100000
+                        || !isIntegralNumber(levelValue) || number(levelValue, Integer.MIN_VALUE) < -100
+                        || number(levelValue, Integer.MIN_VALUE) > 10000
+                        || !(cursedValue instanceof Boolean)
+                        || !(cursedKnownValue instanceof Boolean)
+                        || !(stackableValue instanceof Boolean)
+                        || !(encodedValue instanceof String) || ((String) encodedValue).isEmpty()
+                        || ((String) encodedValue).length() > 200000) return false;
+
+                Bundle itemBundle = readBundle((String) encodedValue);
+                Object decodedValue = itemBundle == null ? null : itemBundle.get("item");
+                if (!(decodedValue instanceof Item)) return false;
+                Item decoded = (Item) decodedValue;
+                if (!itemIdValue.equals(decoded.multiplayerItemId())
+                        || !classValue.equals(decoded.getClass().getName())
+                        || number(quantityValue, -1) != decoded.quantity()
+                        || number(levelValue, Integer.MIN_VALUE) != decoded.level()
+                        || ((Boolean) cursedValue).booleanValue() != decoded.cursed
+                        || ((Boolean) cursedKnownValue).booleanValue() != decoded.cursedKnown
+                        || ((Boolean) stackableValue).booleanValue() != decoded.stackable) return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Validate the complete world before mutating the live dungeon. Invalid snapshots must
      * not partially clear actors or advance the client's acknowledged sequence.
@@ -356,6 +424,7 @@ public class WorldSnapshot {
                 || snapshot.blobs == null || snapshot.plants == null || snapshot.mobs == null
                 || snapshot.playerPositions == null || snapshot.playerHp == null || snapshot.playerHt == null
                 || snapshot.playerClasses == null || snapshot.playerStateJson == null) return rejectValidation("validator-check-12");
+        if (!hasValidStableHeapItemIdentities(snapshot.heaps)) return rejectValidation("validator-check-32b");
         if (!validPositions(snapshot.transitions, length, "pos", false)
                 || !validPositions(snapshot.heaps, length, "pos", true)
                 || !validPositions(snapshot.traps, length, "pos", true)
@@ -1025,9 +1094,19 @@ public class WorldSnapshot {
                                 throw new IllegalStateException("Snapshot item bundle did not contain a native Item at cell " + pos);
                             }
                             String serializedItemId = String.valueOf(itemData.get("itemId") == null ? "" : itemData.get("itemId"));
-                            if (!serializedItemId.isEmpty()) {
-                                if (!encoded.contains(serializedItemId)) throw new IllegalStateException("Item identity does not match its native bundle at cell " + pos);
-                                item.setMultiplayerItemId(serializedItemId);
+                            if (!Item.isValidMultiplayerItemId(serializedItemId)
+                                    || !serializedItemId.equals(item.multiplayerItemId())
+                                    || !serializedItemId.equals(itemData.get("itemId"))
+                                    || !item.getClass().getName().equals(String.valueOf(itemData.get("className")))
+                                    || number(itemData.get("quantity"), -1) != item.quantity()
+                                    || number(itemData.get("level"), Integer.MIN_VALUE) != item.level()
+                                    || !(itemData.get("cursed") instanceof Boolean)
+                                    || ((Boolean) itemData.get("cursed")).booleanValue() != item.cursed
+                                    || !(itemData.get("cursedKnown") instanceof Boolean)
+                                    || ((Boolean) itemData.get("cursedKnown")).booleanValue() != item.cursedKnown
+                                    || !(itemData.get("stackable") instanceof Boolean)
+                                    || ((Boolean) itemData.get("stackable")).booleanValue() != item.stackable) {
+                                throw new IllegalStateException("Item identity or metadata does not match its native bundle at cell " + pos);
                             }
                             // Snapshot order is already native top-to-bottom heap order.
                             // Heap.drop() inserts most items at the front and can reverse stacks,

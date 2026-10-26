@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
@@ -1965,6 +1965,8 @@ describe("Native alchemy transaction validation", () => {
 describe("Stable item-instance claim idempotency", () => {
   it("allows a retry only for the identical player and request",()=>{
     expect(isNativeLootClaimConflict(null,"player-a","request-1")).toBe(false);
+    expect(isNativeLootClaimConflict(null,"","request-1")).toBe(true);
+    expect(isNativeLootClaimConflict(null,"player-a","")).toBe(true);
     const claim={claimed_by:"player-a",request_id:"request-1"};
     expect(isNativeLootClaimConflict(claim,"player-a","request-1")).toBe(false);
     expect(isNativeLootClaimConflict(claim,"player-b","request-1")).toBe(true);
@@ -1973,6 +1975,93 @@ describe("Stable item-instance claim idempotency", () => {
     expect(isNativeLootClaimConflict(claim,"player-a","")).toBe(true);
   });
 });
+
+
+
+describe("Strict stable floor item and heap identities", () => {
+  const item = (itemId:string, serializedBundle = "native-item-bundle:" + itemId) => ({
+    itemId, className:"com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify",
+    quantity:1, level:0, cursed:false, cursedKnown:false, stackable:true, serializedBundle
+  });
+  const heap = (heapId:string, pos:number, items:any[]) => ({
+    heapId, pos, type:"HEAP", seen:false, haunted:false, hidden:false, autoExplored:false, items
+  });
+  it("accepts complete distinct IDs and rejects missing, malformed, or duplicate IDs", () => {
+    expect(isValidStableMultiplayerId("stable-item-0001")).toBe(true);
+    expect(isValidStableMultiplayerId("bad/id")).toBe(false);
+    expect(isValidNativeFloorItemIdentitySet([heap("stable-heap-0001",9,[item("stable-item-0001")])])).toBe(true);
+    expect(isValidNativeFloorItemIdentitySet([heap("",9,[item("stable-item-0001")])])).toBe(false);
+    expect(isValidNativeFloorItemIdentitySet([heap("stable-heap-0001",9,[item("")])])).toBe(false);
+    expect(isValidNativeFloorItemIdentitySet([
+      heap("stable-heap-0001",9,[item("stable-item-0001")]),
+      heap("stable-heap-0001",10,[item("stable-item-0002")])
+    ])).toBe(false);
+    expect(isValidNativeFloorItemIdentitySet([
+      heap("stable-heap-0001",9,[item("stable-item-0001")]),
+      heap("stable-heap-0002",10,[item("stable-item-0001")])
+    ])).toBe(false);
+    expect(isValidNativeFloorItemIdentitySet([
+      heap("stable-heap-0001",9,[item("stable-item-0001","bundle-without-this-id")])
+    ])).toBe(false);
+  });
+});
+
+describe("Atomic stable item claims scoped by room, depth, branch, heap, and item", () => {
+  class FakeClaimSql {
+    rows = new Map<string,{claimed_by:string;request_id:string}>();
+    exec(query:string,...bindings:any[]):any {
+      const key=nativeLootClaimScopeKey(Number(bindings[0]),Number(bindings[1]),String(bindings[2]),String(bindings[3]));
+      if(query.includes("INSERT OR IGNORE INTO claimed_item_instances")) {
+        if(key && !this.rows.has(key)) this.rows.set(key,{claimed_by:String(bindings[4]),request_id:String(bindings[5])});
+        return {toArray:()=>[]};
+      }
+      if(query.includes("SELECT claimed_by,request_id FROM claimed_item_instances")) {
+        const row=key ? this.rows.get(key) : undefined;
+        return {toArray:()=>row ? [{...row}] : []};
+      }
+      throw new Error("Unexpected SQL in claim test: "+query);
+    }
+  }
+  const storage={transactionSync:<T>(callback:()=>T):T=>callback()};
+  const reserve=(sql:FakeClaimSql,depth:number,branch:number,player:string,request:string)=>
+    reserveNativeLootClaim(storage,sql,depth,branch,"stable-heap-0001","stable-item-0001",player,request);
+
+  it("accepts only an exact owner/request retry and rejects competing claims",()=>{
+    const sql=new FakeClaimSql();
+    expect(reserve(sql,4,0,"player-a","request-1")).toBe(true);
+    expect(reserve(sql,4,0,"player-a","request-1")).toBe(true);
+    expect(reserve(sql,4,0,"player-b","request-1")).toBe(false);
+    expect(reserve(sql,4,0,"player-a","request-2")).toBe(false);
+  });
+  it("does not collide across depth, branch, or separate room databases",()=>{
+    const firstRoom=new FakeClaimSql(),secondRoom=new FakeClaimSql();
+    expect(nativeLootClaimScopeKey(4,0,"stable-heap-0001","stable-item-0001"))
+      .not.toBe(nativeLootClaimScopeKey(5,0,"stable-heap-0001","stable-item-0001"));
+    expect(nativeLootClaimScopeKey(4,0,"stable-heap-0001","stable-item-0001"))
+      .not.toBe(nativeLootClaimScopeKey(4,1,"stable-heap-0001","stable-item-0001"));
+    expect(reserve(firstRoom,4,0,"player-a","request-1")).toBe(true);
+    expect(reserve(firstRoom,5,0,"player-b","request-2")).toBe(true);
+    expect(reserve(firstRoom,4,1,"player-b","request-3")).toBe(true);
+    expect(reserve(secondRoom,4,0,"player-b","request-4")).toBe(true);
+  });
+  it("admits exactly one of two competing same-scope requests",async()=>{
+    const sql=new FakeClaimSql();
+    const results=await Promise.all([
+      Promise.resolve().then(()=>reserve(sql,4,0,"player-a","request-1")),
+      Promise.resolve().then(()=>reserve(sql,4,0,"player-b","request-2"))
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+  });
+  it("detects legacy branch-blind claim schemas",()=>{
+    const legacy=[{name:"depth",pk:1},{name:"heap_id",pk:2},{name:"item_id",pk:3},{name:"claimed_by",pk:0},{name:"request_id",pk:0}];
+    const branchBlind=[{name:"depth",pk:1},{name:"branch",notnull:1,dflt_value:0,pk:0},{name:"heap_id",pk:2},{name:"item_id",pk:3}];
+    const current=[{name:"depth",pk:1},{name:"branch",notnull:1,dflt_value:0,pk:2},{name:"heap_id",pk:3},{name:"item_id",pk:4}];
+    expect(isNativeLootClaimSchemaCurrent(legacy)).toBe(false);
+    expect(isNativeLootClaimSchemaCurrent(branchBlind)).toBe(false);
+    expect(isNativeLootClaimSchemaCurrent(current)).toBe(true);
+  });
+});
+
 
 describe("Partial stack DROP transactions", () => {
   const cls = "com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify";
@@ -2362,7 +2451,7 @@ describe('Stable native pickup transactions', () => {
   });
   const baseLevel = (heaps: any[]) => ({ depth: 4, branch: 0, locked: false, width: 8, height: 8, heaps });
   const pickup = (overrides: Record<string, any> = {}) => ({
-    from: 9, to: 9, targetPos: 9, itemPos: 9, depth: 4, engineActionCost: 1,
+    from: 9, to: 9, targetPos: 9, itemPos: 9, depth: 4, branch: 0, engineActionCost: 1,
     heapId: 'stable-heap-0001', itemId: 'stable-item-0001',
     itemClass: 'com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing',
     expectedQuantity: 1, stackable: false, ...overrides

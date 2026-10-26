@@ -106,12 +106,16 @@ public class Item implements Bundlable {
 
 	/** Stable multiplayer identity for this concrete item instance, not its class or cell. */
 	private String multiplayerItemId = UUID.randomUUID().toString();
+	public static boolean isValidMultiplayerItemId(String id) {
+		return id != null && id.matches("[A-Za-z0-9._:-]{8,80}");
+	}
+
 	public String multiplayerItemId() {
-		if (multiplayerItemId == null || multiplayerItemId.isEmpty()) multiplayerItemId = UUID.randomUUID().toString();
+		if (!isValidMultiplayerItemId(multiplayerItemId)) multiplayerItemId = UUID.randomUUID().toString();
 		return multiplayerItemId;
 	}
 	public void setMultiplayerItemId(String id) {
-		if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerItemId = id;
+		if (isValidMultiplayerItemId(id)) multiplayerItemId = id;
 	}
 	public void assignNewMultiplayerItemId() { multiplayerItemId = UUID.randomUUID().toString(); }
 	
@@ -701,7 +705,7 @@ public class Item implements Bundlable {
 		keptThoughLostInvent = bundle.getBoolean( KEPT_LOST );
 		if (bundle.contains(MULTIPLAYER_ITEM_ID)) {
 			String id = bundle.getString(MULTIPLAYER_ITEM_ID);
-			if (id != null && id.length() >= 8 && id.length() <= 80) multiplayerItemId = id;
+			if (isValidMultiplayerItemId(id)) multiplayerItemId = id;
 		}
 		if (bundle.contains(CUSTOM_NOTE_ID))    customNoteID = bundle.getInt(CUSTOM_NOTE_ID);
 	}
