@@ -26,7 +26,7 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 2 | Native combat replication | Complete |
 | 3 | Native Mob AI and Actor scheduler | Complete |
 | 4 | Movement, floors and world interactions | Complete |
-| 5 | Stable item identity and pickup claims | Open; next |
+| 5 | Stable item identity and pickup claims | Complete for implementation and automated acceptance |
 | 6 | Drops, partial stacks and floor heaps | Open |
 | 7 | Inventory actions and item economy | Open |
 | 8 | Inventory persistence, restoration and exactly-once rewards | Open |
@@ -68,14 +68,13 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 - **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar.
 - **Working branch:** `multiplayer-framework-core-14118577486727081892`. Never merge to `main` unless the user explicitly asks.
-- **Branch HEAD checked for this roadmap review:** `c20ffb0730c4f8f9c82895faf93b595b7f2280e5` (commit: “Test idempotent stable item claim ownership”, 2026-10-25). This is newer than the old 2026-10-24 documentation checkpoint.
-- **Next implementation phase:** Phase 5 — stable item identity and pickup claims. The code already contains recent Phase-5-related work; inspect and verify it before adding anything, rather than reimplementing it.
-- **Recent Phase 5-related branch commits:** native Hero buff-tick publication and validation; food/WellFed effects; resync on ambiguous item mutations; exact partial-stack DROP validation and unique dropped-item IDs; idempotent stable item-claim ownership. Their presence is evidence of implementation activity, not by itself proof that all of Phase 5 or its acceptance criteria pass.
-- **Exact-HEAD CI:** no workflow run or commit status was returned for `c20ffb0730c4f8f9c82895faf93b595b7f2280e5` during this review. The latest previously documented green combined code tip is `ab81c507c5f1ae0b767732a7247cf7afe5afd917`, [CI run 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). Do not call the newer Phase 5 follow-up code fully CI-verified until exact-HEAD CI is run.
-- **Phases 1–4:** complete for implementation and automated acceptance under the evidence recorded in their sections. This does not mean the app has passed a live-device multiplayer playtest.
-- **New scope:** phases 5–23 are open, with dependencies and acceptance criteria specified in the active map below. Old dated log entries are historical records from the former ten-phase numbering and must not override this current plan.
+- **Phase 5 implementation/test SHA:** `40592960ac1a1ae93fda37b80adadfeb63d96cc0` (“Fix native item identity regression fixtures”). The follow-on documentation commits do not change gameplay code.
+- **Phase 5 exact-SHA CI:** [run 40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) succeeded on that exact code SHA. Backend TypeScript build and tests passed; Vitest reported 173 tests in each mirrored TypeScript/JavaScript test file (346 executions, not 346 unique source scenarios). Android JVM tests and debug APK compilation also passed.
+- **Phase 5 status:** complete for implementation and automated acceptance. Stable item/heap IDs are required and globally unique in complete floor snapshots; native item IDs/metadata must exactly match their serialized native Item bundle; pickup claims are room-scoped and key by depth, branch, stable heap ID and stable item ID, with atomic same-player/same-request retry behavior; old branch-blind claim tables are migrated transactionally.
+- **Next implementation phase:** Phase 6 — drops, partial stacks and floor heap reconciliation. Existing partial-stack validation/drop-ID work was retained and its tests remain in the current green suite; Phase 6 covers the broader drop/heap lifecycle.
+- **Phases 1–5:** complete for implementation and automated acceptance under the evidence recorded in their sections. The project still has open work in phases 6–23; these phase statuses do not imply the app has passed a physical-device multiplayer playtest or deployed-service preflight.
 - **Physical-device rule:** no manual physical-device playtest before Phase 23. The user will play the game then, report concrete errors/observations, and those findings will be appended as new Phase 24+ items/phases before fixes are implemented.
-- **Truthful test reporting:** distinguish unit/contract tests, JVM tests, Android compilation, multi-client automated tests, a deployed Worker smoke test, and actual play on real devices. Never claim a category of testing that was not performed.
+- **Truthful test reporting:** distinguish unit/contract tests, JVM tests, Android compilation, automated multi-client tests, a deployed Worker smoke test, and actual play on real devices. This Phase 5 run did not perform physical-device or deployed-service end-to-end testing.
 
 ## Architecture Reference
 
@@ -221,17 +220,28 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 **Priority:** P0 · **Dependencies:** phases 1–4 (complete).
 
+**Status: Complete for implementation and automated acceptance.** Exact tested code SHA `40592960ac1a1ae93fda37b80adadfeb63d96cc0`; [CI run 40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed both required jobs.
+
 ### Work items
-- [ ] Audit existing native item and heap identity code, including generated items, inventory items, dropped items, serialized bundles and snapshot restore. Preserve already-correct work.
-- [ ] Ensure every distinct floor item and heap receives a stable multiplayer ID that survives movement, snapshots and reconnects; a partial stack that becomes two distinct instances must not reuse one ID for both.
-- [ ] Make pickup claims room/depth/branch-aware and keyed by stable heap and item IDs, not just item class or position.
-- [ ] Validate pickup ownership and request identity atomically. Only the identical player/request retry may be idempotently accepted; a competing player or different request must not steal/replay the same item.
-- [ ] Add focused regressions for two players claiming one item, identical retries, conflicting retries, equal coordinates on different depths, restored IDs and concurrent claim attempts.
+- [x] Audit native item and heap identities across Item/Heap construction, inventory instances, dropped items, partial-stack split/duplicate behavior, native bundle serialization, level export, strict snapshot restore, pickup action routing, and Worker claim validation. Preserve the already-correct Phase 5/6-related code instead of adding parallel flows.
+- [x] Ensure distinct floor item and heap instances have stable IDs that survive native Bundle round-trips and floor snapshot restore. Splitting or duplicating an item generates a distinct ID for the new instance while the remainder preserves its original ID.
+- [x] Make every complete floor heap/item snapshot include a well-formed stable ID and reject duplicate heap IDs, duplicate item IDs across the floor, malformed metadata, and item rows whose ID/class/quantity/level/curse/stackable metadata disagrees with the decoded native Item bundle.
+- [x] Make pickup claims scoped to the room's Durable Object database plus depth, branch, stable heap ID and stable item ID. The database key does not depend on class name or cell position.
+- [x] Reserve claims inside a Durable Object SQLite `transactionSync`: only the same authenticated player and same request ID can retry idempotently; a different player or a different request ID receives `ITEM_ALREADY_CLAIMED`. Include branch in claim lookups/releases and the accepted mutation contract.
+- [x] Add a transactional migration from older `claimed_item_instances` layouts to the branch-aware composite primary key, preserving existing reservations and assigning legacy rows to branch zero when the old schema lacked the branch column.
+- [x] Add JVM and Worker tests for ID validation and bundle round-trips, new IDs after duplicate/split, strict/missing/duplicate IDs, exact owner/request retries, competing claimants, depth/branch/room isolation, old schema detection, and native heap restoration fixtures. Fix the headless test fixtures instead of weakening the production validators.
 
 ### Acceptance criteria
-- One stable item instance has no more than one owner and one committed pickup result.
-- Retries are idempotent only for the same authenticated player and request ID.
-- IDs and claims remain unambiguous across depth changes and full snapshot restore.
+- [x] A stable item instance cannot be reserved by more than one player/request in the same room/depth/branch/heap/item scope; one valid retry returns the same reservation, while competing/replayed identities are rejected.
+- [x] Retries are idempotent only for the same authenticated player and the exact same request ID. The post-action native snapshot must match the accepted pickup intent and the reserved claim before the floor/inventory state is committed.
+- [x] Heap and item IDs remain unique and unambiguous across distinct items with the same class, separate cells, stack splits, depth changes, snapshot application and restore. Missing or mismatched identity is rejected before the live native world is changed.
+
+### Verification and limits
+- Tested code SHA: `40592960ac1a1ae93fda37b80adadfeb63d96cc0`.
+- Exact-SHA GitHub Actions [run 40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) completed successfully: backend TypeScript build + Vitest passed; Android JVM tests + debug APK compilation passed.
+- Backend test output reported 173 executions in `index.test.ts` and 173 mirrored executions in `index.test.js` (346 executions across two files, not 346 distinct source cases).
+- The first run exposed headless texture initialization in a new test and a pre-existing handmade snapshot fixture that lacked required stable IDs. Both were corrected; production validation remained strict, and the exact-SHA rerun is green.
+- No physical-device test or deployed Worker end-to-end run was performed. Physical-device play remains Phase 23 by user request; broad automated/deployed-service preflight remains Phase 22.
 
 ## Phase 6 — Drops, Partial Stacks and Floor Heap Reconciliation
 
@@ -545,6 +555,17 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - The connector returned no commit status or workflow run for exact HEAD `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`. The last previously documented green combined code tip is `ab81c507c5f1ae0b767732a7247cf7afe5afd917` with CI [39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332); newer changes are not claimed tested by that run.
 - No code behavior was changed as part of this roadmap review. No physical-device or deployed-service test was run here.
 - Historical log entries below preserve what was recorded under the previous ten-phase numbering. They are context only; the active 23-phase index and sections above are authoritative. In those old entries, “Phase 10” as final physical-device/release gate refers to the old numbering; current Phase 22 is automated/service preflight and current Phase 23 is physical-device testing.
+
+### 2026-10-26 — Phase 5 stable item identity and pickup claims completed
+
+- Audited the latest Phase 5-related code before adding changes. Existing work for partial stack drops, native item mutations and effect ticks was retained rather than duplicated.
+- Hardened native `Item`/`Heap` ID format/restore handling, duplicate/split-instance behavior tests, strict complete-snapshot heap/item identity validation, exact item-row/native-bundle matching in `WorldSnapshot`, required protocol fields, and the client-side duplicate claim guard keyed by depth + branch + heap ID + item ID.
+- Added server validation requiring stable IDs on every heap and floor item and rejecting duplicate/missing/malformed identity sets before snapshot admission. Pickup and shop claims now share a transaction-backed reservation helper scoped by room (the per-room Durable Object database), depth, branch, heap ID and item ID.
+- Migrated older claim tables transactionally to the branch-aware composite primary key. A legacy table without a branch column is copied to branch zero; prior claim rows are preserved.
+- First CI run [40400686224](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40400686224) passed backend build/tests but revealed two new headless graphics test failures and one existing native snapshot test fixture missing required stable IDs. The tests/fixtures were corrected without relaxing production validation.
+- Final tested code SHA: `40592960ac1a1ae93fda37b80adadfeb63d96cc0`. Exact-SHA [CI run 40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed both jobs: backend TypeScript build + 346 mirrored Vitest executions, Android JVM tests and debug APK build.
+- No physical-device or deployed Worker end-to-end test was performed. Phase 22 remains the automated/deployed-service gate; Phase 23 remains the user-led physical-device gameplay test.
+- **Next phase:** Phase 6 — drops, partial stacks and floor heap reconciliation.
 
 ### 2026-10-21 — Synchronized phase state and execution rules
 
