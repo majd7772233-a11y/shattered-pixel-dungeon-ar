@@ -1,3 +1,7 @@
+# GPT.md — Internal Project Operating Notes
+
+> This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
+
 ## Permanent execution rule from the user
 
 
@@ -25,10 +29,6 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 
 ---
 
-# GPT.md — Internal Project Operating Notes
-
-> This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
-
 ## 1. Project Identity and Main Goal
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
@@ -40,7 +40,7 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 - **Phase 2 native combat re-audit:** current branch head `0a88887fa01bed79bc317f28d73692c5192b78da`; CI [39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both jobs. Verified 28 native runtime integration tests and 107 backend tests overall; see the 2026-10-21 Phase 2 re-audit in `ROADMAP.md`.
 - **Final verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for backend TypeScript build/tests and Android JVM tests/debug APK compilation.
 - **Phase 3 native Mob AI/scheduler completion:** tested code SHA `a5565ea05ae677104f3eccfa428e99c5b5e787bb`; exact-SHA CI [39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419) passed backend TypeScript/Vitest and Android JVM/debug APK jobs.
-- **Phase 4 movement/floors/world-interactions completion:** tested phase-specific code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs. A follow-on combined branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). `ROADMAP.md` marks Phase 4 complete; Phase 5 is next. Physical two-device and deployed Worker E2E verification remain Phase 10.
+- **Phase 4 movement/floors/world-interactions completion:** tested phase-specific code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs. A follow-on combined branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). `ROADMAP.md` marks Phase 4 complete; Phase 5 is next. Deployed Worker/service preflight is Phase 22; physical-device playtest is reserved for Phase 23.
 - **Roadmap:** read `ROADMAP.md` before starting a task. Its 23-phase dependency map is authoritative. Phases 1–4 are complete for implementation and automated acceptance; the next scope is Phase 5, but first audit the recent item/effect work already on the branch. Old phase numbers in historical logs refer to the former ten-phase plan.
 
 ## 2. Non-Negotiable Product and Engineering Rules
@@ -143,6 +143,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - **Phase 22:** automated cross-layer and multi-client scenarios, exact-SHA CI, and deployed-service smoke checks.
 - **Phase 23:** physical-device gameplay test led by the user, deliberately last. User findings are recorded as new phases 24+ before those fixes are implemented.
 - **Exact current branch head:** `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`. Connector returned no status/workflow run for this SHA. The previously documented green combined code tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` / [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332) predates recent item/effect code; do not overstate verification.
+
 ### Verified Phase 1 facts
 - SPDLevelSnapshot exports schema/depth/branch/seed/dimensions/entrance/exit, tile and collision flags, transitions/exploration state, native metadata, stable Mob identities/bundles/state/buffs/cooldowns, heaps/items/heap flags, traps, plants, timed blobs and hero/inventory/combat/buff state. The Worker preflight now rejects repeated/out-of-range tile and exploration cells, duplicate Mob IDs/positions/stable identities, duplicate heap/trap/plant positions, duplicate blob classes, malformed item/trap/plant/blob fields, incomplete native Mob runtime state, invalid entrance/exit coordinates, missing/invalid seed and coerced string dimensions before persistence.
 - WorldSnapshot preflights full snapshots and bounds values/bundles before live state mutation. Full snapshots use explicit empty arrays to remove stale objects. Restore/reconcile occurs on the render/game thread.
@@ -179,7 +180,7 @@ Never assume a later phase is complete because a class or enum exists. Check cur
 3. Trace the flow end-to-end: native action -> dispatcher -> protocol payload -> server validation/persistence -> sequenced event -> typed client router -> native state reconciliation -> reconnect snapshot.
 4. Before changing code, identify which existing implementation should be extended and which legacy path conflicts with it.
 5. Implement the complete phase, including dependent code paths, schema, migration and tests. Do not stop after adding an enum, field or event name.
-6. Run appropriate validation. For server changes, run the workflow's TypeScript build and tests. For Java changes, run Android debug compilation. For protocol/world changes, add focused tests and perform two-device tests when available.
+6. Run appropriate validation. For server changes, run the workflow's TypeScript build and tests. For Java changes, run Android debug compilation. For protocol/world changes, add focused automated tests. Reserve physical-device gameplay testing for Phase 23, after automated and service preflight.
 7. Inspect the latest GitHub Actions run for the exact final SHA. If it fails, fetch the failing job logs, fix the cause and rerun. Do not report a prior commit's green status as proof for a newer commit.
 8. Commit with a concise English message on `multiplayer-framework-core-14118577486727081892`.
 9. Update phase status in `ROADMAP.md` and add a dated note here with changed files, exact commit, test status and remaining gaps.
