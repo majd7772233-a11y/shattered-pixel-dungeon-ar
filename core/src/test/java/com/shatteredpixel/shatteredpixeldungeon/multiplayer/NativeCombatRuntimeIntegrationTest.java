@@ -738,6 +738,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         // Exact native heap order and stack metadata are sent as individual native Item bundles.
         Heap expectedHeap = new Heap();
+        expectedHeap.setMultiplayerHeapId("stable-test-heap-0001");
         expectedHeap.pos = heapPos;
         expectedHeap.type = Heap.Type.FOR_SALE;
         expectedHeap.seen = true;
@@ -747,6 +748,7 @@ public class NativeCombatRuntimeIntegrationTest {
         expectedHeap.items.addLast(new Ankh());
         expectedHeap.items.addLast(new Item());
         Map<String, Object> heapRow = new HashMap<>();
+        heapRow.put("heapId", expectedHeap.multiplayerHeapId());
         heapRow.put("pos", heapPos);
         heapRow.put("type", expectedHeap.type.name());
         heapRow.put("seen", expectedHeap.seen);
@@ -758,11 +760,13 @@ public class NativeCombatRuntimeIntegrationTest {
             Bundle itemBundle = new Bundle();
             itemBundle.put("item", item);
             Map<String, Object> itemRow = new HashMap<>();
+            itemRow.put("itemId", item.multiplayerItemId());
             itemRow.put("className", item.getClass().getName());
             itemRow.put("quantity", item.quantity());
             itemRow.put("level", item.level());
             itemRow.put("cursed", item.cursed);
             itemRow.put("cursedKnown", item.cursedKnown);
+            itemRow.put("stackable", item.stackable);
             itemRow.put("serializedBundle", itemBundle.toString());
             itemRows.add(itemRow);
         }

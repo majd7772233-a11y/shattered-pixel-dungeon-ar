@@ -2,7 +2,6 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
-import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify;
 import com.watabou.utils.Bundle;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,7 +48,8 @@ public class MultiplayerItemIdentityTest {
 
     @Test
     public void itemIdSurvivesNativeBundleRoundTripAndSplitCreatesDistinctInstances() throws Exception {
-        ScrollOfIdentify source = new ScrollOfIdentify();
+        Item source = new Item();
+        source.stackable = true;
         source.quantity(5);
         String originalId = source.multiplayerItemId();
         Bundle wrapper = new Bundle();
@@ -89,14 +89,14 @@ public class MultiplayerItemIdentityTest {
 
     @Test
     public void completeNativeFloorSnapshotRequiresUniqueHeapAndItemIdsMatchingNativeBundles() {
-        ScrollOfIdentify first = new ScrollOfIdentify();
+        Item first = new Item();
         first.quantity(2);
         first.setMultiplayerItemId("stable-item-0001");
         Map<String, Object> firstRow = floorItem(first, first.multiplayerItemId());
         Assert.assertTrue(WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
                 floorHeap("stable-heap-0001", 9, Arrays.asList(firstRow)))));
 
-        ScrollOfIdentify second = new ScrollOfIdentify();
+        Item second = new Item();
         second.setMultiplayerItemId("stable-item-0002");
         Map<String, Object> secondRow = floorItem(second, second.multiplayerItemId());
         Assert.assertFalse(WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
@@ -113,7 +113,7 @@ public class MultiplayerItemIdentityTest {
         Assert.assertFalse(WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
                 floorHeap("bad/id", 9, Arrays.asList(firstRow)))));
 
-        ScrollOfIdentify substringItem = new ScrollOfIdentify();
+        Item substringItem = new Item();
         substringItem.setMultiplayerItemId("stable-item-0001-extra");
         Map<String, Object> substringMismatch = floorItem(substringItem, "stable-item-0001");
         Assert.assertTrue(((String) substringMismatch.get("serializedBundle")).contains("stable-item-0001"));
