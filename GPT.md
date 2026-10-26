@@ -18,14 +18,16 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 - **Branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless asked.
-- **Branch HEAD checked:** `c20ffb0730c4f8f9c82895faf93b595b7f2280e5` (2026-10-25, “Test idempotent stable item claim ownership”).
-- **Roadmap has been reorganized into 23 dependency-based phases.** Read the current authoritative phase map and acceptance criteria in `ROADMAP.md`; do not follow the former ten-phase numbering from older logs. Phases 1–4 remain complete for implementation and automated acceptance. **Next: Phase 5 — stable item identity and pickup claims.**
-- **Do not redo existing Phase 5 work blindly.** Recent commits already touch native Hero buff ticks/expiry, simple food and WellFed effects, ambiguous item-mutation resync, partial stack drops/unique floor item IDs and idempotent item claims. Audit the current source and exact tests first, then finish the scope defined by the current Phase 5.
-- **Exact HEAD CI is unverified:** no Actions run or commit status was returned for `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`. The previously documented green combined code tip is `ab81c507c5f1ae0b767732a7247cf7afe5afd917` / [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332), which predates the newest item/effect commits. Do not call current HEAD green until it is tested.
-- **New phase layout:** 5–9 items/effects; 10–12 protocol and recovery; 13 session lifecycle; 14 Internet, 15 LAN, 16 Bluetooth; 17 Co-op, 18 PvP/Deathmatch, 19 Survival; 20 host/join UX; 21 localization/layout/cleanup; 22 broad automated + deployed-service preflight; 23 user-led physical-device playtest. The complete work/acceptance details are in `ROADMAP.md`.
-- **Physical-device tests are last by explicit user request.** Do not perform, claim or schedule them in phases 1–22. The user will test the actual game in Phase 23 and send observations. Preserve those observations and add coherent, dependency-aware new phases 24+; do not silently bury them in an old phase.
-- **Test discipline:** run focused automated tests in each implementation phase. Phase 22 includes exact-SHA CI, automated multi-client scenarios and a deployed Worker/service smoke test; it does not equal a physical-device test. Phase 23 is not complete until the user confirms what was actually tested.
-- If interrupted by limits/network/tool failure, save exact SHA, files changed, tests actually run, unchecked scope and next concrete action; resume that same phase later. Never state the whole phase is complete while any required criterion remains open.
+- **Latest gameplay code SHA tested:** `40592960ac1a1ae93fda37b80adadfeb63d96cc0` (“Fix native item identity regression fixtures”). Any later commit from this task updates project documentation only; it must not be described as a different tested gameplay SHA.
+- **Phase 5 complete:** stable heap/item IDs, exact native-bundle identity validation, room/depth/branch-scoped item claims, atomic exact-owner/request reservation, branch-aware claim-schema migration and regression coverage are implemented. The exact-code workflow [40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed both required jobs: backend TypeScript build/tests and Android JVM tests/debug APK compile. The backend run reported 173 test executions in each mirrored TS/JS test file (346 executions, not 346 unique source scenarios).
+- **Next: Phase 6 — Drops, Partial Stacks and Floor Heap Reconciliation.** Read the corresponding section in `ROADMAP.md`; audit already-present drop and partial-stack logic before changing it.
+- **Phase 5 implementation details:** server-side full-snapshot admission rejects missing/malformed/duplicate heap and item IDs before persistence; Java restore validates IDs and item metadata against the decoded native Item bundle before applying the world; split/duplicate Item instances use distinct IDs; durable claims are keyed by the Durable Object room DB, depth, branch, heap ID and item ID and accept retries only for the same player/request; old claim tables are migrated transactionally.
+- **Known verification limits:** no physical-device game session or deployed Worker end-to-end test was performed as part of Phase 5. The automated/deployed-service gate is Phase 22; physical-device gameplay is reserved for Phase 23, where the user will test and send real findings. Add those findings as explicit new Phase 24+ work.
+- **Current map:** 23 dependency-based phases. Phases 1–5 are complete for implementation and automated acceptance; phases 6–23 remain open. Use current numbering in ROADMAP.md, not the superseded historical ten-phase notes.
+- **Interruption rule:** if a tool, network or usage limit interrupts a phase, preserve the exact SHA, modified files, checks actually run and next action; resume that phase later rather than claiming partial completion.
+
+---
+
 
 ---
 
@@ -40,8 +42,10 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 - **Phase 2 native combat re-audit:** current branch head `0a88887fa01bed79bc317f28d73692c5192b78da`; CI [39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) passed both jobs. Verified 28 native runtime integration tests and 107 backend tests overall; see the 2026-10-21 Phase 2 re-audit in `ROADMAP.md`.
 - **Final verified snapshot-consistency code:** `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; exact-SHA CI [39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for backend TypeScript build/tests and Android JVM tests/debug APK compilation.
 - **Phase 3 native Mob AI/scheduler completion:** tested code SHA `a5565ea05ae677104f3eccfa428e99c5b5e787bb`; exact-SHA CI [39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419) passed backend TypeScript/Vitest and Android JVM/debug APK jobs.
-- **Phase 4 movement/floors/world-interactions completion:** tested phase-specific code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs. A follow-on combined branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). `ROADMAP.md` marks Phase 4 complete; Phase 5 is next. Deployed Worker/service preflight is Phase 22; physical-device playtest is reserved for Phase 23.
-- **Roadmap:** read `ROADMAP.md` before starting a task. Its 23-phase dependency map is authoritative. Phases 1–4 are complete for implementation and automated acceptance; the next scope is Phase 5, but first audit the recent item/effect work already on the branch. Old phase numbers in historical logs refer to the former ten-phase plan.
+- **Phase 4 movement/floors/world-interactions completion:** tested phase-specific code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`; exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287) passed both required jobs. A follow-on combined branch tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). Phase 4 remains complete for implementation and automated acceptance.
+- **Phase 5 stable item identity and pickup claims:** code SHA `40592960ac1a1ae93fda37b80adadfeb63d96cc0`; exact-SHA CI [40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed backend TypeScript build/tests and Android JVM/debug APK compilation. Phase 5 is complete for implementation and automated acceptance.
+- **Test boundaries:** Phase 22 is the automated/deployed-service preflight; the user-led physical-device gameplay test is reserved for Phase 23.
+- **Roadmap:** read `ROADMAP.md` before starting a task. Its 23-phase dependency map is authoritative. Phases 1–5 are complete for implementation and automated acceptance; next is Phase 6, drops/partial stacks/floor-heap reconciliation. Old phase numbers in historical logs refer to the former ten-phase plan.
 
 ## 2. Non-Negotiable Product and Engineering Rules
 
@@ -132,17 +136,18 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ### Phase status
 
-- **Phases 1–4:** complete for implementation and automated acceptance, with evidence in ROADMAP.md.
-- **Phase 5:** next, open/in progress at the code level. The current branch includes recent item-claim, partial-stack-drop, food-effect and Hero buff-tick work, but exact HEAD CI and full phase acceptance are not verified.
-- **Phases 6–9:** item drops/heaps, inventory actions/economy, inventory persistence/rewards, and native timed effects, each with distinct criteria.
+- **Phases 1–4:** complete for implementation and automated acceptance, with evidence recorded in ROADMAP.md.
+- **Phase 5:** complete for implementation and automated acceptance on code SHA `40592960ac1a1ae93fda37b80adadfeb63d96cc0`; exact-SHA CI [40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed backend TypeScript tests and Android JVM tests/debug APK compilation.
+- **Phase 6:** next — drops, partial stacks and floor-heap reconciliation. Existing partial-drop validation and unique split item IDs are already present; audit before extending.
+- **Phases 7–9:** inventory actions/economy, inventory persistence/death rewards, native timed effects.
 - **Phases 10–12:** canonical protocol/typed routing; event ordering/replay/resync; durable recovery/reconnect/authority handoff.
 - **Phase 13:** transport-independent room/session lifecycle.
-- **Phases 14–16:** Internet/WebSocket, LAN, and Bluetooth (or truthful unavailable state) as separate transport outcomes.
-- **Phases 17–19:** Co-op/common lifecycle, PvP/Deathmatch, and Survival.
+- **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).
+- **Phases 17–19:** Co-op lifecycle, PvP/Deathmatch, Survival.
 - **Phases 20–21:** truthful host/join UX; localization/RTL/layout/navigation/cleanup.
-- **Phase 22:** automated cross-layer and multi-client scenarios, exact-SHA CI, and deployed-service smoke checks.
-- **Phase 23:** physical-device gameplay test led by the user, deliberately last. User findings are recorded as new phases 24+ before those fixes are implemented.
-- **Exact current branch head:** `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`. Connector returned no status/workflow run for this SHA. The previously documented green combined code tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` / [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332) predates recent item/effect code; do not overstate verification.
+- **Phase 22:** automated cross-layer/multi-client scenarios, exact-SHA CI and deployed-service smoke checks.
+- **Phase 23:** user-led physical-device gameplay test, deliberately last. Record the user's observations and create coherent new phases 24+ for follow-up fixes.
+- **Phase 5 verification limits:** no physical-device match or deployed Worker end-to-end test was performed. Do not infer either from green CI.
 
 ### Verified Phase 1 facts
 - SPDLevelSnapshot exports schema/depth/branch/seed/dimensions/entrance/exit, tile and collision flags, transitions/exploration state, native metadata, stable Mob identities/bundles/state/buffs/cooldowns, heaps/items/heap flags, traps, plants, timed blobs and hero/inventory/combat/buff state. The Worker preflight now rejects repeated/out-of-range tile and exploration cells, duplicate Mob IDs/positions/stable identities, duplicate heap/trap/plant positions, duplicate blob classes, malformed item/trap/plant/blob fields, incomplete native Mob runtime state, invalid entrance/exit coordinates, missing/invalid seed and coerced string dimensions before persistence.
@@ -160,19 +165,20 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Client-sent engineResult=true is not proof of an honest engine. The implemented trust model uses one elected Java SPD publisher as the shared Mob/Actor execution authority, with Worker validation/sequencing and resync on rejected native turns. This is not cheat-proof; stronger integrity would require a server-side engine that independently executes the Java SPD rules.
 - Do not call native Mob.die() on a replica just to set its state; that can duplicate loot/reward. Use the authoritative tombstone/removal path.
 
-## 5. Open Risks and Work After Phase 4
+## 5. Open Risks and Work After Phase 5
 
-The current authoritative scope is the 23-phase plan in `ROADMAP.md`. Phases 1–4 are complete for implementation and automated acceptance. Work remaining is dependency ordered:
+The current authoritative scope is the 23-phase plan in `ROADMAP.md`. Phases 1–5 are complete for implementation and automated acceptance. Work remaining is dependency ordered:
 
-- **5–9 — native items/effects:** stable identity and pickup, exact drops/partial stacks, inventory actions/economy, persistence/death rewards, native timed effects.
-- **10–12 — contract/reliability:** single typed protocol path, sequence/replay/resync correctness, Durable Object persistence/reconnect/authority handoff.
-- **13–16 — sessions and transports:** common room/readiness state, Internet/WebSocket, LAN, Bluetooth with an honest disabled state if unavailable.
-- **17–19 — modes:** Co-op lifecycle, PvP/Deathmatch, Survival.
-- **20–21 — UI:** truthful host/join/setup flow followed by localization, RTL/layout, accessibility, cancellation and cleanup.
-- **22 — automated/service preflight:** real room/action lifecycle tests, multi-client scenarios, exact-SHA CI, deployment configuration and fresh-room Worker smoke test.
-- **23 — user-led physical-device playtest:** final only. The user reports actual results; append coherent new Phase 24+ fixes afterward and preserve the original symptoms/reproduction steps.
+- **Phase 6 — drops/heaps:** finish full/partial drop transactions, unique IDs for split instances, per-item heap reconciliation and dropped/thrown item outcomes.
+- **Phases 7–9 — remaining item/effect lifecycle:** inventory actions/economy, inventory restoration/rewards, native buffs and timed-effect expiry.
+- **Phases 10–12 — contract/reliability:** one typed protocol path, sequence/replay/resync correctness, Durable Object persistence/reconnect/authority handoff.
+- **Phases 13–16 — sessions and transports:** shared room/readiness state, Internet/WebSocket, LAN, Bluetooth with an honest unavailable state if necessary.
+- **Phases 17–19 — modes:** Co-op lifecycle, PvP/Deathmatch, Survival.
+- **Phases 20–21 — UI:** truthful host/join/setup flow followed by localization, RTL/layout, accessibility, cancellation and cleanup.
+- **Phase 22 — automated/service preflight:** real room/action lifecycle tests, multi-client scenarios, exact-SHA CI, deployment configuration and fresh-room Worker smoke test.
+- **Phase 23 — user-led physical-device playtest:** final only. The user reports actual results; append coherent new Phase 24+ fixes afterward and preserve symptoms/reproduction steps.
 
-Never assume a later phase is complete because a class or enum exists. Check current source and tests. Keep automated tests inside the phase that implements the behavior; do not move all tests to the end. Only physical-device gameplay is reserved for Phase 23.
+Never assume a later phase is complete because a class or enum exists. Check current source and tests. Keep automated tests inside the phase that implements the behavior; only physical-device gameplay is reserved for Phase 23.
 ## 6. Recommended Work Method
 
 1. Fetch the current branch head and verify it is still `multiplayer-framework-core-14118577486727081892`. Never assume the audit SHA is still current.
@@ -200,6 +206,15 @@ The project is not done when it compiles or when two clients merely connect. Don
 - The roadmap has no unresolved P0 items and known limitations are documented honestly.
 
 ## 8. Append-Only Working Log (Keep This Section Open)
+
+### 2026-10-26 — Phase 5 stable item identity and pickup claims completed
+
+- Final tested gameplay code SHA: `40592960ac1a1ae93fda37b80adadfeb63d96cc0`; exact-SHA GitHub Actions [40401131992](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40401131992) passed both backend and Android jobs.
+- Stable `Item`/`Heap` identifiers have bounded validation; native snapshot restoration requires unique heap/item IDs and exact identity/metadata agreement with decoded native Item bundles. Split/duplicate item IDs are tested.
+- Durable item claims now include depth and branch plus stable heap/item IDs; room scope is the per-room Durable Object DB. The reservation uses `transactionSync`, allows only exact player/request retries, and migrates old claim schemas transactionally without dropping prior reservations.
+- Regression coverage includes conflicting claims, exact retries, different depths/branches/rooms, malformed or duplicate identity fields, legacy schema recognition, and strict native heap restore. The first Android run exposed headless graphics initialization in a new test and an old hand-built snapshot fixture missing stable IDs; both were fixed without weakening production validation.
+- Backend output: 173 tests in each mirrored `index.test.ts`/`index.test.js` file (346 executions, not 346 distinct source tests). Android JVM tests and debug APK compilation passed.
+- No physical-device match or deployed Worker end-to-end test was run; Phase 22/23 boundaries remain unchanged. **Next whole phase: Phase 6 — Drops, Partial Stacks and Floor Heap Reconciliation.**
 
 ### 2026-10-26 — Dependency-based roadmap restructure
 
