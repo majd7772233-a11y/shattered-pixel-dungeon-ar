@@ -102,9 +102,15 @@ public class MultiplayerItemIdentityTest {
         Assert.assertFalse(WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
                 floorHeap("stable-heap-0001", 9, Arrays.asList(firstRow)),
                 floorHeap("stable-heap-0001", 10, Arrays.asList(secondRow)))));
-        Assert.assertFalse(WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
-                floorHeap("stable-heap-0001", 9, Arrays.asList(firstRow)),
-                floorHeap("stable-heap-0002", 10, Arrays.asList(floorItem(second, first.multiplayerItemId()))))));
+        Item duplicateIdentity = new Item();
+        duplicateIdentity.setMultiplayerItemId(first.multiplayerItemId());
+        Map<String, Object> duplicateIdentityRow = floorItem(duplicateIdentity, duplicateIdentity.multiplayerItemId());
+        Assert.assertEquals("The test row itself must agree with its native bundle",
+                duplicateIdentityRow.get("itemId"), first.multiplayerItemId());
+        Assert.assertFalse("Two distinct floor objects may not reuse one stable item ID",
+                WorldSnapshot.hasValidStableHeapItemIdentities(Arrays.asList(
+                        floorHeap("stable-heap-0001", 9, Arrays.asList(firstRow)),
+                        floorHeap("stable-heap-0002", 10, Arrays.asList(duplicateIdentityRow)))));
 
         Map<String, Object> missingItemId = new HashMap<>(firstRow);
         missingItemId.remove("itemId");
