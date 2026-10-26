@@ -16,9 +16,43 @@ The original Java/libGDX SPD engine remains the gameplay reference: level genera
 
 “Done” means the full acceptance gate has passed for every phase, exact-code CI is green, and final real-device/deployment tests have been recorded. Compilation or a successful room connection alone is not project completion.
 
+## Current Roadmap Structure — Dependency-Based Plan (2026-10-26)
+
+The old ten-phase plan contained 88 primary work items, several of which spanned unrelated systems and could leave a long phase unfinished when a session ended. The current plan has **23 phases**: the first four remain complete, implementation work is separated by coherent cross-layer boundaries, automated and deployment checks are phase 22, and the user's physical-device playtest is deliberately **the final phase, 23**. The number is based on scope/dependencies, not a target quota.
+
+| Phase | Scope | State |
+|---:|---|---|
+| 1 | Lossless native world snapshot and restoration | Complete |
+| 2 | Native combat replication | Complete |
+| 3 | Native Mob AI and Actor scheduler | Complete |
+| 4 | Movement, floors and world interactions | Complete |
+| 5 | Stable item identity and pickup claims | Open; next |
+| 6 | Drops, partial stacks and floor heaps | Open |
+| 7 | Inventory actions and item economy | Open |
+| 8 | Inventory persistence, restoration and exactly-once rewards | Open |
+| 9 | Native buffs and timed effects | Open |
+| 10 | Canonical protocol schema and one typed event path | Open |
+| 11 | Event ordering, replay protection and resynchronization | Open |
+| 12 | Durable recovery, reconnect and authority handoff | Open |
+| 13 | Common room/session lifecycle and readiness | Open |
+| 14 | Internet/WebSocket transport | Open |
+| 15 | LAN transport | Open |
+| 16 | Bluetooth transport or truthful unavailability | Open |
+| 17 | Co-op rules and shared match lifecycle | Open |
+| 18 | PvP and Deathmatch enforcement | Open |
+| 19 | Survival mode enforcement | Open |
+| 20 | Truthful host/join/setup UX | Open |
+| 21 | Localization, RTL/layout, navigation and cleanup | Open |
+| 22 | Automated cross-layer verification and deployed-service preflight | Open |
+| 23 | Final physical-device playtest led by the user | Open; last by design |
+
+**Dependency chain:** phases 5–9 finish item/effect gameplay; phases 10–12 consolidate event correctness and durable recovery; phase 13 establishes transport-independent session states before phases 14–16 wire transports; phases 17–19 enforce modes on that stable foundation; phases 20–21 make the completed capability honestly usable; phase 22 runs automated and service-level checks; phase 23 is the user's actual gameplay test. A test or fix found in Phase 23 is recorded as a new Phase 24+ (or grouped, dependency-aware follow-up phases), not silently folded into the old plan.
+
+**Testing policy:** automated unit/JVM/contract/integration tests stay inside the implementation phases that need them. Phase 22 contains the broad automated two-client scenarios, exact-commit CI and deployed Worker/service smoke checks. No physical-device testing is scheduled in phases 1–22. Phase 23 is user-led, and nobody should claim it passed until the user reports the actual outcomes. If a supported transport cannot be verified, mark it unsupported in the UI rather than pretending it works.
+
 ## Atomic-Phase Rule — No Partial Phases
 
-A numbered phase is **one indivisible milestone**, not a collection of separately completable parts. Its full scope, dependencies, implementation, schema, tests, cross-file integration and completion criteria must be finished before the phase is marked complete.
+A numbered phase is **one indivisible milestone**, not a collection of separately completable parts. Its full scope, dependencies, implementation, schema, tests, cross-file integration and completion criteria must be finished before the phase is marked complete. Phase scope is intentionally bounded to reduce unfinished work if a session ends; when interruption occurs, save a precise continuation checkpoint and resume the same phase rather than pretending it is complete.
 
 - Never mark a phase complete with an unchecked requirement, known dependent defect, missing test or unverified integration path.
 - Never push a missing requirement into the next phase merely to close the current one.
@@ -30,24 +64,18 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 ## Current Verified Status
 
-### Continuation handoff — 2026-10-24
+### Active continuation checkpoint — 2026-10-26
 
-- **Authoritative next task:** Phase 5 — items and effects. Phase 4 is already complete for implementation and automated acceptance; do not redo it just because its request was repeated in the latest conversation.
-- **Branch:** `multiplayer-framework-core-14118577486727081892`; keep all work on this branch and never merge to `main` unless explicitly requested.
-- **Current state before saving this handoff:** branch HEAD `38630762749fc120da9bbedc4696f413945ef521` (documentation-only phase revalidation). Exact-HEAD CI [39865024347](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39865024347) passed both Backend typecheck/tests and Android debug APK compile. The Phase 4 implementation code SHA `c0c231a501bb2996f261e7e9e4e5d66e4136d70b` passed exact-SHA CI [39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287); follow-on code tip `ab81c507c5f1ae0b767732a7247cf7afe5afd917` passed [39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332).
-- **Conversation stop point:** the user asked to save all context and rules for continuation in a new conversation. The assistant re-read the branch, current phase status, `GPT.md`, `ROADMAP.md` and the latest workflow; it began a Phase 4 code audit but made no gameplay source changes in this conversation. A suspicion based on partial excerpts that `UNLOCK`, `MINE`, `INTERACT`, `OPEN_CHEST`, or peer transition handlers were absent was disproved by the later full-source audit; these handlers are present. Do not reopen that claim without new evidence.
-- **On continuation:** immediately read the full Phase 5 scope and acceptance criteria below, then inspect current item/heap pickup/drop, inventory, effects/buffs, action bridge/router, snapshots, Worker validation/persistence and tests. Finish Phase 5 end-to-end in one effort; add regressions; run CI on the exact final code SHA; fix any failures; update this file and `GPT.md`. Do not ask the user to repeat details or provide only a plan.
-- **Non-negotiable rules:** each numbered phase is indivisible and must be fully completed before marking complete; preserve original Java/libGDX SPD gameplay rather than inventing TypeScript approximations; trace native action → protocol → Worker validation/persistence → sequenced event → peer reconciliation/resync; enforce one authority and replay protection; no duplicate event pipelines; update both project memory files; stay on the named branch; no merge to `main` unless asked; report only actually verified results; never claim physical device/deployed Worker testing without evidence; do not suggest `npx wrangler` for Android; avoid unrelated rewrites and unnecessary chatter.
-- **Release limits:** no physical two-device session and no deployed Worker end-to-end run are claimed. Keep those release gates in Phase 10. Publisher disconnect/authority handoff remains Phase 9.
-
-
-- **Phase 1 — Lossless native snapshots/restoration: complete for implementation and automated acceptance after cross-layer re-verification.** The final snapshot-consistency code SHA is `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30`; [CI run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420) succeeded for this exact SHA, with both backend and Android jobs green. The audit fix rejects conflicting or incomplete snapshots before server persistence and adds negative regression tests. Physical two-device testing remains in Phase 10.
-- **Phase 2 — Native combat replication: complete for implementation and automated acceptance.** Re-audited against the current branch on 2026-10-21: 28 native runtime integration tests exercise native hits/misses, shield-only/zero-damage outcomes, retaliation, attacker post-state, blessed Ankh, delegated kill rewards, Mob-to-player damage, periodic damage, PvP/Ankh, secondary Mob effects, stable-ID/full-bundle deltas, stale events and duplicate-death prevention. The Worker suite contains 107 tests overall, including combat pre-state/authority/replay/buff/shield/loot/Ankh and secondary-delta validation. Current branch head `0a88887fa01bed79bc317f28d73692c5192b78da` passed [CI run 39656587836](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39656587836) with both backend and Android jobs green. This re-verification found no missing Phase 2 implementation item; the unchecked physical two-device smoke test remains a Phase 10 release gate.
-- **Phase 3 — native Mob AI/Actor scheduler: complete for implementation and automated acceptance.** Exact-SHA code `a5565ea05ae677104f3eccfa428e99c5b5e787bb` passed [CI run 39670992419](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39670992419), including backend TypeScript/Vitest and Android JVM/debug APK jobs.
-- **Phase 4 — movement, floor lifecycle and world interactions: complete for implementation and automated acceptance.** Exact-SHA code `c0c231a501bb2996f261e7e9e4e5d66e4136d70b` passed [CI run 39850368287](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39850368287): both backend and Android jobs succeeded. The Phase 4 work items, acceptance criteria, tests and limits are recorded in the Phase 4 section and 2026-10-22 log below.
-- **Latest code SHA tested green:** `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`. Documentation commits may advance the branch head; never imply the docs commit is the same SHA as the tested code.
-- **No physical two-device match or deployed Worker end-to-end run has been performed.** Phase 10 retains both as required release verification; passing CI does not prove live peer synchronization.
-- **Next whole phase: Phase 5 — items and effects.** Phases 5–10 remain open; Phase 4’s implementation and automated acceptance do not establish live two-device readiness or project-wide release completion.
+- **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar.
+- **Working branch:** `multiplayer-framework-core-14118577486727081892`. Never merge to `main` unless the user explicitly asks.
+- **Branch HEAD checked for this roadmap review:** `c20ffb0730c4f8f9c82895faf93b595b7f2280e5` (commit: “Test idempotent stable item claim ownership”, 2026-10-25). This is newer than the old 2026-10-24 documentation checkpoint.
+- **Next implementation phase:** Phase 5 — stable item identity and pickup claims. The code already contains recent Phase-5-related work; inspect and verify it before adding anything, rather than reimplementing it.
+- **Recent Phase 5-related branch commits:** native Hero buff-tick publication and validation; food/WellFed effects; resync on ambiguous item mutations; exact partial-stack DROP validation and unique dropped-item IDs; idempotent stable item-claim ownership. Their presence is evidence of implementation activity, not by itself proof that all of Phase 5 or its acceptance criteria pass.
+- **Exact-HEAD CI:** no workflow run or commit status was returned for `c20ffb0730c4f8f9c82895faf93b595b7f2280e5` during this review. The latest previously documented green combined code tip is `ab81c507c5f1ae0b767732a7247cf7afe5afd917`, [CI run 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). Do not call the newer Phase 5 follow-up code fully CI-verified until exact-HEAD CI is run.
+- **Phases 1–4:** complete for implementation and automated acceptance under the evidence recorded in their sections. This does not mean the app has passed a live-device multiplayer playtest.
+- **New scope:** phases 5–23 are open, with dependencies and acceptance criteria specified in the active map below. Old dated log entries are historical records from the former ten-phase numbering and must not override this current plan.
+- **Physical-device rule:** no manual physical-device playtest before Phase 23. The user will play the game then, report concrete errors/observations, and those findings will be appended as new Phase 24+ items/phases before fixes are implemented.
+- **Truthful test reporting:** distinguish unit/contract tests, JVM tests, Android compilation, multi-client automated tests, a deployed Worker smoke test, and actual play on real devices. Never claim a category of testing that was not performed.
 
 ## Architecture Reference
 
@@ -189,148 +217,334 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - **Follow-up verification on the later branch tip:** code HEAD `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). The follow-up commits primarily extend stable inventory/item transaction handling; this confirms that the later combined tree still builds and passes the automated suites, while the phase-specific implementation checkpoint remains `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`.
 - Next whole phase: Phase 5 — items and effects. Phase 9 authority handoff and Phase 10 real-device/deployment verification remain separate and open.
 
-## Phase 5 — Complete Inventory, Loot, Items, Buffs and Timed Effects
+## Phase 5 — Stable Item Identity and Pickup Claims
 
-**Priority:** P0/P1
+**Priority:** P0 · **Dependencies:** phases 1–4 (complete).
 
 ### Work items
-
-- [ ] Make pickup a transaction over a stable item/entity ID, heap ID, depth and player. Do not identify an item only by class name or cell position.
-- [ ] Fix loot-claim persistence keys to include depth and stable heap/item IDs; make pickup, stack decrement, inventory update and event publication atomic/idempotent.
-- [ ] Reconcile partial heaps item-by-item on every client. Never remove the whole heap when one item is taken unless it becomes empty.
-- [ ] Synchronize chest opening and key consumption, shop purchases and gold, item drops, thrown/missile items, item consumption, equipment changes, quickslots, alchemy, mining and abilities.
-- [ ] Persist each player's native inventory and hero state on every relevant state change, not only opportunistically with a generic action payload.
-- [ ] Preserve item bundles, stack quantities, curse knowledge, upgrades, enchantments, glyphs, unique IDs, container contents and item-specific state. Do not use class-constructor defaults when the exact bundle is required.
-- [ ] Synchronize buffs/debuffs, shields, DOTs, duration, cooldown and expiry; apply expiration once and handle actors removed while effects are active.
-- [ ] Verify death drops, boss drops, special heaps, remains, bones, dew, quest items, keys and reward/statistics effects do not duplicate on snapshot restore.
-- [ ] Add tests for competing pickups, partial stacks, same cell on different depths, shop purchase races, inventory restoration and temporary effect expiry.
+- [ ] Audit existing native item and heap identity code, including generated items, inventory items, dropped items, serialized bundles and snapshot restore. Preserve already-correct work.
+- [ ] Ensure every distinct floor item and heap receives a stable multiplayer ID that survives movement, snapshots and reconnects; a partial stack that becomes two distinct instances must not reuse one ID for both.
+- [ ] Make pickup claims room/depth/branch-aware and keyed by stable heap and item IDs, not just item class or position.
+- [ ] Validate pickup ownership and request identity atomically. Only the identical player/request retry may be idempotently accepted; a competing player or different request must not steal/replay the same item.
+- [ ] Add focused regressions for two players claiming one item, identical retries, conflicting retries, equal coordinates on different depths, restored IDs and concurrent claim attempts.
 
 ### Acceptance criteria
+- One stable item instance has no more than one owner and one committed pickup result.
+- Retries are idempotent only for the same authenticated player and request ID.
+- IDs and claims remain unambiguous across depth changes and full snapshot restore.
 
-- A picked-up/dropped/consumed item has one owner and one final state on all devices.
-- Inventory/equipment/buffs survive disconnect and restore exactly from native state.
-- Loot, gold, quest progress and kill rewards cannot be duplicated by replaying actions or snapshots.
+## Phase 6 — Drops, Partial Stacks and Floor Heap Reconciliation
 
-## Phase 6 — Make Internet, LAN and Bluetooth Sessions Actually Connect
-
-**Priority:** P0
+**Priority:** P0 · **Dependencies:** Phase 5.
 
 ### Work items
-
-- [ ] Separate transport connection from room creation/joining and match readiness. The UI must wait for explicit server/host confirmation before starting the run.
-- [ ] Fix LAN host startup so the host is the authority and does not accidentally connect to itself through the client path. Validate host/guest addressing, discovery, bind address, ports and failure cleanup.
-- [ ] Wire a real Android Bluetooth provider into `BluetoothTransport`, including discovery/pairing/permissions and stream callbacks. If no provider is available, show “unsupported/unavailable” and fail instead of returning a false connected state.
-- [ ] Validate the WebSocket implementation against a standards-compliant endpoint: handshake headers, masking/framing, fragmentation, payload limits, TLS, ping/pong, timeout and close handling.
-- [ ] Implement explicit create/join/leave/ready/start/room-state flows and correct room capacity per mode.
-- [ ] Add connect timeout, retry, cancellation, reconnect, backoff, duplicate-session prevention and clear user-visible error messages.
-- [ ] Make callbacks thread-safe and marshal scene/UI changes onto the game render thread.
-- [ ] Test Android 6+ permissions/API differences, background/screen-off behavior, network changes and slow connections.
+- [ ] Validate full and partial DROP transactions from native inventory pre-state to the exact source remainder and destination heap state.
+- [ ] Preserve stable source/result IDs when dropping or splitting a stack; allow native stack merges only when the exact item compatibility/state rules permit them.
+- [ ] Reconcile each item inside a heap on every peer. Removing one item must not remove the remaining heap items or heap metadata.
+- [ ] Synchronize thrown/missile items and their consumed quantities through the native result, including missed/blocked/projectile outcomes where the original engine consumes an item.
+- [ ] Add regression tests for full/partial drops, merged/non-merged stacks, quickslot quantity updates, duplicate DROP replay, multiple items at one cell and resync after an ambiguous mutation.
 
 ### Acceptance criteria
+- The floor heap and player inventory quantities balance exactly for each accepted drop.
+- No item is duplicated, silently lost, or confused with another item that shares its class/cell.
+- Every peer converges from the accepted native heap snapshot or requests authoritative resync.
 
-- Two physical devices can create/join the same room using each transport that is declared supported.
-- A failed transport never reports success or silently launches a fake match.
-- The room has one known authority and a stable player/session identity.
+## Phase 7 — Inventory Actions and Item Economy
 
-## Phase 7 — Finish Game Modes, Death, Revival and Match Lifecycle
-
-**Priority:** P1
+**Priority:** P0/P1 · **Dependencies:** phases 5–6 and existing Phase 4 world-action admission.
 
 ### Work items
-
-- [ ] Turn `CoopMode`, `PvPMode`, `DeathmatchMode` and `SurvivalMode` settings into enforced server and client rules rather than descriptive classes only.
-- [ ] Implement readiness and match start, mode/party capacity, game-over conditions, score/kills/deaths, spectator state, auto-respawn, revive requests and revive resource/cost rules.
-- [ ] Make death state, death animation, inventory/drop behavior, revive HP, action availability and actor removal consistent across all clients.
-- [ ] Implement reconnect behavior for dead/spectator players and handle the final living player or disconnected host according to the selected mode.
-- [ ] Ensure PvP visibility/FOV filtering cannot hide required state from a co-op partner or leak hidden arena information.
-- [ ] Add mode-specific acceptance tests, including kill limit, simultaneous kills, leaving/rejoining, host departure, revive while another player acts and match end.
+- [ ] Trace native consumption and simple food/potion/scroll effects through the original Java engine; whitelist or validate supported actions without inventing TypeScript gameplay effects.
+- [ ] Synchronize equip/unequip, weapon/armor changes, quickslots, item transformations and inventory-capacity changes using complete action-bound native Hero state.
+- [ ] Make shop purchases/sales, gold changes, keys/chest costs, and other supported currency transactions atomic and exactly-once. Extend Phase 4 chest/key handling instead of creating a competing world-action path.
+- [ ] Validate alchemy, mining-related inventory changes and class/talent/item abilities against the actual native before/after bundles and their action costs.
+- [ ] Return structured rejection/resync outcomes for unsupported or ambiguous item mutations; never broadcast an unvalidated client inventory as truth.
+- [ ] Add negative and positive tests for currency races, invalid quantity changes, forged item additions, duplicated consumption, equipment/quickslot consistency and unsupported item actions.
 
 ### Acceptance criteria
+- Each item action has one validated native result and one inventory outcome.
+- Gold, purchases, sales, keys and consumable quantities cannot be duplicated by retries or forged snapshots.
+- Unsupported cases fail visibly and safely without pretending the action succeeded.
 
-- Each mode's advertised rules are enforced in both UI and server state.
-- Death/revive/respawn and score changes are exactly-once events.
-- All clients agree whether the match is lobby, playing or ended.
+## Phase 8 — Inventory Persistence, Restoration and Exactly-Once Rewards
 
-## Phase 8 — Unify the Protocol, Events, Authority and Recovery
-
-**Priority:** P0/P1
+**Priority:** P0 · **Dependencies:** phases 5–7 and Phase 1 snapshot infrastructure.
 
 ### Work items
-
-- [ ] Make `protocol/schema.json` match `MessageType`, including `LEVEL_DATA`, and document every request/event/snapshot field.
-- [ ] Use structured JSON parsing only. Remove brittle substring detection, manual unescaping and competing legacy event handlers once the typed path covers their behavior.
-- [ ] Apply events only in sequence order, ignore already-applied sequences, detect gaps, deduplicate request IDs and request a full snapshot when replay is incomplete or invalid.
-- [ ] Fix reconnect token/session lookup and ensure the reconnecting socket is attached to the correct player before it is marked connected.
-- [ ] Ensure event log retention, snapshot fallback and world persistence are bounded, crash-safe and recoverable after Durable Object restart.
-- [ ] Transfer level-publisher authority safely if the publisher leaves; persist a snapshot before authority changes.
-- [ ] Use transactions for multi-table changes and schema migrations for existing Durable Object rooms.
-- [ ] Add validation and rate limits for message size, room code, IDs, action count, depth, position, bundle payload, item count and client spam.
-- [ ] Return structured errors that the client can display and recover from; do not swallow all failures without diagnostics.
+- [ ] Persist each player's complete native Hero/inventory state at the appropriate accepted mutation points, not only when an unrelated generic action happens to carry a Hero blob.
+- [ ] Preserve exact item bundles and runtime properties: quantities, cursed knowledge, upgrades, enchantments, glyphs, unique IDs, container contents, equipment, quickslots and item-specific state.
+- [ ] Verify disconnect/reconnect and full resync restore the same inventory and Hero state without constructor defaults, lost items or duplicate instances.
+- [ ] Cover death/boss/special-heap drops, remains, bones, dew, keys, quest items, Lost Backpack behavior, quest progress, kill rewards and statistics under replay and snapshot restoration.
+- [ ] Add persistence/reconnect tests for inventories that differ by equipment, container contents, unique items, partial stacks, quest items and reward/drop events.
 
 ### Acceptance criteria
+- Inventory state survives disconnect, full restore and repeated snapshot application byte-for-byte or by equivalent native semantic state.
+- A death, drop, quest or kill reward is applied at most once, including after reconnect.
+- Any bundle the server cannot interpret remains bounded and is validated by the native client before being applied.
 
-- Duplicate, delayed, out-of-order and malformed messages cannot corrupt the match.
-- Reconnect either replays a complete contiguous event range or receives a full snapshot.
-- Server restart and authority handoff preserve one coherent world.
+## Phase 9 — Native Buffs, Consumable Effects and Timed State
 
-## Phase 9 — Finish Multiplayer UX and Remove False-Success Paths
-
-**Priority:** P1
+**Priority:** P0 · **Dependencies:** phases 7–8 and the native scheduler/snapshot work in phases 1–3.
 
 ### Work items
-
-- [ ] Review `TitleScene`, `MultiplayerTransportScene` and `MultiplayerSetupScene` as one user flow.
-- [ ] Add clear host/join selection, room code entry/copy, IP discovery/manual input, Bluetooth device selection, selected mode/player limit and ready state.
-- [ ] Show connecting, waiting for peer, syncing world, retrying, disconnected and match-start states. Disable controls while transitions/snapshots are incomplete.
-- [ ] Replace hardcoded text with localized message keys and ensure every key exists in the supported language bundles.
-- [ ] Add cancel/back/leave behavior and guaranteed cleanup for sockets, listeners, authority state and pending actions.
-- [ ] Ensure no placeholder map, dummy mobs, stale local objects or fabricated state are shown as real match data.
-- [ ] Audit layout on phone/tablet and portrait/landscape, safe insets, long room codes, Arabic/RTL strings and touch targets.
-- [ ] Add UI-level tests where feasible and a manual checklist for all failure states.
+- [ ] Audit all multiplayer-relevant native buff/debuff application paths and retain the existing Java SPD formulas, timing and actor order.
+- [ ] Synchronize effect ticks, remaining duration, cooldowns, shields, periodic damage/healing, hunger/WellFed state, potion effects and expiration through an authoritative native result.
+- [ ] Ensure expiry is applied exactly once; reject unrelated Hero/Mob changes disguised as an effect tick and handle effect targets removed or killed during callbacks.
+- [ ] Restore effect state and scheduler timing after reconnect/resync without restarting durations, applying ticks twice or leaving stale buffs.
+- [ ] Add tests for concurrent effects, expiry boundaries, shields/DOTs, death during an effect, reconnect before/after expiry, duplicated tick messages and malformed effect deltas.
 
 ### Acceptance criteria
+- Effects use original SPD gameplay and agree across clients on active state, tick result, duration and expiry.
+- Replaying a tick or restoring the same snapshot does not duplicate damage/healing or extend/restart an effect.
+- Removed actors/effects are safely cleaned up with no hidden scheduler corruption.
 
-- A first-time user can host and join without knowing implementation details.
-- Connection/sync failures are visible and recoverable.
-- The UI never claims a match is ready until both session and world state are ready.
+## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
-## Phase 10 — End-to-End Verification, Release Readiness and Maintenance
-
-**Priority:** Final gate
+**Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
 
 ### Work items
+- [ ] Compare every active Java message/action enum and payload with Worker handlers and protocol/schema.json, including LEVEL_DATA and all item/effect outcomes.
+- [ ] Document required versus optional fields, full versus partial snapshots, stable IDs, request IDs, sequence numbers, rejection/error payloads and supported protocol versions.
+- [ ] Make structured JSON parsing and the typed MessageRouter the single event-application path.
+- [ ] Migrate any remaining behavior from RemotePlayerActionReceiver and remove the legacy overlapping parser only after equivalent behavior has dedicated tests.
+- [ ] Add contract tests that reject missing/wrongly typed fields and ensure every declared message has a known handler or an explicit unsupported response.
 
-- [ ] Expand backend tests to instantiate/test the Durable Object action flow instead of testing only helper examples.
-- [ ] Add Java tests for snapshot parsing/validation and deterministic reconciliation where the engine/test environment allows.
-- [ ] Add automated scenarios for two players, all supported actions, combat misses/hits, mob turns, loot races, floor changes, reconnect gaps, duplicate events, host disconnect and server restart.
-- [ ] Run backend typecheck/tests and Android debug APK compilation on the final commit; investigate and fix all failures before returning.
-- [ ] Run a real two-device manual test matrix for each supported transport and record device/Android version, scenario, expected result and actual result.
-- [ ] Verify deployment configuration and Worker endpoint, then perform a fresh-room smoke test against the deployed service.
-- [ ] Inspect logs for silent exceptions, stale actors, duplicate drops, invalid action acceptance and sequence gaps.
-- [ ] Update this roadmap and `GPT.md` with what was verified, remaining limitations and exact commit/run links.
-- [ ] Create a release only after the acceptance criteria below pass; do not label an untested transport or game mode as supported.
+### Acceptance criteria
+- Schema, Java messages, Worker validators and client handlers describe the same contract.
+- No duplicate legacy/event receiver can mutate gameplay state separately from the typed path.
+- Unknown or unsupported messages fail safely and observably.
 
-### Final acceptance criteria
+## Phase 11 — Event Ordering, Replay Protection and Resynchronization
 
-- Two physical devices complete a full co-op run segment together, including movement, native combat, mobs, loot/inventory, temporary effects, a floor transition and reconnect recovery.
-- Each advertised competitive mode passes its mode-specific tests.
-- No known P0 issues remain; CI is green for the exact final commit; real-device results are documented.
-- All supported transports are genuinely operational, or unsupported ones are clearly disabled instead of falsely reporting success.
+**Priority:** P0 · **Dependencies:** Phase 10.
 
----
+### Work items
+- [ ] Apply accepted events in sequence order; ignore already-applied duplicates and detect skipped/out-of-order sequence numbers.
+- [ ] Deduplicate request IDs across retries and prevent one ID from being reused for a different action/player/payload.
+- [ ] Ensure action pre-state, current depth, actor ownership, stable target identity, action cost and result delta are validated before any persistent mutation.
+- [ ] Define when an event gap can be repaired from the retained event log and when the client must request a full authoritative snapshot.
+- [ ] Add replay, out-of-order, stale-state, duplicate action, sequence-gap and bad-resync regression tests across the Worker and Java router.
+
+### Acceptance criteria
+- Replayed, delayed or out-of-order messages cannot apply an action twice or move the match backward.
+- A client converges by contiguous event replay or a full snapshot; it never guesses the missing state.
+- Invalid events do not partially persist data before rejection.
+
+## Phase 12 — Durable Recovery, Reconnect and Authority Handoff
+
+**Priority:** P0 · **Dependencies:** phases 10–11 and the session model in Phase 13; generic recovery contracts can be tested before individual transports are complete.
+
+### Work items
+- [ ] Fix reconnect token/session lookup so a new socket binds to the correct player before being marked connected, while preventing session impersonation.
+- [ ] Bound event-log retention and snapshot fallback, and make room/player/world persistence recoverable after Durable Object restart.
+- [ ] Add explicit SQL/schema migrations and transactional boundaries for related room, player, event, inventory and item-claim updates.
+- [ ] Transfer native level-publisher authority safely when its player disconnects or leaves: preserve a validated snapshot, elect one replacement and resume one authoritative scheduler.
+- [ ] Add tests for reconnecting identity, dropped connections, expired tokens, restart/recovery, transaction rollback, migration compatibility and publisher loss during combat or transition.
+
+### Acceptance criteria
+- A reconnect either replays a complete event range or restores from a valid authoritative snapshot.
+- Durable Object restart and schema migration do not lose or duplicate accepted gameplay state.
+- At every point there is at most one publisher for shared native turns; handoff cannot duplicate Mob turns, death rewards or loot.
+
+## Phase 13 — Common Room/Session Lifecycle and Readiness
+
+**Priority:** P0 · **Dependencies:** phases 10–12.
+
+### Work items
+- [ ] Separate transport-connected, authenticated/session-bound, room-created/joined, world-synchronized, ready and playing states.
+- [ ] Implement explicit create/join/leave/ready/start/room-state operations and enforce the chosen mode's player capacity before launch.
+- [ ] Make start contingent on valid room membership, the designated authority and a consistent world seed/snapshot; never launch a local/fake match on timeout.
+- [ ] Implement cancellation, connection timeout, bounded retry/backoff, duplicate-session prevention and cleanup of sockets/listeners/pending actions.
+- [ ] Add session-state machine tests for partial failures, simultaneous joins/starts, last-player departure, cancellation and late callbacks.
+
+### Acceptance criteria
+- Connection alone never means the player is in a playable match.
+- The client has a single explicit session state and cannot accidentally start twice or remain half-connected.
+- Every failure ends in a truthful error, a safe retry state or a clean exit.
+
+## Phase 14 — Internet/WebSocket Transport
+
+**Priority:** P0 · **Dependencies:** Phase 13 and the Phase 11–12 protocol/recovery contracts.
+
+### Work items
+- [ ] Verify the handshake and endpoint contract against the deployed Worker, including required headers and correct room URL behavior.
+- [ ] Audit WebSocket framing/masking, fragmentation, text payload limits, UTF-8, ping/pong, close codes, TLS and timeout behavior.
+- [ ] Make connection callbacks and reconnect/retry paths thread-safe; marshal scene/UI changes onto the render thread.
+- [ ] Handle network changes, temporary offline state, screen-off/background behavior and slow or half-open connections on supported Android versions.
+- [ ] Add deterministic transport tests with a local/mock compliant endpoint and service-level smoke tests before physical-device validation.
+
+### Acceptance criteria
+- Internet sessions either connect and establish a real room or return a specific visible failure.
+- Malformed frames, timeouts and disconnects cannot corrupt gameplay state.
+- No UI scene is changed from an unsafe callback thread.
+
+## Phase 15 — LAN Transport
+
+**Priority:** P0/P1 · **Dependencies:** Phase 13.
+
+### Work items
+- [ ] Correct host startup so the host owns the local authority and never accidentally connects to itself via the ordinary client path.
+- [ ] Validate bind address, port, host/guest roles, discovery, local network interface selection and join-by-address behavior.
+- [ ] Implement deterministic startup/shutdown and cleanup when discovery, bind or connection fails.
+- [ ] Reuse the common session, protocol and recovery path; do not create a second gameplay event pipeline for LAN.
+- [ ] Add tests for host/guest lifecycle, wrong address/port, host closure, timeout and duplicate clients.
+
+### Acceptance criteria
+- LAN has one authority and known player identities, with host and guest in the same actual room.
+- A failed bind/discovery/join never reports success or leaves stale listeners.
+- Unsupported network configurations are reported clearly.
+
+## Phase 16 — Bluetooth Transport or Truthful Unavailability
+
+**Priority:** P1 · **Dependencies:** Phase 13.
+
+### Work items
+- [ ] Inspect the existing BluetoothTransport interface and wire a real Android provider for discovery, pairing, permissions and byte-stream callbacks if the repository has a viable provider path.
+- [ ] Implement Android-version-specific permission requests and explicit user selection/consent.
+- [ ] Reuse the same typed messages, session lifecycle and disconnect/reconnect semantics as other transports.
+- [ ] If no viable provider or permissions path can be completed, disable Bluetooth selection and display a specific “unavailable on this build/device” explanation rather than fabricating success.
+- [ ] Add provider-contract tests and failure-path tests for cancelled permission, cancelled pairing, device disappearance and socket loss.
+
+### Acceptance criteria
+- Bluetooth is advertised as supported only after the real provider path is verified.
+- Permission denial/cancel/disconnect are recoverable and do not create ghost sessions.
+- No placeholder provider can claim the room is connected.
+
+## Phase 17 — Co-op Rules and Shared Match Lifecycle
+
+**Priority:** P1 · **Dependencies:** phases 12–16.
+
+### Work items
+- [ ] Enforce Co-op capacity, shared seed/run rules, player membership and readiness on both server and client.
+- [ ] Implement one authoritative match lifecycle: lobby, ready, playing, suspended/recovering and ended.
+- [ ] Make death, revive, respawn eligibility, resource/cost rules, spectator state and action availability consistent with the chosen co-op behavior.
+- [ ] Handle the final living player, a dead player's reconnect, voluntary leave and publisher departure according to explicit documented policies.
+- [ ] Add tests for simultaneous death/revive, leaving/rejoining, publisher departure, match-end determination and floor transitions while another player acts.
+
+### Acceptance criteria
+- All co-op participants agree on match state, membership, alive/dead state and allowed actions.
+- Death/revive/respawn and lifecycle changes are exactly-once events.
+- There is no implicit local-only respawn or fake ready state.
+
+## Phase 18 — PvP and Deathmatch Enforcement
+
+**Priority:** P1 · **Dependencies:** phase 17 and the recovery/event rules in phases 10–12.
+
+### Work items
+- [ ] Turn PvP/Deathmatch descriptors into enforced rules: teams/target restrictions, friendly-fire policy, player limits, kill/death scoring and win condition.
+- [ ] Enforce server-side visibility/FOV rules so co-op users receive needed state and competitive users do not receive hidden arena state.
+- [ ] Resolve simultaneous kills, same-tick attacks, duplicate score events, player disconnect/rejoin and match end deterministically.
+- [ ] Keep native Java SPD combat outcomes authoritative; the Worker validates/commits them rather than inventing damage formulas.
+- [ ] Add positive and negative tests for every mode rule, score race, visibility boundary, revive/death behavior and duplicate kill/reward.
+
+### Acceptance criteria
+- PvP/Deathmatch cannot bypass target, team, score or win rules by sending a forged payload.
+- All clients agree on final scores and exactly one match-end outcome.
+- Hidden information follows the documented mode policy.
+
+## Phase 19 — Survival Mode Enforcement
+
+**Priority:** P1 · **Dependencies:** phase 17 and the shared protocol/recovery path.
+
+### Work items
+- [ ] Define and enforce Survival-specific run limits, score/progression rules, end conditions and capacity in the server/session model.
+- [ ] Ensure death, continuation, spectator/respawn behavior and leaving/rejoining follow the selected Survival policy rather than inheriting accidental Co-op behavior.
+- [ ] Persist and restore Survival progress and score exactly once across reconnect and authority handoff.
+- [ ] Add mode-specific acceptance/rejection tests for the end condition, score changes, reconnect, publisher loss and duplicated events.
+
+### Acceptance criteria
+- Survival is either fully enforced end-to-end or disabled as unsupported; a descriptor class alone is insufficient.
+- Score, progression and match end agree after reconnect/recovery.
+- Mode-specific failures are visible rather than silently falling back to Co-op.
+
+## Phase 20 — Truthful Host/Join and Setup UX
+
+**Priority:** P1 · **Dependencies:** phases 13–19.
+
+### Work items
+- [ ] Audit TitleScene, MultiplayerTransportScene and MultiplayerSetupScene as one end-to-end flow.
+- [ ] Provide clear host/join choice, room code create/join/copy, manual/discovered LAN address, Bluetooth device selection where supported, mode and capacity.
+- [ ] Show connecting, session-bound, waiting for peer, syncing world, ready, starting, retrying, disconnected and match-ended states distinctly.
+- [ ] Disable start/gameplay controls until the selected transport, session and native world are actually ready.
+- [ ] Add UI tests or deterministic state tests for connection failures, late callbacks, duplicate taps and server rejection.
+
+### Acceptance criteria
+- First-time host/join flow is understandable without implementation knowledge.
+- The UI never presents a transport connection as a playable match.
+- Every advertised action leads to a real supported operation or an explicit explanation.
+
+## Phase 21 — Localization, RTL/Layout, Navigation and Cleanup
+
+**Priority:** P1 · **Dependencies:** Phase 20.
+
+### Work items
+- [ ] Replace hardcoded new multiplayer text with localized resource keys and verify Arabic and English resources.
+- [ ] Audit Arabic RTL, long room codes, IP addresses, error messages, touch targets, safe insets, portrait/landscape and phone/tablet layouts.
+- [ ] Make back/cancel/leave actions clean up transport, listeners, pending requests, timers, session membership and authority state.
+- [ ] Check empty/loading/error/retry states, accessibility labels and focus order where supported by the UI framework.
+- [ ] Remove fake/placeholder maps, dummy mobs, stale remote heroes and fabricated success messages from user-visible match states; show actionable failure details.
+
+### Acceptance criteria
+- UI text and states remain legible in Arabic/RTL and English on supported layouts.
+- Leaving or cancelling does not leak sockets, listeners or room membership.
+- No known false-success or stale-placeholder path remains in the multiplayer setup flow.
+
+## Phase 22 — Automated End-to-End Verification and Deployed-Service Preflight
+
+**Priority:** Final automated gate · **Dependencies:** phases 5–21.
+
+### Work items
+- [ ] Add cross-layer tests that exercise the actual Durable Object room/action lifecycle rather than only helper functions.
+- [ ] Run automated multi-client scenarios for supported actions, combat, native Mob turns, items/effects, floor transitions, modes, duplicate/stale messages, reconnect gaps, authority loss and restart.
+- [ ] Run backend typecheck/tests, Android JVM tests and debug APK compilation on the exact final code SHA; fix all failures and rerun.
+- [ ] Verify deployment configuration and the configured Worker endpoint, then run a fresh-room service smoke test without a physical device.
+- [ ] Inspect test and service logs for silent exceptions, stale actors, duplicate drops/rewards, invalid action acceptance, sequence gaps and unrecovered errors; update both project memory files and evidence links.
+- [ ] Disable any transport or mode that has not passed its automated/service acceptance rather than marking it supported by implication.
+
+### Acceptance criteria
+- All automated jobs pass on the exact recorded SHA and the deployed service accepts a fresh real room/session.
+- Automated cross-layer scenarios show coherent state and exactly-once outcomes through reconnect/recovery.
+- The remaining gate is the user's physical-device gameplay test in Phase 23. This phase does not claim physical-device coverage.
+
+## Phase 23 — Final Physical-Device Playtest (User-Led, Last Phase)
+
+**Priority:** Last by design · **Owner:** user plays the game and reports actual findings · **Dependencies:** Phase 22.
+
+### Test approach
+- [ ] Install/run the exact tested app build on the available real Android device(s), and record device model, Android version, app SHA/build and Worker endpoint/version used.
+- [ ] Walk through the actual gameplay matrix: create/join, movement and hazards, Mob turns/combat, pickup/drop/partial stacks, consume/equip, buffs/expiry, shop/keys/chests, floor changes, death/revive, mode rules, disconnect/reconnect and leaving.
+- [ ] Test each advertised transport/mode only if Phase 22 leaves it enabled; clearly label any emulator-assisted test and do not call it a two-physical-device test.
+- [ ] Record every result as scenario, expected behavior, observed behavior, reproduction steps and logs/screenshots if available.
+- [ ] Return the findings to the assistant. Group them into coherent, dependency-aware **new phases 24+**, preserving the original report and implementing fixes only when the resulting phase is requested/started.
+- [ ] Update this roadmap with the actual test evidence and do not mark this phase complete until the user confirms what was actually run.
+
+### Acceptance criteria
+- The user has exercised the real game and returned a documented result matrix.
+- No test run, transport, device count or fix is claimed without evidence from the user or actual execution.
+- Any defects become explicit new phases 24+ rather than being hidden in historical notes or silently treated as already fixed.
 
 ## Execution Rules for Future Phase Requests
 
 - “Start Phase N” means complete **all** tasks and acceptance criteria in that phase, including its dependent fixes and tests, before reporting completion.
-- Work on `multiplayer-framework-core-14118577486727081892` unless explicitly instructed otherwise. Do not silently switch branches or merge this work into the default branch.
-- Inspect the current branch and latest commit before editing; another phase or manual change may have landed since this file was written.
-- Read the relevant current code before changing it. Avoid duplicating completed work; update existing code paths instead of adding parallel implementations.
-- Keep Java SPD engine behavior as the gameplay reference. Never label a generic server approximation as native-equivalent.
-- Use English commit messages. Report the exact commit SHA and actual CI result. Do not claim device testing unless physical devices were tested.
-- Update this file and `GPT.md` when a finding changes, a phase is completed, or new blockers are discovered.
-- Keep the roadmap tied to code. If an item turns out to be already implemented, verify it against its acceptance criteria and mark it accordingly instead of rewriting it.
+- These phases are deliberately bounded around coherent cross-layer outcomes, normally about 3–6 major work items. Do not split a feature arbitrarily, but do not recombine unrelated transport, gameplay, recovery or UX systems into a single oversized milestone.
+- A phase is indivisible for status. If usage limits, network failure or a tool timeout interrupt work, record the exact commit/SHA, changed files, checks run, remaining unchecked items and the next precise action, then resume that same phase later. Never label an interrupted phase complete.
+- Re-read the current branch head and affected code before each phase; recent implementation may already satisfy some items. Verify it, extend it, and do not duplicate it.
+- Work on `multiplayer-framework-core-14118577486727081892`; never merge into `main` unless explicitly requested.
+- Keep original Java/libGDX SPD behavior as the gameplay reference. Trace native action → protocol → validation/persistence → sequenced event → peer reconciliation/resync.
+- Run focused automated tests as part of every implementation phase. The broad automated/service-level gate is Phase 22. Physical-device tests are reserved for Phase 23, which is led by the user.
+- Update ROADMAP.md and GPT.md with durable status/risk changes. Report exact SHA and actual CI results; never infer a green run for a newer SHA.
+- Phase 23 is an evidence-gathering gate. After the user returns findings, append coherent Phase 24+ follow-up work, then implement and verify each requested phase without erasing the original issue report.
 
 ## Current Audit and Verification Log
+
+### 2026-10-26 — Dependency-based roadmap restructure
+
+- Re-read the roadmap, project operating notes and current branch metadata. Current branch HEAD at review time was `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`.
+- Replaced the former ten oversized phases with a dependency-ordered 23-phase plan. Phases 1–4 remain complete; phases 5–9 isolate identity/pickup, drops, inventory actions, persistence/rewards and timed effects; phases 10–12 cover protocol, ordering and durable recovery; phases 13–16 cover session lifecycle and individual transports; phases 17–19 cover Co-op, PvP/Deathmatch and Survival; phases 20–21 cover UX; Phase 22 is automated/service preflight; Phase 23 is the user-led physical-device playtest.
+- Recent branch activity already includes Phase-5-related commits for Hero buff ticks, food effects, partial stack drops and stable item claims. These must be audited against acceptance criteria instead of duplicated.
+- The connector returned no commit status or workflow run for exact HEAD `c20ffb0730c4f8f9c82895faf93b595b7f2280e5`. The last previously documented green combined code tip is `ab81c507c5f1ae0b767732a7247cf7afe5afd917` with CI [39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332); newer changes are not claimed tested by that run.
+- No code behavior was changed as part of this roadmap review. No physical-device or deployed-service test was run here.
+- Historical log entries below preserve what was recorded under the previous ten-phase numbering. They are context only; the active 23-phase index and sections above are authoritative. In those old entries, “Phase 10” as final physical-device/release gate refers to the old numbering; current Phase 22 is automated/service preflight and current Phase 23 is physical-device testing.
 
 ### 2026-10-21 — Synchronized phase state and execution rules
 
