@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation,
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
@@ -2121,6 +2121,19 @@ describe("Partial stack DROP transactions", () => {
       heap("stable-heap-001",9,[heapItem("stable-target-stack-001",7)])
     ],9,d,accepted)).toBe(false);
   });
+
+  it("preserves the original item identity on a full-stack move and rejects unrelated heap changes",()=>{
+    const sourceId="stable-source-whole-001";
+    const before=hero([row(sourceId,5)]);
+    const after=hero([]);
+    const d=details({itemId:sourceId,resultItemId:sourceId,expectedQuantity:5,sourceQuantityBefore:5});
+    const accepted={...d,actionType:"DROP"};
+    const landed=heap("stable-heap-001",9,[heapItem(sourceId,5)]);
+    expect(isValidNativeDropInventoryMutation(before,after,d)).toBe(true);
+    expect(isValidNativeDropHeapMutation([],[landed],9,d,accepted)).toBe(true);
+    const unrelated=heap("unrelated-heap-002",20,[heapItem("other-floor-item-002",1)]);
+    expect(isValidNativeDropHeapMutation([],[landed,unrelated],9,d,accepted)).toBe(false);
+  });
 });
 
 describe("Native missile throw transaction validation", () => {
@@ -2160,6 +2173,86 @@ describe("Native missile throw transaction validation", () => {
     expect(isValidNativeThrowInventoryMutation(before,after,d)).toBe(true);
     expect(isValidNativeThrowInventoryMutation(before,JSON.stringify(hero([row("stable-source-001",2)],{inventoryBundle:"inventory-after"})),d)).toBe(false);
     expect(isValidNativeThrowHeapMutation([], [heap("stable-heap-001",10,[heapItem("stable-projectile-001")])],10,d,accepted)).toBe(true);
+  });
+});
+
+
+describe("Thrown missile floor impact reconciliation", () => {
+  const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.Dart";
+  const item=(id:string,quantity=1,serializedBundle?:string)=>({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,
+    serializedBundle:serializedBundle || "native-missile-bundle:"+id+":q="+quantity
+  });
+  const heap=(id:string,pos:number,items:any[])=>({
+    heapId:id,pos,type:"HEAP",seen:false,haunted:false,hidden:false,autoExplored:false,items
+  });
+  const state=(items:any[])=>JSON.stringify({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]"
+  });
+  const details=(extra:Record<string,any>={})=>({
+    from:9,to:10,targetPos:10,depth:4,branch:0,engineActionCost:1,projectileImpact:true,
+    heapId:"stable-heap-001",itemId:"stable-source-001",projectileItemId:"stable-projectile-001",
+    resultItemId:"stable-projectile-001",itemClass:cls,expectedQuantity:1,sourceQuantityBefore:4,stackable:true,
+    ...extra
+  });
+  const level=(heaps:any[]=[])=>({
+    depth:4,branch:0,locked:false,width:8,height:8,tiles:[{pos:10,solid:false}],heaps
+  });
+
+  it("validates the exact source item, split projectile identity, and intended target cell",()=>{
+    const before=state([item("stable-source-001",4)]);
+    const d=details();
+    expect(isValidNativeProjectileCombatIntent(level(),d,4,"player-001",{pos:9,state:"ALIVE"},before,9,10)).toBe(true);
+    expect(isValidNativeProjectileCombatIntent(level(),{...d,projectileItemId:"stable-source-001"},4,
+      "player-001",{pos:9,state:"ALIVE"},before,9,10)).toBe(false);
+    expect(isValidNativeProjectileCombatIntent(level(),d,4,"player-001",{pos:9,state:"ALIVE"},before,9,11)).toBe(false);
+    expect(isValidNativeProjectileCombatIntent(level([heap("prior-heap-003",20,[item("stable-projectile-001")])]),
+      d,4,"player-001",{pos:9,state:"ALIVE"},before,9,10)).toBe(false);
+  });
+
+  it("accepts a landed missile but rejects replayed or unrelated heap edits",()=>{
+    const d=details(), accepted={...d,actionType:"THROW"};
+    const landed=[heap("stable-heap-001",10,[item("stable-projectile-001",1)])];
+    expect(isValidNativeProjectileHeapResult([],landed,10,d)).toBe(true);
+    expect(isValidNativeThrowHeapMutation([],landed,10,d,accepted)).toBe(true);
+    expect(isValidNativeProjectileCombatResult([],{
+      projectileMutation:d,projectileOutcome:"HEAP",projectileHeaps:landed
+    },10,[],64)).toBe(true);
+    expect(isValidNativeProjectileCombatResult([],{
+      projectileMutation:d,projectileOutcome:"HEAP",
+      projectileHeaps:[heap("stable-heap-001",10,[item("stable-projectile-001"),item("unrelated-floor-item-002")])]
+    },10,[],64)).toBe(false);
+  });
+
+  it("accepts a native missile durability merge only when the bundle changes",()=>{
+    const d=details({resultItemId:"stable-target-stack-001"});
+    const prior=[heap("stable-heap-001",10,[item("stable-target-stack-001",4)])];
+    const sameQuantity=[heap("stable-heap-001",10,[item("stable-target-stack-001",4,
+      "native-missile-bundle:stable-target-stack-001:durability=75")])];
+    const reduced=[heap("stable-heap-001",10,[item("stable-target-stack-001",3,
+      "native-missile-bundle:stable-target-stack-001:durability=75")])];
+    const accepted={...d,actionType:"THROW"};
+    expect(isValidNativeProjectileHeapResult(prior,sameQuantity,10,d)).toBe(true);
+    expect(isValidNativeThrowHeapMutation(prior,reduced,10,d,accepted)).toBe(true);
+    const unchangedBundle=[heap("stable-heap-001",10,[item("stable-target-stack-001",4)])];
+    expect(isValidNativeProjectileHeapResult(prior,unchangedBundle,10,d)).toBe(false);
+    expect(isValidNativeProjectileHeapResult(prior,[heap("stable-heap-001",10,[item("stable-target-stack-001",2,
+      "native-missile-bundle:stable-target-stack-001:durability=75")])],10,d)).toBe(false);
+  });
+
+  it("distinguishes missiles that land, stick to PinCushion, or are consumed",()=>{
+    const d=details();
+    expect(isValidNativeProjectileCombatResult([],{
+      projectileMutation:d,projectileOutcome:"PIN_CUSHION",targetBuffs:'{"stuck":"stable-projectile-001"}'
+    },10,[],64)).toBe(true);
+    expect(isValidNativeProjectileCombatResult([],{
+      projectileMutation:d,projectileOutcome:"CONSUMED",targetBuffs:"[]"
+    },10,[],64)).toBe(true);
+    expect(isValidNativeProjectileCombatResult([],{
+      projectileMutation:d,projectileOutcome:"CONSUMED",
+      targetBuffs:'{"stuck":"stable-projectile-001"}'
+    },10,[],64)).toBe(false);
   });
 });
 

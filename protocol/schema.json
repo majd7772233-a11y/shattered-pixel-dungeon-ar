@@ -701,6 +701,121 @@
           "minimum": 0,
           "maximum": 100,
           "description": "Original native Hero.attack accuracy multiplier argument."
+        },
+        "projectileMutation": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Stable source/projectile/result identities proving a thrown missile's native floor impact; required when attackWeaponMode is THROWN.",
+          "required": [
+            "from",
+            "to",
+            "targetPos",
+            "depth",
+            "branch",
+            "engineActionCost",
+            "projectileImpact",
+            "heapId",
+            "itemId",
+            "projectileItemId",
+            "resultItemId",
+            "itemClass",
+            "expectedQuantity",
+            "sourceQuantityBefore",
+            "stackable"
+          ],
+          "properties": {
+            "from": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "to": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "targetPos": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "branch": {
+              "type": "integer",
+              "const": 0
+            },
+            "engineActionCost": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "projectileImpact": {
+              "type": "boolean",
+              "const": true
+            },
+            "heapId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "projectileItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "resultItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "itemClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "expectedQuantity": {
+              "type": "integer",
+              "const": 1
+            },
+            "sourceQuantityBefore": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "stackable": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        },
+        "projectileOutcome": {
+          "type": "string",
+          "enum": [
+            "HEAP",
+            "PIN_CUSHION",
+            "CONSUMED"
+          ],
+          "description": "Validated native result of thrown missile resolution."
+        },
+        "projectileResultItemId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Stable floor item identity that received the projectile; present only when the missile landed or merged on the floor."
+        },
+        "projectileHeaps": {
+          "type": "array",
+          "maxItems": 640,
+          "items": {
+            "$ref": "#/definitions/NativeHeap"
+          },
+          "description": "Authoritative post-impact floor heaps, validated against the exact projectile landing mutation."
         }
       },
       "description": "Versioned native SPD combat result. Non-publisher mob attacks and all PvP attacks are resolved by the server-designated level publisher or target-player owner by executing the original Java combat pipeline; the Worker validates pending request identity, pre-state, geometry, result transitions, and replay protection. Only the authenticated level publisher may commit shared mob state and loot. The Worker does not independently reproduce SPD Java RNG.",

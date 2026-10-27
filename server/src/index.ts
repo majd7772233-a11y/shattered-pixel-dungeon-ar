@@ -4793,7 +4793,7 @@ export class MatchRoom {
                 ? secondaryMobPayload.heaps === undefined
                 : isValidNativeLootSnapshot(secondaryMobPayload.heaps, combatLevel?.heaps,
                     secondaryLootPositions, levelSize)
-                  && sameNativeItemValue(data.heaps, secondaryMobPayload.heaps));
+                  && (data.projectileMutation == null || sameNativeItemValue(data.heaps, secondaryMobPayload.heaps)));
             const validProjectileResult = isValidNativeProjectileCombatResult(
               combatLevel?.heaps, data, posBefore, secondaryDeathPositions, levelSize);
             // An incomplete secondary side-effect must not cancel an otherwise valid player
@@ -6100,7 +6100,7 @@ export class MatchRoom {
                         ? payload.data?.heaps === undefined && secondaryMobPayload.heaps === undefined
                         : isValidNativeLootSnapshot(lootSnapshot, combatLevel?.heaps, lootAllowedPositions, levelSize)
                           && (secondaryDeathPositions.length === 0
-                            || sameNativeItemValue(payload.data?.heaps, secondaryMobPayload.heaps)));
+                            || (payload.data?.projectileMutation == null || sameNativeItemValue(payload.data?.heaps, secondaryMobPayload.heaps))));
                     const validProjectileResult = isValidNativeProjectileCombatResult(
                       combatLevel?.heaps, payload.data, requestedPos, allDeathPositions, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
@@ -6212,6 +6212,8 @@ export class MatchRoom {
                         targetHt, attackKind: payload.data?.attackKind, engineDistance: distance, engineActionCost: nativeCost,
                         targetBuffs: payload.data.targetBuffs, attackerStateJson: String(mergedAttackerState),
                         secondaryMobDeltas: secondaryMobPayload,
+                         projectileOutcome: payload.data?.projectileOutcome,
+                         projectileResultItemId: payload.data?.projectileMutation?.resultItemId,
                         engineResolved: true
                       };
                       actionValid = true;

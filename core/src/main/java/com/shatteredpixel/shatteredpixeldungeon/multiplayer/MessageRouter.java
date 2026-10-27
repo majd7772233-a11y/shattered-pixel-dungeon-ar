@@ -353,6 +353,11 @@ public final class MessageRouter {
                     // authoritative level snapshot after mob combat/damage.
                     MultiplayerManager.getInstance().requestResync(message.sequence);
                 }
+                if ("PLAYER".equals(targetType)
+                        && ("HEAP".equals(stringValue(action.get("projectileOutcome"), ""))
+                            || boolValue(action.get("secondaryMobResyncRequired"), false))) {
+                    MultiplayerManager.getInstance().requestResync(message.sequence);
+                }
             } else if ("CHAR_DAMAGED".equals(eventType)) {
                 // Periodic, trap, blob, item and spell effects carry native deltas; restore the
                 // complete authoritative level rather than replaying a partial damage event.
