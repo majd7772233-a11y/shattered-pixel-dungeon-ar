@@ -2134,6 +2134,28 @@ describe("Partial stack DROP transactions", () => {
     const unrelated=heap("unrelated-heap-002",20,[heapItem("other-floor-item-002",1)]);
     expect(isValidNativeDropHeapMutation([],[landed,unrelated],9,d,accepted)).toBe(false);
   });
+
+  it("rejects a replay against the reduced source and preserves other items in the same cell",()=>{
+    const before=hero([row("stable-source-stack-001",5)]);
+    const after=hero([row("stable-source-stack-001",3)]);
+    const d=details({resultItemId:"stable-floor-stack-001"});
+    const targetBefore=heap("stable-heap-001",9,[heapItem("stable-existing-item-003",4)]);
+    const targetAfter=heap("stable-heap-001",9,[
+      heapItem("stable-floor-stack-001",2),heapItem("stable-existing-item-003",4)
+    ]);
+    const accepted={...d,actionType:"DROP"};
+    expect(isValidNativeDropIntent({depth:4,branch:0,locked:false,heaps:[targetBefore]},
+      d,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeDropIntent({depth:4,branch:0,locked:false,heaps:[targetBefore]},
+      d,4,"player-001",{pos:9,state:"ALIVE"},after)).toBe(false);
+    expect(isValidNativeDropIntent({depth:4,branch:0,locked:false,heaps:[
+      targetBefore,heap("stable-second-heap-004",9,[heapItem("stable-second-item-005",1)])
+    ]},d,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeDropHeapMutation([targetBefore],[targetAfter],9,d,accepted)).toBe(true);
+    expect(isValidNativeDropHeapMutation([targetBefore],[
+      heap("stable-heap-001",9,[heapItem("stable-floor-stack-001",2)])
+    ],9,d,accepted)).toBe(false);
+  });
 });
 
 describe("Native missile throw transaction validation", () => {
@@ -2173,6 +2195,24 @@ describe("Native missile throw transaction validation", () => {
     expect(isValidNativeThrowInventoryMutation(before,after,d)).toBe(true);
     expect(isValidNativeThrowInventoryMutation(before,JSON.stringify(hero([row("stable-source-001",2)],{inventoryBundle:"inventory-after"})),d)).toBe(false);
     expect(isValidNativeThrowHeapMutation([], [heap("stable-heap-001",10,[heapItem("stable-projectile-001")])],10,d,accepted)).toBe(true);
+  });
+
+  it("keeps the quickslot bound to the exact remaining missile quantity",()=>{
+    const priorSlot={slot:0,itemId:"stable-source-001",className:cls,quantity:4,
+      serializedBundle:"native-missile-bundle:stable-source-001:q=4"};
+    const nextSlot={...priorSlot,quantity:3,
+      serializedBundle:"native-missile-bundle:stable-source-001:q=3"};
+    const before=JSON.stringify(hero([row("stable-source-001",4)],{
+      quickslotsJson:JSON.stringify([priorSlot])
+    }));
+    const after=JSON.stringify(hero([row("stable-source-001",3)],{
+      inventoryBundle:"inventory-after",quickslotsJson:JSON.stringify([nextSlot])
+    }));
+    const d=intent({sourceQuantityBefore:4,resultItemId:"stable-projectile-001"});
+    expect(isValidNativeThrowInventoryMutation(before,after,d)).toBe(true);
+    expect(isValidNativeThrowInventoryMutation(before,JSON.stringify(hero([row("stable-source-001",3)],{
+      inventoryBundle:"inventory-after",quickslotsJson:JSON.stringify([priorSlot])
+    })),d)).toBe(false);
   });
 });
 
@@ -2216,6 +2256,12 @@ describe("Thrown missile floor impact reconciliation", () => {
     const landed=[heap("stable-heap-001",10,[item("stable-projectile-001",1)])];
     expect(isValidNativeProjectileHeapResult([],landed,10,d)).toBe(true);
     expect(isValidNativeThrowHeapMutation([],landed,10,d,accepted)).toBe(true);
+    const targetBefore=[heap("stable-heap-001",10,[item("stable-existing-item-003",2)])];
+    const targetAfter=[heap("stable-heap-001",10,[item("stable-projectile-001"),item("stable-existing-item-003",2)])];
+    expect(isValidNativeProjectileHeapResult(targetBefore,targetAfter,10,d)).toBe(true);
+    expect(isValidNativeProjectileCombatResult(targetBefore,{
+      projectileMutation:d,projectileOutcome:"HEAP",projectileHeaps:targetAfter
+    },10,[],64)).toBe(true);
     expect(isValidNativeProjectileCombatResult([],{
       projectileMutation:d,projectileOutcome:"HEAP",projectileHeaps:landed
     },10,[],64)).toBe(true);
