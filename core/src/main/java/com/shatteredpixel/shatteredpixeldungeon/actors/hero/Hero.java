@@ -210,6 +210,12 @@ public class Hero extends Char {
 	private String deferredNativeCombatAction;
 	private boolean deferredNativeCombatAuthority;
 	private String deferredNativeCombatTargetType;
+	private String pendingNativeProjectileHeroStateBefore;
+	private String pendingNativeProjectileMutationJson;
+	private String pendingNativeProjectileHeapId;
+	private String pendingNativeProjectileItemId;
+	private String pendingNativeProjectileResultItemId;
+	private int pendingNativeProjectileCell = -1;
 
 	public static boolean isNativeAttackInProgress() { return nativeAttackInProgress; }
 
@@ -226,6 +232,163 @@ public class Hero extends Char {
 		} else {
 			manager.sendAction(NetworkActionType.ATTACK, action);
 		}
+	}
+
+	private void beginNativeCombatReportDeferral() {
+		if (deferNativeCombatReport) return;
+		deferNativeCombatReport = true;
+		deferredNativeCombatAction = null;
+		deferredNativeCombatAuthority = false;
+		deferredNativeCombatTargetType = null;
+	}
+
+	private void finishNativeCombatReportDeferral() {
+		if (!deferNativeCombatReport) return;
+		deferNativeCombatReport = false;
+		String action = deferredNativeCombatAction;
+		boolean authority = deferredNativeCombatAuthority;
+		String targetType = deferredNativeCombatTargetType;
+		deferredNativeCombatAction = null;
+		deferredNativeCombatAuthority = false;
+		deferredNativeCombatTargetType = null;
+		if (action != null) sendNativeCombatReport(action, authority, targetType);
+	}
+
+	public boolean beginNativeProjectileMutation(String heroStateBefore, String detailsJson, int cell,
+			String heapId, String projectileItemId, String resultItemId) {
+		if (!MultiplayerManager.getInstance().isMultiplayerActive() || heroStateBefore == null
+				|| heroStateBefore.isEmpty() || detailsJson == null || detailsJson.isEmpty()
+				|| pendingNativeProjectileMutationJson != null || deferNativeCombatReport
+				|| cell < 0 || heapId == null || projectileItemId == null || resultItemId == null) return false;
+		pendingNativeProjectileHeroStateBefore = heroStateBefore;
+		pendingNativeProjectileMutationJson = detailsJson;
+		pendingNativeProjectileCell = cell;
+		pendingNativeProjectileHeapId = heapId;
+		pendingNativeProjectileItemId = projectileItemId;
+		pendingNativeProjectileResultItemId = resultItemId;
+		beginNativeCombatReportDeferral();
+		return true;
+	}
+
+	public boolean hasPendingNativeProjectileMutation() {
+		return pendingNativeProjectileMutationJson != null;
+	}
+
+	public String pendingNativeProjectileHeapId() { return pendingNativeProjectileHeapId; }
+	public String pendingNativeProjectileItemId() { return pendingNativeProjectileItemId; }
+	public String pendingNativeProjectileResultItemId() { return pendingNativeProjectileResultItemId; }
+	public int pendingNativeProjectileCell() { return pendingNativeProjectileCell; }
+
+	/** Publishes combat only after SPD has resolved missile stick/drop/consumption. */
+	public void finishNativeProjectileMutation(String outcome, Char target) {
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (pendingNativeProjectileMutationJson == null) return;
+		if (!"HEAP".equals(outcome) && !"PIN_CUSHION".equals(outcome) && !"CONSUMED".equals(outcome)) {
+			clearNativeProjectileMutation();
+			deferredNativeCombatAction = null;
+			finishNativeCombatReportDeferral();
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		String updated = deferredNativeCombatAction;
+		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+		if (updated == null) {
+			clearNativeProjectileMutation();
+			finishNativeCombatReportDeferral();
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		if (target != null) {
+			updated = replaceNativeJsonField(updated, "targetBuffs",
+					json.toJson(SPDLevelSnapshot.currentCombatBuffsJson(target)));
+			if (target instanceof Mob && target.HP > 0) {
+				updated = replaceNativeJsonField(updated, "targetMobBundleAfter",
+						json.toJson(SPDLevelSnapshot.currentMobBundle((Mob) target)));
+			} else if (target instanceof Hero) {
+				updated = replaceNativeJsonField(updated, "targetHeroStateJson",
+						json.toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) target)));
+			}
+		}
+		String heaps = SPDLevelSnapshot.currentHeapsJson();
+		boolean deadMob = target instanceof Mob && target.HP <= 0;
+		if (deadMob) updated = replaceNativeJsonField(updated, "heaps", heaps);
+		updated = appendNativeJsonField(updated, "projectileOutcome", json.toJson(outcome));
+		if ("HEAP".equals(outcome)) updated = appendNativeJsonField(updated, "projectileHeaps", heaps);
+		if (updated == null) {
+			clearNativeProjectileMutation();
+			deferredNativeCombatAction = null;
+			finishNativeCombatReportDeferral();
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		deferredNativeCombatAction = updated;
+		clearNativeProjectileMutation();
+		finishNativeCombatReportDeferral();
+	}
+
+	private void clearNativeProjectileMutation() {
+		pendingNativeProjectileHeroStateBefore = null;
+		pendingNativeProjectileMutationJson = null;
+		pendingNativeProjectileHeapId = null;
+		pendingNativeProjectileItemId = null;
+		pendingNativeProjectileResultItemId = null;
+		pendingNativeProjectileCell = -1;
+	}
+
+	private static String replaceNativeJsonField(String json, String field, String replacement) {
+		if (json == null || field == null || replacement == null) return null;
+		String key = "\"" + field + "\":";
+		int keyAt = json.indexOf(key);
+		if (keyAt < 0) return null;
+		int start = keyAt + key.length();
+		int end = nativeJsonValueEnd(json, start);
+		if (end <= start) return null;
+		return json.substring(0, start) + replacement + json.substring(end);
+	}
+
+	private static String appendNativeJsonField(String json, String field, String encodedValue) {
+		if (json == null || encodedValue == null) return null;
+		int end = json.lastIndexOf('}');
+		if (end < 0) return null;
+		return json.substring(0, end) + ",\"" + field + "\":" + encodedValue + json.substring(end);
+	}
+
+	private static int nativeJsonValueEnd(String json, int start) {
+		if (start < 0 || start >= json.length()) return -1;
+		char first = json.charAt(start);
+		if (first == '"') {
+			boolean escaped = false;
+			for (int i = start + 1; i < json.length(); i++) {
+				char c = json.charAt(i);
+				if (escaped) escaped = false;
+				else if (c == '\\') escaped = true;
+				else if (c == '"') return i + 1;
+			}
+			return -1;
+		}
+		if (first == '{' || first == '[') {
+			int depth = 0;
+			boolean quoted = false, escaped = false;
+			for (int i = start; i < json.length(); i++) {
+				char c = json.charAt(i);
+				if (quoted) {
+					if (escaped) escaped = false;
+					else if (c == '\\') escaped = true;
+					else if (c == '"') quoted = false;
+				} else {
+					if (c == '"') quoted = true;
+					else if (c == '{' || c == '[') depth++;
+					else if (c == '}' || c == ']') {
+						depth--;
+						if (depth == 0) return i + 1;
+					}
+				}
+			}
+			return -1;
+		}
+		int end = start;
+		while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
+		return end;
 	}
 
 	public static final int STARTING_STR = 10;
@@ -545,12 +708,7 @@ public class Hero extends Char {
 	public boolean shoot( Char enemy, MissileWeapon wep ) {
 
 		boolean previousDeferNativeCombatReport = deferNativeCombatReport;
-		if (!previousDeferNativeCombatReport) {
-			deferNativeCombatReport = true;
-			deferredNativeCombatAction = null;
-			deferredNativeCombatAuthority = false;
-			deferredNativeCombatTargetType = null;
-		}
+		if (!previousDeferNativeCombatReport) beginNativeCombatReportDeferral();
 		try {
 		attackTarget = enemy;
 		boolean wasEnemy = enemy.alignment == Alignment.ENEMY
@@ -574,16 +732,7 @@ public class Hero extends Char {
 		attackTarget = null;
 		return hit;
 		} finally {
-			if (!previousDeferNativeCombatReport) {
-				deferNativeCombatReport = false;
-				String action = deferredNativeCombatAction;
-				boolean authority = deferredNativeCombatAuthority;
-				String targetType = deferredNativeCombatTargetType;
-				deferredNativeCombatAction = null;
-				deferredNativeCombatAuthority = false;
-				deferredNativeCombatTargetType = null;
-				if (action != null) sendNativeCombatReport(action, authority, targetType);
-			}
+			if (!previousDeferNativeCombatReport) finishNativeCombatReportDeferral();
 		}
 	}
 	
@@ -612,7 +761,8 @@ public class Hero extends Char {
 					: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
 					: belongings != null && belongings.weapon() != null ? "EQUIPPED" : "UNARMED";
 			attackWeaponBundle = attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
-			attackerStateBefore = SPDLevelSnapshot.currentHeroStateJson(this);
+			attackerStateBefore = pendingNativeProjectileHeroStateBefore == null
+					? SPDLevelSnapshot.currentHeroStateJson(this) : pendingNativeProjectileHeroStateBefore;
 			targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 			targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
 			// Secondary procs (life-link, thorns and similar native effects) can touch any
@@ -717,7 +867,9 @@ public class Hero extends Char {
 					+ ",\"targetHt\":" + Math.max(1, enemy.HT)
 					+ ",\"engineDistance\":" + Dungeon.level.distance(attackerPosBefore, targetPosBefore)
 					+ ",\"engineActionCost\":" + attackDelay()
-					+ extraLoot + "}";
+					+ extraLoot
+					+ (pendingNativeProjectileMutationJson == null ? "" : ",\"projectileMutation\":" + pendingNativeProjectileMutationJson)
+					+ "}";
 			nativeCombatAction = action;
 			nativeCombatTargetType = targetType;
 		}

@@ -197,8 +197,13 @@ public class Item implements Bundlable {
 			com.shatteredpixel.shatteredpixeldungeon.items.Heap beforeHeap =
 					Dungeon.level == null ? null : Dungeon.level.heaps.get(dropPos);
 			java.util.HashMap<String, Integer> oldQuantities = new java.util.HashMap<>();
+			java.util.HashMap<String, String> oldItemBundles = new java.util.HashMap<>();
 			if (beforeHeap != null) for (Item oldItem : beforeHeap.items) {
-				if (oldItem != null) oldQuantities.put(oldItem.multiplayerItemId(), oldItem.quantity());
+				if (oldItem != null) {
+					String oldId = oldItem.multiplayerItemId();
+					oldQuantities.put(oldId, oldItem.quantity());
+					oldItemBundles.put(oldId, SPDLevelSnapshot.currentItemBundle(oldItem));
+				}
 			}
 			if (trackDrop) hero.queueNativeWorldMutation("DROP", dropPos, dropPos, cooldownBefore, heroStateBefore);
 			doDrop(hero);
@@ -217,10 +222,18 @@ public class Item implements Bundlable {
 						resultItem = candidate;
 						break;
 					}
-					if (itemStackable && previousQuantity != null && candidate.isSimilar(this)
-							&& candidate.quantity() == previousQuantity + droppedQuantity) {
-						resultItem = candidate;
-						break;
+					if (itemStackable && previousQuantity != null && candidate.isSimilar(this)) {
+						String previousBundle = oldItemBundles.get(candidateId);
+						String currentBundle = SPDLevelSnapshot.currentItemBundle(candidate);
+						boolean exactMerge = candidate.quantity() == previousQuantity + droppedQuantity;
+						boolean missileDurabilityMerge = candidate instanceof MissileWeapon
+								&& candidate.quantity() >= previousQuantity
+								&& candidate.quantity() <= previousQuantity + droppedQuantity;
+						if ((exactMerge || missileDurabilityMerge) && previousBundle != null
+								&& !previousBundle.equals(currentBundle)) {
+							resultItem = candidate;
+							break;
+						}
 					}
 				}
 				if (droppedHeap == null || droppedQuantity <= 0 || resultItem == null) {
@@ -744,10 +757,11 @@ public class Item implements Bundlable {
 		
 		final float delay = castDelay(user, cell);
         final boolean publishMissileLanding = multiplayerHero && enemy == null;
+        final boolean publishMissileCombatImpact = multiplayerHero && enemy != null;
         final int sourcePosBefore = user.pos;
         final int sourceDepthBefore = Dungeon.depth;
         final float sourceCooldownBefore = user.cooldown();
-        final String sourceHeroStateBefore = publishMissileLanding ? SPDLevelSnapshot.currentHeroStateJson(user) : null;
+        final String sourceHeroStateBefore = multiplayerHero ? SPDLevelSnapshot.currentHeroStateJson(user) : null;
         final String sourceItemIdBefore = multiplayerItemId();
         final String sourceItemClassBefore = getClass().getName();
         final int sourceQuantityBefore = quantity();
@@ -762,6 +776,47 @@ public class Item implements Bundlable {
 						public void call() {
 							curUser = user;
 							Item i = Item.this.detach(user.belongings.backpack);
+							if (publishMissileCombatImpact) {
+								if (!(i instanceof MissileWeapon) || Dungeon.level == null || sourceHeroStateBefore == null) {
+									multiplayer.requestResync(multiplayer.getLastSequence());
+									user.ready();
+									return;
+								}
+								Heap targetHeapBefore = Dungeon.level.heaps.get(cell);
+								String expectedHeapId = targetHeapBefore == null
+										? UUID.randomUUID().toString() : targetHeapBefore.multiplayerHeapId();
+								Item mergeTargetBefore = null;
+								if (targetHeapBefore != null && i.stackable && targetHeapBefore.type != Heap.Type.FOR_SALE) {
+									for (Item candidate : targetHeapBefore.items) {
+										if (candidate != null && candidate.isSimilar(i)) {
+											mergeTargetBefore = candidate;
+											break;
+										}
+									}
+								}
+								String resultItemId = mergeTargetBefore == null
+										? i.multiplayerItemId() : mergeTargetBefore.multiplayerItemId();
+								com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+								String projectileDetails = "{\"from\":" + sourcePosBefore
+										+ ",\"to\":" + cell + ",\"targetPos\":" + cell
+										+ ",\"depth\":" + sourceDepthBefore + ",\"branch\":0"
+										+ ",\"engineActionCost\":" + Math.max(0f, Math.min(10f, delay))
+										+ ",\"projectileImpact\":true"
+										+ ",\"heapId\":" + json.toJson(expectedHeapId)
+										+ ",\"itemId\":" + json.toJson(sourceItemIdBefore)
+										+ ",\"projectileItemId\":" + json.toJson(i.multiplayerItemId())
+										+ ",\"resultItemId\":" + json.toJson(resultItemId)
+										+ ",\"itemClass\":" + json.toJson(sourceItemClassBefore)
+										+ ",\"expectedQuantity\":1"
+										+ ",\"sourceQuantityBefore\":" + sourceQuantityBefore
+										+ ",\"stackable\":" + Item.this.stackable + "}";
+								if (!user.beginNativeProjectileMutation(sourceHeroStateBefore, projectileDetails, cell,
+										expectedHeapId, i.multiplayerItemId(), resultItemId)) {
+									multiplayer.requestResync(multiplayer.getLastSequence());
+									user.ready();
+									return;
+								}
+							}
 							if (i != null) i.onThrow(cell);
 							if (curUser.hasTalent(Talent.IMPROVISED_PROJECTILES)
 									&& !(Item.this instanceof MissileWeapon)
@@ -793,8 +848,13 @@ public class Item implements Bundlable {
                             user.spend(delay);
                             Heap beforeHeap = Dungeon.level == null ? null : Dungeon.level.heaps.get(cell);
                             java.util.HashMap<String, Integer> oldHeapQuantities = new java.util.HashMap<>();
+                            java.util.HashMap<String, String> oldHeapItemBundles = new java.util.HashMap<>();
                             if (beforeHeap != null) for (Item oldItem : beforeHeap.items) {
-                                if (oldItem != null) oldHeapQuantities.put(oldItem.multiplayerItemId(), oldItem.quantity());
+                                if (oldItem != null) {
+                                    String oldId = oldItem.multiplayerItemId();
+                                    oldHeapQuantities.put(oldId, oldItem.quantity());
+                                    oldHeapItemBundles.put(oldId, SPDLevelSnapshot.currentItemBundle(oldItem));
+                                }
                             }
                             if (i != null) i.onThrow(cell);
                             if (publishMissileLanding && i != null && Dungeon.level != null
@@ -810,10 +870,17 @@ public class Item implements Bundlable {
                                         resultItem = candidate;
                                         break;
                                     }
-                                    if (i.stackable && oldQuantity != null && candidate.isSimilar(i)
-                                            && candidate.quantity() == oldQuantity + 1) {
-                                        resultItem = candidate;
-                                        break;
+                                    if (i.stackable && oldQuantity != null && candidate.isSimilar(i)) {
+                                        String oldBundle = oldHeapItemBundles.get(candidateId);
+                                        String currentBundle = SPDLevelSnapshot.currentItemBundle(candidate);
+                                        boolean exactMerge = candidate.quantity() == oldQuantity + 1;
+                                        boolean missileDurabilityMerge = candidate instanceof MissileWeapon
+                                                && candidate.quantity() == oldQuantity;
+                                        if ((exactMerge || missileDurabilityMerge) && oldBundle != null
+                                                && !oldBundle.equals(currentBundle)) {
+                                            resultItem = candidate;
+                                            break;
+                                        }
                                     }
                                 }
                                 if (resultItem == null || landedHeap == null) {

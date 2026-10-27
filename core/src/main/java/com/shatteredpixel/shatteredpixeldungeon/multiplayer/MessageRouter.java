@@ -76,6 +76,20 @@ public final class MessageRouter {
             String attackerStateBefore = stringValue(payload.get("attackerStateBefore"), null);
             String attackWeaponMode = stringValue(payload.get("attackWeaponMode"), "EQUIPPED");
             String attackWeaponBundle = stringValue(payload.get("attackWeaponBundle"), "");
+            JsonValue projectileMutationValue = payload.get("projectileMutation");
+            boolean throwWithImpact = "THROWN".equals(attackWeaponMode)
+                    && projectileMutationValue != null && projectileMutationValue.isObject();
+            String projectileMutationJson = throwWithImpact ? projectileMutationValue.toString() : null;
+            String projectileHeapId = throwWithImpact ? stringValue(projectileMutationValue.get("heapId"), null) : null;
+            String projectileItemId = throwWithImpact ? stringValue(projectileMutationValue.get("projectileItemId"), null) : null;
+            String projectileResultItemId = throwWithImpact ? stringValue(projectileMutationValue.get("resultItemId"), null) : null;
+            int projectileCell = throwWithImpact ? intValue(projectileMutationValue.get("targetPos"), -1) : -1;
+            String projectileSourceItemId = throwWithImpact ? stringValue(projectileMutationValue.get("itemId"), null) : null;
+            int projectileSourceQuantity = throwWithImpact ? intValue(projectileMutationValue.get("sourceQuantityBefore"), -1) : -1;
+            if ("THROWN".equals(attackWeaponMode) && !throwWithImpact) {
+                manager.requestResync(manager.getLastSequence());
+                return;
+            }
             float damageMultiplier = floatValue(payload.get("damageMultiplier"), 1f);
             float damageBonus = floatValue(payload.get("damageBonus"), 0f);
             float accuracyMultiplier = floatValue(payload.get("accuracyMultiplier"), 1f);
@@ -119,7 +133,35 @@ public final class MessageRouter {
             WorldSnapshot.restoreRemoteHeroState(remoteHero, attackerStateBefore);
             remoteHero.pos = attackerPos;
             com.shatteredpixel.shatteredpixeldungeon.items.KindOfWeapon chosenWeapon = null;
-            if ("THROWN".equals(attackWeaponMode) || "ABILITY".equals(attackWeaponMode)) {
+            if ("THROWN".equals(attackWeaponMode) && throwWithImpact) {
+                com.shatteredpixel.shatteredpixeldungeon.items.Item source = null;
+                for (com.shatteredpixel.shatteredpixeldungeon.items.Item candidate
+                        : remoteHero.belongings.getAllItems(com.shatteredpixel.shatteredpixeldungeon.items.Item.class)) {
+                    if (candidate != null && projectileSourceItemId.equals(candidate.multiplayerItemId())) {
+                        if (source != null) { manager.requestResync(manager.getLastSequence()); return; }
+                        source = candidate;
+                    }
+                }
+                if (source == null || source.quantity() != projectileSourceQuantity || !source.stackable
+                        || !source.getClass().getName().equals(stringValue(projectileMutationValue.get("itemClass"), ""))
+                        || projectileCell < 0 || projectileCell >= Dungeon.level.length()) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                com.shatteredpixel.shatteredpixeldungeon.items.Item detached = source.detach(remoteHero.belongings.backpack);
+                if (detached == null || detached.quantity() != 1) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                if (projectileSourceQuantity > 1) detached.setMultiplayerItemId(projectileItemId);
+                if (!projectileItemId.equals(detached.multiplayerItemId())
+                        || !attackWeaponBundle.equals(SPDLevelSnapshot.currentItemBundle(detached))
+                        || !(detached instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon)) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                chosenWeapon = (com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon) detached;
+            } else if ("THROWN".equals(attackWeaponMode) || "ABILITY".equals(attackWeaponMode)) {
                 chosenWeapon = SPDLevelSnapshot.findOwnedAttackWeapon(remoteHero, attackWeaponBundle);
                 if (chosenWeapon == null || ("THROWN".equals(attackWeaponMode)
                         && !(chosenWeapon instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon))) {
@@ -148,7 +190,19 @@ public final class MessageRouter {
             try {
                 remoteHero.belongings.thrownWeapon = null;
                 remoteHero.belongings.abilityWeapon = null;
-                if ("THROWN".equals(attackWeaponMode)) {
+                if ("THROWN".equals(attackWeaponMode) && throwWithImpact) {
+                    com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon projectile =
+                            (com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon) chosenWeapon;
+                    if (!remoteHero.beginNativeProjectileMutation(attackerStateBefore, projectileMutationJson,
+                            projectileCell, projectileHeapId, projectileItemId, projectileResultItemId)) {
+                        manager.requestResync(manager.getLastSequence());
+                        return;
+                    }
+                    boolean hit = remoteHero.shoot(target, projectile);
+                    String outcome = projectile.resolveMultiplayerProjectileImpact(remoteHero, target, projectileCell,
+                            hit, projectileHeapId, projectileItemId, projectileResultItemId);
+                    remoteHero.finishNativeProjectileMutation(outcome, target);
+                } else if ("THROWN".equals(attackWeaponMode)) {
                     remoteHero.shoot(target,
                             (com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon) chosenWeapon);
                 } else {

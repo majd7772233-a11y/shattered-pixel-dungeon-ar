@@ -282,14 +282,73 @@ abstract public class MissileWeapon extends Weapon {
 
 			if (!spawnedForEffect) super.onThrow( cell );
 		} else {
-			if (!curUser.shoot( enemy, this )) {
-				rangedMiss( cell );
+			boolean hit = curUser.shoot(enemy, this);
+			if (curUser.hasPendingNativeProjectileMutation()) {
+				String outcome = resolveMultiplayerProjectileImpact(curUser, enemy, cell, hit,
+						curUser.pendingNativeProjectileHeapId(), curUser.pendingNativeProjectileItemId(),
+						curUser.pendingNativeProjectileResultItemId());
+				curUser.finishNativeProjectileMutation(outcome, enemy);
+			} else if (!hit) {
+				rangedMiss(cell);
 			} else {
-				
-				rangedHit( enemy, cell );
-
+				rangedHit(enemy, cell);
 			}
 		}
+	}
+
+	/**
+	 * Executes SPD's original missile landing/sticking/consumption path and classifies
+	 * the resulting stable floor identity for authoritative reconciliation.
+	 */
+	public String resolveMultiplayerProjectileImpact(Hero user, Char enemy, int cell, boolean hit,
+			String expectedHeapId, String projectileItemId, String resultItemId) {
+		if (user == null || Dungeon.level == null || cell < 0 || cell >= Dungeon.level.length()
+				|| !Heap.isValidMultiplayerHeapId(expectedHeapId)
+				|| !Item.isValidMultiplayerItemId(projectileItemId)
+				|| !Item.isValidMultiplayerItemId(resultItemId)) return null;
+		curUser = user;
+		curItem = this;
+		Heap heapBefore = Dungeon.level.heaps.get(cell);
+		Item resultBefore = null;
+		String resultBeforeBundle = null;
+		int resultBeforeQuantity = 0;
+		if (heapBefore != null) for (Item candidate : heapBefore.items) {
+			if (candidate != null && resultItemId.equals(candidate.multiplayerItemId())) {
+				resultBefore = candidate;
+				resultBeforeBundle = SPDLevelSnapshot.currentItemBundle(candidate);
+				resultBeforeQuantity = candidate.quantity();
+				break;
+			}
+		}
+		if (hit) rangedHit(enemy, cell);
+		else rangedMiss(cell);
+
+		Heap landedHeap = Dungeon.level.heaps.get(cell);
+		Item resultAfter = null;
+		if (landedHeap != null) for (Item candidate : landedHeap.items) {
+			if (candidate != null && resultItemId.equals(candidate.multiplayerItemId())) {
+				resultAfter = candidate;
+				break;
+			}
+		}
+		if (resultAfter != null) {
+			String resultAfterBundle = SPDLevelSnapshot.currentItemBundle(resultAfter);
+			boolean newItem = resultBefore == null && resultAfter.quantity() == 1;
+			boolean mergedItem = resultBefore != null && resultBeforeBundle != null
+					&& (resultAfter.quantity() != resultBeforeQuantity
+						|| !resultBeforeBundle.equals(resultAfterBundle));
+			if (newItem || mergedItem) {
+				landedHeap.setMultiplayerHeapId(expectedHeapId);
+				return "HEAP";
+			}
+		}
+		if (enemy != null) {
+			PinCushion pin = enemy.buff(PinCushion.class);
+			if (pin != null) for (MissileWeapon stuck : pin.getStuckItems()) {
+				if (stuck != null && projectileItemId.equals(stuck.multiplayerItemId())) return "PIN_CUSHION";
+			}
+		}
+		return "CONSUMED";
 	}
 
 	@Override
