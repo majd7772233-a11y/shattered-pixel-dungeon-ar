@@ -1882,6 +1882,56 @@ export function isValidNativeProjectileHeapResult(previousHeaps: any[], nextHeap
   return true;
 }
 
+/** Validates missile landing, sticking or consumption as part of one native combat result. */
+export function isValidNativeProjectileCombatResult(previousHeapsValue: unknown, dataValue: unknown,
+  targetCellValue: unknown, deathPositionsValue: unknown, levelSizeValue: unknown): boolean {
+  const previousHeaps: any = previousHeapsValue, data: any = dataValue;
+  const targetCell = Number(targetCellValue), deathPositions: any = deathPositionsValue;
+  const levelSize = Number(levelSizeValue);
+  if (!Array.isArray(previousHeaps) || !data || typeof data !== "object"
+      || !isValidNativeFloorItemIdentitySet(previousHeaps)
+      || !Number.isInteger(targetCell) || targetCell < 0
+      || !Array.isArray(deathPositions) || !Number.isInteger(levelSize) || levelSize < 1) return false;
+  const details: any = data.projectileMutation;
+  if (details == null) return data.projectileOutcome === undefined && data.projectileHeaps === undefined;
+  if (details.projectileImpact !== true || Number(details.targetPos) !== targetCell
+      || Number(details.to) !== targetCell || !isValidStableMultiplayerId(String(details.projectileItemId || ""))) return false;
+  const outcome = String(data.projectileOutcome || "");
+  if (!["HEAP", "PIN_CUSHION", "CONSUMED"].includes(outcome)) return false;
+  const deaths = deathPositions.length > 0;
+  const extraLoot = data.heaps;
+  const projectileHeaps = data.projectileHeaps;
+  if (outcome === "HEAP") {
+    if (!Array.isArray(projectileHeaps)
+        || !isValidNativeProjectileHeapResult(previousHeaps, projectileHeaps, targetCell, details)) return false;
+    const accepted: any = {
+      actionType: "THROW", from: targetCell, targetPos: targetCell,
+      heapId: details.heapId, itemId: details.itemId, resultItemId: details.resultItemId,
+      itemClass: details.itemClass, expectedQuantity: details.expectedQuantity,
+      sourceQuantityBefore: details.sourceQuantityBefore, stackable: details.stackable
+    };
+    if (!deaths && !isValidNativeThrowHeapMutation(previousHeaps, projectileHeaps, targetCell, details, accepted)) return false;
+    if (deaths) {
+      return Array.isArray(extraLoot)
+        && sameNativeItemValue(extraLoot, projectileHeaps)
+        && isValidNativeLootSnapshot(extraLoot, previousHeaps, deathPositions, levelSize);
+    }
+    return extraLoot === undefined;
+  }
+  if (projectileHeaps !== undefined) return false;
+  if (!deaths && extraLoot !== undefined) return false;
+  if (deaths && (!Array.isArray(extraLoot)
+      || !isValidNativeLootSnapshot(extraLoot, previousHeaps, deathPositions, levelSize))) return false;
+  const finalHeaps = deaths ? extraLoot : previousHeaps;
+  if (!isValidNativeFloorItemIdentitySet(finalHeaps)
+      || finalHeaps.some((heap: any) => (Array.isArray(heap?.items) ? heap.items : [])
+        .some((item: any) => String(item?.itemId || "") === String(details.projectileItemId)))) return false;
+  const buffs = String(data.targetBuffs || "");
+  return outcome === "PIN_CUSHION"
+    ? buffs.includes(String(details.projectileItemId))
+    : !buffs.includes(String(details.projectileItemId));
+}
+
 export function isValidNativeAlchemyIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, trustedHeroStateValue: unknown): boolean {
   const data: any = dataValue, depth = Number(depthValue), playerId = String(playerIdValue || "");
@@ -5601,6 +5651,25 @@ export class MatchRoom {
                 payloadJson: JSON.stringify({ error: "INVALID_NATIVE_ATTACK_INTENT" }) }));
               return;
             }
+            if (payload.data.attackWeaponMode === "THROWN" || payload.data.projectileMutation != null) {
+              const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+              const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+                "heroState:" + session.playerId).toArray()[0];
+              const levelRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+                "levelSnapshot:" + this.currentDepth).toArray()[0];
+              let levelSnapshot: any = null;
+              try { levelSnapshot = levelRow && typeof levelRow.value === "string" ? JSON.parse(String(levelRow.value)) : null; } catch (_) {}
+              if (payload.data.attackWeaponMode !== "THROWN" || !payload.data.projectileMutation
+                  || !playerRow || !trustedHeroRow || !hasCompleteNativeLevelSnapshot(levelSnapshot)
+                  || !isValidNativeProjectileCombatIntent(levelSnapshot, payload.data.projectileMutation,
+                    this.currentDepth, session.playerId, playerRow, String(trustedHeroRow.value),
+                    payload.data.attackerPos, payload.data.targetPos)) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "INVALID_NATIVE_PROJECTILE_INTENT" }) }));
+                return;
+              }
+            }
             if (targetType === "MOB") {
               const publisherRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray()[0];
               const publisherId = String(publisherRow?.value || "");
@@ -5661,6 +5730,7 @@ export class MatchRoom {
                   damageMultiplier: payload.data.damageMultiplier,
                   damageBonus: payload.data.damageBonus,
                   accuracyMultiplier: payload.data.accuracyMultiplier,
+                  projectileMutation: payload.data.projectileMutation,
                   attackerStateBefore, attackerStateAfter: payload.heroStateJson
                 };
                 if (!this.reservePendingCombat(pending)) {
@@ -5686,7 +5756,8 @@ export class MatchRoom {
                       attackWeaponBundle: payload.data.attackWeaponBundle,
                       damageMultiplier: payload.data.damageMultiplier,
                       damageBonus: payload.data.damageBonus,
-                      accuracyMultiplier: payload.data.accuracyMultiplier
+                      accuracyMultiplier: payload.data.accuracyMultiplier,
+                      projectileMutation: payload.data.projectileMutation
                     })
                   }));
                 }
@@ -5740,6 +5811,7 @@ export class MatchRoom {
                 damageMultiplier: payload.data.damageMultiplier,
                 damageBonus: payload.data.damageBonus,
                 accuracyMultiplier: payload.data.accuracyMultiplier,
+                projectileMutation: payload.data.projectileMutation,
                 attackerStateBefore, attackerStateAfter: payload.heroStateJson,
                 targetHeroStateBefore: defenderStateBefore };
               if (!this.reservePendingCombat(pending)) {
@@ -5762,7 +5834,8 @@ export class MatchRoom {
                     attackWeaponBundle: payload.data.attackWeaponBundle,
                     damageMultiplier: payload.data.damageMultiplier,
                     damageBonus: payload.data.damageBonus,
-                    accuracyMultiplier: payload.data.accuracyMultiplier }) }));
+                    accuracyMultiplier: payload.data.accuracyMultiplier,
+                    projectileMutation: payload.data.projectileMutation }) }));
               }
               if (!authorityFound) {
                 this.clearPendingCombat(pending);
@@ -5966,6 +6039,8 @@ export class MatchRoom {
                       && (allDeathPositions.length === 0
                         ? payload.data?.heaps === undefined && secondaryMobPayload.heaps === undefined
                         : isValidNativeLootSnapshot(lootSnapshot, combatLevel?.heaps, allDeathPositions, levelSize));
+                    const validProjectileResult = isValidNativeProjectileCombatResult(
+                      combatLevel?.heaps, payload.data, requestedPos, allDeathPositions, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
                       && hasStrictNativeCombatFields(payload.data)
                       && targetBuffPreStateMatches
@@ -5977,6 +6052,7 @@ export class MatchRoom {
                         payload.data?.targetBuffsBefore, payload.data?.targetBuffs,
                         mobPos, targetPosAfter)
                       && validLootSnapshot
+                      && validProjectileResult
                       && mergedAttackerState != null
                       && typeof payload.heroStateJson === "string" && payload.heroStateJson.length > 0 && payload.heroStateJson.length <= 200000
                       && isValidNativeCombatBuffs(payload.data?.targetBuffs)
@@ -6015,6 +6091,7 @@ export class MatchRoom {
                        if (newHp > 0) savedMob.serializedBundle = String(payload.data.targetMobBundleAfter);
                        savedMob.shielding = Number(payload.data.targetShieldAfter);
                       if (allDeathPositions.length > 0) combatLevel.heaps = lootSnapshot;
+                      else if (payload.data?.projectileOutcome === "HEAP") combatLevel.heaps = payload.data.projectileHeaps;
                       for (const delta of secondaryMobPayload.deltas) {
                         const secondaryMobId = resolveServerMobIdByEntityId(combatLevel, delta.entityId);
                         if (secondaryMobId == null) throw new Error("Secondary combat mob identity disappeared after validation");
