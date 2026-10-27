@@ -4783,11 +4783,19 @@ export class MatchRoom {
             const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
               .filter((delta: any) => Number(delta.hpAfter) === 0)
               .map((delta: any) => Number(delta.posAfter));
+            const secondaryHasDeaths = secondaryDeathPositions.length > 0;
+            const pvpProjectileTarget = Number(data.projectileMutation?.targetPos);
+            const secondaryLootPositions = data.projectileOutcome === "HEAP"
+              ? [...secondaryDeathPositions, ...(Number.isInteger(pvpProjectileTarget) ? [pvpProjectileTarget] : [])]
+              : secondaryDeathPositions;
             const secondaryLootValid = secondaryMobPayload != null
               && (secondaryDeathPositions.length === 0
                 ? secondaryMobPayload.heaps === undefined
                 : isValidNativeLootSnapshot(secondaryMobPayload.heaps, combatLevel?.heaps,
-                    secondaryDeathPositions, levelSize));
+                    secondaryLootPositions, levelSize)
+                  && sameNativeItemValue(data.heaps, secondaryMobPayload.heaps));
+            const validProjectileResult = isValidNativeProjectileCombatResult(
+              combatLevel?.heaps, data, posBefore, secondaryDeathPositions, levelSize);
             // An incomplete secondary side-effect must not cancel an otherwise valid player
             // attack. It is deliberately not committed and instead forces a full publisher snapshot.
             const secondaryMobResyncRequired = secondaryMobPayload == null || !secondaryLootValid
@@ -4798,6 +4806,8 @@ export class MatchRoom {
               && String(pending.authorityId) === session.playerId && defenderId === session.playerId
               && String(pending.attackerId) === String(data.attackerId) && attackerId !== defenderId
               && hasMatchingNativeAttackIntent(data, pending)
+              && validProjectileResult
+              && !(data.projectileMutation != null && secondaryHasDeaths && !secondaryMobAuthority)
               && String(data.targetType) === "PLAYER" && String(data.targetId) === defenderId
               && Number(pending.depth) === this.currentDepth && defenderRow.length > 0 && attackerRow.length > 0
               && String(defenderRow[0].state) === "ALIVE" && String(attackerRow[0].state) === "ALIVE"
@@ -4876,6 +4886,12 @@ export class MatchRoom {
                 }
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
+              } else if (!secondaryMobAuthority && secondaryMobPayload != null && secondaryLootValid
+                  && data.projectileOutcome === "HEAP" && !secondaryHasDeaths) {
+                // Only the exact projectile heap delta is accepted from a non-publisher authority.
+                combatLevel.heaps = data.projectileHeaps;
+                this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                  `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
               }
               this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
@@ -4889,7 +4905,9 @@ export class MatchRoom {
                 damage, hit: data.engineHit === true, attackKind: data.attackKind,
                 engineDistance: distance, engineActionCost: nativeCost,
                 secondaryMobDeltas: secondaryMobPayload,
-                secondaryMobResyncRequired,
+                secondaryMobResyncRequired: secondaryMobResyncRequired || (data.projectileOutcome === "HEAP" && !secondaryMobAuthority),
+                projectileOutcome: data.projectileOutcome,
+                projectileResultItemId: data.projectileMutation?.resultItemId,
                 engineResolved: true
               };
               actionValid = true; actionCost = nativeCost;
@@ -4921,9 +4939,16 @@ export class MatchRoom {
               const secondaryDeaths = (secondaryMobPayload?.deltas || []).filter((delta: any) => Number(delta.hpAfter) === 0).map((delta: any) => Number(delta.posAfter));
               const allDeaths = [...(targetHp <= 0 ? [targetPosAfter] : []), ...secondaryDeaths];
               const lootSnapshot = targetHp <= 0 ? data.heaps : secondaryDeaths.length > 0 ? secondaryMobPayload?.heaps : undefined;
+              const projectileTargetCell = Number(data.projectileMutation?.targetPos);
+              const lootAllowedPositions = data.projectileOutcome === "HEAP"
+                ? [...allDeaths, ...(Number.isInteger(projectileTargetCell) ? [projectileTargetCell] : [])]
+                : allDeaths;
               const validLoot = secondaryMobPayload != null && (allDeaths.length === 0
                 ? data.heaps === undefined && secondaryMobPayload.heaps === undefined
-                : isValidNativeLootSnapshot(lootSnapshot, levelSnapshot?.heaps, allDeaths, levelSize));
+                : isValidNativeLootSnapshot(lootSnapshot, levelSnapshot?.heaps, lootAllowedPositions, levelSize)
+                  && (secondaryDeaths.length === 0 || sameNativeItemValue(data.heaps, secondaryMobPayload.heaps)));
+              const validProjectileResult = isValidNativeProjectileCombatResult(
+                levelSnapshot?.heaps, data, targetPos, allDeaths, levelSize);
               const mergedAttackerState = this.reconcileCombatAttackerState(
                 authorityPending, payload.heroStateJson, allDeaths.length > 0);
               const targetBuffPreStateMatches = !!savedMob && hasMatchingNativeBuffSnapshot(data.targetBuffsBefore, savedMob.buffs);
@@ -4947,6 +4972,7 @@ export class MatchRoom {
                   && this.isCombatDestinationFree(targetPosAfter, this.currentDepth, "MOB", Number(mobId))))
                 && isValidNativeMissTransition(data.engineHit, data.targetHpBefore, targetHp, damage, data.targetShieldBefore,
                   data.targetShieldAfter, data.targetBuffsBefore, data.targetBuffs, targetPos, targetPosAfter)
+                && validProjectileResult
                 && isValidNativeCombatEvent({
                   schemaVersion: data.combatSchemaVersion, depth: data.combatDepth, currentDepth: this.currentDepth,
                   sessionPlayerId: attackerId, attackerId: data.attackerId, attackerPos: data.attackerPos,
@@ -4966,6 +4992,7 @@ export class MatchRoom {
                 savedMob.shielding = Number(data.targetShieldAfter); savedMob.buffs = JSON.parse(String(data.targetBuffs));
                 if (targetHp > 0) savedMob.serializedBundle = String(data.targetMobBundleAfter);
                 if (allDeaths.length > 0) levelSnapshot.heaps = lootSnapshot;
+                else if (data.projectileOutcome === "HEAP") levelSnapshot.heaps = data.projectileHeaps;
                 this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?", targetHp, targetHt, targetPosAfter, mobId, this.currentDepth);
                 for (const delta of secondaryMobPayload.deltas) {
                   const secondaryId = resolveServerMobIdByEntityId(levelSnapshot, delta.entityId);
@@ -5008,7 +5035,10 @@ export class MatchRoom {
                   hit: data.engineHit === true, damage, targetHp, targetHt,
                   attackKind: data.attackKind, engineDistance: distance, engineActionCost: nativeCost, targetBuffs: data.targetBuffs,
                   attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
-                  secondaryMobDeltas: secondaryMobPayload, engineResolved: true
+                  secondaryMobDeltas: secondaryMobPayload,
+                  projectileOutcome: data.projectileOutcome,
+                  projectileResultItemId: data.projectileMutation?.resultItemId,
+                  engineResolved: true
                 };
                 actionValid = true; actionCost = nativeCost;
               }
@@ -6061,10 +6091,16 @@ export class MatchRoom {
                       : null;
                     const lootSnapshot = targetHp <= 0 ? payload.data?.heaps
                       : secondaryDeathPositions.length > 0 ? secondaryMobPayload?.heaps : undefined;
+                    const projectileTargetCell = Number(payload.data?.projectileMutation?.targetPos);
+                    const lootAllowedPositions = payload.data?.projectileOutcome === "HEAP"
+                      ? [...allDeathPositions, ...(Number.isInteger(projectileTargetCell) ? [projectileTargetCell] : [])]
+                      : allDeathPositions;
                     const validLootSnapshot = secondaryMobPayload != null
                       && (allDeathPositions.length === 0
                         ? payload.data?.heaps === undefined && secondaryMobPayload.heaps === undefined
-                        : isValidNativeLootSnapshot(lootSnapshot, combatLevel?.heaps, allDeathPositions, levelSize));
+                        : isValidNativeLootSnapshot(lootSnapshot, combatLevel?.heaps, lootAllowedPositions, levelSize)
+                          && (secondaryDeathPositions.length === 0
+                            || sameNativeItemValue(payload.data?.heaps, secondaryMobPayload.heaps)));
                     const validProjectileResult = isValidNativeProjectileCombatResult(
                       combatLevel?.heaps, payload.data, requestedPos, allDeathPositions, levelSize);
                     const validNativeTarget = requestedPos === mobPos && nativeCostValid
