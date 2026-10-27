@@ -280,7 +280,14 @@ abstract public class MissileWeapon extends Weapon {
 				}
 			}
 
-			if (!spawnedForEffect) super.onThrow( cell );
+			if (curUser.hasPendingNativeProjectileMutation()) {
+				String outcome = resolveMultiplayerProjectileImpact(curUser, enemy, cell, false,
+						curUser.pendingNativeProjectileHeapId(), curUser.pendingNativeProjectileItemId(),
+						curUser.pendingNativeProjectileResultItemId());
+				curUser.finishNativeProjectileMutation(outcome, enemy);
+			} else if (!spawnedForEffect) {
+				super.onThrow(cell);
+			}
 		} else {
 			boolean hit = curUser.shoot(enemy, this);
 			if (curUser.hasPendingNativeProjectileMutation()) {
