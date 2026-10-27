@@ -2180,7 +2180,7 @@ describe("Native missile throw transaction validation", () => {
 describe("Thrown missile floor impact reconciliation", () => {
   const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.Dart";
   const item=(id:string,quantity=1,serializedBundle?:string)=>({
-    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,equipped:false,
     serializedBundle:serializedBundle || "native-missile-bundle:"+id+":q="+quantity
   });
   const heap=(id:string,pos:number,items:any[])=>({
