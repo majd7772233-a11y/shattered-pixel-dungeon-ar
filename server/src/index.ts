@@ -1413,28 +1413,37 @@ export function isValidNativeDropInventoryMutation(beforeValue: unknown, afterVa
   return sameNativeItemValue(unrelatedSlots(beforeSlots), unrelatedSlots(afterSlots));
 }
 /** The destination heap may gain one identified item or increase one compatible stack by exactly the dropped quantity. */
+/** The destination heap must change only by the exact native drop or one proven-compatible merge. */
 export function isValidNativeDropHeapMutation(before: any[], after: any[], targetValue: unknown,
   detailsValue: unknown, acceptedValue: unknown): boolean {
   const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
-  if (!Array.isArray(before) || !Array.isArray(after) || !details || !accepted || !Number.isInteger(target) || target < 0
+  if (!Array.isArray(before) || !Array.isArray(after)
+      || !isValidNativeFloorItemIdentitySet(before) || !isValidNativeFloorItemIdentitySet(after)
+      || !details || !accepted || !Number.isInteger(target) || target < 0
       || accepted.actionType !== "DROP" || accepted.from !== target || accepted.targetPos !== target
       || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
       || accepted.resultItemId !== details.resultItemId || accepted.itemClass !== details.itemClass
       || accepted.expectedQuantity !== details.expectedQuantity || accepted.sourceQuantityBefore !== details.sourceQuantityBefore
       || accepted.stackable !== details.stackable) return false;
   const heapId = String(details.heapId || ""), resultId = String(details.resultItemId || "");
-  const cls = String(details.itemClass || ""), qty = Number(details.expectedQuantity);
-  if (heapId.length < 8 || heapId.length > 80 || resultId.length < 8 || resultId.length > 80
-      || cls.length < 1 || cls.length > 256 || !Number.isInteger(qty) || qty < 1) return false;
+  const sourceId = String(details.itemId || ""), cls = String(details.itemClass || "");
+  const qty = Number(details.expectedQuantity), sourceQuantity = Number(details.sourceQuantityBefore);
+  if (!isValidStableMultiplayerId(heapId) || !isValidStableMultiplayerId(sourceId)
+      || !isValidStableMultiplayerId(resultId) || cls.length < 1 || cls.length > 256
+      || !Number.isInteger(qty) || qty < 1 || qty > 100000
+      || !Number.isInteger(sourceQuantity) || sourceQuantity < qty || sourceQuantity > 100000
+      || typeof details.stackable !== "boolean" || (qty < sourceQuantity && details.stackable !== true)) return false;
   const oldAt = before.filter((h: any) => Number(h?.pos) === target);
   const newAt = after.filter((h: any) => Number(h?.pos) === target);
   if (oldAt.length > 1 || newAt.length !== 1 || String(newAt[0].heapId || "") !== heapId
       || !Array.isArray(newAt[0].items) || newAt[0].items.length === 0) return false;
   const oldHeap = oldAt[0] || null, newHeap = newAt[0];
   if (oldHeap) {
-    if (String(oldHeap.heapId || "") !== heapId || oldHeap.type !== newHeap.type || oldHeap.seen !== newHeap.seen
-        || oldHeap.haunted !== newHeap.haunted || oldHeap.autoExplored !== newHeap.autoExplored
-        || !(oldHeap.hidden === newHeap.hidden || newHeap.hidden === false) || !Array.isArray(oldHeap.items)) return false;
+    if (String(oldHeap.heapId || "") !== heapId || oldHeap.type !== newHeap.type
+        || oldHeap.seen !== newHeap.seen || oldHeap.haunted !== newHeap.haunted
+        || oldHeap.autoExplored !== newHeap.autoExplored
+        || !(oldHeap.hidden === newHeap.hidden || newHeap.hidden === false)
+        || !Array.isArray(oldHeap.items)) return false;
   } else if (newHeap.type !== "HEAP") return false;
   for (const old of before) {
     if (oldHeap && String(old.heapId || "") === heapId) continue;
@@ -1446,28 +1455,33 @@ export function isValidNativeDropHeapMutation(before: any[], after: any[], targe
     if (before.filter((h: any) => String(h?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
   }
   const oldItems: any[] = oldHeap ? oldHeap.items : [];
-  const results = newHeap.items.filter((i: any) => String(i?.itemId || "") === resultId);
+  const newItems: any[] = newHeap.items;
+  const results = newItems.filter((i: any) => String(i?.itemId || "") === resultId);
   if (results.length !== 1) return false;
   const result = results[0], oldResult = oldItems.filter((i: any) => String(i?.itemId || "") === resultId);
   if (String(result.className || "") !== cls || result.stackable !== details.stackable
-      || !Number.isInteger(result.quantity) || typeof result.serializedBundle !== "string"
-      || !result.serializedBundle.includes(resultId)) return false;
+      || !Number.isInteger(result.quantity) || result.quantity < 1
+      || typeof result.serializedBundle !== "string" || !result.serializedBundle.includes(resultId)) return false;
   if (!sameNativeItemValue(oldItems.filter((i: any) => String(i?.itemId || "") !== resultId),
-      newHeap.items.filter((i: any) => String(i?.itemId || "") !== resultId))) return false;
+      newItems.filter((i: any) => String(i?.itemId || "") !== resultId))) return false;
   if (oldResult.length === 0) {
     return result.quantity === qty
-      && (qty === Number(details.sourceQuantityBefore)
-        ? resultId === String(details.itemId) : resultId !== String(details.itemId));
+      && (qty === sourceQuantity ? resultId === sourceId : resultId !== sourceId);
   }
-  return oldResult.length === 1 && resultId !== String(details.itemId)
-    && details.stackable === true && oldResult[0].stackable === true
-    && String(oldResult[0].className) === cls && result.quantity === Number(oldResult[0].quantity) + qty
-    && sameNativeItemValue(itemValueWithout(oldResult[0], ["quantity","serializedBundle"]),
-      itemValueWithout(result, ["quantity","serializedBundle"]));
+  if (oldResult.length !== 1 || resultId === sourceId || details.stackable !== true
+      || oldResult[0].stackable !== true || String(oldResult[0].className || "") !== cls) return false;
+  const sameBundleFields = sameNativeItemValue(
+    itemValueWithout(oldResult[0], ["quantity", "serializedBundle"]),
+    itemValueWithout(result, ["quantity", "serializedBundle"]));
+  if (!sameBundleFields) return false;
+  const oldQuantity = Number(oldResult[0].quantity);
+  const exactMerge = result.quantity === oldQuantity + qty;
+  const nativeMissileMerge = cls.includes(".items.weapon.missiles.")
+    && result.quantity >= oldQuantity && result.quantity <= oldQuantity + qty
+    && result.serializedBundle !== oldResult[0].serializedBundle;
+  return exactMerge || nativeMissileMerge;
 }
 
-
-/** Validates that an accepted pickup changes only the owning hero's expected inventory fields. */
 export function isValidNativePickupInventoryMutation(previousValue: unknown, nextValue: unknown,
   acceptedValue: unknown): boolean {
   let previous: any, next: any;
@@ -1627,27 +1641,35 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
 
 
 /** The thrown projectile must be owned by this player and land at one valid cell on the same floor. */
+/** Validates one owned projectile and its exact landing/impact cell. */
 export function isValidNativeThrowIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
   const data: any = dataValue, depth = Number(depthValue), playerId = String(playerIdValue || "");
   if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps) || !Array.isArray(level.tiles)
+      || !isValidNativeFloorItemIdentitySet(level.heaps)
       || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
       || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
       || typeof heroStateValue !== "string") return false;
   const from = Number(player.pos), target = Number(data.targetPos);
   const itemId = String(data.itemId || ""), resultId = String(data.resultItemId || "");
+  const projectileId = String(data.projectileItemId || "");
   const heapId = String(data.heapId || ""), cls = String(data.itemClass || "");
+  const projectileImpact = data.projectileImpact === true;
   const width = Number(level.width), height = Number(level.height);
   if (data.from !== from || data.to !== target || Number(data.depth) !== depth || data.branch !== 0
       || !Number.isInteger(width) || !Number.isInteger(height) || target < 0 || target >= width * height
       || Math.max(Math.abs((target % width) - (from % width)),
         Math.abs(Math.floor(target / width) - Math.floor(from / width))) > 12
-      || itemId.length < 8 || itemId.length > 80 || resultId.length < 8 || resultId.length > 80
-      || heapId.length < 8 || heapId.length > 80 || !cls.includes(".items.weapon.missiles.")
+      || !isValidStableMultiplayerId(itemId) || !isValidStableMultiplayerId(resultId)
+      || !isValidStableMultiplayerId(heapId) || !cls.includes(".items.weapon.missiles.")
       || data.expectedQuantity !== 1 || !Number.isInteger(data.sourceQuantityBefore)
       || data.sourceQuantityBefore < 1 || data.sourceQuantityBefore > 100000
-      || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
-      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
+      || typeof data.stackable !== "boolean" || data.stackable !== true
+      || !Number.isFinite(data.engineActionCost) || data.engineActionCost < 0 || data.engineActionCost > 10
+      || (data.projectileImpact !== undefined && data.projectileImpact !== true)
+      || (projectileImpact && (!isValidStableMultiplayerId(projectileId)
+        || (data.sourceQuantityBefore === 1 ? projectileId !== itemId : projectileId === itemId))
+      || (!projectileImpact && data.projectileItemId !== undefined)) return false;
   const tiles = level.tiles.filter((tile: any) => Number(tile?.pos) === target);
   if (tiles.length !== 1 || tiles[0].solid === true) return false;
   let hero: any;
@@ -1658,6 +1680,10 @@ export function isValidNativeThrowIntent(level: any, dataValue: unknown, depthVa
   const source = inventory.filter((item: any) => String(item.itemId) === itemId);
   if (source.length !== 1 || String(source[0].className) !== cls
       || Number(source[0].quantity) !== Number(data.sourceQuantityBefore) || source[0].stackable !== data.stackable) return false;
+  if (projectileImpact && inventory.some((item: any) =>
+      String(item.itemId) === projectileId && String(item.itemId) !== itemId)) return false;
+  if (projectileImpact && level.heaps.some((heap: any) => (Array.isArray(heap?.items) ? heap.items : [])
+      .some((item: any) => String(item?.itemId || "") === projectileId))) return false;
   const atTarget = level.heaps.filter((heap: any) => Number(heap?.pos) === target);
   if (atTarget.length > 1) return false;
   const oldHeap = atTarget[0] || null;
@@ -1682,7 +1708,20 @@ export function isValidNativeThrowIntent(level: any, dataValue: unknown, depthVa
   return true;
 }
 
+/** Validates the combat envelope's projectile context against the trusted floor and pre-attack owner state. */
+export function isValidNativeProjectileCombatIntent(level: any, dataValue: unknown, depthValue: unknown,
+  playerIdValue: unknown, player: any, trustedHeroStateValue: unknown,
+  attackerPosValue: unknown, combatTargetPosValue: unknown): boolean {
+  const data: any = dataValue;
+  if (!data || data.projectileImpact !== true
+      || Number(data.from) !== Number(attackerPosValue)
+      || Number(data.to) !== Number(combatTargetPosValue)
+      || Number(data.targetPos) !== Number(combatTargetPosValue)) return false;
+  return isValidNativeThrowIntent(level, data, depthValue, playerIdValue, player, trustedHeroStateValue);
+}
+
 /** One source unit must leave the inventory while unrelated items and quickslots remain unchanged. */
+/** One source projectile unit must leave the inventory while unrelated items and quickslots remain unchanged. */
 export function isValidNativeThrowInventoryMutation(previousValue: unknown, nextValue: unknown,
   detailsValue: unknown): boolean {
   let previous: any, next: any;
@@ -1692,7 +1731,9 @@ export function isValidNativeThrowInventoryMutation(previousValue: unknown, next
   const id = String(details.itemId || ""), cls = String(details.itemClass || "");
   const oldSource = before.filter((item: any) => String(item.itemId) === id);
   const newSource = after.filter((item: any) => String(item.itemId) === id);
-  if (oldSource.length !== 1 || String(oldSource[0].className) !== cls
+  if (!isValidStableMultiplayerId(id) || cls.length < 1 || cls.length > 256
+      || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
+      || oldSource.length !== 1 || String(oldSource[0].className) !== cls
       || oldSource[0].quantity !== Number(details.sourceQuantityBefore) || oldSource[0].stackable !== details.stackable) return false;
   if (oldSource[0].quantity === 1) {
     if (newSource.length !== 0) return false;
@@ -1704,6 +1745,26 @@ export function isValidNativeThrowInventoryMutation(previousValue: unknown, next
       after.filter((item: any) => String(item.itemId) !== id))) return false;
   const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
   if (!beforeSlots || !afterSlots) return false;
+  const oldSourceSlots = beforeSlots.filter((slot: any) => String(slot.itemId) === id);
+  const newSourceSlots = afterSlots.filter((slot: any) => String(slot.itemId) === id);
+  if (oldSource[0].quantity > 1) {
+    if (newSourceSlots.length !== oldSourceSlots.length) return false;
+    for (const oldSlot of oldSourceSlots) {
+      const current = newSourceSlots.find((slot: any) => Number(slot.slot) === Number(oldSlot.slot));
+      if (!current || Number(current.quantity) !== Number(oldSlot.quantity) - 1
+          || String(current.className) !== cls || String(current.serializedBundle) !== String(newSource[0].serializedBundle)
+          || !sameNativeItemValue(itemValueWithout(oldSlot, ["quantity", "serializedBundle"]),
+            itemValueWithout(current, ["quantity", "serializedBundle"]))) return false;
+    }
+  } else {
+    if (newSourceSlots.length > oldSourceSlots.length) return false;
+    for (const current of newSourceSlots) {
+      const oldSlot = oldSourceSlots.find((slot: any) => Number(slot.slot) === Number(current.slot));
+      if (!oldSlot || Number(current.quantity) !== 0 || String(current.className) !== cls
+          || !sameNativeItemValue(itemValueWithout(oldSlot, ["quantity", "serializedBundle"]),
+            itemValueWithout(current, ["quantity", "serializedBundle"]))) return false;
+    }
+  }
   const unrelated = (slots: any[]) => slots.filter((slot: any) => String(slot.itemId) !== id)
     .map((slot: any) => ({slot:slot.slot,itemId:slot.itemId,className:slot.className,
       quantity:slot.quantity,serializedBundle:slot.serializedBundle}))
@@ -1712,17 +1773,21 @@ export function isValidNativeThrowInventoryMutation(previousValue: unknown, next
 }
 
 /** A throw may alter only the destination heap, adding one item or merging one compatible missile. */
+/** A throw may change only the target floor cell by landing one projectile or merging one compatible missile stack. */
 export function isValidNativeThrowHeapMutation(previousHeaps: any[], nextHeaps: any[], targetValue: unknown,
   detailsValue: unknown, acceptedValue: unknown): boolean {
   const details: any = detailsValue, accepted: any = acceptedValue, target = Number(targetValue);
-  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps) || !details || !accepted
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps)
+      || !isValidNativeFloorItemIdentitySet(previousHeaps) || !isValidNativeFloorItemIdentitySet(nextHeaps)
+      || !details || !accepted || !Number.isInteger(target) || target < 0
       || accepted.actionType !== "THROW" || accepted.targetPos !== target
       || accepted.itemId !== details.itemId || accepted.itemClass !== details.itemClass
       || accepted.heapId !== details.heapId || accepted.resultItemId !== details.resultItemId
       || accepted.expectedQuantity !== details.expectedQuantity
       || accepted.sourceQuantityBefore !== details.sourceQuantityBefore || accepted.stackable !== details.stackable) return false;
   const heapId = String(details.heapId || ""), resultId = String(details.resultItemId || ""), cls = String(details.itemClass || "");
-  if (heapId.length < 8 || heapId.length > 80 || resultId.length < 8 || resultId.length > 80
+  if (!isValidStableMultiplayerId(heapId) || !isValidStableMultiplayerId(resultId)
+      || !isValidStableMultiplayerId(String(details.itemId || ""))
       || !cls.includes(".items.weapon.missiles.") || details.expectedQuantity !== 1) return false;
   const oldAt = previousHeaps.filter((heap: any) => Number(heap?.pos) === target);
   const newAt = nextHeaps.filter((heap: any) => Number(heap?.pos) === target);
@@ -1731,7 +1796,8 @@ export function isValidNativeThrowHeapMutation(previousHeaps: any[], nextHeaps: 
   const oldHeap = oldAt[0] || null, newHeap = newAt[0];
   if (oldHeap && (String(oldHeap.heapId || "") !== heapId || String(oldHeap.type) !== "HEAP"
       || oldHeap.seen !== newHeap.seen || oldHeap.haunted !== newHeap.haunted
-      || oldHeap.hidden !== newHeap.hidden || oldHeap.autoExplored !== newHeap.autoExplored
+      || oldHeap.autoExplored !== newHeap.autoExplored
+      || !(oldHeap.hidden === newHeap.hidden || newHeap.hidden === false)
       || !Array.isArray(oldHeap.items))) return false;
   if (!oldHeap && previousHeaps.some((heap: any) => String(heap?.heapId || "") === heapId)) return false;
   for (const old of previousHeaps) {
@@ -1744,13 +1810,13 @@ export function isValidNativeThrowHeapMutation(previousHeaps: any[], nextHeaps: 
     if (previousHeaps.filter((heap: any) => String(heap?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
   }
   const oldItems: any[] = oldHeap ? oldHeap.items : [];
-  const oldResult = oldItems.filter((item: any) => String(item?.itemId || "") === resultId);
   const newResult = newHeap.items.filter((item: any) => String(item?.itemId || "") === resultId);
   if (newResult.length !== 1) return false;
   const result = newResult[0];
   if (String(result.className || "") !== cls || result.stackable !== details.stackable
       || !Number.isInteger(result.quantity) || result.quantity < 1
       || typeof result.serializedBundle !== "string" || !result.serializedBundle.includes(resultId)) return false;
+  const oldResult = oldItems.filter((item: any) => String(item?.itemId || "") === resultId);
   if (!sameNativeItemValue(oldItems.filter((item: any) => String(item?.itemId || "") !== resultId),
       newHeap.items.filter((item: any) => String(item?.itemId || "") !== resultId))) return false;
   if (oldResult.length === 0) {
@@ -1758,13 +1824,63 @@ export function isValidNativeThrowHeapMutation(previousHeaps: any[], nextHeaps: 
       && ((Number(details.sourceQuantityBefore) === 1 && resultId === String(details.itemId))
         || (Number(details.sourceQuantityBefore) > 1 && resultId !== String(details.itemId)));
   }
-  return oldResult.length === 1 && details.stackable === true && oldResult[0].stackable === true
-    && String(oldResult[0].className || "") === cls && result.quantity === Number(oldResult[0].quantity) + 1
-    && resultId !== String(details.itemId)
-    && sameNativeItemValue(itemValueWithout(oldResult[0], ["quantity", "serializedBundle"]),
-      itemValueWithout(result, ["quantity", "serializedBundle"]));
+  if (oldResult.length !== 1 || details.stackable !== true || oldResult[0].stackable !== true
+      || String(oldResult[0].className || "") !== cls || resultId === String(details.itemId)) return false;
+  const oldQuantity = Number(oldResult[0].quantity);
+  const sameFields = sameNativeItemValue(itemValueWithout(oldResult[0], ["quantity", "serializedBundle"]),
+    itemValueWithout(result, ["quantity", "serializedBundle"]));
+  if (!sameFields) return false;
+  const exactMerge = result.quantity === oldQuantity + 1;
+  const missileDurabilityMerge = result.quantity === oldQuantity
+    && result.serializedBundle !== oldResult[0].serializedBundle;
+  return exactMerge || missileDurabilityMerge;
 }
 
+/** Validates the landed row when a missile impact and a monster death share the same snapshot. */
+export function isValidNativeProjectileHeapResult(previousHeaps: any[], nextHeaps: any[],
+  targetValue: unknown, detailsValue: unknown): boolean {
+  const details: any = detailsValue, target = Number(targetValue);
+  if (!Array.isArray(previousHeaps) || !Array.isArray(nextHeaps)
+      || !isValidNativeFloorItemIdentitySet(previousHeaps) || !isValidNativeFloorItemIdentitySet(nextHeaps)
+      || !details || !Number.isInteger(target) || target < 0) return false;
+  const heapId = String(details.heapId || ""), sourceId = String(details.itemId || "");
+  const projectileId = String(details.projectileItemId || ""), resultId = String(details.resultItemId || "");
+  const cls = String(details.itemClass || "");
+  if (!isValidStableMultiplayerId(heapId) || !isValidStableMultiplayerId(sourceId)
+      || !isValidStableMultiplayerId(projectileId) || !isValidStableMultiplayerId(resultId)
+      || !cls.includes(".items.weapon.missiles.") || details.expectedQuantity !== 1
+      || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1) return false;
+  const oldAt = previousHeaps.filter((heap: any) => Number(heap?.pos) === target);
+  const nextAt = nextHeaps.filter((heap: any) => Number(heap?.pos) === target);
+  if (oldAt.length > 1 || nextAt.length !== 1 || String(nextAt[0].heapId || "") !== heapId
+      || String(nextAt[0].type) !== "HEAP" || !Array.isArray(nextAt[0].items)) return false;
+  const oldHeap = oldAt[0] || null, nextHeap = nextAt[0];
+  if (oldHeap && (String(oldHeap.heapId || "") !== heapId || String(oldHeap.type) !== "HEAP"
+      || oldHeap.seen !== nextHeap.seen || oldHeap.haunted !== nextHeap.haunted
+      || oldHeap.autoExplored !== nextHeap.autoExplored
+      || !(oldHeap.hidden === nextHeap.hidden || nextHeap.hidden === false))) return false;
+  const oldItems: any[] = oldHeap ? oldHeap.items : [];
+  const oldResults = oldItems.filter((item: any) => String(item?.itemId || "") === resultId);
+  const newResults = nextHeap.items.filter((item: any) => String(item?.itemId || "") === resultId);
+  if (oldResults.length > 1 || newResults.length !== 1) return false;
+  const result = newResults[0];
+  if (String(result.className || "") !== cls || result.stackable !== true
+      || !Number.isInteger(result.quantity) || result.quantity < 1
+      || typeof result.serializedBundle !== "string" || !result.serializedBundle.includes(resultId)) return false;
+  if (oldResults.length === 0) {
+    if (result.quantity !== 1 || resultId !== projectileId
+        || (Number(details.sourceQuantityBefore) === 1 ? projectileId !== sourceId : projectileId === sourceId)) return false;
+  } else {
+    const old = oldResults[0], oldQuantity = Number(old.quantity);
+    if (resultId === projectileId || old.stackable !== true || String(old.className || "") !== cls
+        || !sameNativeItemValue(itemValueWithout(old, ["quantity", "serializedBundle"]),
+          itemValueWithout(result, ["quantity", "serializedBundle"]))) return false;
+    const exact = result.quantity === oldQuantity + 1;
+    const durabilityMerge = result.quantity === oldQuantity && result.serializedBundle !== old.serializedBundle;
+    if (!exact && !durabilityMerge) return false;
+  }
+  return true;
+}
 
 export function isValidNativeAlchemyIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, trustedHeroStateValue: unknown): boolean {
@@ -2736,7 +2852,11 @@ export function isValidNativeAttackIntent(data: any): boolean {
 }
 
 export function hasMatchingNativeAttackIntent(reported: any, expected: any): boolean {
-  return isValidNativeAttackIntent(reported) && expected != null
+  const projectileMatches = expected?.projectileMutation == null
+    ? reported?.projectileMutation == null
+    : reported?.projectileMutation != null
+      && sameNativeItemValue(reported.projectileMutation, expected.projectileMutation);
+  return isValidNativeAttackIntent(reported) && expected != null && projectileMatches
     && reported.attackWeaponMode === expected.attackWeaponMode
     && reported.attackWeaponBundle === expected.attackWeaponBundle
     && reported.damageMultiplier === expected.damageMultiplier
