@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1737,6 +1737,100 @@ describe("Native equipment, quickslot, and chest transactions", () => {
 
 
 
+
+
+
+describe("Native inventory economic value index", () => {
+  const cls = "com.shatteredpixel.shatteredpixeldungeon.items.ScrollOfIdentify";
+  const row = (id:string,quantity:number,bundle?:string,equipped=false) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:true,stackable:true,equipped,
+    serializedBundle:bundle || ("native-item:"+id+":q="+quantity)
+  });
+  const economy = (id:string,quantity:number,value:number,unit:number,sellable=true) => ({
+    itemId:id,className:cls,quantity,nativeValue:value,nativeUnitValue:unit,nativeSellable:sellable
+  });
+  const hero = (items:any[],rows:any[]) => JSON.stringify({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"native-inventory",
+    inventoryItemsJson:JSON.stringify(items),nativeItemEconomyJson:JSON.stringify(rows),quickslotsJson:"[]"
+  });
+  const heapItem = (id:string,quantity:number,value:number,unit:number) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:true,stackable:true,
+    nativeValue:value,nativeUnitValue:unit,serializedBundle:"native-item:"+id+":q="+quantity
+  });
+  const heap = (items:any[]) => [{heapId:"stable-floor-heap-001",pos:9,type:"HEAP",
+    seen:false,haunted:false,hidden:false,autoExplored:false,items}];
+
+  it("rejects re-pricing an unchanged inventory item during an unrelated movement",()=>{
+    const id="stable-value-item-001", source=row(id,1);
+    const before=hero([source],[economy(id,1,30,30)]);
+    const forged=hero([source],[economy(id,1,900,900)]);
+    expect(isValidNativeItemEconomyIndexMutation(before,forged,"MOVE",{},[],[])).toBe(false);
+    expect(isValidNativeItemEconomyIndexMutation(before,before,"MOVE",{},[],[])).toBe(true);
+  });
+
+  it("conserves the native item value when a stack is partially or fully dropped",()=>{
+    const id="stable-value-stack-001", remainder=row(id,2,"native-item:"+id+":q=2");
+    const before=hero([row(id,3)],[economy(id,3,90,30)]);
+    const after=hero([remainder],[economy(id,2,60,30)]);
+    const d={itemId:id,resultItemId:"stable-value-floor-001"};
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"DROP",d,[],heap([
+      heapItem("stable-value-floor-001",1,30,30)
+    ]))).toBe(true);
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"DROP",d,[],heap([
+      heapItem("stable-value-floor-001",1,31,31)
+    ]))).toBe(false);
+
+    const fullBefore=hero([row("stable-value-full-001",1)],[economy("stable-value-full-001",1,30,30)]);
+    const fullDetails={itemId:"stable-value-full-001",resultItemId:"stable-value-full-001"};
+    expect(isValidNativeItemEconomyIndexMutation(fullBefore,hero([],[]),"DROP",fullDetails,[],
+      heap([heapItem("stable-value-full-001",1,30,30)]))).toBe(true);
+  });
+
+  it("only imports a newly picked-up item at the exact previously authoritative floor value",()=>{
+    const id="stable-value-pickup-001", floor=heap([heapItem(id,1,30,30)]);
+    const before=hero([],[]);
+    const after=hero([row(id,1)],[economy(id,1,30,30)]);
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"PICKUP",{itemId:id},floor,[])).toBe(true);
+    expect(isValidNativeItemEconomyIndexMutation(before,hero([row(id,1)],[economy(id,1,300,300)]),
+      "PICKUP",{itemId:id},floor,[])).toBe(false);
+  });
+
+  it("allows a native equipment sellability change but not an economic value change",()=>{
+    const id="stable-value-weapon-001";
+    const before=hero([row(id,1,undefined,false)],[economy(id,1,40,40,true)]);
+    const after=hero([row(id,1,undefined,true)],[economy(id,1,40,40,false)]);
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"EQUIP",{itemId:id},[],[])).toBe(true);
+    const repriced=hero([row(id,1,undefined,true)],[economy(id,1,80,80,false)]);
+    expect(isValidNativeItemEconomyIndexMutation(before,repriced,"EQUIP",{itemId:id},[],[])).toBe(false);
+  });
+
+  it("binds a newly crafted inventory result to the native value captured from the engine",()=>{
+    const sourceId="stable-alchemy-ingredient-001", resultId="stable-alchemy-output-001";
+    const beforeItem=row(sourceId,1);
+    const afterItem=row(resultId,1,"native-item:"+resultId+":q=1");
+    const before=hero([beforeItem],[economy(sourceId,1,20,20)]);
+    const after=hero([afterItem],[economy(resultId,1,40,40)]);
+    const details={resultLocation:"INVENTORY",resultItemId:resultId,resultItemClass:cls,resultQuantity:1,
+      resultStackable:true,resultNativeValue:40,resultNativeUnitValue:40};
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"ALCHEMY",details,[],[])).toBe(true);
+    expect(isValidNativeItemEconomyIndexMutation(before,hero([afterItem],[economy(resultId,1,400,400)]),
+      "ALCHEMY",details,[],[])).toBe(false);
+  });
+
+  it("checks a crafted stack merged into an existing item against the full resulting native value",()=>{
+    const ingredientId="stable-alchemy-ingredient-002", resultId="stable-alchemy-stack-001";
+    const beforeIngredient=row(ingredientId,1);
+    const beforeOutput=row(resultId,2,"native-item:"+resultId+":q=2");
+    const afterOutput=row(resultId,3,"native-item:"+resultId+":q=3");
+    const before=hero([beforeIngredient,beforeOutput],[economy(ingredientId,1,20,20),economy(resultId,2,60,30)]);
+    const after=hero([afterOutput],[economy(resultId,3,90,30)]);
+    const details={resultLocation:"INVENTORY",resultItemId:resultId,resultItemClass:cls,resultQuantity:1,
+      resultStackable:true,resultNativeValue:90,resultNativeUnitValue:30};
+    expect(isValidNativeItemEconomyIndexMutation(before,after,"ALCHEMY",details,[],[])).toBe(true);
+    expect(isValidNativeItemEconomyIndexMutation(before,hero([afterOutput],[economy(resultId,3,91,30)]),
+      "ALCHEMY",details,[],[])).toBe(false);
+  });
+});
 
 describe("Native shop SELL transactions", () => {
   const cls = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";

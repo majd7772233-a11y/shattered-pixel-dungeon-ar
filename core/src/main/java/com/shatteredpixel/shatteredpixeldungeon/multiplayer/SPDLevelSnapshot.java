@@ -381,8 +381,15 @@ public final class SPDLevelSnapshot {
         if (item == null || item.quantity() <= 0) return -1;
         int value = item.value();
         if (item.quantity() == 1) return value;
-        if (!item.stackable || value < 0 || value % item.quantity() != 0) return -1;
-        return value / item.quantity();
+        if (!item.stackable || value < 0) return -1;
+
+        // Prove linear native value with the item's own single-unit duplicate instead of assuming
+        // integer divisibility implies the engine's value scales linearly for this item class.
+        Item singleUnit = item.duplicate();
+        if (singleUnit == null) return -1;
+        singleUnit.quantity(1);
+        int unitValue = singleUnit.value();
+        return unitValue >= 0 && (long) unitValue * item.quantity() == value ? unitValue : -1;
     }
 
     private static ItemData currentItemData(Item item, int shopPrice) {

@@ -1602,6 +1602,125 @@ export function parseNativeItemEconomyIndex(heroValue: any): any[] | null {
   } catch (_) { return null; }
 }
 
+/**
+ * Keeps the sell-value index bound to accepted native inventory deltas. This sidecar is never
+ * permitted to re-price an unchanged item as a side effect of an unrelated action.
+ */
+export function isValidNativeItemEconomyIndexMutation(previousHeroValue: unknown, nextHeroValue: unknown,
+  actionValue: unknown, detailsValue: unknown, previousHeapsValue: unknown, nextHeapsValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousHeroValue || "")); next = JSON.parse(String(nextHeroValue || "")); }
+  catch (_) { return false; }
+  const action = String(actionValue || ""), details: any = detailsValue;
+  const hasBefore = Object.prototype.hasOwnProperty.call(previous || {}, "nativeItemEconomyJson");
+  const hasAfter = Object.prototype.hasOwnProperty.call(next || {}, "nativeItemEconomyJson");
+  // Preserve backward compatibility for a pre-economy snapshot, but never accept a one-sided index.
+  if (!hasBefore && !hasAfter) return true;
+  if (!hasBefore || !hasAfter) return false;
+
+  const beforeInventory = parseNativeInventoryIndex(previous), afterInventory = parseNativeInventoryIndex(next);
+  const beforeEconomy = parseNativeItemEconomyIndex(previous), afterEconomy = parseNativeItemEconomyIndex(next);
+  if (!beforeInventory || !afterInventory || !beforeEconomy || !afterEconomy) return false;
+  const beforeItems = new Map<string, any>(beforeInventory.map((row: any) => [String(row.itemId), row]));
+  const afterItems = new Map<string, any>(afterInventory.map((row: any) => [String(row.itemId), row]));
+  const beforeValues = new Map<string, any>(beforeEconomy.map((row: any) => [String(row.itemId), row]));
+  const afterValues = new Map<string, any>(afterEconomy.map((row: any) => [String(row.itemId), row]));
+  const findFloorItems = (heapsValue: unknown, itemId: string): any[] => {
+    if (!Array.isArray(heapsValue)) return [];
+    return heapsValue.flatMap((heap: any) => Array.isArray(heap?.items) ? heap.items : [])
+      .filter((row: any) => String(row?.itemId || "") === itemId);
+  };
+  const sourceFloorId = String(details?.itemId || "");
+  const sourceFloorBefore = sourceFloorId ? findFloorItems(previousHeapsValue, sourceFloorId) : [];
+  const isPickupOrBuy = action === "PICKUP" || action === "BUY";
+
+  for (const [id, current] of afterItems) {
+    const old = beforeItems.get(id), value = afterValues.get(id);
+    if (!value) return false;
+    if (!old) {
+      // New inventory instances must originate in the identified floor item, or the accepted native
+      // alchemy result. INTERACT/MINE and other ambiguous inventory grants fail closed.
+      if (isPickupOrBuy) {
+        if (sourceFloorBefore.length !== 1) return false;
+        const floorItem = sourceFloorBefore[0];
+        if (id !== sourceFloorId || String(current.className) !== String(floorItem.className)
+            || Number(current.quantity) !== Number(floorItem.quantity)
+            || value.nativeValue !== Number(floorItem.nativeValue)
+            || value.nativeUnitValue !== Number(floorItem.nativeUnitValue)) return false;
+      } else if (action === "ALCHEMY" && details?.resultLocation === "INVENTORY") {
+        if (id !== String(details.resultItemId || "") || String(current.className) !== String(details.resultItemClass || "")
+            || Number(current.quantity) !== Number(details.resultQuantity)
+            || current.stackable !== details.resultStackable
+            || value.nativeValue !== Number(details.resultNativeValue)
+            || value.nativeUnitValue !== Number(details.resultNativeUnitValue)) return false;
+      } else {
+        return false;
+      }
+      continue;
+    }
+
+    const oldValue = beforeValues.get(id);
+    if (!oldValue || String(old.className) !== String(current.className)) return false;
+    if (Number(old.quantity) === Number(current.quantity)) {
+      if (oldValue.nativeValue !== value.nativeValue
+          || oldValue.nativeUnitValue !== value.nativeUnitValue) return false;
+      if (action === "ALCHEMY" && id === String(details?.resultItemId || "")
+          && (value.nativeValue !== details.resultNativeValue
+            || value.nativeUnitValue !== details.resultNativeUnitValue)) return false;
+      if (oldValue.nativeSellable !== value.nativeSellable) {
+        const equipmentTransition = (action === "EQUIP" || action === "UNEQUIP")
+          && old.equipped !== current.equipped;
+        if (!equipmentTransition
+            || (current.equipped === true && value.nativeSellable !== false)
+            || (current.equipped === false && oldValue.nativeSellable !== false)) return false;
+      }
+      continue;
+    }
+
+    if (oldValue.nativeUnitValue < 0
+        || value.nativeUnitValue !== oldValue.nativeUnitValue
+        || value.nativeValue !== value.nativeUnitValue * Number(current.quantity)
+        || value.nativeSellable !== oldValue.nativeSellable) return false;
+    if (action === "ALCHEMY" && id === String(details?.resultItemId || "")
+        && (value.nativeValue !== details.resultNativeValue
+          || value.nativeUnitValue !== details.resultNativeUnitValue)) return false;
+
+    if (isPickupOrBuy && Number(current.quantity) > Number(old.quantity)) {
+      if (sourceFloorBefore.length !== 1) return false;
+      const floorItem = sourceFloorBefore[0];
+      const incomingQuantity = Number(floorItem.quantity);
+      if (!Number.isInteger(incomingQuantity) || incomingQuantity < 1
+          || Number(current.quantity) !== Number(old.quantity) + incomingQuantity
+          || Number(floorItem.nativeUnitValue) !== oldValue.nativeUnitValue
+          || Number(floorItem.nativeValue) !== incomingQuantity * oldValue.nativeUnitValue
+          || value.nativeValue !== oldValue.nativeValue + Number(floorItem.nativeValue)) return false;
+    }
+  }
+
+  // A stable item removed from the inventory is already covered by the action-specific delta.
+  // DROP/THROW also conserve the stored native value between inventory remainder and floor delta.
+  if (action === "DROP" || action === "THROW") {
+    const detailsItemId = String(details?.itemId || ""), resultId = String(details?.resultItemId || "");
+    const oldSourceRows = beforeValues.get(detailsItemId);
+    const oldSourceItem = beforeItems.get(detailsItemId);
+    const newSourceRows = afterValues.get(detailsItemId);
+    const newSourceItem = afterItems.get(detailsItemId);
+    if (!oldSourceRows || !oldSourceItem || !resultId) return false;
+    const oldSourceValue = Number(oldSourceRows.nativeValue);
+    const remainderValue = newSourceRows && newSourceItem ? Number(newSourceRows.nativeValue) : 0;
+    const droppedValue = oldSourceValue - remainderValue;
+    if (!Number.isInteger(droppedValue) || droppedValue < 0) return false;
+    const oldResultRows = findFloorItems(previousHeapsValue, resultId);
+    const newResultRows = findFloorItems(nextHeapsValue, resultId);
+    if (oldResultRows.length > 1 || newResultRows.length !== 1
+        || !Number.isInteger(newResultRows[0].nativeValue) || newResultRows[0].nativeValue < 0) return false;
+    const oldFloorValue = oldResultRows.length === 1 ? Number(oldResultRows[0].nativeValue) : 0;
+    if (!Number.isInteger(oldFloorValue)
+        || Number(newResultRows[0].nativeValue) - oldFloorValue !== droppedValue) return false;
+  }
+  return true;
+}
+
 function itemValueWithout(value: any, ignored: string[]): any {
   const result: any = {};
   for (const key of Object.keys(value || {})) if (!ignored.includes(key)) result[key] = value[key];
@@ -2285,6 +2404,13 @@ export function isValidNativeAlchemyIntent(level: any, dataValue: unknown, depth
       || typeof data.resultItemClass !== "string" || data.resultItemClass.length < 1 || data.resultItemClass.length > 256
       || !Number.isInteger(data.resultQuantity) || data.resultQuantity < 1 || data.resultQuantity > 100000
       || typeof data.resultStackable !== "boolean"
+      || (data.resultNativeValue !== undefined && (!Number.isInteger(data.resultNativeValue)
+        || data.resultNativeValue < 0 || data.resultNativeValue > 10000000))
+      || (data.resultNativeUnitValue !== undefined && (!Number.isInteger(data.resultNativeUnitValue)
+        || data.resultNativeUnitValue < -1 || data.resultNativeUnitValue > 10000000))
+      || (data.resultNativeValue !== undefined && data.resultNativeUnitValue !== undefined
+        && data.resultNativeUnitValue >= 0 && data.resultNativeValue !== data.resultNativeUnitValue * data.resultQuantity
+        && data.resultNativeUnitValue !== -1)
       || !["INVENTORY", "HEAP"].includes(String(data.resultLocation))
       || typeof data.resultHeapId !== "string"
       || (data.resultLocation === "INVENTORY" && data.resultHeapId !== "")
@@ -2349,6 +2475,8 @@ export function isValidNativeAlchemyInventoryMutation(previousValue: unknown, ne
       || accepted.resultItemId !== details.resultItemId || accepted.resultItemClass !== details.resultItemClass
       || accepted.resultQuantity !== details.resultQuantity || accepted.resultStackable !== details.resultStackable
       || accepted.resultLocation !== details.resultLocation || accepted.resultHeapId !== details.resultHeapId
+      || (details.resultNativeValue !== undefined && accepted.resultNativeValue !== details.resultNativeValue)
+      || (details.resultNativeUnitValue !== undefined && accepted.resultNativeUnitValue !== details.resultNativeUnitValue)
       || accepted.alchemyEnergyBefore !== details.alchemyEnergyBefore || accepted.alchemyEnergyAfter !== details.alchemyEnergyAfter
       || !Number.isInteger(previous.alchemyEnergy) || previous.alchemyEnergy !== details.alchemyEnergyBefore
       || !Number.isInteger(next.alchemyEnergy) || next.alchemyEnergy !== details.alchemyEnergyAfter
@@ -2407,7 +2535,9 @@ export function isValidNativeAlchemyHeapMutation(previousHeaps: any[], nextHeaps
       || accepted.actionType !== "ALCHEMY" || accepted.resultLocation !== details.resultLocation
       || accepted.resultItemId !== details.resultItemId || accepted.resultItemClass !== details.resultItemClass
       || accepted.resultQuantity !== details.resultQuantity || accepted.resultStackable !== details.resultStackable
-      || accepted.resultHeapId !== details.resultHeapId) return false;
+      || accepted.resultHeapId !== details.resultHeapId
+      || (details.resultNativeValue !== undefined && accepted.resultNativeValue !== details.resultNativeValue)
+      || (details.resultNativeUnitValue !== undefined && accepted.resultNativeUnitValue !== details.resultNativeUnitValue)) return false;
   if (details.resultLocation === "INVENTORY") return sameNativeItemValue(previousHeaps,nextHeaps);
   if (details.resultLocation !== "HEAP" || !Number.isInteger(target) || target < 0) return false;
   const oldAt = previousHeaps.filter((heap: any) => Number(heap.pos) === target);
@@ -2435,7 +2565,9 @@ export function isValidNativeAlchemyHeapMutation(previousHeaps: any[], nextHeaps
   const output = newOutput[0];
   if (String(output.className || "") !== String(details.resultItemClass) || output.stackable !== details.resultStackable
       || !Number.isInteger(output.quantity) || output.quantity < 1
-      || typeof output.serializedBundle !== "string" || !output.serializedBundle.includes(String(details.resultItemId))) return false;
+      || typeof output.serializedBundle !== "string" || !output.serializedBundle.includes(String(details.resultItemId))
+      || (details.resultNativeValue !== undefined && output.nativeValue !== details.resultNativeValue)
+      || (details.resultNativeUnitValue !== undefined && output.nativeUnitValue !== details.resultNativeUnitValue)) return false;
   if (!sameNativeItemValue(oldItems.filter((item: any) => String(item.itemId || "") !== String(details.resultItemId)),
       newHeap.items.filter((item: any) => String(item.itemId || "") !== String(details.resultItemId)))) return false;
   if (!oldOutput.length) return output.quantity === Number(details.resultQuantity);
@@ -2964,6 +3096,8 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     if (beforeHero.notesBundle !== afterHero.notesBundle) return false;
   }
   if (action !== "INTERACT" && action !== "PICKUP" && beforeHero.questStateBundle !== afterHero.questStateBundle) return false;
+  if (!isValidNativeItemEconomyIndexMutation(trustedHeroStateValue || previous.heroStateJson,
+      next.heroStateJson, action, next.nativeMutationDetails, previous.heaps, next.heaps)) return false;
   return true;
 }
 /** Rejects partial/legacy level payloads before any room state is replaced. */
@@ -4686,6 +4820,8 @@ export class MatchRoom {
                   && acceptedPayload?.sourceQuantityBefore === mutationDetails.sourceQuantityBefore
                   && acceptedPayload?.stackable === mutationDetails.stackable)
                 && (mutationAction !== "ALCHEMY" || mutationDetails != null
+                  && acceptedPayload?.resultNativeValue === mutationDetails.resultNativeValue
+                  && acceptedPayload?.resultNativeUnitValue === mutationDetails.resultNativeUnitValue
                   && sameNativeItemValue(acceptedPayload?.ingredients, mutationDetails.ingredients)
                   && acceptedPayload?.alchemyEnergyBefore === mutationDetails.alchemyEnergyBefore
                   && acceptedPayload?.alchemyEnergyAfter === mutationDetails.alchemyEnergyAfter
@@ -6624,7 +6760,8 @@ export class MatchRoom {
                 ingredients:data.ingredients, alchemyEnergyBefore:data.alchemyEnergyBefore, alchemyEnergyAfter:data.alchemyEnergyAfter,
                 resultItemId:String(data.resultItemId), resultItemClass:String(data.resultItemClass),
                 resultQuantity:Number(data.resultQuantity), resultStackable:data.resultStackable,
-                resultLocation:String(data.resultLocation), resultHeapId:String(data.resultHeapId || "") };
+                resultLocation:String(data.resultLocation), resultHeapId:String(data.resultHeapId || ""),
+                resultNativeValue:Number(data.resultNativeValue), resultNativeUnitValue:Number(data.resultNativeUnitValue) };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }

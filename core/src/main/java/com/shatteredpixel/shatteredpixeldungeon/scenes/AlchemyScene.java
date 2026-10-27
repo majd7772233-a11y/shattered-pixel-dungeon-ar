@@ -982,6 +982,41 @@ public class AlchemyScene extends PixelScene {
             return;
         }
 
+        Item resultEconomyItem = null;
+        if ("INVENTORY".equals(location)) {
+            for (Item candidate : Dungeon.hero.belongings.getAllItems(Item.class)) {
+                if (candidate != null && outputItemId.equals(candidate.multiplayerItemId())
+                        && outputClass.equals(candidate.getClass().getName())) {
+                    if (resultEconomyItem != null) {
+                        manager.requestResync(manager.getLastSequence());
+                        if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+                        return;
+                    }
+                    resultEconomyItem = candidate;
+                }
+            }
+        } else {
+            com.shatteredpixel.shatteredpixeldungeon.items.Heap resultHeap = Dungeon.level.heaps.get(sourcePos);
+            if (resultHeap != null) for (Item candidate : resultHeap.items) {
+                if (candidate != null && outputItemId.equals(candidate.multiplayerItemId())
+                        && outputClass.equals(candidate.getClass().getName())) {
+                    if (resultEconomyItem != null) {
+                        manager.requestResync(manager.getLastSequence());
+                        if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+                        return;
+                    }
+                    resultEconomyItem = candidate;
+                }
+            }
+        }
+        if (resultEconomyItem == null) {
+            manager.requestResync(manager.getLastSequence());
+            if (!remainingForUi.isEmpty()) populate(remainingForUi, Dungeon.hero.belongings);
+            return;
+        }
+        final int resultNativeValue = resultEconomyItem.value();
+        final int resultNativeUnitValue = SPDLevelSnapshot.nativeUnitValue(resultEconomyItem);
+
         Map<String,Object> details = new HashMap<>();
         details.put("from",sourcePos);
         details.put("to",sourcePos);
@@ -996,6 +1031,8 @@ public class AlchemyScene extends PixelScene {
         details.put("resultItemClass",outputClass);
         details.put("resultQuantity",outputQuantity);
         details.put("resultStackable",outputStackable);
+        details.put("resultNativeValue",resultNativeValue);
+        details.put("resultNativeUnitValue",resultNativeUnitValue);
         details.put("resultLocation",location);
         details.put("resultHeapId",heapId);
         String detailsJson = json.toJson(details);
