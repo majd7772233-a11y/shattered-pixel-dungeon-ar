@@ -779,7 +779,7 @@ public class Item implements Bundlable {
 							if (publishMissileCombatImpact) {
 								if (!(i instanceof MissileWeapon) || Dungeon.level == null || sourceHeroStateBefore == null) {
 									multiplayer.requestResync(multiplayer.getLastSequence());
-									user.ready();
+									user.spendAndNext(delay);
 									return;
 								}
 								Heap targetHeapBefore = Dungeon.level.heaps.get(cell);
@@ -813,7 +813,7 @@ public class Item implements Bundlable {
 								if (!user.beginNativeProjectileMutation(sourceHeroStateBefore, projectileDetails, cell,
 										expectedHeapId, i.multiplayerItemId(), resultItemId)) {
 									multiplayer.requestResync(multiplayer.getLastSequence());
-									user.ready();
+									user.spendAndNext(delay);
 									return;
 								}
 							}

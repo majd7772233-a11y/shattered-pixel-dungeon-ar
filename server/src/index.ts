@@ -1668,7 +1668,7 @@ export function isValidNativeThrowIntent(level: any, dataValue: unknown, depthVa
       || !Number.isFinite(data.engineActionCost) || data.engineActionCost < 0 || data.engineActionCost > 10
       || (data.projectileImpact !== undefined && data.projectileImpact !== true)
       || (projectileImpact && (!isValidStableMultiplayerId(projectileId)
-        || (data.sourceQuantityBefore === 1 ? projectileId !== itemId : projectileId === itemId))
+        || (data.sourceQuantityBefore === 1 ? projectileId !== itemId : projectileId === itemId)))
       || (!projectileImpact && data.projectileItemId !== undefined)) return false;
   const tiles = level.tiles.filter((tile: any) => Number(tile?.pos) === target);
   if (tiles.length !== 1 || tiles[0].solid === true) return false;
