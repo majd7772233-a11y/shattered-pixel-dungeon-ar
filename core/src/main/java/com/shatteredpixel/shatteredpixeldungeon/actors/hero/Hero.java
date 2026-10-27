@@ -311,7 +311,15 @@ public class Hero extends Char {
 		}
 		String heaps = SPDLevelSnapshot.currentHeapsJson();
 		boolean deadMob = target instanceof Mob && target.HP <= 0;
-		if (deadMob) updated = replaceNativeJsonField(updated, "heaps", heaps);
+		updated = reconcileSecondaryNativeMobHeaps(updated, heaps);
+		boolean secondaryMobDeath = updated != null && hasSecondaryNativeMobDeath(updated);
+		if (deadMob || secondaryMobDeath) {
+			if (hasNativeJsonField(updated, "heaps")) {
+				updated = replaceNativeJsonField(updated, "heaps", heaps);
+			} else {
+				updated = appendNativeJsonField(updated, "heaps", heaps);
+			}
+		}
 		updated = appendNativeJsonField(updated, "projectileOutcome", json.toJson(outcome));
 		if ("HEAP".equals(outcome)) updated = appendNativeJsonField(updated, "projectileHeaps", heaps);
 		if (updated == null) {
@@ -333,6 +341,57 @@ public class Hero extends Char {
 		pendingNativeProjectileItemId = null;
 		pendingNativeProjectileResultItemId = null;
 		pendingNativeProjectileCell = -1;
+	}
+
+	private static boolean hasNativeJsonField(String json, String field) {
+		if (json == null || field == null) return false;
+		try {
+			com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+			return root != null && root.get(field) != null;
+		} catch (RuntimeException invalidJson) {
+			return false;
+		}
+	}
+
+	private static boolean hasSecondaryNativeMobDeath(String json) {
+		try {
+			com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+			com.badlogic.gdx.utils.JsonValue secondaryValue = root == null ? null : root.get("secondaryMobDeltas");
+			if (secondaryValue == null || !secondaryValue.isString()) return false;
+			com.badlogic.gdx.utils.JsonValue secondary = new com.badlogic.gdx.utils.JsonReader().parse(secondaryValue.asString());
+			com.badlogic.gdx.utils.JsonValue deltas = secondary == null ? null : secondary.get("deltas");
+			for (com.badlogic.gdx.utils.JsonValue delta = deltas == null ? null : deltas.child;
+					 delta != null; delta = delta.next) {
+				if (delta.getInt("hpAfter", -1) == 0) return true;
+			}
+			return false;
+		} catch (RuntimeException invalidJson) {
+			return false;
+		}
+	}
+
+	/** Updates the nested secondary-death snapshot after a projectile changes the same floor. */
+	private static String reconcileSecondaryNativeMobHeaps(String json, String heapsJson) {
+		try {
+			com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+			com.badlogic.gdx.utils.JsonValue secondaryValue = root == null ? null : root.get("secondaryMobDeltas");
+			if (secondaryValue == null || !secondaryValue.isString()) return json;
+			String secondaryText = secondaryValue.asString();
+			com.badlogic.gdx.utils.JsonValue secondary = new com.badlogic.gdx.utils.JsonReader().parse(secondaryText);
+			com.badlogic.gdx.utils.JsonValue deltas = secondary == null ? null : secondary.get("deltas");
+			boolean hasDeath = false;
+			for (com.badlogic.gdx.utils.JsonValue delta = deltas == null ? null : deltas.child;
+					 delta != null; delta = delta.next) {
+				if (delta.getInt("hpAfter", -1) == 0) { hasDeath = true; break; }
+			}
+			if (!hasDeath) return json;
+			String updatedSecondary = replaceNativeJsonField(secondaryText, "heaps", heapsJson);
+			if (updatedSecondary == null) return null;
+			return replaceNativeJsonField(json, "secondaryMobDeltas",
+					new com.badlogic.gdx.utils.Json().toJson(updatedSecondary));
+		} catch (RuntimeException invalidJson) {
+			return null;
+		}
 	}
 
 	private static String replaceNativeJsonField(String json, String field, String replacement) {
