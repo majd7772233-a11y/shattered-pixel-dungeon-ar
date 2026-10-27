@@ -1576,6 +1576,32 @@ function parseNativeInventoryIndex(heroValue: any): any[] | null {
     return rows;
   } catch (_) { return null; }
 }
+export function parseNativeItemEconomyIndex(heroValue: any): any[] | null {
+  const inventory = parseNativeInventoryIndex(heroValue);
+  if (!inventory || typeof heroValue?.nativeItemEconomyJson !== "string"
+      || heroValue.nativeItemEconomyJson.length < 2 || heroValue.nativeItemEconomyJson.length > 200000) return null;
+  try {
+    const rows = JSON.parse(heroValue.nativeItemEconomyJson);
+    if (!Array.isArray(rows) || rows.length !== inventory.length || rows.length > 1024) return null;
+    const inventoryById = new Map<string, any>(inventory.map((row: any) => [String(row.itemId), row]));
+    const ids = new Set<string>();
+    for (const row of rows) {
+      const id = String(row?.itemId || ""), cls = String(row?.className || "");
+      const nativeValue = Number(row?.nativeValue), unitValue = Number(row?.nativeUnitValue);
+      const item = inventoryById.get(id);
+      if (!item || ids.has(id) || cls !== String(item.className) || row.quantity !== item.quantity
+          || !Number.isInteger(nativeValue) || nativeValue < 0 || nativeValue > 10000000
+          || !Number.isInteger(unitValue) || unitValue < -1 || unitValue > 10000000
+          || typeof row.nativeSellable !== "boolean"
+          || (unitValue >= 0 && unitValue * row.quantity !== nativeValue)
+          || (row.quantity === 1 && unitValue !== nativeValue)
+          || (row.nativeSellable && (nativeValue <= 0 || item.equipped === true))) return null;
+      ids.add(id);
+    }
+    return rows;
+  } catch (_) { return null; }
+}
+
 function itemValueWithout(value: any, ignored: string[]): any {
   const result: any = {};
   for (const key of Object.keys(value || {})) if (!ignored.includes(key)) result[key] = value[key];
