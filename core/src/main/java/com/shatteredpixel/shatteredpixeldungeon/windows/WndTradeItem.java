@@ -231,12 +231,121 @@ public class WndTradeItem extends WndInfoItem {
 		if (selling) Shopkeeper.sell();
 	}
 
-	public static void sell( Item item ) {
+	private static boolean isMultiplayerSaleActive() {
+        Hero hero = Dungeon.hero;
+        return hero != null && com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager
+                .getInstance().isMultiplayerActive();
+    }
+
+    /**
+     * Publishes one sale only after native inventory, Gold and Shopkeeper buyback state agree.
+     * Equipped gear and upgrade-tracked missiles fail closed because their extra combat state
+     * does not yet have a narrowly scoped SELL validator.
+     */
+    private static void multiplayerSell(Item item, Shopkeeper shop, boolean oneUnit) {
+        Hero hero = Dungeon.hero;
+        com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+        if (hero == null || item == null || shop == null || Dungeon.level == null
+                || Dungeon.branch != 0 || Dungeon.level.locked || !Dungeon.level.mobs.contains(shop)
+                || !hero.isAlive() || !hero.belongings.contains(item)
+                || !hero.belongings.backpack.items.contains(item) || !Shopkeeper.canSell(item)
+                || item.isEquipped(hero) || (item instanceof MissileWeapon && item.isUpgradable())) {
+            if (hero != null) hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        String shopEntityId = manager.getServerEntityId(shop.id());
+        if (shopEntityId == null || shopEntityId.length() < 8 || shopEntityId.length() > 80) {
+            manager.requestResync(manager.getLastSequence());
+            return;
+        }
+
+        final int sourceQuantityBefore = item.quantity();
+        final String sourceItemId = item.multiplayerItemId();
+        final String itemClass = item.getClass().getName();
+        final int sourceNativeValue = item.value();
+        final int sourceNativeUnitValue = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot
+                .nativeUnitValue(item);
+        final int sourceItemLevel = item.level();
+        final boolean sourceCursed = item.cursed;
+        final boolean sourceCursedKnown = item.cursedKnown;
+        final boolean stackable = item.stackable;
+        final boolean partial = oneUnit && sourceQuantityBefore > 1;
+        if (partial && (!stackable || sourceNativeUnitValue < 0
+                || (long) sourceNativeUnitValue * sourceQuantityBefore != sourceNativeValue)) {
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        final int soldQuantity = partial ? 1 : sourceQuantityBefore;
+        final int price = partial ? sourceNativeUnitValue : sourceNativeValue;
+        if (price <= 0 || price > 10000000) {
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        final int depthBefore = Dungeon.depth;
+        final int posBefore = hero.pos;
+        final float cooldownBefore = hero.cooldown();
+        final String heroStateBefore = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot
+                .currentHeroStateJson(hero);
+        if (heroStateBefore == null || heroStateBefore.isEmpty()) {
+            manager.requestResync(manager.getLastSequence());
+            return;
+        }
+
+        Item sold = partial ? item.detach(hero.belongings.backpack) : item.detachAll(hero.belongings.backpack);
+        if (sold == null || sold.quantity() != soldQuantity
+                || (partial && (sold == item || sourceItemId.equals(sold.multiplayerItemId())
+                    || item.quantity() != sourceQuantityBefore - 1 || !hero.belongings.contains(item)))
+                || (!partial && hero.belongings.contains(item))
+                || Dungeon.level == null || Dungeon.depth != depthBefore || Dungeon.branch != 0
+                || hero.pos != posBefore || sold.value() != price) {
+            manager.requestResync(manager.getLastSequence());
+            return;
+        }
+
+        // Mirrors native SPD sale semantics: the operation does not consume a turn.
+        hero.spend(-hero.cooldown());
+        new Gold(price).doPickUp(hero);
+        shop.buybackItems.add(sold);
+        while (shop.buybackItems.size() > Shopkeeper.MAX_BUYBACK_HISTORY) shop.buybackItems.remove(0);
+
+        com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+        java.util.HashMap<String, Object> details = new java.util.HashMap<>();
+        details.put("shopEntityId", shopEntityId);
+        details.put("sourceItemId", sourceItemId);
+        details.put("resultItemId", sold.multiplayerItemId());
+        details.put("itemClass", itemClass);
+        details.put("sourceQuantityBefore", sourceQuantityBefore);
+        details.put("soldQuantity", soldQuantity);
+        details.put("sourceNativeValue", sourceNativeValue);
+        details.put("sourceNativeUnitValue", sourceNativeUnitValue);
+        details.put("sourceItemLevel", sourceItemLevel);
+        details.put("sourceCursed", sourceCursed);
+        details.put("sourceCursedKnown", sourceCursedKnown);
+        details.put("price", price);
+        details.put("stackable", stackable);
+        details.put("resultItemLevel", sold.level());
+        details.put("resultCursed", sold.cursed);
+        details.put("resultCursedKnown", sold.cursedKnown);
+        details.put("resultNativeValue", sold.value());
+        details.put("resultNativeUnitValue",
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.nativeUnitValue(sold));
+        details.put("resultItemBundle",
+                com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentItemBundle(sold));
+        hero.queueNativeWorldMutation("SELL", posBefore, posBefore, cooldownBefore, heroStateBefore, json.toJson(details));
+        hero.publishPendingNativeWorldMutation();
+    }
+
+    public static void sell( Item item ) {
 		sell(item, null);
 	}
 
 	public static void sell( Item item, Shopkeeper shop ) {
-		
+        if (isMultiplayerSaleActive()) {
+            multiplayerSell(item, shop, false);
+            return;
+        }
+
 		Hero hero = Dungeon.hero;
 		
 		if (item.isEquipped( hero ) && !((EquipableItem)item).doUnequip( hero, false )) {
@@ -266,7 +375,11 @@ public class WndTradeItem extends WndInfoItem {
 	}
 
 	public static void sellOne( Item item, Shopkeeper shop ) {
-		
+        if (isMultiplayerSaleActive()) {
+            multiplayerSell(item, shop, true);
+            return;
+        }
+
 		if (item.quantity() <= 1) {
 			sell( item, shop );
 		} else {

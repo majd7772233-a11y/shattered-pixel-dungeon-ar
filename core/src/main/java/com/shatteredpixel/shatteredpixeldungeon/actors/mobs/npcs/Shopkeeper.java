@@ -328,6 +328,11 @@ public class Shopkeeper extends NPC {
 
 	public static String TURNS_SINCE_HARMED = "turns_since_harmed";
 
+	/** Read-only native state for validated multiplayer shop buyback updates. */
+	public int multiplayerTurnsSinceHarmed() {
+		return turnsSinceHarmed;
+	}
+
 	@Override
 	public void storeInBundle(Bundle bundle) {
 		super.storeInBundle(bundle);

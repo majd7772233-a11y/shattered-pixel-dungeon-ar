@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1707,6 +1707,9 @@ describe("Native equipment, quickslot, and chest transactions", () => {
     expect(isValidNativeEquipmentIntent(JSON.stringify(before),
       {...detail,depth:4,from:9,to:9,targetPos:9,engineActionCost:1},"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(true);
     expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(after),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(true);
+    const slottedBefore=hero([item(id,cls,1,false)],{quickslotsJson:quickslots(0,id,cls,1,"native-bundle-item-id:"+id)});
+    const redirected=hero([item(id,cls,1,true)],{quickslotsJson:quickslots(0,"stable-forged-001","com.example.Forged",1,"native-bundle-item-id:stable-forged-001")});
+    expect(isValidNativeEquipmentMutation(JSON.stringify(slottedBefore),JSON.stringify(redirected),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
     expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true),item("stable-forged-001","com.example.Forged")])),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
     expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true)],{hp:9})),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
   });
@@ -1732,6 +1735,109 @@ describe("Native equipment, quickslot, and chest transactions", () => {
 
 
 
+
+
+
+describe("Native shop SELL transactions", () => {
+  const cls = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const item = (id:string, quantity:number, nativeValue:number, unitValue:number, bundle?:string) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:true,stackable:true,equipped:false,
+    serializedBundle:bundle || ("native-item:"+id+":quantity="+quantity)
+  });
+  const economy = (id:string,quantity:number,nativeValue:number,unitValue:number) => ({
+    itemId:id,className:cls,quantity,nativeValue,nativeUnitValue:unitValue,nativeSellable:true
+  });
+  const hero = (items:any[], money:number, slots:any[], extra:Record<string,any>={}) => ({
+    hp:10,ht:10,pos:9,shielding:0,gold:money,alchemyEnergy:0,cooldown:0,
+    inventoryBundle:"native-inventory-before",
+    combatBundle:"native-combat-before",
+    inventoryItemsJson:JSON.stringify(items),
+    nativeItemEconomyJson:JSON.stringify(items.map((row:any)=>economy(row.itemId,row.quantity,
+      row.quantity===3?90:row.quantity===2?60:row.quantity*30,row.quantity===3||row.quantity===2||row.quantity===1?30:-1))),
+    quickslotsJson:JSON.stringify(slots),
+    notesBundle:"native-notes",questStateBundle:"native-quests",
+    ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,
+    ...extra
+  });
+  const source = (id="stable-sale-source-001", quantity=1, bundle?:string) =>
+    item(id,quantity,quantity*30,30,bundle);
+  const slot = (row:any) => ({slot:0,itemId:row.itemId,className:row.className,
+    quantity:row.quantity,serializedBundle:row.serializedBundle});
+  const shop = (buyback:any[]=[], bundle="native-shopkeeper-before") => ({
+    entityId:"stable-shopkeeper-001",mobId:15,name:"Shopkeeper",pos:10,hp:20,ht:20,shielding:0,state:"Wandering",
+    serializedBundle:bundle,defenseSkill:0,baseSpeed:1,effectiveSpeed:1,cooldown:0,targetCell:-1,
+    targetType:"NONE",targetEntityId:"",enemySeen:false,alerted:false,buffs:[],
+    shopkeeperTurnsSinceHarmed:-1,buybackItems:buyback
+  });
+  const baseLevel = (heaps:any[]=[], mobs:any[]=[shop()]) =>
+    ({depth:4,branch:0,locked:false,width:8,height:8,heaps,mobs});
+  const details = (overrides:Record<string,any>={}) => ({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:0,
+    shopEntityId:"stable-shopkeeper-001",sourceItemId:"stable-sale-source-001",
+    resultItemId:"stable-sale-source-001",itemClass:cls,sourceQuantityBefore:1,soldQuantity:1,
+    sourceNativeValue:30,sourceNativeUnitValue:30,sourceItemLevel:0,sourceCursed:false,sourceCursedKnown:true,
+    price:30,stackable:true,resultItemLevel:0,resultCursed:false,resultCursedKnown:true,resultNativeValue:30,
+    resultNativeUnitValue:30,resultItemBundle:"native-item:stable-sale-source-001:quantity=1",...overrides
+  });
+  const soldRow = (id:string,quantity:number,value:number,unit:number,bundle:string) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:true,stackable:true,shopPrice:-1,
+    nativeValue:value,nativeUnitValue:unit,serializedBundle:bundle
+  });
+  const accepted = (d:any) => ({...d,playerId:"player-001",actionType:"SELL"});
+
+  it("accepts a complete one-item sale only with exact native gold credit and a matching Shopkeeper buyback append",()=>{
+    const priorItem=source(), before=hero([priorItem],30,[slot(priorItem)]);
+    const after=hero([],60,[],{inventoryBundle:"native-inventory-after"});
+    const d=details(), oldShop=shop(), newShop=shop([soldRow(d.resultItemId,1,30,30,d.resultItemBundle)],"native-shopkeeper-after");
+    const level=baseLevel();
+    expect(parseNativeItemEconomyIndex(before)).not.toBeNull();
+    expect(isValidNativeSellIntent(level,d,4,"player-001",{pos:9,state:"ALIVE"},JSON.stringify(before))).toBe(true);
+    expect(isValidNativeSellInventoryMutation(JSON.stringify(before),JSON.stringify(after),d,accepted(d))).toBe(true);
+    expect(isValidNativeSellShopkeeperMutation([oldShop],[newShop],d,accepted(d))).toBe(true);
+  });
+
+  it("accepts exactly one unit from a linear stack and preserves the source remainder and quickslot",()=>{
+    const priorItem=source("stable-sale-source-001",3);
+    const remainder=item(priorItem.itemId,2,60,30,"native-item:"+priorItem.itemId+":quantity=2");
+    const before=hero([priorItem],0,[slot(priorItem)]);
+    const after=hero([remainder],30,[slot(remainder)],{inventoryBundle:"native-inventory-after"});
+    const resultId="stable-sale-result-001", resultBundle="native-item:"+resultId+":quantity=1";
+    const d=details({resultItemId:resultId,sourceQuantityBefore:3,soldQuantity:1,
+      sourceNativeValue:90,sourceNativeUnitValue:30,price:30,
+      resultNativeValue:30,resultNativeUnitValue:30,resultItemBundle:resultBundle});
+    const buyback=[soldRow(resultId,1,30,30,resultBundle)];
+    expect(isValidNativeSellIntent(baseLevel(),d,4,"player-001",{pos:9,state:"ALIVE"},JSON.stringify(before))).toBe(true);
+    expect(isValidNativeSellInventoryMutation(JSON.stringify(before),JSON.stringify(after),d,accepted(d))).toBe(true);
+    expect(isValidNativeSellShopkeeperMutation([shop()],[shop(buyback,"native-shopkeeper-after")],d,accepted(d))).toBe(true);
+  });
+
+  it("rejects forged prices, quantity loss, redirected sellers and inconsistent buyback state",()=>{
+    const priorItem=source(), before=hero([priorItem],0,[slot(priorItem)]);
+    const after=hero([],60,[],{inventoryBundle:"native-inventory-after"});
+    const d=details(), level=baseLevel(), player={pos:9,state:"ALIVE"};
+    expect(isValidNativeSellIntent(level,details({price:31}),4,"player-001",player,JSON.stringify(before))).toBe(false);
+    expect(isValidNativeSellIntent({...level,mobs:[{...shop(),entityId:"stable-other-shop-001"}]},
+      d,4,"player-001",player,JSON.stringify(before))).toBe(false);
+    expect(isValidNativeSellInventoryMutation(JSON.stringify(before),JSON.stringify(hero([],61,[],{inventoryBundle:"native-inventory-after"})),
+      d,accepted(d))).toBe(false);
+    expect(isValidNativeSellInventoryMutation(JSON.stringify(before),JSON.stringify(hero([priorItem],60,[slot(priorItem)],
+      {inventoryBundle:"native-inventory-after"})),d,accepted(d))).toBe(false);
+    expect(isValidNativeSellShopkeeperMutation([shop()],[shop([soldRow(d.resultItemId,1,99,99,d.resultItemBundle)],"native-shopkeeper-after")],d,accepted(d))).toBe(false);
+  });
+
+  it("rejects non-linear partial stack values and any non-sellable source",()=>{
+    const priorItem=source("stable-sale-source-001",3);
+    const before=hero([priorItem],0,[slot(priorItem)]);
+    const partial=details({sourceQuantityBefore:3,soldQuantity:1,sourceNativeValue:91,sourceNativeUnitValue:-1,price:30,
+      resultItemId:"stable-sale-result-001",resultItemBundle:"native-item:stable-sale-result-001:quantity=1"});
+    expect(isValidNativeSellIntent(baseLevel(),partial,4,"player-001",{pos:9,state:"ALIVE"},JSON.stringify(before))).toBe(false);
+    const unsellable=hero([priorItem],0,[slot(priorItem)],{
+      nativeItemEconomyJson:JSON.stringify([{...economy(priorItem.itemId,3,90,30),nativeSellable:false}])
+    });
+    expect(parseNativeItemEconomyIndex(unsellable)).not.toBeNull();
+    expect(isValidNativeSellIntent(baseLevel(),details(),4,"player-001",{pos:9,state:"ALIVE"},JSON.stringify(unsellable))).toBe(false);
+  });
+});
 
 describe("Native self-buff armor ability transactions", () => {
   const ability = "com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.warrior.Endure";

@@ -171,6 +171,19 @@
         },
         "alerted": {
           "type": "boolean"
+        },
+        "buybackItems": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/definitions/NativeItem"
+          },
+          "description": "Structured Shopkeeper buyback records used to validate native SELL transactions."
+        },
+        "shopkeeperTurnsSinceHarmed": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 100000
         }
       }
     },
@@ -258,6 +271,7 @@
             "EQUIP",
             "UNEQUIP",
             "BUY",
+            "SELL",
             "USE_ITEM",
             "THROW",
             "ALCHEMY",
@@ -490,6 +504,68 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "maximum": 100
+            },
+            "shopEntityId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "sourceItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80
+            },
+            "soldQuantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000
+            },
+            "sourceNativeValue": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "sourceNativeUnitValue": {
+              "type": "integer",
+              "minimum": -1,
+              "maximum": 10000000
+            },
+            "sourceItemLevel": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 10000
+            },
+            "sourceCursed": {
+              "type": "boolean"
+            },
+            "sourceCursedKnown": {
+              "type": "boolean"
+            },
+            "resultItemBundle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200000
+            },
+            "resultNativeValue": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000
+            },
+            "resultNativeUnitValue": {
+              "type": "integer",
+              "minimum": -1,
+              "maximum": 10000000
+            },
+            "resultItemLevel": {
+              "type": "integer",
+              "minimum": -100,
+              "maximum": 10000
+            },
+            "resultCursed": {
+              "type": "boolean"
+            },
+            "resultCursedKnown": {
+              "type": "boolean"
             }
           }
         }
@@ -2013,6 +2089,18 @@
           "minimum": -1,
           "maximum": 10000000,
           "description": "Native Shopkeeper.sellPrice(item) for FOR_SALE heaps, otherwise -1."
+        },
+        "nativeValue": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000,
+          "description": "Exact native Item.value() at this quantity, used to validate currency transactions."
+        },
+        "nativeUnitValue": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 10000000,
+          "description": "Per-unit native value if linear in stack quantity; -1 if a partial sale is not provably linear."
         },
         "serializedBundle": {
           "type": "string",

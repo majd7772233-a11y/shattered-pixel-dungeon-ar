@@ -10,6 +10,7 @@ public enum NetworkActionType {
     UNEQUIP,
     OPEN_CHEST,
     BUY,
+    SELL,
     INTERACT,
     UNLOCK,
     LVL_TRANSITION,

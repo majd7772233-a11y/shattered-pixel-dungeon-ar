@@ -10,8 +10,10 @@ import com.watabou.utils.Bundle;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Shopkeeper;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
@@ -104,6 +106,9 @@ public final class SPDLevelSnapshot {
         public String targetEntityId = "";
         public boolean enemySeen;
         public boolean alerted;
+        /** Structured native buyback state for validating a multiplayer SELL transaction. */
+        public List<ItemData> buybackItems = new ArrayList<>();
+        public int shopkeeperTurnsSinceHarmed = -1;
         public List<BuffData> buffs = new ArrayList<>();
     }
 
@@ -122,6 +127,10 @@ public final class SPDLevelSnapshot {
         public boolean stackable;
         /** Native Shopkeeper.sellPrice(item) for FOR_SALE heaps, otherwise -1. */
         public int shopPrice = -1;
+        /** Native Item.value() at this exact quantity. */
+        public int nativeValue = -1;
+        /** Native per-unit value when linear, or -1 when partial sale cannot be verified. */
+        public int nativeUnitValue = -1;
         public String serializedBundle = "";
     }
 
@@ -279,6 +288,15 @@ public final class SPDLevelSnapshot {
                 m.enemySeen = mob.multiplayerEnemySeen();
                 m.alerted = mob.multiplayerAlerted();
                 m.serializedBundle = currentMobBundle(mob);
+                if (mob instanceof Shopkeeper) {
+                    Shopkeeper shopkeeper = (Shopkeeper) mob;
+                    m.shopkeeperTurnsSinceHarmed = shopkeeper.multiplayerTurnsSinceHarmed();
+                    for (Item buyback : shopkeeper.buybackItems) {
+                        if (buyback != null && buyback.quantity() > 0) {
+                            m.buybackItems.add(currentItemData(buyback, -1));
+                        }
+                    }
+                }
                 for (Buff buff : mob.buffs()) {
                     BuffData buffData = new BuffData();
                     Bundle buffBundle = new Bundle();
@@ -358,6 +376,33 @@ public final class SPDLevelSnapshot {
         return new Json().toJson(currentHeaps(Dungeon.level));
     }
 
+    /** Returns a per-unit value only when it is linear in the native item quantity. */
+    public static int nativeUnitValue(Item item) {
+        if (item == null || item.quantity() <= 0) return -1;
+        int value = item.value();
+        if (item.quantity() == 1) return value;
+        if (!item.stackable || value < 0 || value % item.quantity() != 0) return -1;
+        return value / item.quantity();
+    }
+
+    private static ItemData currentItemData(Item item, int shopPrice) {
+        ItemData d = new ItemData();
+        d.itemId = item.multiplayerItemId();
+        d.className = item.getClass().getName();
+        d.quantity = item.quantity();
+        d.level = item.level();
+        d.cursed = item.cursed;
+        d.cursedKnown = item.cursedKnown;
+        d.stackable = item.stackable;
+        d.shopPrice = shopPrice;
+        d.nativeValue = item.value();
+        d.nativeUnitValue = nativeUnitValue(item);
+        Bundle itemBundle = new Bundle();
+        itemBundle.put("item", item);
+        d.serializedBundle = itemBundle.toString();
+        return d;
+    }
+
     private static List<HeapData> currentHeaps(Level level) {
         List<HeapData> heaps = new ArrayList<>();
         if (level == null || level.heaps == null) return heaps;
@@ -373,20 +418,9 @@ public final class SPDLevelSnapshot {
             h.autoExplored = heap.autoExplored;
             for (Item item : heap.items) {
                 if (item == null) continue;
-                ItemData d = new ItemData();
-                d.itemId = item.multiplayerItemId();
-                d.className = item.getClass().getName();
-                d.quantity = item.quantity();
-                d.level = item.level();
-                d.cursed = item.cursed;
-                d.cursedKnown = item.cursedKnown;
-                d.stackable = item.stackable;
-                d.shopPrice = heap.type == Heap.Type.FOR_SALE
+                int shopPrice = heap.type == Heap.Type.FOR_SALE
                         ? item.value() * 5 * (Dungeon.depth / 5 + 1) : -1;
-                Bundle itemBundle = new Bundle();
-                itemBundle.put("item", item);
-                d.serializedBundle = itemBundle.toString();
-                h.items.add(d);
+                h.items.add(currentItemData(item, shopPrice));
             }
             heaps.add(h);
         }
@@ -429,8 +463,21 @@ public final class SPDLevelSnapshot {
         hero.belongings.storeInBundle(inventory);
         heroState.put("inventoryBundle", inventory.toString());
         List<Map<String, Object>> inventoryIndex = new ArrayList<>();
+        List<Map<String, Object>> nativeItemEconomy = new ArrayList<>();
         for (Item item : hero.belongings.getAllItems(Item.class)) {
             if (item == null || item.quantity() <= 0) continue;
+            Map<String, Object> economyEntry = new HashMap<>();
+            economyEntry.put("itemId", item.multiplayerItemId());
+            economyEntry.put("className", item.getClass().getName());
+            economyEntry.put("quantity", item.quantity());
+            economyEntry.put("nativeValue", item.value());
+            economyEntry.put("nativeUnitValue", nativeUnitValue(item));
+            economyEntry.put("nativeSellable", item.value() > 0 && item.value() <= 10000000
+                    && Shopkeeper.canSell(item) && !item.isEquipped(hero)
+                    && hero.belongings.backpack.items.contains(item)
+                    && !(item instanceof MissileWeapon && item.isUpgradable())
+                    && (item.quantity() == 1 || nativeUnitValue(item) >= 0));
+            nativeItemEconomy.add(economyEntry);
             Map<String, Object> entry = new HashMap<>();
             entry.put("itemId", item.multiplayerItemId());
             entry.put("className", item.getClass().getName());
@@ -444,6 +491,7 @@ public final class SPDLevelSnapshot {
             inventoryIndex.add(entry);
         }
         heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
+        heroState.put("nativeItemEconomyJson", new Json().toJson(nativeItemEconomy));
         if (hero == Dungeon.hero) {
             heroState.put("gold", Dungeon.gold);
             heroState.put("alchemyEnergy", Dungeon.energy);
