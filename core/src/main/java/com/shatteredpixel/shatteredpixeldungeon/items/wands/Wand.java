@@ -115,6 +115,11 @@ public abstract class Wand extends Item {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		if (AC_ZAP.equals(action)
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.isLocalMultiplayerHero(hero)) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
 		super.execute( hero, action );
 
 		if (action.equals( AC_ZAP )) {

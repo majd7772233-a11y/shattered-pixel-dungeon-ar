@@ -227,6 +227,7 @@ public class Potion extends Item {
 	@Override
 	public void execute( final Hero hero, String action ) {
 
+		if (AC_DRINK.equals(action) && com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.rejectIfUnsupported(hero, this, "DRINK")) return;
 		super.execute( hero, action );
 		
 		if (action.equals( AC_CHOOSE )){
@@ -285,7 +286,10 @@ public class Potion extends Item {
 	}
 	
 	protected void drink( Hero hero ) {
-		
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.Context nativeUse =
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.begin(hero, this, "DRINK");
+		if (com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.isBlocked(nativeUse)) return;
+
 		detach( hero.belongings.backpack );
 		
 		hero.spend( TIME_TO_DRINK );
@@ -302,6 +306,7 @@ public class Potion extends Item {
 				Talent.onPotionUsed(curUser, curUser.pos, talentFactor);
 			}
 		}
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.finish(nativeUse);
 	}
 	
 	@Override

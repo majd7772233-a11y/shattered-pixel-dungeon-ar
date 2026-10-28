@@ -69,6 +69,11 @@ public class Food extends Item {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.Context nativeUse = null;
+		if (action.equals(AC_EAT)) {
+			nativeUse = com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.begin(hero, this, "EAT");
+			if (com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.isBlocked(nativeUse)) return;
+		}
 		super.execute( hero, action );
 
 		if (action.equals( AC_EAT )) {
@@ -87,6 +92,7 @@ public class Food extends Item {
 			hero.spend( eatingTime() );
 
 			Talent.onFoodEaten(hero, energy, this);
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.finish(nativeUse);
 			
 			Statistics.foodEaten++;
 			Badges.validateFoodEaten();

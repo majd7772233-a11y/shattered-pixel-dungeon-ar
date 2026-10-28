@@ -74,6 +74,17 @@ public class MultiplayerActionDispatcher {
                 String chestDetails = "{\"heapId\":" + json.toJson(chest.multiplayerHeapId())
                         + ",\"heapType\":" + json.toJson(chest.type.name()) + "}";
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore, chestDetails);
+            } else if (action instanceof HeroAction.Mine) {
+                int sourceTerrain = Dungeon.level.map[targetPos];
+                if (sourceTerrain != com.shatteredpixel.shatteredpixeldungeon.levels.Terrain.WALL
+                        && sourceTerrain != com.shatteredpixel.shatteredpixeldungeon.levels.Terrain.WALL_DECO
+                        && sourceTerrain != com.shatteredpixel.shatteredpixeldungeon.levels.Terrain.MINE_CRYSTAL
+                        && sourceTerrain != com.shatteredpixel.shatteredpixeldungeon.levels.Terrain.MINE_BOULDER) {
+                    hero.rejectUnsupportedMultiplayerWorldAction();
+                    return;
+                }
+                hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore,
+                        heroStateBefore, "{\\"sourceTerrain\\":" + sourceTerrain + "}");
             } else {
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore);
             }
