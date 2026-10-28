@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeInteractInventoryMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
@@ -1342,8 +1342,10 @@ describe('Authoritative native movement and floor transition validation', () => 
       tiles: Array.from({ length: 64 }, (_, pos) => ({ pos, terrain: 1 })), heaps: [], mobs: []
     };
     level.tiles[10].terrain = 10;
-    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
-    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 11 }, level, 4, 9)).toBe(false);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10, engineActionCost: 1 }, level, 4, 9)).toBe(true);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 11, engineActionCost: 1 }, level, 4, 9)).toBe(false);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(false);
+    expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10, engineActionCost: 11 }, level, 4, 9)).toBe(false);
     level.tiles[10].terrain = 1;
     level.heaps.push({ heapId: "stable-lock-chest-001", pos: 10, type: "LOCKED_CHEST", items: [] });
     expect(isValidNativeWorldActionIntent("OPEN_CHEST", {
@@ -1356,8 +1358,8 @@ describe('Authoritative native movement and floor transition validation', () => 
     }, level, 4, 9)).toBe(false);
     level.heaps = [];
     level.mobs.push({ pos: 10, hp: 4, entityId: "stable-world-npc-0001" });
-    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 10 }, level, 4, 9)).toBe(true);
-    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 30 }, level, 4, 9)).toBe(false);
+    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 10, engineActionCost: 1 }, level, 4, 9)).toBe(true);
+    expect(isValidNativeWorldActionIntent("INTERACT", { depth: 4, from: 9, targetPos: 30, engineActionCost: 1 }, level, 4, 9)).toBe(false);
     expect(isValidNativeWorldActionIntent("UNLOCK", { depth: 4, from: 9, targetPos: 10 }, { ...level, locked: true }, 4, 9)).toBe(false);
   });
 
@@ -1829,6 +1831,44 @@ describe("Native inventory economic value index", () => {
     expect(isValidNativeItemEconomyIndexMutation(before,after,"ALCHEMY",details,[],[])).toBe(true);
     expect(isValidNativeItemEconomyIndexMutation(before,hero([afterOutput],[economy(resultId,3,91,30)]),
       "ALCHEMY",details,[],[])).toBe(false);
+  });
+});
+
+describe("Generic native NPC interaction inventory boundary", () => {
+  const itemClass="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+  const row=(id:string,quantity=2)=>({itemId:id,className:itemClass,quantity,level:0,cursed:false,cursedKnown:false,
+    stackable:true,equipped:false,serializedBundle:"native-scroll:"+id+":q="+quantity});
+  const economy=(item:any)=>({itemId:item.itemId,className:item.className,quantity:item.quantity,
+    nativeValue:item.quantity*10,nativeUnitValue:10,nativeSellable:true});
+  const hero=(items:any[],extra:Record<string,any>={})=>({
+    inventoryBundle:"inventory-snapshot",inventoryItemsJson:JSON.stringify(items),
+    nativeItemEconomyJson:JSON.stringify(items.map(economy)),quickslotsJson:"[]",
+    combatBundle:JSON.stringify({STR:10,items:"inventory-snapshot",buffs:[]}),
+    buffCount:0,gold:50,alchemyEnergy:0,hp:10,ht:10,shielding:0,
+    ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,...extra
+  });
+  it("allows unrelated native NPC/quest interactions only when inventory and economy stay unchanged",()=>{
+    const before=hero([row("native-interact-scroll-001")]);
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify({...before,
+      notesBundle:"updated-notes",questStateBundle:"updated-quest"}))).toBe(true);
+  });
+  it("rejects inventory removal, quantity loss, quickslot changes and currency injection",()=>{
+    const item=row("native-interact-scroll-001");
+    const before=hero([item]);
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify(hero([])))).toBe(false);
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify(hero([row(item.itemId,1)])))).toBe(false);
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify(hero([item],{gold:5000})))).toBe(false);
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify(hero([item],{
+      quickslotsJson:JSON.stringify([{slot:0,itemId:"forged-native-item-001",className:itemClass,quantity:1,
+        serializedBundle:"forged-native-item-001"}])
+    })))).toBe(false);
+  });
+  it("rejects forged combat-bundle changes that would add stats or buffs",()=>{
+    const before=hero([row("native-interact-scroll-001")]);
+    const forged=hero([row("native-interact-scroll-001")],{
+      combatBundle:JSON.stringify({STR:99,items:"inventory-snapshot",buffs:[]})
+    });
+    expect(isValidNativeInteractInventoryMutation(JSON.stringify(before),JSON.stringify(forged))).toBe(false);
   });
 });
 
