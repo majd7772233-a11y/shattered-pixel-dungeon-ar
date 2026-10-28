@@ -84,7 +84,7 @@ public class MultiplayerActionDispatcher {
                     return;
                 }
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore,
-                        heroStateBefore, "{\\"sourceTerrain\\":" + sourceTerrain + "}");
+                        heroStateBefore, "{\"sourceTerrain\":" + sourceTerrain + "}");
             } else {
                 hero.queueNativeWorldMutation(actionType.name(), currentPos, targetPos, cooldownBefore, heroStateBefore);
             }
