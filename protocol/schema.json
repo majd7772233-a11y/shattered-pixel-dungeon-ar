@@ -336,6 +336,11 @@
           "additionalProperties": false,
           "description": "Stable identity for a native item/heap mutation; present only on the action-bound post-state snapshot.",
           "properties": {
+            "sourceTerrain": {
+              "type": "integer",
+              "enum": [4, 12, 35, 36],
+              "description": "Authoritative terrain before a native MINE action."
+            },
             "heapId": {
               "type": "string",
               "minLength": 8,
