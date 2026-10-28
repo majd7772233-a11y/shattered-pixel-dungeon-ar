@@ -1331,7 +1331,8 @@ export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, 
       || Math.max(Math.abs((target % width) - (currentPos % width)),
           Math.abs(Math.floor(target / width) - Math.floor(currentPos / width))) !== 1) return false;
   const tile = levelSnapshot.tiles.find((row: any) => row?.pos === target);
-  if (!tile) return false;
+  if (!tile || !Number.isFinite(data?.engineActionCost)
+      || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
   const terrain = Number(tile.terrain);
   if (action === "UNLOCK") return [10, 21, 31, 38].includes(terrain);
   if (action === "MINE") return Number.isInteger(data?.sourceTerrain)
@@ -3036,6 +3037,37 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   return false;
 }
 
+/** Generic NPC interaction is not a payment, pickup, sale or item-use protocol.
+ * It may update native NPC/quest/notes state, but must not mutate Hero inventory or currency. */
+export function isValidNativeInteractInventoryMutation(previousValue: unknown, nextValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); }
+  catch (_) { return false; }
+  const beforeItems = parseNativeInventoryIndex(previous), afterItems = parseNativeInventoryIndex(next);
+  const beforeEconomy = parseNativeItemEconomyIndex(previous), afterEconomy = parseNativeItemEconomyIndex(next);
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  const beforeBuffs = nativeUseItemBuffMap(previous), afterBuffs = nativeUseItemBuffMap(next);
+  if (!beforeItems || !afterItems || !beforeEconomy || !afterEconomy || !beforeSlots || !afterSlots
+      || !beforeBuffs || !afterBuffs) return false;
+  const normalizeBuffs = (value: Map<string, any[]>) => Array.from(value.entries())
+    .sort((a: any,b: any) => String(a[0]).localeCompare(String(b[0])))
+    .map(([className, rows]: [string, any[]]) => ({
+      className,
+      rows: rows.map(row => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown}))
+        .sort((a,b) => String(a.serializedBundle).localeCompare(String(b.serializedBundle)) || a.cooldown-b.cooldown)
+    }));
+  if (!sameNativeItemValue(beforeItems, afterItems)
+      || !sameNativeItemValue(beforeEconomy, afterEconomy)
+      || !sameNativeItemValue(beforeSlots, afterSlots)
+      || !sameNativeItemValue(normalizeBuffs(beforeBuffs), normalizeBuffs(afterBuffs))) return false;
+  for (const field of ["inventoryBundle", "inventoryItemsJson", "nativeItemEconomyJson", "quickslotsJson",
+    "combatBundle", "gold", "alchemyEnergy", "hp", "ht", "shielding",
+    "ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
+    if (previous[field] !== next[field]) return false;
+  }
+  return true;
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
@@ -3081,6 +3113,8 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
     return value;
   };
   const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+  if (action === "INTERACT" && !isValidNativeInteractInventoryMutation(
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action === "SELL" && (!isValidNativeSellInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
       next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
       || !isValidNativeSellShopkeeperMutation(previous.mobs || [], next.mobs || [],
