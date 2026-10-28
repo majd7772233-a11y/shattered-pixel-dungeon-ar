@@ -1334,7 +1334,8 @@ export function isValidNativeWorldActionIntent(actionValue: unknown, data: any, 
   if (!tile) return false;
   const terrain = Number(tile.terrain);
   if (action === "UNLOCK") return [10, 21, 31, 38].includes(terrain);
-  if (action === "MINE") return [4, 12, 35, 36].includes(terrain);
+  if (action === "MINE") return Number.isInteger(data?.sourceTerrain)
+    && Number(data.sourceTerrain) === terrain && [4, 12, 35, 36].includes(terrain);
   if (action === "OPEN_CHEST") {
     const heaps = levelSnapshot.heaps.filter((row: any) => row?.pos === target);
     return heaps.length === 1 && ["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(heaps[0].type))
@@ -1556,6 +1557,54 @@ export function isNativeLootClaimConflict(claimValue: unknown, playerIdValue: un
   return String(claim.claimed_by || "") !== playerId || String(claim.request_id || "") !== requestId;
 }
 
+export type NativeMutationLockStatus = "FREE" | "OWNED" | "PENDING" | "STALE";
+
+/** Native inventory/economy writes cannot overlap before the previous post-state commits. */
+export function requiresNativeMutationSnapshot(actionValue: unknown): boolean {
+  return ["UNLOCK", "MINE", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP",
+    "BUY", "SELL", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"].includes(String(actionValue || ""));
+}
+
+/** Checks exact lock ownership without expiry, for safe cleanup of the matching request only. */
+export function isNativeMutationLockForRequest(lockValue: unknown, playerIdValue: unknown,
+  requestIdValue: unknown, actionValue: unknown): boolean {
+  let lock: any = lockValue;
+  if (typeof lockValue === "string") {
+    try { lock = JSON.parse(lockValue); } catch (_) { return false; }
+  }
+  return !!lock && typeof lock === "object" && !Array.isArray(lock)
+    && String(lock.playerId || "") === String(playerIdValue || "")
+    && String(lock.requestId || "") === String(requestIdValue || "")
+    && String(lock.actionType || "") === String(actionValue || "")
+    && requiresNativeMutationSnapshot(lock.actionType)
+    && Number.isInteger(lock.depth) && Number(lock.depth) >= 1 && Number(lock.depth) <= 100
+    && Number.isFinite(Number(lock.createdAt)) && Number(lock.createdAt) > 0;
+}
+
+/** Classifies a per-player mutation lock; malformed or expired locks require resync. */
+export function classifyNativeMutationLock(lockValue: unknown, playerIdValue: unknown,
+  requestIdValue: unknown, actionValue: unknown, nowValue: unknown = Date.now(),
+  staleAfterValue: unknown = 30000): NativeMutationLockStatus {
+  if (lockValue == null || lockValue === "") return "FREE";
+  let lock: any = lockValue;
+  if (typeof lockValue === "string") {
+    try { lock = JSON.parse(lockValue); } catch (_) { return "STALE"; }
+  }
+  if (!lock || typeof lock !== "object" || Array.isArray(lock)) return "STALE";
+  const playerId = String(playerIdValue || ""), requestId = String(requestIdValue || "");
+  const action = String(actionValue || ""), now = Number(nowValue), staleAfter = Number(staleAfterValue);
+  const createdAt = Number(lock.createdAt);
+  if (!playerId || !requestId || requestId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(requestId)
+      || !requiresNativeMutationSnapshot(lock.actionType)
+      || String(lock.playerId || "") !== playerId
+      || !Number.isInteger(lock.depth) || lock.depth < 1 || lock.depth > 100
+      || !Number.isFinite(createdAt) || createdAt <= 0
+      || !Number.isFinite(now) || now < createdAt
+      || !Number.isFinite(staleAfter) || staleAfter < 1000 || staleAfter > 300000
+      || now - createdAt > staleAfter) return "STALE";
+  return String(lock.requestId || "") === requestId && String(lock.actionType) === action ? "OWNED" : "PENDING";
+}
+
 function parseNativeInventoryIndex(heroValue: any): any[] | null {
   if (!heroValue || typeof heroValue !== "object" || typeof heroValue.inventoryItemsJson !== "string"
       || heroValue.inventoryItemsJson.length < 2 || heroValue.inventoryItemsJson.length > 200000) return null;
@@ -1653,6 +1702,10 @@ export function isValidNativeItemEconomyIndexMutation(previousHeroValue: unknown
             || current.stackable !== details.resultStackable
             || value.nativeValue !== Number(details.resultNativeValue)
             || value.nativeUnitValue !== Number(details.resultNativeUnitValue)) return false;
+      } else if (action === "MINE" && Number(details?.sourceTerrain) === 12) {
+        if (!String(current.className || "").endsWith(".items.quest.DarkGold")
+            || Number(current.quantity) !== 1 || current.stackable !== true || current.equipped === true
+            || value.nativeValue !== 0 || value.nativeUnitValue !== 0 || value.nativeSellable !== false) return false;
       } else {
         return false;
       }
@@ -1677,6 +1730,15 @@ export function isValidNativeItemEconomyIndexMutation(previousHeroValue: unknown
       continue;
     }
 
+    if (action === "MINE"
+        && (Number(details?.sourceTerrain) !== 12
+          || !String(current.className || "").endsWith(".items.quest.DarkGold")
+          || !String(old.className || "").endsWith(".items.quest.DarkGold")
+          || !old.stackable || !current.stackable
+          || Number(current.quantity) !== Number(old.quantity) + 1
+          || oldValue.nativeValue !== 0 || value.nativeValue !== 0
+          || oldValue.nativeUnitValue !== 0 || value.nativeUnitValue !== 0
+          || oldValue.nativeSellable !== false || value.nativeSellable !== false)) return false;
     if (oldValue.nativeUnitValue < 0
         || value.nativeUnitValue !== oldValue.nativeUnitValue
         || value.nativeValue !== value.nativeUnitValue * Number(current.quantity)
@@ -1738,6 +1800,172 @@ function sameNativeItemValue(a: any, b: any): boolean {
   };
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
+/** Validates inventory deltas from native MINE; it never invents a TypeScript gameplay outcome. */
+export function isValidNativeMineInventoryMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); }
+  catch (_) { return false; }
+  const details: any = detailsValue, accepted: any = acceptedValue;
+  const terrain = Number(details?.sourceTerrain);
+  const darkGoldClass = "com.shatteredpixel.shatteredpixeldungeon.items.quest.DarkGold";
+  if (!details || !accepted || accepted.actionType !== "MINE" || ![4, 12, 35, 36].includes(terrain)
+      || Number(accepted.sourceTerrain) !== terrain || Number(accepted.targetTerrain) !== terrain
+      || !Number.isInteger(previous.pos) || previous.pos !== next.pos
+      || previous.hp !== next.hp || previous.ht !== next.ht || previous.shielding !== next.shielding
+      || previous.gold !== next.gold || previous.alchemyEnergy !== next.alchemyEnergy
+      || previous.notesBundle !== next.notesBundle || previous.questStateBundle !== next.questStateBundle
+      || previous.ironKeyCount !== next.ironKeyCount || previous.crystalKeyCount !== next.crystalKeyCount
+      || previous.wornKeyCount !== next.wornKeyCount || previous.goldenKeyCount !== next.goldenKeyCount) return false;
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  const beforeValues = parseNativeItemEconomyIndex(previous), afterValues = parseNativeItemEconomyIndex(next);
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  if (!before || !after || !beforeValues || !afterValues || !beforeSlots || !afterSlots) return false;
+  const byId = (rows: any[]) => new Map<string, any>(rows.map((row: any) => [String(row.itemId), row]));
+  const oldItems = byId(before), newItems = byId(after), oldValues = byId(beforeValues), newValues = byId(afterValues);
+  const removed = before.filter((row: any) => !newItems.has(String(row.itemId)));
+  const added = after.filter((row: any) => !oldItems.has(String(row.itemId)));
+  const changed = before.filter((row: any) => newItems.has(String(row.itemId))
+    && !sameNativeItemValue(row, newItems.get(String(row.itemId))));
+  const sameWithout = (rows: any[], id: string) => rows.filter((row: any) => String(row.itemId) !== id)
+    .slice().sort((a: any, b: any) => String(a.itemId).localeCompare(String(b.itemId)));
+  const slotsWithout = (rows: any[], slotNo: number) => rows.filter((row: any) => Number(row.slot) !== slotNo)
+    .slice().sort((a: any, b: any) => Number(a.slot) - Number(b.slot));
+  const sameDarkGoldValue = (row: any, item: any) => !!row && !!item
+    && String(row.className) === darkGoldClass && String(item.className) === darkGoldClass
+    && row.quantity === item.quantity && row.nativeValue === 0 && row.nativeUnitValue === 0
+    && row.nativeSellable === false;
+  const noInventoryDelta = removed.length === 0 && added.length === 0 && changed.length === 0;
+  if (terrain !== 12 || noInventoryDelta) {
+    return noInventoryDelta && previous.inventoryBundle === next.inventoryBundle
+      && sameNativeItemValue(beforeValues, afterValues) && sameNativeItemValue(beforeSlots, afterSlots);
+  }
+  if (previous.inventoryBundle === next.inventoryBundle || removed.length !== 0) return false;
+  if (added.length === 1 && changed.length === 0) {
+    const result = added[0], id = String(result.itemId), resultValue = newValues.get(id);
+    if (String(result.className) !== darkGoldClass || result.quantity !== 1 || result.level !== 0
+        || result.cursed !== false || result.cursedKnown !== false || result.stackable !== true
+        || result.equipped !== false || typeof result.serializedBundle !== "string"
+        || !result.serializedBundle.includes(id) || oldValues.has(id) || !sameDarkGoldValue(resultValue, result)
+        || !sameNativeItemValue(sameWithout(before, id), sameWithout(after, id))
+        || !sameNativeItemValue(sameWithout(beforeValues, id), sameWithout(afterValues, id))) return false;
+    const changedSlots = new Set<number>([
+      ...beforeSlots.filter((slot: any) => !sameNativeItemValue(slot,
+        afterSlots.find((nextSlot: any) => Number(nextSlot.slot) === Number(slot.slot)))).map((slot: any) => Number(slot.slot)),
+      ...afterSlots.filter((slot: any) => !sameNativeItemValue(slot,
+        beforeSlots.find((oldSlot: any) => Number(oldSlot.slot) === Number(slot.slot)))).map((slot: any) => Number(slot.slot))
+    ]);
+    if (changedSlots.size === 0) return sameNativeItemValue(beforeSlots, afterSlots);
+    if (changedSlots.size !== 1) return false;
+    const slotNo = [...changedSlots][0];
+    const oldSlot = beforeSlots.find((slot: any) => Number(slot.slot) === slotNo);
+    const newSlot = afterSlots.find((slot: any) => Number(slot.slot) === slotNo);
+    return !!oldSlot && !!newSlot && Number(oldSlot.quantity) === 0
+      && String(oldSlot.className) === darkGoldClass && String(newSlot.itemId) === id
+      && String(newSlot.className) === darkGoldClass && Number(newSlot.quantity) === 1
+      && String(newSlot.serializedBundle) === String(result.serializedBundle)
+      && sameNativeItemValue(slotsWithout(beforeSlots, slotNo), slotsWithout(afterSlots, slotNo));
+  }
+  if (added.length !== 0 || changed.length !== 1) return false;
+  const source = changed[0], id = String(source.itemId), result = newItems.get(id);
+  const oldValue = oldValues.get(id), nextValue = newValues.get(id);
+  if (String(source.className) !== darkGoldClass || String(result?.className) !== darkGoldClass
+      || Number(result?.quantity) !== Number(source.quantity) + 1 || !source.stackable || !result?.stackable
+      || !sameNativeItemValue(itemValueWithout(source, ["quantity", "serializedBundle"]),
+        itemValueWithout(result, ["quantity", "serializedBundle"]))
+      || !sameDarkGoldValue(oldValue, source) || !sameDarkGoldValue(nextValue, result)
+      || !sameNativeItemValue(sameWithout(before, id), sameWithout(after, id))
+      || !sameNativeItemValue(sameWithout(beforeValues, id), sameWithout(afterValues, id))
+      || !sameNativeItemValue(
+        beforeSlots.filter((slot: any) => String(slot.itemId) !== id).slice().sort((a: any,b: any)=>Number(a.slot)-Number(b.slot)),
+        afterSlots.filter((slot: any) => String(slot.itemId) !== id).slice().sort((a: any,b: any)=>Number(a.slot)-Number(b.slot)))) return false;
+  const oldSourceSlots = beforeSlots.filter((slot: any) => String(slot.itemId) === id);
+  const newSourceSlots = afterSlots.filter((slot: any) => String(slot.itemId) === id);
+  if (oldSourceSlots.length !== newSourceSlots.length) return false;
+  for (const oldSlot of oldSourceSlots) {
+    const newSlot = newSourceSlots.find((slot: any) => Number(slot.slot) === Number(oldSlot.slot));
+    if (!newSlot || Number(newSlot.quantity) !== Number(oldSlot.quantity) + 1
+        || String(newSlot.className) !== darkGoldClass
+        || String(newSlot.serializedBundle) !== String(result.serializedBundle)) return false;
+  }
+  return true;
+}
+
+/** Only a DarkGold item from mining a gold wall may change a floor heap. */
+export function isValidNativeMineHeapMutation(previousHeapsValue: unknown, nextHeapsValue: unknown,
+  heroPosValue: unknown, targetPosValue: unknown, detailsValue: unknown, acceptedValue: unknown): boolean {
+  const details: any = detailsValue, accepted: any = acceptedValue;
+  const heroPos = Number(heroPosValue), targetPos = Number(targetPosValue), terrain = Number(details?.sourceTerrain);
+  const darkGoldClass = "com.shatteredpixel.shatteredpixeldungeon.items.quest.DarkGold";
+  if (!Array.isArray(previousHeapsValue) || !Array.isArray(nextHeapsValue) || !details || !accepted
+      || accepted.actionType !== "MINE" || Number(accepted.sourceTerrain) !== terrain
+      || Number(accepted.targetTerrain) !== terrain || ![4, 12, 35, 36].includes(terrain)
+      || !Number.isInteger(heroPos) || heroPos < 0 || !Number.isInteger(targetPos) || targetPos < 0) return false;
+  if (terrain !== 12) return sameNativeItemValue(previousHeapsValue, nextHeapsValue);
+  if (heroPos === targetPos) return false;
+  const before = previousHeapsValue as any[], after = nextHeapsValue as any[];
+  const oldAt = before.filter((heap: any) => Number(heap?.pos) === heroPos);
+  const newAt = after.filter((heap: any) => Number(heap?.pos) === heroPos);
+  if (oldAt.length > 1 || newAt.length > 1) return false;
+  const oldHeap = oldAt[0] || null, nextHeap = newAt[0] || null;
+  for (const old of before) {
+    if (oldHeap && String(old?.heapId || "") === String(oldHeap.heapId || "")) continue;
+    const matches = after.filter((current: any) => String(current?.heapId || "") === String(old?.heapId || ""));
+    if (matches.length !== 1 || !sameNativeItemValue(old, matches[0])) return false;
+  }
+  for (const current of after) {
+    if (nextHeap && String(current?.heapId || "") === String(nextHeap.heapId || "")) continue;
+    if (before.filter((old: any) => String(old?.heapId || "") === String(current?.heapId || "")).length !== 1) return false;
+  }
+  const newHeap = nextHeap;
+  const validNewDarkGold = (item: any) => String(item?.className || "") === darkGoldClass
+    && Number(item.quantity) === 1 && item.stackable === true && item.level === 0
+    && item.cursed === false && item.cursedKnown === false
+    && Number(item.nativeValue) === 0 && Number(item.nativeUnitValue) === 0
+    && isValidStableMultiplayerId(item.itemId) && typeof item.serializedBundle === "string"
+    && item.serializedBundle.includes(item.itemId);
+  if (!oldHeap) {
+    if (!newHeap) return true;
+    return String(newHeap.type) === "HEAP" && Number(newHeap.pos) === heroPos
+      && Array.isArray(newHeap.items) && newHeap.items.length === 1
+      && isValidStableMultiplayerId(newHeap.heapId) && validNewDarkGold(newHeap.items[0])
+      && !before.some((heap: any) => (Array.isArray(heap?.items) ? heap.items : [])
+        .some((item: any) => String(item?.itemId || "") === String(newHeap.items[0].itemId)));
+  }
+  if (!newHeap || String(oldHeap.type) !== "HEAP" || String(newHeap.type) !== "HEAP"
+      || String(oldHeap.heapId) !== String(newHeap.heapId) || Number(newHeap.pos) !== heroPos
+      || oldHeap.seen !== newHeap.seen || oldHeap.haunted !== newHeap.haunted
+      || oldHeap.autoExplored !== newHeap.autoExplored
+      || !(oldHeap.hidden === newHeap.hidden || newHeap.hidden === false)
+      || !Array.isArray(oldHeap.items) || !Array.isArray(newHeap.items)) return false;
+  const oldItems = new Map<string, any>(oldHeap.items.map((item: any) => [String(item?.itemId || ""), item]));
+  const newItems = new Map<string, any>(newHeap.items.map((item: any) => [String(item?.itemId || ""), item]));
+  if (oldItems.size !== oldHeap.items.length || newItems.size !== newHeap.items.length) return false;
+  const removed = oldHeap.items.filter((item: any) => !newItems.has(String(item.itemId)));
+  const added = newHeap.items.filter((item: any) => !oldItems.has(String(item.itemId)));
+  const changed = oldHeap.items.filter((item: any) => newItems.has(String(item.itemId))
+    && !sameNativeItemValue(item, newItems.get(String(item.itemId))));
+  if (removed.length !== 0) return false;
+  const originalOrder = oldHeap.items.map((item: any) => String(item.itemId));
+  const retainedOrder = newHeap.items.filter((item: any) => oldItems.has(String(item.itemId)))
+    .map((item: any) => String(item.itemId));
+  if (!sameNativeItemValue(originalOrder, retainedOrder)) return false;
+  if (added.length === 0 && changed.length === 0) return sameNativeItemValue(oldHeap.items, newHeap.items);
+  if (added.length === 1 && changed.length === 0) {
+    const result = added[0];
+    return validNewDarkGold(result) && !before.some((heap: any) => (Array.isArray(heap?.items) ? heap.items : [])
+      .some((oldItem: any) => String(oldItem?.itemId || "") === String(result.itemId)));
+  }
+  if (added.length !== 0 || changed.length !== 1) return false;
+  const old = changed[0], current = newItems.get(String(old.itemId));
+  return String(old.className || "") === darkGoldClass && String(current.className || "") === darkGoldClass
+    && old.stackable === true && current.stackable === true && Number(current.quantity) === Number(old.quantity) + 1
+    && Number(old.nativeValue) === 0 && Number(current.nativeValue) === 0
+    && Number(old.nativeUnitValue) === 0 && Number(current.nativeUnitValue) === 0
+    && sameNativeItemValue(itemValueWithout(old, ["quantity", "serializedBundle"]),
+      itemValueWithout(current, ["quantity", "serializedBundle"]));
+}
+
 /** The hero may drop an owned item quantity from the trusted inventory at its current cell. */
 export function isValidNativeDropIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroValue: unknown): boolean {
@@ -2957,6 +3185,22 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (!growthLocal(previous.visitedPositions || [], next.visitedPositions || [])
       || !growthLocal(previous.mappedPositions || [], next.mappedPositions || [])) return false;
   if (action === "MOVE" && !isValidNativeMovementHeapMutation(previous, next, target)) return false;
+  if (action === "MINE" && (
+      !isValidNativeMineInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
+        next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
+      || Number(previous.tiles.find((tile: any) => tile?.pos === Number(target))?.terrain)
+        !== Number(next.nativeMutationDetails?.sourceTerrain)
+      || !isValidNativeMineHeapMutation(previous.heaps, next.heaps, from, target,
+        next.nativeMutationDetails, acceptedPickupIntentValue))) return false;
+  if (action === "MINE" && Number(next.nativeMutationDetails?.sourceTerrain) === 12) {
+    const inventoryChanged = beforeHero.inventoryBundle !== afterHero.inventoryBundle
+      || beforeHero.inventoryItemsJson !== afterHero.inventoryItemsJson
+      || beforeHero.nativeItemEconomyJson !== afterHero.nativeItemEconomyJson
+      || beforeHero.quickslotsJson !== afterHero.quickslotsJson;
+    const floorChanged = !same(previous.heaps, next.heaps);
+    // Native DarkGold is either collected into inventory or left on the floor, never both/neither.
+    if (inventoryChanged === floorChanged) return false;
+  }
   if (action === "PICKUP" && (!isValidNativePickupHeapMutation(previous.heaps, next.heaps, target,
       next.nativeMutationDetails, acceptedPickupIntentValue)
       || !isValidNativePickupInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
@@ -3006,23 +3250,13 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   if (action !== "OPEN_CHEST" && action !== "MINE" && action !== "MOVE" && action !== "PICKUP"
       && action !== "DROP" && action !== "BUY" && action !== "THROW" && action !== "ALCHEMY"
       && !same(previous.heaps, next.heaps)) return false;
-  if (action === "OPEN_CHEST" || action === "MINE") {
+  if (action === "OPEN_CHEST") {
     const before = new Map<number, any>((previous.heaps || []).map((h: any) => [Number(h.pos), h]));
     const after = new Map<number, any>((next.heaps || []).map((h: any) => [Number(h.pos), h]));
-    if (action === "OPEN_CHEST") {
-      const oldHeap = before.get(Number(target));
-      if (!oldHeap || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(oldHeap.type))) return false;
-    }
+    const oldHeap = before.get(Number(target));
+    if (!oldHeap || !["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"].includes(String(oldHeap.type))) return false;
     for (const pos of new Set<number>([...before.keys(), ...after.keys()])) {
-      if (same(before.get(pos), after.get(pos))) continue;
-      // Mining a gold wall can place an uncollected DarkGold item under the Hero, not only
-      // on the wall cell. No other heap positions are permitted to change.
-      if (action === "OPEN_CHEST" ? pos !== Number(target) : pos !== Number(target) && pos !== Number(from)) return false;
-      if (action === "MINE") {
-        const result = after.get(pos);
-        if (result && (!Array.isArray(result.items)
-            || !result.items.every((item: any) => String(item?.className || "").endsWith(".DarkGold")))) return false;
-      }
+      if (!same(before.get(pos), after.get(pos)) && pos !== Number(target)) return false;
     }
   }
   const localRowsUnchangedOutside = (beforeRows: any[], afterRows: any[], radius: number): boolean => {
@@ -4729,6 +4963,10 @@ export class MatchRoom {
             : mutationAction === "PICKUP" ? "ITEM_PICKUP_INTENT_ACCEPTED" : "WORLD_ACTION_RESOLVED";
           const acceptedPayload = accepted?.action;
           const mutationDetails = level.nativeMutationDetails || null;
+          const mutationLockKey = "nativeMutationPending:" + session.playerId;
+          const mutationLockRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", mutationLockKey).toArray()[0];
+          const mutationLockMatches = !requiresNativeMutationSnapshot(mutationAction)
+            || classifyNativeMutationLock(mutationLockRow?.value, session.playerId, mutationRequestId, mutationAction) === "OWNED";
           const pickupClaim = (mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ?",
                 depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
@@ -4877,7 +5115,7 @@ export class MatchRoom {
               shielding: Number(reportedHero.shielding)
             });
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
-              || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
+              || !mutationLockMatches || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
@@ -4885,6 +5123,10 @@ export class MatchRoom {
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
+            const activeMutationLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", mutationLockKey).toArray()[0];
+            if (isNativeMutationLockForRequest(activeMutationLock?.value, session.playerId, mutationRequestId, mutationAction)) {
+              this.sql.exec("DELETE FROM room_meta WHERE key = ?", mutationLockKey);
+            }
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_WORLD_MUTATION" }) }));
             return;
@@ -4900,6 +5142,10 @@ export class MatchRoom {
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
+            const activeMutationLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", mutationLockKey).toArray()[0];
+            if (isNativeMutationLockForRequest(activeMutationLock?.value, session.playerId, mutationRequestId, mutationAction)) {
+              this.sql.exec("DELETE FROM room_meta WHERE key = ?", mutationLockKey);
+            }
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_NATIVE_HERO_MUTATION" }) }));
             return;
@@ -5048,7 +5294,12 @@ export class MatchRoom {
             this.worldTime + initialCooldown, nativeState);
         }
         if (isNativeWorldMutation) {
-          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(
+          const committedMutationLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId).toArray()[0];
+          if (isNativeMutationLockForRequest(committedMutationLock?.value, session.playerId,
+              verifiedMutationRequestId, verifiedMutationAction)) {
+            this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
+          }
+          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(`
             "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
             depth, Number(level.branch), String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
             session.playerId, verifiedMutationRequestId);
@@ -5199,6 +5450,7 @@ export class MatchRoom {
         let actionCost = 1.0;
         let actionOwnerId = session.playerId;
         let pendingCombatForCleanup: any = null;
+        let actionStrForLock = "";
 
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
@@ -5215,10 +5467,24 @@ export class MatchRoom {
           }
 
           const actionStr = payload.action || payload.data?.action;
-          let actionErrorCode = "INVALID_ACTION";
+          actionStrForLock = String(actionStr || "");
           let authorityPending: any = null;
+          const nativeMutationLockKey = "nativeMutationPending:" + session.playerId;
+          const nativeMutationLockRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", nativeMutationLockKey).toArray()[0];
+          const currentLockStatus = !String(actionStr || "").startsWith("SYNC_")
+            ? classifyNativeMutationLock(nativeMutationLockRow?.value, session.playerId,
+                String(msg.requestId || ""), String(actionStr || ""))
+            : "FREE";
+          if (currentLockStatus === "STALE") {
+            this.sql.exec("DELETE FROM room_meta WHERE key = ?", nativeMutationLockKey);
+            actionErrorCode = "NATIVE_MUTATION_RESYNC_REQUIRED";
+          } else if (currentLockStatus === "PENDING") {
+            actionErrorCode = "NATIVE_MUTATION_PENDING";
+          }
 
-          if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
+          if (actionErrorCode === "NATIVE_MUTATION_PENDING" || actionErrorCode === "NATIVE_MUTATION_RESYNC_REQUIRED") {
+            // Fail closed until the previous stateful mutation receives its authoritative native post-state.
+          } else if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
             const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + String(data.combatRequestId || msg.requestId || "")).toArray()[0];
             let pending: any = null;
@@ -6088,7 +6354,8 @@ export class MatchRoom {
               eventType = "WORLD_ACTION_RESOLVED";
               actionResultPayload = { playerId: session.playerId, actionType: String(actionStr),
                 depth: this.currentDepth, from: playerPos, targetPos: Number(data.targetPos),
-                targetTerrain: Number(currentLevel.tiles.find((tile: any) => tile.pos === Number(data.targetPos))?.terrain) };
+                targetTerrain: Number(currentLevel.tiles.find((tile: any) => tile.pos === Number(data.targetPos))?.terrain),
+                ...(actionStr === "MINE" ? { sourceTerrain: Number(data.sourceTerrain) } : {}) };
               actionValid = true;
               actionCost = requestedCost;
             } else if (String(actionStr) === "MINE" && currentLevel && currentLevel.branch !== 0) {
@@ -7010,6 +7277,26 @@ export class MatchRoom {
             }
           }
         } catch (_) {}
+
+        if (actionValid && requiresNativeMutationSnapshot(actionStrForLock)) {
+          const requestId = String(msg.requestId || "");
+          const lockKey = "nativeMutationPending:" + session.playerId;
+          if (!requestId || requestId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(requestId)) {
+            actionValid = false;
+            actionErrorCode = "MISSING_NATIVE_MUTATION_REQUEST_ID";
+          } else {
+            const lockValue = JSON.stringify({
+              playerId: session.playerId, requestId, actionType: actionStrForLock,
+              depth: this.currentDepth, createdAt: Date.now()
+            });
+            this.sql.exec("INSERT OR IGNORE INTO room_meta (key,value) VALUES (?,?)", lockKey, lockValue);
+            const storedLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", lockKey).toArray()[0];
+            if (classifyNativeMutationLock(storedLock?.value, session.playerId, requestId, actionStrForLock) !== "OWNED") {
+              actionValid = false;
+              actionErrorCode = "NATIVE_MUTATION_PENDING";
+            }
+          }
+        }
 
         if (actionValid) {
           // Increment sequence ONLY after successful validation and commit.
