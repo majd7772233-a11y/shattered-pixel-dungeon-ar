@@ -1919,6 +1919,7 @@ describe("Native mutation lock admission", () => {
     expect(classifyNativeMutationLock(pending,"player-001","req-sell-001","SELL",11000)).toBe("OWNED");
     expect(classifyNativeMutationLock(pending,"player-001","req-sell-002","SELL",11000)).toBe("PENDING");
     expect(classifyNativeMutationLock(pending,"player-001","req-sell-002","MOVE",11000)).toBe("PENDING");
+    expect(classifyNativeMutationLock(pending,"player-001","req-sync-001","SYNC_HERO_STATE",11000)).toBe("PENDING");
     expect(isNativeMutationLockForRequest(pending,"player-001","req-sell-001","SELL")).toBe(true);
     expect(isNativeMutationLockForRequest(pending,"player-001","req-sell-002","SELL")).toBe(false);
     expect(requiresNativeMutationSnapshot("BUY")).toBe(true);
