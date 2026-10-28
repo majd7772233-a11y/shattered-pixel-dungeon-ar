@@ -5471,10 +5471,8 @@ export class MatchRoom {
           let authorityPending: any = null;
           const nativeMutationLockKey = "nativeMutationPending:" + session.playerId;
           const nativeMutationLockRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", nativeMutationLockKey).toArray()[0];
-          const currentLockStatus = !String(actionStr || "").startsWith("SYNC_")
-            ? classifyNativeMutationLock(nativeMutationLockRow?.value, session.playerId,
-                String(msg.requestId || ""), String(actionStr || ""))
-            : "FREE";
+          const currentLockStatus = classifyNativeMutationLock(nativeMutationLockRow?.value,
+            session.playerId, String(msg.requestId || ""), String(actionStr || ""));
           if (currentLockStatus === "STALE") {
             this.sql.exec("DELETE FROM room_meta WHERE key = ?", nativeMutationLockKey);
             actionErrorCode = "NATIVE_MUTATION_RESYNC_REQUIRED";
