@@ -3037,6 +3037,80 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   return false;
 }
 
+/** Canonical flattened native buff state, independent of process-local buff iteration order. */
+export function isValidNativeUnchangedBuffState(previousValue: unknown, nextValue: unknown): boolean {
+  let previous: any, next: any;
+  try { previous=JSON.parse(String(previousValue||"")); next=JSON.parse(String(nextValue||"")); }
+  catch (_) { return false; }
+  const before=nativeUseItemBuffMap(previous), after=nativeUseItemBuffMap(next);
+  if (!before || !after) return false;
+  const normalize=(value:Map<string,any[]>)=>Array.from(value.entries())
+    .sort((a:any,b:any)=>String(a[0]).localeCompare(String(b[0])))
+    .map(([className,rows]:[string,any[]])=>({
+      className,
+      rows:rows.map(row=>({serializedBundle:row.serializedBundle,cooldown:row.cooldown}))
+        .sort((a,b)=>String(a.serializedBundle).localeCompare(String(b.serializedBundle))||a.cooldown-b.cooldown)
+    }));
+  return sameNativeItemValue(normalize(before),normalize(after));
+}
+
+/** Native MINE may change only Hunger when breaking a normal wall or WellFed's remaining time. */
+export function isValidNativeMineBuffMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown): boolean {
+  let previous:any, next:any;
+  try { previous=JSON.parse(String(previousValue||"")); next=JSON.parse(String(nextValue||"")); }
+  catch (_) { return false; }
+  const terrain=Number((detailsValue as any)?.sourceTerrain);
+  if (![4,12,35,36].includes(terrain)
+      || previous.hp!==next.hp || previous.ht!==next.ht || previous.shielding!==next.shielding
+      || previous.gold!==next.gold || previous.alchemyEnergy!==next.alchemyEnergy) return false;
+  let oldCombat:any,newCombat:any;
+  try { oldCombat=JSON.parse(String(previous.combatBundle||"")); newCombat=JSON.parse(String(next.combatBundle||"")); }
+  catch (_) { return false; }
+  const withoutItemAndBuffCollections=(value:any)=>{
+    const copy={...value}; delete copy.items; delete copy.buffs; return copy;
+  };
+  if (!sameNativeItemValue(withoutItemAndBuffCollections(oldCombat),withoutItemAndBuffCollections(newCombat))) return false;
+  const before=nativeUseItemBuffMap(previous), after=nativeUseItemBuffMap(next);
+  if (!before||!after) return false;
+  const hungerClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+  const wellFedClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed";
+  if (terrain!==4) return isValidNativeUnchangedBuffState(previous,next);
+  const oldWellFed=before.get(wellFedClass)||[], newWellFed=after.get(wellFedClass)||[];
+  const oldHunger=before.get(hungerClass)||[], newHunger=after.get(hungerClass)||[];
+  const sameExcept=(ignore:string[])=>{
+    const normalize=(value:Map<string,any[]>)=>Array.from(value.entries())
+      .filter(([name])=>!ignore.includes(String(name)))
+      .sort((a:any,b:any)=>String(a[0]).localeCompare(String(b[0])))
+      .map(([className,rows]:[string,any[]])=>({
+        className,
+        rows:rows.map(row=>({serializedBundle:row.serializedBundle,cooldown:row.cooldown}))
+          .sort((a,b)=>String(a.serializedBundle).localeCompare(String(b.serializedBundle))||a.cooldown-b.cooldown)
+      }));
+    return sameNativeItemValue(normalize(before),normalize(after));
+  };
+  if (oldWellFed.length>0) {
+    if (oldWellFed.length!==1 || newWellFed.length!==1 || oldHunger.length!==newHunger.length
+        || !sameExcept([wellFedClass])) return false;
+    const old=oldWellFed[0], current=newWellFed[0];
+    if (!Number.isFinite(Number(old.data.left)) || Number(old.data.left)<0
+        || Number(current.data.left)!==Number(old.data.left)-3) return false;
+    const withoutLeft=(value:any)=>{const copy={...value};delete copy.left;return copy;};
+    return old.cooldown===current.cooldown
+      && sameNativeItemValue(withoutLeft(old.data),withoutLeft(current.data));
+  }
+  if (oldHunger.length!==1 || newHunger.length!==1 || !sameExcept([hungerClass])) return false;
+  const old=oldHunger[0], current=newHunger[0], oldLevel=Number(old.data.level);
+  // Near-starvation may produce fractional damage as well as a Hunger change. Keep that
+  // corner fail-closed until the exact native damage transition is modelled.
+  if (!Number.isInteger(oldLevel) || oldLevel<0 || oldLevel+3>450
+      || Number(current.data.level)!==oldLevel+3
+      || Number(current.data.partialDamage)!==Number(old.data.partialDamage)) return false;
+  const withoutLevel=(value:any)=>{const copy={...value};delete copy.level;return copy;};
+  return old.cooldown===current.cooldown
+    && sameNativeItemValue(withoutLevel(old.data),withoutLevel(current.data));
+}
+
 /** Generic NPC interaction is not a payment, pickup, sale or item-use protocol.
  * It may update native NPC/quest/notes state, but must not mutate Hero inventory or currency. */
 export function isValidNativeInteractInventoryMutation(previousValue: unknown, nextValue: unknown): boolean {
@@ -3115,6 +3189,10 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
   const same = (a: any, b: any) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
   if (action === "INTERACT" && !isValidNativeInteractInventoryMutation(
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
+  if (action === "MINE" && !isValidNativeMineBuffMutation(
+      trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, next.nativeMutationDetails)) return false;
+  if (["UNLOCK","OPEN_CHEST","PICKUP","DROP","EQUIP","UNEQUIP","BUY","SELL","INTERACT"].includes(action)
+      && !isValidNativeUnchangedBuffState(trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action === "SELL" && (!isValidNativeSellInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
       next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
       || !isValidNativeSellShopkeeperMutation(previous.mobs || [], next.mobs || [],
