@@ -38,6 +38,7 @@ import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.Armor;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.PixelScene;
@@ -262,6 +263,12 @@ public class Shopkeeper extends NPC {
 						} else if (index == 1){
 							GameScene.show(new WndTitledMessage(sprite(), Messages.titleCase(name()), chatText()));
 						} else if (index > 1){
+							// Buyback entries are stored inside the Shopkeeper bundle, not a stable sale heap.
+							// Until a server-authoritative buyback transaction exists, don't mutate local Gold/inventory.
+							if (MultiplayerManager.getInstance().isMultiplayerActive()) {
+								Dungeon.hero.rejectUnsupportedMultiplayerWorldAction();
+								return;
+							}
 							GLog.i(Messages.get(Shopkeeper.this, "buyback"));
 							Item returned = buybackItems.remove(index-2);
 							Dungeon.gold -= returned.value();
@@ -278,7 +285,8 @@ public class Shopkeeper extends NPC {
 					@Override
 					protected boolean enabled(int index) {
 						if (index > 1){
-							return Dungeon.gold >= buybackItems.get(index-2).value();
+							return !MultiplayerManager.getInstance().isMultiplayerActive()
+								&& Dungeon.gold >= buybackItems.get(index-2).value();
 						} else {
 							return super.enabled(index);
 						}
