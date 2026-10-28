@@ -1868,12 +1868,12 @@ export function isValidNativeMineInventoryMutation(previousValue: unknown, nextV
   }
   if (added.length !== 0 || changed.length !== 1) return false;
   const source = changed[0], id = String(source.itemId), result = newItems.get(id);
-  const oldValue = oldValues.get(id), nextValue = newValues.get(id);
+  const oldValue = oldValues.get(id), nextEconomyValue = newValues.get(id);
   if (String(source.className) !== darkGoldClass || String(result?.className) !== darkGoldClass
       || Number(result?.quantity) !== Number(source.quantity) + 1 || !source.stackable || !result?.stackable
       || !sameNativeItemValue(itemValueWithout(source, ["quantity", "serializedBundle"]),
         itemValueWithout(result, ["quantity", "serializedBundle"]))
-      || !sameDarkGoldValue(oldValue, source) || !sameDarkGoldValue(nextValue, result)
+      || !sameDarkGoldValue(oldValue, source) || !sameDarkGoldValue(nextEconomyValue, result)
       || !sameNativeItemValue(sameWithout(before, id), sameWithout(after, id))
       || !sameNativeItemValue(sameWithout(beforeValues, id), sameWithout(afterValues, id))
       || !sameNativeItemValue(
