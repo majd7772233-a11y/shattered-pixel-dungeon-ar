@@ -5299,7 +5299,7 @@ export class MatchRoom {
               verifiedMutationRequestId, verifiedMutationAction)) {
             this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
           }
-          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(`
+          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(
             "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
             depth, Number(level.branch), String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
             session.playerId, verifiedMutationRequestId);
