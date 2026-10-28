@@ -544,7 +544,11 @@ public class MultiplayerManager implements TransportCallback {
                     JsonValue action = intent == null ? null : intent.get("action");
                     String name = action == null ? "" : action.asString();
                     rejectedWorldAction = "MOVE".equals(name) || "UNLOCK".equals(name) || "MINE".equals(name)
-                            || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name);
+                            || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name)
+                            || "PICKUP".equals(name) || "DROP".equals(name) || "EQUIP".equals(name)
+                            || "UNEQUIP".equals(name) || "BUY".equals(name) || "SELL".equals(name)
+                            || "USE_ITEM".equals(name) || "THROW".equals(name) || "ALCHEMY".equals(name)
+                            || "USE_ABILITY".equals(name);
                 } catch (RuntimeException ignored) {}
             }
             boolean rejectedTransition = rejected != null && rejected.payloadJson != null
