@@ -14,18 +14,19 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 ---
 
 
-## CURRENT CONTINUATION CHECKPOINT — 2026-10-27 (AUTHORITATIVE; READ FIRST)
+## CURRENT CONTINUATION CHECKPOINT — 2026-10-28 (AUTHORITATIVE; READ FIRST)
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 - **Branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless asked.
-- **Latest code/test SHA tested:** `859be3d6b1aea3b3fe13802fe9298d2344162edc` (“Cover drop replay and shared-cell missile reconciliation”).
-- **Phase 6 exact-SHA CI:** [run 40508581979](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40508581979) passed both required jobs. Backend TypeScript build passed; Vitest reported 180 tests in each mirrored TS/JS test file (360 executions, not 360 unique source cases). Android JVM tests and debug APK compilation passed (`BUILD SUCCESSFUL`).
-- **Phase 6 complete for implementation and automated acceptance:** exact full/partial DROP deltas, source/result identity, native stack merge semantics, quickslot remainders, per-item/per-heap validation, duplicate replay rejection, and native missile landing/PinCushion/consumption outcomes are implemented and covered by regression tests.
+- **Latest code/test SHA verified:** `99d4d6e4fdf4aab7487f68b7b13321f1a4e81ea5` (“Harden native item economy deltas and alchemy results”). The exact-HEAD workflow [40515866931](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40515866931) passed both jobs: backend TypeScript build and 380 Vitest executions across mirrored TS/JS files (380 executions, not 380 unique source cases); Android JVM tests and debug APK compile passed (`BUILD SUCCESSFUL`).
+- **Phase 6 exact implementation checkpoint:** `859be3d6b1aea3b3fe13802fe9298d2344162edc`, with exact-SHA CI [40508581979](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40508581979) passing both jobs. The later tested HEAD adds inventory-economy validation/tests and still passes the DROP/projectile regression suite.
+- **Phase 6 complete for implementation and automated acceptance:** exact full/partial DROP deltas, source/result identity, native stack merge semantics, quickslot remainders, per-item/per-heap validation, duplicate replay rejection, and native missile landing/PinCushion/consumption outcomes are implemented and covered by regression tests. The latest branch regression recheck found no failing automated checks.
 - **Phase 6 verification limits:** no physical-device match or deployed Worker end-to-end test was executed. The deployed-service preflight remains Phase 22 and the user-led physical-device test remains Phase 23. The broader multiplayer project is not yet complete.
-- **Next: Phase 7 — Inventory Actions and Item Economy.** Read the authoritative Phase 7 section in `ROADMAP.md` before changing it.
+- **Phase 7 state:** implementation has begun on the branch (native inventory economy value index, shop purchase/sale validation and alchemy-result value consistency have recent commits), but Phase 7 remains **open** until every work item and acceptance criterion in `ROADMAP.md` is audited and complete. Do not report Phase 7 complete from the current CI run alone.
+- **Next: Phase 7 — Inventory Actions and Item Economy.** Read its full authoritative scope in `ROADMAP.md`; audit current implementations before adding parallel paths.
 - **Phase 5 remains complete:** stable item/heap IDs, exact native-bundle identity validation, room/depth/branch-scoped claims, atomic exact-owner/request retries and branch-aware migration are recorded below and in `ROADMAP.md`.
 - **Current map:** 23 dependency-based phases; Phases 1–6 are complete for implementation and automated acceptance, phases 7–23 remain open.
-- **Interruption rule:** if tools/network/usage limits interrupt a phase, preserve exact SHA, changed files, actual tests and next action. Never describe partial implementation as completion.
+- **Interruption rule:** if tools/network/usage limits interrupt a phase, preserve the exact SHA, changed files, checks actually run and next action. Never describe partial implementation as completion.
 
 ---
 
@@ -358,3 +359,9 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - Branch HEAD before this documentation-only audit was `ab81c507c5f1ae0b767732a7247cf7afe5afd917`. No two-device or deployed Worker run is claimed; those remain Phase 10 checks.
 - Phase 4 remains complete for implementation and automated acceptance. The next whole phase is Phase 5 — items and effects.
 
+### 2026-10-28 — Resumed Phase 6 and verified current branch state
+
+- Re-read `GPT.md`, the authoritative Phase 6 scope, the drop/partial-stack/projectile implementation and its Worker/Android tests. The live branch was already beyond the earlier saved checkpoint: Phase 6 was marked complete on `859be3d6b1aea3b3fe13802fe9298d2344162edc`, and later commits had started Phase 7 inventory-economy work.
+- Verified branch HEAD `99d4d6e4fdf4aab7487f68b7b13321f1a4e81ea5` and its exact-HEAD workflow [40515866931](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40515866931). Backend TypeScript build passed, 380 Vitest executions passed across mirrored TS/JS files (not 380 unique source scenarios), and Android JVM tests/debug APK compilation passed (`BUILD SUCCESSFUL`).
+- Confirmed the current source still has the Phase 6 stable identity and heap-delta validation, the full/partial DROP checks, and the deferred native projectile-impact path for HEAP / PinCushion / consumed outcomes. No duplicate Phase 6 implementation was added because the existing phase is already complete and its regressions pass on the later branch tip.
+- No deployed Worker end-to-end test or physical-device match was run. Those remain Phase 22 and Phase 23 respectively. Phase 7 is the next phase and already has partial code on the branch, but stays open until its complete scope is audited and accepted.
