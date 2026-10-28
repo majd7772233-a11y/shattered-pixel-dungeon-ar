@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeInteractInventoryMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
+import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
@@ -1831,6 +1831,42 @@ describe("Native inventory economic value index", () => {
     expect(isValidNativeItemEconomyIndexMutation(before,after,"ALCHEMY",details,[],[])).toBe(true);
     expect(isValidNativeItemEconomyIndexMutation(before,hero([afterOutput],[economy(resultId,3,91,30)]),
       "ALCHEMY",details,[],[])).toBe(false);
+  });
+});
+
+describe("Native mine and non-effect action buff integrity", () => {
+  const hunger="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
+  const haste="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste";
+  const hero=(buffs:any[],extra:Record<string,any>={})=>{
+    const rows=buffs.map((buff:any)=>JSON.stringify({buff}));
+    return JSON.stringify({
+      hp:10,ht:10,pos:9,shielding:0,gold:0,alchemyEnergy:0,
+      combatBundle:JSON.stringify({STR:10,items:[],buffs}),
+      buffCount:rows.length,...Object.fromEntries(rows.flatMap((row,i)=>[["buff_"+i,row],["buffCooldown_"+i,0]])),
+      ...extra
+    });
+  };
+  const mine=(sourceTerrain:number)=>({sourceTerrain});
+  it("rejects injected or removed buffs on actions that must not change buffs",()=>{
+    const before=hero([{__className:haste,left:4}]);
+    expect(isValidNativeUnchangedBuffState(before,before)).toBe(true);
+    expect(isValidNativeUnchangedBuffState(before,hero([{__className:haste,left:4},{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",left:5}]))).toBe(false);
+    expect(isValidNativeUnchangedBuffState(before,hero([]))).toBe(false);
+  });
+  it("accepts only the native +3 Hunger level change when mining normal stone",()=>{
+    const before=hero([{__className:hunger,level:100,partialDamage:0.25}]);
+    const after=hero([{__className:hunger,level:103,partialDamage:0.25}]);
+    expect(isValidNativeMineBuffMutation(before,after,mine(4))).toBe(true);
+    expect(isValidNativeMineBuffMutation(before,hero([{__className:hunger,level:103,partialDamage:0.25},
+      {__className:haste,left:9}]),mine(4))).toBe(false);
+    expect(isValidNativeMineBuffMutation(before,hero([{__className:hunger,level:104,partialDamage:0.25}]),mine(4))).toBe(false);
+    expect(isValidNativeMineBuffMutation(before,hero([{__className:hunger,level:100,partialDamage:0.25}]),mine(12))).toBe(true);
+  });
+  it("accounts for native WellFed energy before allowing a mine mutation",()=>{
+    const wellFed="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed";
+    const before=hero([{__className:hunger,level:100,partialDamage:0.25},{__className:wellFed,left:50}]);
+    const after=hero([{__className:hunger,level:100,partialDamage:0.25},{__className:wellFed,left:47}]);
+    expect(isValidNativeMineBuffMutation(before,after,mine(4))).toBe(true);
   });
 });
 
