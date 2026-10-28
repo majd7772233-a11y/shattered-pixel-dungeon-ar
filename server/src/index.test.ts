@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1829,6 +1829,131 @@ describe("Native inventory economic value index", () => {
     expect(isValidNativeItemEconomyIndexMutation(before,after,"ALCHEMY",details,[],[])).toBe(true);
     expect(isValidNativeItemEconomyIndexMutation(before,hero([afterOutput],[economy(resultId,3,91,30)]),
       "ALCHEMY",details,[],[])).toBe(false);
+  });
+});
+
+describe("Native mining inventory and floor economy reconciliation", () => {
+  const darkGoldClass = "com.shatteredpixel.shatteredpixeldungeon.items.quest.DarkGold";
+  const ordinaryClass = "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+  const item = (id:string, quantity=1, cls=darkGoldClass) => ({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable:true,equipped:false,
+    serializedBundle:"native-dark-gold:"+id+":q="+quantity
+  });
+  const economy = (row:any) => ({
+    itemId:row.itemId,className:row.className,quantity:row.quantity,
+    nativeValue:0,nativeUnitValue:0,nativeSellable:false
+  });
+  const hero = (items:any[], slots:any[]=[], extra:Record<string,any>={}) => JSON.stringify({
+    hp:10,ht:10,pos:9,shielding:0,gold:0,alchemyEnergy:0,inventoryBundle:"inventory-before",
+    inventoryItemsJson:JSON.stringify(items),nativeItemEconomyJson:JSON.stringify(items.map(economy)),
+    quickslotsJson:JSON.stringify(slots),notesBundle:"notes",questStateBundle:"quests",
+    ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,...extra
+  });
+  const details = (sourceTerrain=12) => ({sourceTerrain});
+  const accepted = (sourceTerrain=12) => ({actionType:"MINE",sourceTerrain,targetTerrain:sourceTerrain});
+  const heap = (heapId:string,pos:number,items:any[]) => ({
+    heapId,pos,type:"HEAP",seen:false,haunted:false,hidden:false,autoExplored:false,items
+  });
+  const floorGold = (id="stable-floor-darkgold-001", quantity=1) => ({
+    ...item(id,quantity),nativeValue:0,nativeUnitValue:0,shopPrice:-1
+  });
+
+  it("accepts one native DarkGold result from a gold wall and rejects forged additions",()=>{
+    const before=hero([]);
+    const gold=item("stable-mined-darkgold-001");
+    const after=hero([gold],[],{inventoryBundle:"inventory-after"});
+    expect(isValidNativeMineInventoryMutation(before,after,details(12),accepted(12))).toBe(true);
+    const forged=item("stable-mined-darkgold-002");
+    expect(isValidNativeMineInventoryMutation(before,hero([gold,forged],[],{inventoryBundle:"inventory-after"}),
+      details(12),accepted(12))).toBe(false);
+    expect(isValidNativeMineInventoryMutation(before,after,details(4),accepted(12))).toBe(false);
+    const wrongClass=item("stable-mined-forged-001",1,ordinaryClass);
+    expect(isValidNativeMineInventoryMutation(before,hero([wrongClass],[],{inventoryBundle:"inventory-after"}),
+      details(12),accepted(12))).toBe(false);
+  });
+
+  it("permits one-unit DarkGold stack merges but rejects quantity jumps and unrelated changes",()=>{
+    const existing=item("stable-darkgold-stack-001",3);
+    const merged=item(existing.itemId,4);
+    const before=hero([existing]);
+    const after=hero([merged],[],{inventoryBundle:"inventory-after"});
+    expect(isValidNativeMineInventoryMutation(before,after,details(12),accepted(12))).toBe(true);
+    expect(isValidNativeMineInventoryMutation(before,hero([item(existing.itemId,5)],[],{inventoryBundle:"inventory-after"}),
+      details(12),accepted(12))).toBe(false);
+    const unrelated=item("stable-scroll-sideeffect-001",1,ordinaryClass);
+    expect(isValidNativeMineInventoryMutation(before,hero([merged,unrelated],[],{inventoryBundle:"inventory-after"}),
+      details(12),accepted(12))).toBe(false);
+  });
+
+  it("keeps non-gold mining inventory fixed and replaces only a matching zero-quantity quickslot placeholder",()=>{
+    const before=hero([]);
+    expect(isValidNativeMineInventoryMutation(before,before,details(4),accepted(4))).toBe(true);
+    expect(isValidNativeMineInventoryMutation(before,hero([item("stable-unexpected-gold-001")],[],{
+      inventoryBundle:"inventory-after"}),details(4),accepted(4))).toBe(false);
+    const placeholder={slot:0,itemId:"stable-darkgold-placeholder-001",className:darkGoldClass,
+      quantity:0,serializedBundle:"placeholder-bundle:stable-darkgold-placeholder-001"};
+    const result=item("stable-darkgold-quickslot-001");
+    const replaced={slot:0,itemId:result.itemId,className:darkGoldClass,quantity:1,serializedBundle:result.serializedBundle};
+    expect(isValidNativeMineInventoryMutation(hero([],[placeholder]),
+      hero([result],[replaced],{inventoryBundle:"inventory-after"}),details(12),accepted(12))).toBe(true);
+  });
+
+  it("allows only one DarkGold floor unit when the native backpack refuses collection",()=>{
+    const before:any[]=[];
+    const gold=floorGold();
+    const next=[heap("stable-mine-heap-001",9,[gold])];
+    expect(isValidNativeMineHeapMutation(before,next,9,10,details(12),accepted(12))).toBe(true);
+    expect(isValidNativeMineHeapMutation(before,[],9,10,details(12),accepted(12))).toBe(true);
+    expect(isValidNativeMineHeapMutation(before,[heap("stable-mine-heap-001",9,[gold,
+      floorGold("stable-forged-floor-item-001")])],9,10,details(12),accepted(12))).toBe(false);
+    expect(isValidNativeMineHeapMutation(before,next,9,10,details(4),accepted(4))).toBe(false);
+  });
+});
+
+describe("Native mutation lock admission", () => {
+  const lock = (overrides:Record<string,any>={}) => ({
+    playerId:"player-001",requestId:"req-sell-001",actionType:"SELL",depth:4,createdAt:10000,...overrides
+  });
+  it("blocks competing writes and permits only the exact request retry",()=>{
+    const pending=JSON.stringify(lock());
+    expect(classifyNativeMutationLock(pending,"player-001","req-sell-001","SELL",11000)).toBe("OWNED");
+    expect(classifyNativeMutationLock(pending,"player-001","req-sell-002","SELL",11000)).toBe("PENDING");
+    expect(classifyNativeMutationLock(pending,"player-001","req-sell-002","MOVE",11000)).toBe("PENDING");
+    expect(isNativeMutationLockForRequest(pending,"player-001","req-sell-001","SELL")).toBe(true);
+    expect(isNativeMutationLockForRequest(pending,"player-001","req-sell-002","SELL")).toBe(false);
+    expect(requiresNativeMutationSnapshot("BUY")).toBe(true);
+    expect(requiresNativeMutationSnapshot("USE_ITEM")).toBe(true);
+    expect(requiresNativeMutationSnapshot("MOVE")).toBe(false);
+    expect(requiresNativeMutationSnapshot("INTERACT")).toBe(false);
+  });
+  it("converts expired or malformed locks into a resync-required state",()=>{
+    expect(classifyNativeMutationLock(JSON.stringify(lock()),"player-001","req-sell-002","SELL",50000)).toBe("STALE");
+    expect(classifyNativeMutationLock("{bad-json","player-001","req-sell-002","SELL",11000)).toBe("STALE");
+  });
+});
+
+describe("Unsupported native item actions remain fail-closed", () => {
+  const potionClass="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const scrollClass="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+  const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+  const row=(id:string,cls:string)=>({itemId:id,className:cls,quantity:1,level:0,cursed:false,cursedKnown:false,
+    stackable:false,equipped:false,serializedBundle:"native-item-bundle:"+id});
+  const hero=(item:any)=>JSON.stringify({hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory",
+    inventoryItemsJson:JSON.stringify([item]),quickslotsJson:"[]"});
+  const intent=(id:string,cls:string,itemAction:string)=>({from:9,to:9,targetPos:9,depth:4,branch:0,
+    engineActionCost:1,itemId:id,itemClass:cls,itemAction,expectedQuantity:1,sourceQuantityBefore:1,stackable:false});
+  const level={depth:4,branch:0,locked:false,heaps:[]};
+  const player={pos:9,state:"ALIVE"};
+  it("rejects READ and ZAP until their native effects have a validated shared result",()=>{
+    const scroll=row("stable-unsupported-scroll-001",scrollClass);
+    const wand=row("stable-unsupported-wand-001",wandClass);
+    expect(isValidNativeUseItemIntent(level,intent(scroll.itemId,scrollClass,"READ"),4,
+      "player-001",player,hero(scroll))).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent(wand.itemId,wandClass,"ZAP"),4,
+      "player-001",player,hero(wand))).toBe(false);
+    const potion=row("stable-supported-potion-001",potionClass);
+    expect(isValidNativeUseItemIntent(level,intent(potion.itemId,potionClass,"DRINK"),4,
+      "player-001",player,hero(potion))).toBe(true);
   });
 });
 
