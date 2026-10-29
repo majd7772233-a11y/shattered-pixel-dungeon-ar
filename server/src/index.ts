@@ -472,7 +472,7 @@ function nativeUseItemCombatBundleMatches(previousHero: any, nextHero: any, item
   };
   // Hero.storeInBundle writes the backpack and native Buff collection into its root bundle.
   // Both are independently validated below from exact item rows and flattened buff snapshots.
-  const inventoryKeys = ["items", "buffs", "time"];
+  const inventoryKeys = ["inventory", "items", "buffs", "time"];
   const strengthPotion = itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
   if (strengthPotion) {
     if (!Number.isInteger(previous.STR) || !Number.isInteger(next.STR) || next.STR !== previous.STR + 1) return false;
@@ -777,6 +777,7 @@ export function isValidNativeBuybackInventoryMutation(previousValue: unknown, ne
   const stripCombatInventory = (hero:any) => {
     const combat = parseNativeBundleObject(hero?.combatBundle);
     if (!combat) return null;
+    delete combat.inventory;
     delete combat.items;
     return combat;
   };

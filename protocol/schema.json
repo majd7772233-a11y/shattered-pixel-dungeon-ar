@@ -276,6 +276,7 @@
             "EQUIP",
             "UNEQUIP",
             "BUY",
+            "BUYBACK",
             "SELL",
             "USE_ITEM",
             "THROW",

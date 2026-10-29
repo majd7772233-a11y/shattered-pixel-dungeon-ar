@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -3062,6 +3062,88 @@ describe("Native item consumption transaction validation", () => {
     const d=intent("native-food-stack-001",food,"EAT",4,true),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     expect(isValidNativeUseItemMutation(before,JSON.stringify(hero([row("native-food-stack-001",food,2,true)],{inventoryBundle:"inventory-after"})),d,accepted)).toBe(false);
+  });
+});
+
+describe("Native Shopkeeper buyback transactions", () => {
+  const cls="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const item=(id:string,quantity=1,value=30,bundle?:string)=>({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:true,stackable:true,equipped:false,shopPrice:-1,
+    nativeValue:value,nativeUnitValue:quantity===1?value:30,
+    serializedBundle:bundle||`native-item:${id}:quantity=${quantity}`
+  });
+  const economy=(row:any)=>({itemId:row.itemId,className:row.className,quantity:row.quantity,
+    nativeValue:row.nativeValue,nativeUnitValue:row.nativeUnitValue,nativeSellable:true});
+  const hero=(items:any[],gold=100,slots:any[]=[],extra:Record<string,any>={})=>({
+    hp:10,ht:10,pos:9,shielding:0,gold,cooldown:0,alchemyEnergy:0,
+    inventoryBundle:"native-inventory-before",
+    combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-before",buffs:[],
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+    inventoryItemsJson:JSON.stringify(items),nativeItemEconomyJson:JSON.stringify(items.map(economy)),
+    quickslotsJson:JSON.stringify(slots),notesBundle:"native-notes",questStateBundle:"native-quests",
+    ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,...extra
+  });
+  const shop=(buyback:any[]=[],bundle="native-shop-before")=>({
+    entityId:"stable-buyback-shop-001",mobId:15,name:"Shopkeeper",pos:10,hp:20,ht:20,shielding:0,
+    state:"Wandering",serializedBundle:bundle,defenseSkill:0,baseSpeed:1,effectiveSpeed:1,cooldown:0,
+    targetCell:-1,targetType:"NONE",targetEntityId:"",enemySeen:false,alerted:false,buffs:[],
+    shopkeeperTurnsSinceHarmed:-1,buybackItems:buyback
+  });
+  const d=(overrides:Record<string,any>={})=>({
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:0,
+    shopEntityId:"stable-buyback-shop-001",buybackItemId:"stable-buyback-item-001",
+    buybackItemClass:cls,buybackQuantity:1,price:30,resultItemId:"stable-buyback-item-001",
+    itemClass:cls,itemLevel:0,cursed:false,cursedKnown:true,stackable:true,nativeValue:30,nativeUnitValue:30,
+    resultItemBundle:"native-item:stable-buyback-item-001:quantity=1",...overrides
+  });
+  const accepted=(data:any)=>({...data,actionType:"BUYBACK",playerId:"player-001"});
+  const player={pos:9,state:"ALIVE"};
+
+  it("accepts only the exact adjacent Shopkeeper item and rejects stale, unaffordable or redirected intents",()=>{
+    const source=item("stable-buyback-item-001"), level={depth:4,branch:0,locked:false,width:8,height:8,heaps:[],mobs:[shop([source])]};
+    const before=JSON.stringify(hero([],100));
+    expect(isValidNativeBuybackIntent(level,d(),4,"player-001",player,before)).toBe(true);
+    expect(isValidNativeBuybackIntent({...level,mobs:[shop([])]},d(),4,"player-001",player,before)).toBe(false);
+    expect(isValidNativeBuybackIntent(level,d({price:29}),4,"player-001",player,before)).toBe(false);
+    expect(isValidNativeBuybackIntent(level,d({shopEntityId:"stable-other-shop-001"}),4,"player-001",player,before)).toBe(false);
+    expect(isValidNativeBuybackIntent(level,d(),4,"player-001",{pos:9,state:"DEAD"},before)).toBe(false);
+    expect(isValidNativeBuybackIntent(level,d(),4,"player-001",player,JSON.stringify(hero([],20)))).toBe(false);
+    expect(isValidNativeBuybackIntent({...level,mobs:[{...shop([source]),pos:30}]},d(),4,"player-001",player,before)).toBe(false);
+  });
+
+  it("commits exactly one item and the exact gold debit while removing that item from buyback",()=>{
+    const source=item("stable-buyback-item-001"), oldHero=hero([],100),newHero=hero([source],70,[],{
+      inventoryBundle:"native-inventory-after",
+      combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    });
+    const data=d(),result=accepted(data);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify(newHero),data,result)).toBe(true);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,gold:69}),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,
+      inventoryItemsJson:JSON.stringify([source,{...source,itemId:"forged-extra-item-001"}]),
+      nativeItemEconomyJson:JSON.stringify([economy(source),economy({...source,itemId:"forged-extra-item-001"})])
+    }),data,result)).toBe(false);
+
+    const beforeShop=shop([source]), afterShop=shop([],"native-shop-after");
+    expect(isValidNativeBuybackShopkeeperMutation([beforeShop],[afterShop],data,result)).toBe(true);
+    expect(isValidNativeBuybackShopkeeperMutation([beforeShop],[shop([source],"native-shop-after")],data,result)).toBe(false);
+    expect(isValidNativeBuybackShopkeeperMutation([beforeShop],[shop([],"native-shop-after")],
+      {...data,buybackItemId:"stable-other-item-001"},result)).toBe(false);
+  });
+
+  it("rejects unrelated Hero edits, duplicate item identity and forged native economy metadata",()=>{
+    const source=item("stable-buyback-item-001"),data=d(),result=accepted(data);
+    const oldHero=hero([],100),validHero=hero([source],70,[],{
+      inventoryBundle:"native-inventory-after",
+      combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    });
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...validHero,hp:9}),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(hero([source],100)),JSON.stringify(validHero),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...validHero,
+      nativeItemEconomyJson:JSON.stringify([{...economy(source),nativeValue:31}])
+    }),data,result)).toBe(false);
   });
 });
 
