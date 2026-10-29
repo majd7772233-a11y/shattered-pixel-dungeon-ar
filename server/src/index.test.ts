@@ -3071,14 +3071,20 @@ describe("Native item consumption transaction validation", () => {
 
   it("persists PotionOfStrength only as an exact native STR increase of one",()=>{
     const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
-    const before=JSON.stringify(hero([row("native-strength-001",strength)]));
+    const combat=(STR:number, inventory:string)=>JSON.stringify({
+      STR,inventory,items:inventory,buffs:[],
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}
+    });
+    const before=JSON.stringify(hero([row("native-strength-001",strength)],{
+      combatBundle:combat(10,"inventory-before")
+    }));
     const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      combatBundle:JSON.stringify({STR:11,items:"inventory-after"})
+      combatBundle:combat(11,"inventory-after")
     }));
     const d=intent("native-strength-001",strength),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     const forged=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      combatBundle:JSON.stringify({STR:12,items:"inventory-after"})
+      combatBundle:combat(12,"inventory-after")
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
