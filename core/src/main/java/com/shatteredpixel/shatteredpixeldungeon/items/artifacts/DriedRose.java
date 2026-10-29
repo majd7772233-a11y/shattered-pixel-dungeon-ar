@@ -145,6 +145,13 @@ public class DriedRose extends Artifact {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		if ((action.equals(AC_SUMMON) || action.equals(AC_DIRECT) || action.equals(AC_OUTFIT))
+				&& hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute(hero, action);
 
 		if (action.equals(AC_SUMMON)) {

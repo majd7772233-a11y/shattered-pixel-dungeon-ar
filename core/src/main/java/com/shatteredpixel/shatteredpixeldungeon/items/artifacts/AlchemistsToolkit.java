@@ -74,6 +74,12 @@ public class AlchemistsToolkit extends Artifact {
 	@Override
 	public void execute(Hero hero, String action ) {
 
+		if (action.equals(AC_ENERGIZE) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute(hero, action);
 
 		if (hero.buff(MagicImmune.class) != null) return;
