@@ -76,6 +76,11 @@ public class ShardOfOblivion extends Trinket {
 
 	@Override
 	public void execute(Hero hero, String action) {
+		if (action.equals(AC_IDENTIFY) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
 		if (action.equals(AC_IDENTIFY)){
 			curUser = hero;
 			curItem = this;
