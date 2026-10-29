@@ -3142,6 +3142,25 @@ export function isValidNativeInteractInventoryMutation(previousValue: unknown, n
   return true;
 }
 
+/** Binds the server-accepted world-time cost to the same native Hero cooldown delta used by the publisher. */
+export function isValidNativeMutationActionCost(previousHeroValue: unknown, nextHeroValue: unknown,
+  acceptedActionCostValue: unknown): boolean {
+  let previous: any, next: any;
+  try {
+    previous = JSON.parse(String(previousHeroValue || ""));
+    next = JSON.parse(String(nextHeroValue || ""));
+  } catch (_) { return false; }
+  const beforeCooldown = Number(previous?.cooldown);
+  const afterCooldown = Number(next?.cooldown);
+  const acceptedCost = Number(acceptedActionCostValue);
+  if (!previous || typeof previous !== "object" || Array.isArray(previous)
+      || !next || typeof next !== "object" || Array.isArray(next)
+      || !Number.isFinite(beforeCooldown) || !Number.isFinite(afterCooldown)
+      || !Number.isFinite(acceptedCost) || acceptedCost < 0 || acceptedCost > 10) return false;
+  const nativeCost = Math.max(0, Math.min(10, afterCooldown - beforeCooldown));
+  return Math.abs(nativeCost - acceptedCost) <= 0.06;
+}
+
 /** A whole map is accepted only as a narrowly scoped delta for a previously accepted native action. */
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
@@ -5227,7 +5246,10 @@ export class MatchRoom {
               shielding: Number(reportedHero.shielding)
             });
           if (depth !== this.currentDepth || transitionAlreadyPending || !actionWasAccepted || !trustedHeroRow
-              || !mutationLockMatches || !heroStateValid || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
+              || !mutationLockMatches || !heroStateValid
+              || (requiresNativeMutationSnapshot(mutationAction)
+                && !isValidNativeMutationActionCost(trustedHeroRow.value, level.heroStateJson, accepted?.actionCost))
+              || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
