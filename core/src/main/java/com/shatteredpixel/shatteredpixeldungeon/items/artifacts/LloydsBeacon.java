@@ -106,6 +106,13 @@ public class LloydsBeacon extends Artifact {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		if ((action == AC_ZAP || action == AC_SET || action == AC_RETURN)
+				&& hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute( hero, action );
 
 		if (action == AC_SET || action == AC_RETURN) {
