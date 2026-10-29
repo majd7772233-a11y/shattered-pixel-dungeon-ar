@@ -3162,6 +3162,19 @@ describe("Native Shopkeeper buyback transactions", () => {
       nativeItemEconomyJson:JSON.stringify([economy(source),economy({...source,itemId:"forged-extra-item-001"})])
     }),data,result)).toBe(false);
 
+    const placeholder={slot:2,itemId:source.itemId,className:cls,quantity:0,serializedBundle:source.serializedBundle};
+    const restoredSlot={...placeholder,quantity:1};
+    const oldQuickslotHero=hero([],100,[placeholder]);
+    const newQuickslotHero=hero([source],70,[restoredSlot],{
+      cooldown:1,inventoryBundle:"native-inventory-after",
+      combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-after",items:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    });
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldQuickslotHero),
+      JSON.stringify(newQuickslotHero),data,result)).toBe(true);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldQuickslotHero),
+      JSON.stringify({...newQuickslotHero,quickslotsJson:JSON.stringify([{...restoredSlot,slot:3}])}),data,result)).toBe(false);
+
     const beforeShop=shop([source]), afterShop=shop([],"native-shop-after");
     expect(isValidNativeBuybackShopkeeperMutation([beforeShop],[afterShop],data,result)).toBe(true);
     expect(isValidNativeBuybackShopkeeperMutation([beforeShop],[shop([source],"native-shop-after")],data,result)).toBe(false);
