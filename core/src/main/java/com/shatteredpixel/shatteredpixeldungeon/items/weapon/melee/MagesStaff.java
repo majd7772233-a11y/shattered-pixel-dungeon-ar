@@ -134,6 +134,13 @@ public class MagesStaff extends MeleeWeapon {
 	@Override
 	public void execute(Hero hero, String action) {
 
+		if ((action.equals(AC_IMBUE) || action.equals(AC_ZAP)) && hero == com.shatteredpixel.shatteredpixeldungeon.Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			// Imbuing transforms the staff and its nested wand; ZAP has no safe shared item-result protocol yet.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute(hero, action);
 
 		if (action.equals(AC_IMBUE)) {

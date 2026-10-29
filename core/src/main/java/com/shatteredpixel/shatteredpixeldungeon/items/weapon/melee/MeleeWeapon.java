@@ -101,6 +101,12 @@ public class MeleeWeapon extends Weapon {
 
 	@Override
 	public void execute(Hero hero, String action) {
+		if (action.equals(AC_ABILITY) && hero == com.shatteredpixel.shatteredpixeldungeon.Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			// Weapon-specific Duelist abilities have no complete action-bound inventory/combat validator.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
 		super.execute(hero, action);
 
 		if (action.equals(AC_ABILITY)){
