@@ -2863,21 +2863,31 @@ describe("Native item consumption transaction validation", () => {
     const d=intent("native-small-ration-energy-001",smallRation,"EAT",1,true);
     expect(isValidNativeUseItemMutation(before,after,d,{...d,actionType:"USE_ITEM"})).toBe(false);
   });
-  it("accepts PotionOfHaste only with one bounded native Haste buff and no unrelated effect",()=>{
+  it("accepts PotionOfHaste only with a correctly scheduled native Haste buff",()=>{
     const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
     const hasteBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste";
-    const before=JSON.stringify(hero([row("native-haste-001",haste)]));
-    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+    const before=JSON.stringify(hero([row("native-haste-001",haste)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+    }));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:20,id:52}}),buffCooldown_1:20
+      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:30,id:52}}),buffCooldown_1:20
     }));
     const d=intent("native-haste-001",haste),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemIntent({depth:4,branch:0,locked:false,heaps:[]},d,4,
       "player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
-    const overlong=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+    const mismatchedClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:45,id:52}}),buffCooldown_1:45
+      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:55,id:52}}),buffCooldown_1:20
+    }));
+    expect(isValidNativeUseItemMutation(before,mismatchedClock,d,accepted)).toBe(false);
+    const overlong=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:hasteBuff,time:55,id:52}}),buffCooldown_1:45
     }));
     expect(isValidNativeUseItemMutation(before,overlong,d,accepted)).toBe(false);
   });
@@ -2932,6 +2942,30 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
+  it("accepts a native Hero clock advance only when it matches the cooldown delta",()=>{
+    const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
+    const before=JSON.stringify(hero([row("native-strength-clock-001",strength)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+    }));
+    const d=intent("native-strength-clock-001",strength),accepted={...d,actionType:"USE_ITEM"};
+    const validAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after"})
+    }));
+    expect(isValidNativeUseItemMutation(before,validAfter,d,accepted)).toBe(true);
+    const forgedClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:15,STR:11,items:"inventory-after"})
+    }));
+    expect(isValidNativeUseItemMutation(before,forgedClock,d,accepted)).toBe(false);
+    const forgedCooldown=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:2,
+      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after"})
+    }));
+    expect(isValidNativeUseItemMutation(before,forgedCooldown,d,accepted)).toBe(false);
+    const missingClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({STR:11,items:"inventory-after"})
+    }));
+    expect(isValidNativeUseItemMutation(before,missingClock,d,accepted)).toBe(false);
+  });
+
   it("persists PotionOfStrength only as an exact native STR increase of one",()=>{
     const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
     const before=JSON.stringify(hero([row("native-strength-001",strength)]));
