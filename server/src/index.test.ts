@@ -2762,7 +2762,8 @@ describe("Native item consumption transaction validation", () => {
   }});
   const hero = (items:any[], extra:Record<string,any>={}) => ({
     hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
-    combatBundle:JSON.stringify({STR:10,items:"inventory-before"}),
+    combatBundle:JSON.stringify({STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
     buffCount:1,buff_0:defaultHungerBundle,buffCooldown_0:0,
     inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
   });
