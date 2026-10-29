@@ -758,6 +758,19 @@ export function isValidNativeBuybackIntent(level: any, dataValue: unknown, depth
       || !Number.isInteger(hero.gold) || hero.gold < price) return false;
   const inventory = parseNativeInventoryIndex(hero), economy = parseNativeItemEconomyIndex(hero);
   if (!inventory || !economy || !parseNativeQuickslotIndex(hero)
+      || (cls.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.rings.")
+        && (() => {
+          const combat = parseNativeBundleObject(hero?.combatBundle);
+          if (!combat) return true;
+          for (let tier = 1; tier <= 4; tier++) {
+            const values = combat["talents_tier_" + tier];
+            if (!values || typeof values !== "object" || Array.isArray(values)) return true;
+            if (Number(values.THIEFS_INTUITION || 0) >= 2) return true;
+          }
+          const replacements = combat.replacements;
+          return !replacements || typeof replacements !== "object" || Array.isArray(replacements)
+            || Object.entries(replacements).some(([from,to]) => String(from) === "THIEFS_INTUITION" || String(to) === "THIEFS_INTUITION");
+        })())
       || inventory.some((item:any) => String(item.itemId) === itemId)
       || level.heaps.some((heap:any) => (Array.isArray(heap.items)?heap.items:[])
         .some((item:any) => String(item?.itemId || "") === itemId))
@@ -786,6 +799,9 @@ export function isValidNativeBuybackInventoryMutation(previousValue: unknown, ne
       || accepted.shopEntityId !== details.shopEntityId || accepted.buybackItemId !== id
       || accepted.buybackItemClass !== cls || accepted.buybackQuantity !== details.buybackQuantity
       || accepted.price !== price || accepted.resultItemId !== id || accepted.itemClass !== cls
+      || accepted.itemLevel !== details.itemLevel || accepted.cursed !== details.cursed
+      || accepted.cursedKnown !== details.cursedKnown || accepted.stackable !== details.stackable
+      || accepted.nativeValue !== details.nativeValue || accepted.nativeUnitValue !== details.nativeUnitValue
       || accepted.resultItemBundle !== details.resultItemBundle
       || previous.inventoryBundle === next.inventoryBundle
       || !Number.isInteger(previous.gold) || !Number.isInteger(next.gold) || next.gold !== previous.gold-price
@@ -840,7 +856,13 @@ export function isValidNativeBuybackShopkeeperMutation(previousMobs:any[], nextM
   const details:any=detailsValue, accepted:any=acceptedValue;
   if (!Array.isArray(previousMobs) || !Array.isArray(nextMobs) || !details || !accepted
       || accepted.actionType!=="BUYBACK" || accepted.shopEntityId!==details.shopEntityId
-      || accepted.buybackItemId!==details.buybackItemId || accepted.price!==details.price) return false;
+      || accepted.buybackItemId!==details.buybackItemId
+      || accepted.buybackItemClass!==details.buybackItemClass || accepted.buybackQuantity!==details.buybackQuantity
+      || accepted.price!==details.price || accepted.resultItemId!==details.resultItemId
+      || accepted.itemClass!==details.itemClass || accepted.itemLevel!==details.itemLevel
+      || accepted.cursed!==details.cursed || accepted.cursedKnown!==details.cursedKnown
+      || accepted.stackable!==details.stackable || accepted.nativeValue!==details.nativeValue
+      || accepted.nativeUnitValue!==details.nativeUnitValue || accepted.resultItemBundle!==details.resultItemBundle) return false;
   const index=(rows:any[])=>{
     const map=new Map<string,any>();
     for (const row of rows) {
@@ -5421,6 +5443,13 @@ export class MatchRoom {
                   && acceptedPayload?.buybackQuantity === mutationDetails.buybackQuantity
                   && acceptedPayload?.price === mutationDetails.price
                   && acceptedPayload?.resultItemId === mutationDetails.resultItemId
+                  && acceptedPayload?.itemClass === mutationDetails.itemClass
+                  && acceptedPayload?.itemLevel === mutationDetails.itemLevel
+                  && acceptedPayload?.cursed === mutationDetails.cursed
+                  && acceptedPayload?.cursedKnown === mutationDetails.cursedKnown
+                  && acceptedPayload?.stackable === mutationDetails.stackable
+                  && acceptedPayload?.nativeValue === mutationDetails.nativeValue
+                  && acceptedPayload?.nativeUnitValue === mutationDetails.nativeUnitValue
                   && acceptedPayload?.resultItemBundle === mutationDetails.resultItemBundle)
                 && (mutationAction !== "SELL" || mutationDetails != null
                   && acceptedPayload?.shopEntityId === mutationDetails.shopEntityId

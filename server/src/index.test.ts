@@ -3167,6 +3167,21 @@ describe("Native Shopkeeper buyback transactions", () => {
       {...data,buybackItemId:"stable-other-item-001"},result)).toBe(false);
   });
 
+  it("rejects ring buyback when native collection would identify it through Thief's Intuition",()=>{
+    const ringClass="com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfMight";
+    const ring={itemId:"stable-buyback-ring-001",className:ringClass,quantity:1,level:0,cursed:false,
+      cursedKnown:false,stackable:false,shopPrice:-1,nativeValue:40,nativeUnitValue:40,
+      serializedBundle:"native-item:stable-buyback-ring-001"};
+    const level={depth:4,branch:0,locked:false,width:8,height:8,heaps:[],mobs:[shop([ring])]};
+    const data=d({buybackItemId:ring.itemId,buybackItemClass:ringClass,itemClass:ringClass,price:40,
+      nativeValue:40,nativeUnitValue:40,stackable:false,resultItemBundle:ring.serializedBundle});
+    const nativeHero=JSON.stringify(hero([],100,[],{
+      combatBundle:JSON.stringify({time:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+        talents_tier_1:{},talents_tier_2:{THIEFS_INTUITION:2},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    }));
+    expect(isValidNativeBuybackIntent(level,data,4,"player-001",player,nativeHero)).toBe(false);
+  });
+
   it("rejects unrelated Hero edits, duplicate item identity and forged native economy metadata",()=>{
     const source=item("stable-buyback-item-001"),data=d(),result=accepted(data);
     const oldHero=hero([],100),validHero=hero([source],70,[],{
