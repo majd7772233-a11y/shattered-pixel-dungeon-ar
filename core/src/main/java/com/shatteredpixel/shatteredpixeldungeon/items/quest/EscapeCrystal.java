@@ -65,6 +65,12 @@ public class EscapeCrystal extends Item {
 	@Override
 	public void execute( final Hero hero, String action ) {
 
+		if (action.equals(AC_USE) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute(hero, action);
 
 		if (action.equals( AC_USE )) {

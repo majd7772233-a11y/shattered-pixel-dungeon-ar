@@ -51,6 +51,11 @@ public abstract class InventoryStone extends Runestone {
 	
 	@Override
 	public void execute(Hero hero, String action) {
+		if (action.equals(AC_USE) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
 		super.execute(hero, action);
 		if (action.equals(AC_USE) && hero.buff(MagicImmune.class) == null){
 			activate(curUser.pos);
