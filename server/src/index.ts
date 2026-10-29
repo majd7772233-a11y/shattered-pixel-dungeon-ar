@@ -3075,7 +3075,7 @@ export function isValidNativeMineBuffMutation(previousValue: unknown, nextValue:
   if (!before||!after) return false;
   const hungerClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger";
   const wellFedClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed";
-  if (terrain!==4) return isValidNativeUnchangedBuffState(previous,next);
+  if (terrain!==4) return isValidNativeUnchangedBuffState(previousValue,nextValue);
   const oldWellFed=before.get(wellFedClass)||[], newWellFed=after.get(wellFedClass)||[];
   const oldHunger=before.get(hungerClass)||[], newHunger=after.get(hungerClass)||[];
   const sameExcept=(ignore:string[])=>{
