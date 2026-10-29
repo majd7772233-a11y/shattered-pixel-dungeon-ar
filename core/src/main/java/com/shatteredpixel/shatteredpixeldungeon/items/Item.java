@@ -258,11 +258,18 @@ public class Item implements Bundlable {
 				}
 			}
 		} else if (action.equals( AC_THROW )) {
-			
 			if (hero.belongings.backpack.contains(this) || isEquipped(hero)) {
+				MultiplayerManager manager = MultiplayerManager.getInstance();
+				if (hero == Dungeon.hero && manager.isMultiplayerActive()
+						&& (Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked
+							|| !(this instanceof MissileWeapon))) {
+					// Server-side THROW accepts only native missile projectiles. Reject other
+					// throwable items before their native effects can damage the shared world.
+					hero.rejectUnsupportedMultiplayerWorldAction();
+					return;
+				}
 				doThrow(hero);
 			}
-			
 		}
 	}
 

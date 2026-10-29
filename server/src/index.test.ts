@@ -2605,6 +2605,9 @@ describe("Native missile throw transaction validation", () => {
     expect(isValidNativeThrowIntent(level,intent(),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
     expect(isValidNativeThrowIntent(level,intent({itemId:"stable-forged-001"}),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
     expect(isValidNativeThrowIntent(level,intent({targetPos:30,to:30}),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeThrowIntent(level,intent({
+      itemClass:"com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing"
+    }),4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
   });
   it("commits a full missile only when the same instance leaves inventory and appears in the heap",()=>{
     const before=JSON.stringify(hero([row("stable-source-001"),row("stable-other-001")]));
