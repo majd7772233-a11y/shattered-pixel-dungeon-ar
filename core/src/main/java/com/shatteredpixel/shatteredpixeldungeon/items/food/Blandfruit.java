@@ -96,6 +96,14 @@ public class Blandfruit extends Food {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		if ((action.equals(Potion.AC_CHOOSE) || action.equals(AC_EAT)) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			// Selecting a potion infusion or applying it changes Blandfruit state/effects beyond the
+			// whitelisted simple-food protocol, so reject before either local mutation.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		if (action.equals( Potion.AC_CHOOSE )){
 
 			GameScene.show(new WndUseItem(null, this) );

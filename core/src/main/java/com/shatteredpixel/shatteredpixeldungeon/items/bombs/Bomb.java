@@ -104,6 +104,12 @@ public class Bomb extends Item {
 	@Override
 	public void execute(Hero hero, String action) {
 
+		if (action.equals(AC_LIGHTTHROW) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		if (action.equals(AC_LIGHTTHROW)) {
 			lightingFuse = true;
 			action = AC_THROW;
