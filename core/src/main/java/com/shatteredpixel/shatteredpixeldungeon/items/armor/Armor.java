@@ -185,6 +185,14 @@ public class Armor extends EquipableItem {
 	@Override
 	public void execute(Hero hero, String action) {
 
+		if (action.equals(AC_DETACH) && hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()) {
+			// Detaching a seal can change both armor and floor/inventory state; it has no
+			// action-bound multiplayer transaction yet, so reject before the native transformation.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute(hero, action);
 
 		if (action.equals(AC_DETACH) && seal != null){
