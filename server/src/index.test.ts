@@ -2898,10 +2898,13 @@ describe("Native item consumption transaction validation", () => {
     const levBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation";
     const roots="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots";
     const level={depth:4,branch:0,locked:false,heaps:[]};
-    const beforeInvisibility=JSON.stringify(hero([row("native-invisibility-001",invisibility)]));
-    const afterInvisibility=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+    const beforeInvisibility=JSON.stringify(hero([row("native-invisibility-001",invisibility)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+    }));
+    const afterInvisibility=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:invisBuff,time:20,id:61}}),buffCooldown_1:20
+      buff_1:JSON.stringify({buff:{__className:invisBuff,time:30,id:61}}),buffCooldown_1:20
     }));
     const invisIntent=intent("native-invisibility-001",invisibility),invisAccepted={...invisIntent,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemIntent(level,invisIntent,4,"player-001",{pos:9,state:"ALIVE"},beforeInvisibility)).toBe(true);
@@ -2912,10 +2915,13 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemIntent(level,intent("native-invisibility-assassin-001",invisibility),4,
       "player-001",{pos:9,state:"ALIVE"},assassin)).toBe(false);
 
-    const beforeLevitation=JSON.stringify(hero([row("native-levitation-001",levitation)]));
-    const afterLevitation=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
+    const beforeLevitation=JSON.stringify(hero([row("native-levitation-001",levitation)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+    }));
+    const afterLevitation=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:levBuff,time:20,id:62}}),buffCooldown_1:20
+      buff_1:JSON.stringify({buff:{__className:levBuff,time:30,id:62}}),buffCooldown_1:20
     }));
     const levIntent=intent("native-levitation-001",levitation),levAccepted={...levIntent,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemIntent(level,levIntent,4,"player-001",{pos:9,state:"ALIVE"},beforeLevitation)).toBe(true);

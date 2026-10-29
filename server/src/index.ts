@@ -542,8 +542,14 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
         || !Number.isFinite(Number(nextData.time)) || !Number.isInteger(nextData.id) || Number(nextData.id) < 0
         || (nextData.mnemonic_extended !== undefined && typeof nextData.mnemonic_extended !== "boolean")) return false;
     const nextCooldown = Number(nextRow.cooldown), oldCooldown = Number(oldRows[0]?.cooldown || 0);
+    const nativeHeroBundle = parseNativeBundleObject(next.combatBundle);
+    const heroTime = Number(nativeHeroBundle?.time), heroCooldown = Number(next.cooldown);
+    const actorClock = heroTime - heroCooldown;
+    const expectedCooldown = Math.max(0, Number(nextData.time) - actorClock);
     if (!Number.isFinite(nextCooldown) || nextCooldown < 0
-        || nextCooldown > Math.max(oldCooldown, 20) + 0.05) return false;
+        || nextCooldown > Math.max(oldCooldown, 20) + 0.05
+        || !Number.isFinite(heroTime) || !Number.isFinite(heroCooldown) || heroCooldown < 0
+        || !Number.isFinite(expectedCooldown) || Math.abs(nextCooldown - expectedCooldown) > 0.06) return false;
     if (oldRows.length === 1) {
       const oldData = oldRows[0].data;
       if (Number(nextData.id) !== Number(oldData.id)) return false;
