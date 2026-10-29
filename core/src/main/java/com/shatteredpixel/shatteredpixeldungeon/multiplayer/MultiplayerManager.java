@@ -546,7 +546,7 @@ public class MultiplayerManager implements TransportCallback {
                     rejectedWorldAction = "MOVE".equals(name) || "UNLOCK".equals(name) || "MINE".equals(name)
                             || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name)
                             || "PICKUP".equals(name) || "DROP".equals(name) || "EQUIP".equals(name)
-                            || "UNEQUIP".equals(name) || "BUY".equals(name) || "SELL".equals(name)
+                            || "UNEQUIP".equals(name) || "BUY".equals(name) || "BUYBACK".equals(name) || "SELL".equals(name)
                             || "USE_ITEM".equals(name) || "THROW".equals(name) || "ALCHEMY".equals(name)
                             || "USE_ABILITY".equals(name);
                 } catch (RuntimeException ignored) {}

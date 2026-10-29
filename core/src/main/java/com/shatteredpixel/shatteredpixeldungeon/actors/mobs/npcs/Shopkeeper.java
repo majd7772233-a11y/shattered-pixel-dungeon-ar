@@ -30,11 +30,14 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.AscensionChallenge;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
+import com.shatteredpixel.shatteredpixeldungeon.items.rings.Ring;
 import com.shatteredpixel.shatteredpixeldungeon.effects.CellEmitter;
 import com.shatteredpixel.shatteredpixeldungeon.effects.Speck;
 import com.shatteredpixel.shatteredpixeldungeon.effects.particles.ElmoParticle;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.armor.Armor;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
@@ -263,10 +266,8 @@ public class Shopkeeper extends NPC {
 						} else if (index == 1){
 							GameScene.show(new WndTitledMessage(sprite(), Messages.titleCase(name()), chatText()));
 						} else if (index > 1){
-							// Buyback entries are stored inside the Shopkeeper bundle, not a stable sale heap.
-							// Until a server-authoritative buyback transaction exists, don't mutate local Gold/inventory.
 							if (MultiplayerManager.getInstance().isMultiplayerActive()) {
-								Dungeon.hero.rejectUnsupportedMultiplayerWorldAction();
+								multiplayerBuyback(index-2);
 								return;
 							}
 							GLog.i(Messages.get(Shopkeeper.this, "buyback"));
@@ -285,8 +286,11 @@ public class Shopkeeper extends NPC {
 					@Override
 					protected boolean enabled(int index) {
 						if (index > 1){
-							return !MultiplayerManager.getInstance().isMultiplayerActive()
-								&& Dungeon.gold >= buybackItems.get(index-2).value();
+							if (index-2 >= buybackItems.size()) return false;
+							if (!MultiplayerManager.getInstance().isMultiplayerActive()) {
+								return Dungeon.gold >= buybackItems.get(index-2).value();
+							}
+							return canMultiplayerBuyback(buybackItems.get(index-2));
 						} else {
 							return super.enabled(index);
 						}
@@ -314,6 +318,102 @@ public class Shopkeeper extends NPC {
 			}
 		});
 		return true;
+	}
+
+	private boolean canMultiplayerBuyback(Item item) {
+		com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero = Dungeon.hero;
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (hero == null || item == null || Dungeon.level == null || !hero.isAlive()
+				|| Dungeon.branch != 0 || Dungeon.level.locked || !Dungeon.level.mobs.contains(this)
+				|| Dungeon.level.distance(hero.pos, pos) > 1 || item.quantity() < 1
+				|| item.value() <= 0 || item.value() > 10000000 || Dungeon.gold < item.value()
+				|| item instanceof Bag
+				|| item instanceof com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand
+				|| (item instanceof MissileWeapon && item.isUpgradable())
+				|| !hero.belongings.backpack.canHold(item)
+				|| (item.stackable && hero.belongings.getSimilar(item) != null)
+				|| (item instanceof Ring && hero.pointsInTalent(Talent.THIEFS_INTUITION) == 2)
+				|| hero.belongings.getAllItems(Item.class).stream()
+					.anyMatch(owned -> item.multiplayerItemId().equals(owned.multiplayerItemId()))) return false;
+		String shopId = manager.getServerEntityId(id());
+		if (!Item.isValidMultiplayerItemId(shopId)) return false;
+		try {
+			java.lang.reflect.Method collect = item.getClass().getMethod("collect", Bag.class);
+			// A class-specific collect() may apply charges, activation or other state not covered by
+			// this bounded inventory transaction. Unsupported classes remain visibly unavailable.
+			return collect.getDeclaringClass() == Item.class;
+		} catch (ReflectiveOperationException unsupportedCollect) {
+			return false;
+		}
+	}
+
+	private void multiplayerBuyback(int index) {
+		com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero = Dungeon.hero;
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (hero == null || index < 0 || index >= buybackItems.size()) {
+			if (hero != null) hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+		Item returned = buybackItems.get(index);
+		if (!canMultiplayerBuyback(returned)) {
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+		String shopId = manager.getServerEntityId(id());
+		String before = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentHeroStateJson(hero);
+		if (before == null || before.isEmpty()) {
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		int depthBefore = Dungeon.depth;
+		int posBefore = hero.pos;
+		float cooldownBefore = hero.cooldown();
+		int price = returned.value();
+		String itemId = returned.multiplayerItemId();
+		String itemClass = returned.getClass().getName();
+		int quantity = returned.quantity();
+		int level = returned.level();
+		boolean cursed = returned.cursed;
+		boolean cursedKnown = returned.cursedKnown;
+		boolean stackable = returned.stackable;
+		int nativeValue = returned.value();
+		int nativeUnitValue = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.nativeUnitValue(returned);
+		String itemBundle = com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentItemBundle(returned);
+		if (!Item.isValidMultiplayerItemId(itemId) || itemBundle == null || itemBundle.isEmpty()
+				|| !itemBundle.contains(itemId) || nativeUnitValue < -1
+				|| (nativeUnitValue >= 0 && (long) nativeUnitValue * quantity != nativeValue)) {
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		// Preserve the native no-turn buyback behavior; publish only after the inventory and seller resolve.
+		buybackItems.remove(index);
+		Dungeon.gold -= price;
+		Statistics.goldCollected -= price;
+		boolean collected = returned.doPickUp(hero);
+		if (!collected || !hero.belongings.contains(returned)
+				|| Dungeon.level == null || Dungeon.depth != depthBefore || Dungeon.branch != 0
+				|| hero.pos != posBefore) {
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+		java.util.HashMap<String, Object> details = new java.util.HashMap<>();
+		details.put("shopEntityId", shopId);
+		details.put("buybackItemId", itemId);
+		details.put("buybackItemClass", itemClass);
+		details.put("buybackQuantity", quantity);
+		details.put("price", price);
+		details.put("resultItemId", itemId);
+		details.put("itemClass", itemClass);
+		details.put("itemLevel", level);
+		details.put("cursed", cursed);
+		details.put("cursedKnown", cursedKnown);
+		details.put("stackable", stackable);
+		details.put("nativeValue", nativeValue);
+		details.put("nativeUnitValue", nativeUnitValue);
+		details.put("resultItemBundle", itemBundle);
+		hero.queueNativeWorldMutation("BUYBACK", posBefore, posBefore, cooldownBefore, before, json.toJson(details));
+		hero.publishPendingNativeWorldMutation();
 	}
 
 	public String chatText(){
