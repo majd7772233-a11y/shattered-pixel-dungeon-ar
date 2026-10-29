@@ -64,18 +64,19 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 ## Current Verified Status
 
-### Active continuation checkpoint — 2026-10-29
+### Active continuation checkpoint — 2026-10-29 (new-conversation handoff)
 
-- **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar.
-- **Working branch:** `multiplayer-framework-core-14118577486727081892`. Never merge to `main` unless the user explicitly asks.
-- **Latest exact-HEAD verification:** code/test SHA `9c2bf9c520a7f18067a331e14461ff2eefb9b8a6`, commit “Pass serialized states to unchanged-buff validator during mining”. Exact-HEAD CI [run 40909964645](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40909964645) passed backend TypeScript build/tests and Android JVM tests/debug APK compilation (`BUILD SUCCESSFUL in 54s`).
-- **Backend test accounting:** `src/index.test.ts` and its mirrored `src/index.test.js` each passed 203 executions, 406 executions total across both files but 203 mirrored source cases.
-- **Phase 6 exact implementation checkpoint:** `859be3d6b1aea3b3fe13802fe9298d2344162edc`; original exact-SHA CI [40508581979](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40508581979) passed both backend and Android jobs. Its follow-on regression remains green at latest HEAD.
-- **Phase 6 status:** complete for implementation and automated acceptance. Native full/partial DROP preserves exact source remainder and quickslots; full moves preserve source identity while splits use new IDs; heap snapshots reconcile every item and unrelated heap; replay/ambiguous changes fail closed; native missile impact outcomes cover floor landing, PinCushion attachment and consumption.
-- **Current continuation fix:** the latest prior HEAD had two mirrored Phase 7 mining-buff test failures because `isValidNativeMineBuffMutation` passed parsed objects to `isValidNativeUnchangedBuffState`, which expects serialized JSON strings. Commit `9c2bf9c520a7f18067a331e14461ff2eefb9b8a6` passes the original strings. This repairs the existing regression without loosening validation.
-- **Phase 7 status:** implementation work remains in progress and Phase 7 remains open until all work items and acceptance criteria are audited and complete.
-- **Verification limits:** no live two-device gameplay or deployed Worker end-to-end test was performed. These remain Phase 23 (user-led physical-device playtest) and Phase 22 (deployed-service preflight).
-- **Phases 1–6:** complete for implementation and automated acceptance; phases 7–23 remain open.
+- **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`.
+- **Working branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless the user asks.
+- **Branch head before this documentation checkpoint:** `21af4f37d821c8b01bc00efd4377869231c720bb` (documentation-only; parent `dd1e488306e1214fa266d1abd12ebcfb745c7183`).
+- **Latest tested gameplay code/test SHA:** `9c2bf9c520a7f18067a331e14461ff2eefb9b8a6`. Exact-SHA GitHub Actions [run 40909964645](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40909964645) passed backend TypeScript build/tests and Android JVM tests/debug APK compilation.
+- **Exact stopping point:** the user resumed Phase 6 and then asked for a cross-conversation checkpoint. Re-reading the live roadmap and code confirmed Phase 6 already complete. This continuation was a read-only audit and made no gameplay-code changes.
+- **Phase 6:** complete for implementation and automated acceptance on `859be3d6b1aea3b3fe13802fe9298d2344162edc`; exact-SHA CI [40508581979](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40508581979) passed. Coverage includes full/partial DROP quantities, stable source/result identities, stack-compatible merges, quickslot remainders, per-item heap reconciliation, replay rejection, and native projectile `HEAP`/`PIN_CUSHION`/`CONSUMED` outcomes.
+- **Phase 7:** the next phase, currently open, with partial implementation already present. Current changed files since the Phase 6 checkpoint are `Shopkeeper.java`, `Food.java`, `Potion.java`, `Scroll.java`, `Wand.java`, `MultiplayerActionDispatcher.java`, `MultiplayerManager.java`, new `NativeItemUse.java`, `NetworkActionType.java`, `SPDLevelSnapshot.java`, `AlchemyScene.java`, `WndTradeItem.java`, `protocol/schema.json`, `server/src/index.ts` and `server/src/index.test.ts` under their existing repository paths. Audit the actual full paths/source before editing.
+- **Latest regression fix:** `9c2bf9c520a7f18067a331e14461ff2eefb9b8a6` fixed the Phase 7 mining-buff validator argument contract by passing serialized JSON strings rather than parsed objects; validation was not weakened.
+- **Backend count:** each mirrored test file (`index.test.ts` and generated `index.test.js`) passed 203 executions; that is 203 mirrored source cases, 406 executions total, not 406 unique tests.
+- **Next action:** in the new conversation, read `GPT.md` and the full Phase 7 scope first. Finish and verify every remaining item-economy criterion against native SPD behavior—consumption/food/potions/scrolls, equipment and quickslots, atomic shop sale/purchase and currency/key costs, alchemy/mining/abilities, safe rejection/resync—and add positive and negative regressions. Run CI against the exact final source SHA, then synchronize both docs. Do not reimplement Phase 6 unless a concrete uncovered issue is proven.
+- **Verification limits:** no deployed Worker end-to-end test and no physical-device multiplayer match was performed. Phase 22 remains the deployed-service preflight; Phase 23 remains the user-led physical-device playtest. Phases 1–6 are complete; Phases 7–23 remain open.
 
 
 ## Architecture Reference
