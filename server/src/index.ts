@@ -690,6 +690,172 @@ function isNativeRechargingScrollReadSafe(hero: any): boolean {
   return true;
 }
 
+/** Validates purchase of one exact native item from an adjacent Shopkeeper buyback list. */
+export function isValidNativeBuybackIntent(level: any, dataValue: unknown, depthValue: unknown,
+  playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
+  const data:any = dataValue, depth = Number(depthValue), playerId = String(playerIdValue || "");
+  if (!level || !data || typeof data !== "object" || !Array.isArray(level.heaps) || !Array.isArray(level.mobs)
+      || !Number.isInteger(depth) || level.depth !== depth || level.branch !== 0 || level.locked !== false
+      || !player || !playerId || String(player.state) !== "ALIVE" || !Number.isInteger(player.pos)
+      || typeof heroStateValue !== "string") return false;
+  const pos = Number(player.pos), shopId = String(data.shopEntityId || "");
+  const itemId = String(data.buybackItemId || ""), cls = String(data.buybackItemClass || "");
+  const resultId = String(data.resultItemId || ""), bundle = String(data.resultItemBundle || "");
+  const price = Number(data.price), quantity = Number(data.buybackQuantity);
+  if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth
+      || data.branch !== 0 || !isValidStableMultiplayerId(shopId) || !isValidStableMultiplayerId(itemId)
+      || resultId !== itemId || cls.length < 1 || cls.length > 256 || data.itemClass !== cls
+      || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
+      || !Number.isInteger(price) || price < 1 || price > 10000000
+      || !Number.isFinite(data.engineActionCost) || data.engineActionCost < 0 || data.engineActionCost > 0.06
+      || !Number.isInteger(data.itemLevel) || data.itemLevel < -100 || data.itemLevel > 10000
+      || typeof data.cursed !== "boolean" || typeof data.cursedKnown !== "boolean"
+      || typeof data.stackable !== "boolean" || !Number.isInteger(data.nativeValue) || data.nativeValue !== price
+      || !Number.isInteger(data.nativeUnitValue) || data.nativeUnitValue < -1 || data.nativeUnitValue > 10000000
+      || (data.nativeUnitValue >= 0 && data.nativeUnitValue * quantity !== price)
+      || typeof bundle !== "string" || bundle.length < 1 || bundle.length > 200000 || !bundle.includes(itemId)) return false;
+  const shops = level.mobs.filter((mob:any) => String(mob?.entityId || "") === shopId);
+  const width = Number(level.width);
+  if (!Number.isInteger(width) || width < 1 || shops.length !== 1
+      || String(shops[0].name || "") !== "Shopkeeper" || !Array.isArray(shops[0].buybackItems)
+      || shops[0].buybackItems.length < 1 || shops[0].buybackItems.length > 3
+      || !Number.isInteger(shops[0].shopkeeperTurnsSinceHarmed)
+      || shops[0].shopkeeperTurnsSinceHarmed < -1 || shops[0].shopkeeperTurnsSinceHarmed > 100000
+      || Math.max(Math.abs((Number(shops[0].pos)%width)-(pos%width)),
+        Math.abs(Math.floor(Number(shops[0].pos)/width)-Math.floor(pos/width))) > 1
+      || shops[0].buybackItems.some((row:any) => !isValidNativeSellBuybackRow(row))) return false;
+  const matches = shops[0].buybackItems.filter((row:any) => String(row.itemId) === itemId);
+  if (matches.length !== 1) return false;
+  const row = matches[0];
+  if (String(row.className) !== cls || row.quantity !== quantity || row.level !== data.itemLevel
+      || row.cursed !== data.cursed || row.cursedKnown !== data.cursedKnown || row.stackable !== data.stackable
+      || row.shopPrice !== -1 || row.nativeValue !== price || row.nativeUnitValue !== data.nativeUnitValue
+      || row.serializedBundle !== bundle) return false;
+  let hero:any;
+  try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
+  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0
+      || !Number.isInteger(hero.gold) || hero.gold < price) return false;
+  const inventory = parseNativeInventoryIndex(hero), economy = parseNativeItemEconomyIndex(hero);
+  if (!inventory || !economy || !parseNativeQuickslotIndex(hero)
+      || inventory.some((item:any) => String(item.itemId) === itemId)
+      || level.heaps.some((heap:any) => (Array.isArray(heap.items)?heap.items:[])
+        .some((item:any) => String(item?.itemId || "") === itemId))
+      || level.mobs.some((mob:any) => (Array.isArray(mob.buybackItems)?mob.buybackItems:[])
+        .some((item:any) => String(item?.itemId || "") === itemId && String(mob.entityId || "") !== shopId))) return false;
+  // The native Item.collect() path merges same-class stackable items; this protocol action is
+  // scoped to a separately-identifiable instance so it can be replay-protected exactly once.
+  if (data.stackable && inventory.some((item:any) => String(item.className) === cls)) return false;
+  return true;
+}
+
+/** Validates the exact gold debit and exactly one new inventory item with no other Hero edits. */
+export function isValidNativeBuybackInventoryMutation(previousValue: unknown, nextValue: unknown,
+  detailsValue: unknown, acceptedValue: unknown): boolean {
+  let previous:any, next:any;
+  try { previous = JSON.parse(String(previousValue || "")); next = JSON.parse(String(nextValue || "")); }
+  catch (_) { return false; }
+  const details:any = detailsValue, accepted:any = acceptedValue;
+  const id = String(details?.buybackItemId || ""), cls = String(details?.buybackItemClass || "");
+  const price = Number(details?.price);
+  const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
+  const beforeEconomy = parseNativeItemEconomyIndex(previous), afterEconomy = parseNativeItemEconomyIndex(next);
+  const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+  if (!details || !accepted || accepted.actionType !== "BUYBACK" || !before || !after
+      || !beforeEconomy || !afterEconomy || !beforeSlots || !afterSlots
+      || accepted.shopEntityId !== details.shopEntityId || accepted.buybackItemId !== id
+      || accepted.buybackItemClass !== cls || accepted.buybackQuantity !== details.buybackQuantity
+      || accepted.price !== price || accepted.resultItemId !== id || accepted.itemClass !== cls
+      || accepted.resultItemBundle !== details.resultItemBundle
+      || previous.inventoryBundle === next.inventoryBundle
+      || !Number.isInteger(previous.gold) || !Number.isInteger(next.gold) || next.gold !== previous.gold-price
+      || next.gold < 0 || previous.hp !== next.hp || previous.ht !== next.ht || previous.pos !== next.pos
+      || previous.shielding !== next.shielding || previous.cooldown !== next.cooldown
+      || previous.alchemyEnergy !== next.alchemyEnergy || previous.notesBundle !== next.notesBundle
+      || previous.questStateBundle !== next.questStateBundle
+      || previous.ironKeyCount !== next.ironKeyCount || previous.crystalKeyCount !== next.crystalKeyCount
+      || previous.wornKeyCount !== next.wornKeyCount || previous.goldenKeyCount !== next.goldenKeyCount) return false;
+  const stripCombatInventory = (hero:any) => {
+    const combat = parseNativeBundleObject(hero?.combatBundle);
+    if (!combat) return null;
+    delete combat.items;
+    return combat;
+  };
+  if (!sameNativeItemValue(stripCombatInventory(previous),stripCombatInventory(next))) return false;
+  const oldRows=before.filter((row:any)=>String(row.itemId)===id), newRows=after.filter((row:any)=>String(row.itemId)===id);
+  const oldValues=beforeEconomy.filter((row:any)=>String(row.itemId)===id), newValues=afterEconomy.filter((row:any)=>String(row.itemId)===id);
+  if (oldRows.length!==0 || oldValues.length!==0 || newRows.length!==1 || newValues.length!==1) return false;
+  const item=newRows[0], value=newValues[0];
+  if (String(item.className)!==cls || Number(item.quantity)!==Number(details.buybackQuantity)
+      || Number(item.level)!==Number(details.itemLevel) || item.cursed!==details.cursed
+      || item.cursedKnown!==details.cursedKnown || item.stackable!==details.stackable || item.equipped!==false
+      || String(item.serializedBundle)!==String(details.resultItemBundle)
+      || String(value.className)!==cls || Number(value.quantity)!==Number(item.quantity)
+      || Number(value.nativeValue)!==Number(details.nativeValue)
+      || Number(value.nativeUnitValue)!==Number(details.nativeUnitValue) || value.nativeSellable!==true) return false;
+  if (!sameNativeItemValue(before.filter((row:any)=>String(row.itemId)!==id),
+      after.filter((row:any)=>String(row.itemId)!==id))) return false;
+  if (!sameNativeItemValue(beforeEconomy.filter((row:any)=>String(row.itemId)!==id),
+      afterEconomy.filter((row:any)=>String(row.itemId)!==id))) return false;
+  const oldSlot=beforeSlots.filter((slot:any)=>String(slot.itemId)===id);
+  const newSlot=afterSlots.filter((slot:any)=>String(slot.itemId)===id);
+  if (oldSlot.length>1 || newSlot.length>1) return false;
+  if (oldSlot.length===0) {
+    if (newSlot.length!==0) return false;
+  } else if (Number(oldSlot[0].quantity)!==0 || newSlot.length!==1
+      || Number(newSlot[0].slot)!==Number(oldSlot[0].slot)
+      || String(newSlot[0].className)!==cls || Number(newSlot[0].quantity)!==Number(details.buybackQuantity)
+      || String(newSlot[0].serializedBundle)!==String(details.resultItemBundle)) return false;
+  const slotsWithout = (slots:any[]) => slots.filter((slot:any)=>String(slot.itemId)!==id)
+    .slice().sort((a:any,b:any)=>Number(a.slot)-Number(b.slot));
+  return sameNativeItemValue(slotsWithout(beforeSlots),slotsWithout(afterSlots));
+}
+
+/** Removes exactly one ID from the exact Shopkeeper buyback array; no other Mob state may change. */
+export function isValidNativeBuybackShopkeeperMutation(previousMobs:any[], nextMobs:any[],
+  detailsValue:unknown, acceptedValue:unknown):boolean {
+  const details:any=detailsValue, accepted:any=acceptedValue;
+  if (!Array.isArray(previousMobs) || !Array.isArray(nextMobs) || !details || !accepted
+      || accepted.actionType!=="BUYBACK" || accepted.shopEntityId!==details.shopEntityId
+      || accepted.buybackItemId!==details.buybackItemId || accepted.price!==details.price) return false;
+  const index=(rows:any[])=>{
+    const map=new Map<string,any>();
+    for (const row of rows) {
+      const id=String(row?.entityId||"");
+      if(!isValidStableMultiplayerId(id)||map.has(id)) return null;
+      map.set(id,row);
+    }
+    return map;
+  };
+  const before=index(previousMobs), after=index(nextMobs), shopId=String(details.shopEntityId||"");
+  if(!before||!after||before.size!==after.size) return false;
+  const oldShop=before.get(shopId), newShop=after.get(shopId);
+  if(!oldShop||!newShop||String(oldShop.name||"")!=="Shopkeeper"||String(newShop.name||"")!=="Shopkeeper"
+      || oldShop.serializedBundle===newShop.serializedBundle
+      || !Array.isArray(oldShop.buybackItems)||!Array.isArray(newShop.buybackItems)
+      || oldShop.buybackItems.length<1||oldShop.buybackItems.length>3
+      || newShop.buybackItems.length!==oldShop.buybackItems.length-1
+      || oldShop.shopkeeperTurnsSinceHarmed!==newShop.shopkeeperTurnsSinceHarmed
+      || !Number.isInteger(oldShop.shopkeeperTurnsSinceHarmed)
+      || oldShop.shopkeeperTurnsSinceHarmed < -1 || oldShop.shopkeeperTurnsSinceHarmed > 100000) return false;
+  for (const row of oldShop.buybackItems) if(!isValidNativeSellBuybackRow(row)) return false;
+  const found=oldShop.buybackItems.filter((row:any)=>String(row.itemId)===String(details.buybackItemId));
+  if(found.length!==1 || String(found[0].className)!==String(details.buybackItemClass)
+      || Number(found[0].quantity)!==Number(details.buybackQuantity)
+      || Number(found[0].nativeValue)!==Number(details.price)
+      || String(found[0].serializedBundle)!==String(details.resultItemBundle)) return false;
+  const expected=oldShop.buybackItems.filter((row:any)=>String(row.itemId)!==String(details.buybackItemId));
+  if(!sameNativeItemValue(expected,newShop.buybackItems)) return false;
+  for (const [id,oldMob] of before) {
+    const current=after.get(id);
+    if(!current) return false;
+    if(id!==shopId) {
+      if(!sameNativeItemValue(itemValueWithout(oldMob,["mobId"]),itemValueWithout(current,["mobId"]))) return false;
+    } else if(!sameNativeItemValue(itemValueWithout(oldShop,["mobId","serializedBundle","buybackItems"]),
+        itemValueWithout(newShop,["mobId","serializedBundle","buybackItems"]))) return false;
+  }
+  return true;
+}
+
 /** A consume intent must identify one item already owned by the authenticated hero. */
 export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -1622,7 +1788,7 @@ export type NativeMutationLockStatus = "FREE" | "OWNED" | "PENDING" | "STALE";
 /** Native inventory/economy writes cannot overlap before the previous post-state commits. */
 export function requiresNativeMutationSnapshot(actionValue: unknown): boolean {
   return ["UNLOCK", "MINE", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP",
-    "BUY", "SELL", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"].includes(String(actionValue || ""));
+    "BUY", "BUYBACK", "SELL", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"].includes(String(actionValue || ""));
 }
 
 /** Checks exact lock ownership without expiry, for safe cleanup of the matching request only. */
@@ -1742,6 +1908,7 @@ export function isValidNativeItemEconomyIndexMutation(previousHeroValue: unknown
   const sourceFloorId = String(details?.itemId || "");
   const sourceFloorBefore = sourceFloorId ? findFloorItems(previousHeapsValue, sourceFloorId) : [];
   const isPickupOrBuy = action === "PICKUP" || action === "BUY";
+  const isBuyback = action === "BUYBACK";
 
   for (const [id, current] of afterItems) {
     const old = beforeItems.get(id), value = afterValues.get(id);
@@ -1756,6 +1923,13 @@ export function isValidNativeItemEconomyIndexMutation(previousHeroValue: unknown
             || Number(current.quantity) !== Number(floorItem.quantity)
             || value.nativeValue !== Number(floorItem.nativeValue)
             || value.nativeUnitValue !== Number(floorItem.nativeUnitValue)) return false;
+      } else if (isBuyback) {
+        if (id !== String(details?.buybackItemId || "") || id !== String(details?.resultItemId || "")
+            || String(current.className) !== String(details?.buybackItemClass || "")
+            || Number(current.quantity) !== Number(details?.buybackQuantity)
+            || value.nativeValue !== Number(details?.nativeValue)
+            || value.nativeUnitValue !== Number(details?.nativeUnitValue)
+            || value.nativeSellable !== true) return false;
       } else if (action === "ALCHEMY" && details?.resultLocation === "INVENTORY") {
         if (id !== String(details.resultItemId || "") || String(current.className) !== String(details.resultItemClass || "")
             || Number(current.quantity) !== Number(details.resultQuantity)
@@ -3224,7 +3398,7 @@ export function isValidNativeMutationActionCost(previousHeroValue: unknown, next
 export function isValidNativeWorldMutation(previous: any, next: any, actionValue: unknown,
   fromValue: unknown, targetValue: unknown, trustedHeroStateValue?: unknown, acceptedPickupIntentValue?: unknown): boolean {
   const action = String(actionValue || "");
-  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "SELL", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"].includes(action)
+  if (!["MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP", "EQUIP", "UNEQUIP", "BUY", "BUYBACK", "SELL", "USE_ITEM", "THROW", "ALCHEMY", "USE_ABILITY"].includes(action)
       || !hasCompleteNativeLevelSnapshot(previous) || !hasCompleteNativeLevelSnapshot(next)
       || next.nativeWorldMutation !== true || next.nativeWorldTick === true
       || Object.prototype.hasOwnProperty.call(next, "nativeWorldTurnCounter")
@@ -3269,11 +3443,16 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action === "MINE" && !isValidNativeMineBuffMutation(
       trustedHeroStateValue || previous.heroStateJson, next.heroStateJson, next.nativeMutationDetails)) return false;
-  if (["UNLOCK","OPEN_CHEST","PICKUP","DROP","EQUIP","UNEQUIP","BUY","SELL","INTERACT"].includes(action)
+  if (["UNLOCK","OPEN_CHEST","PICKUP","DROP","EQUIP","UNEQUIP","BUY","BUYBACK","SELL","INTERACT"].includes(action)
       && !isValidNativeUnchangedBuffState(trustedHeroStateValue || previous.heroStateJson, next.heroStateJson)) return false;
   if (action === "SELL" && (!isValidNativeSellInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
       next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
       || !isValidNativeSellShopkeeperMutation(previous.mobs || [], next.mobs || [],
+        next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !same(previous.heaps, next.heaps))) return false;
+  if (action === "BUYBACK" && (!isValidNativeBuybackInventoryMutation(trustedHeroStateValue || previous.heroStateJson,
+      next.heroStateJson, next.nativeMutationDetails, acceptedPickupIntentValue)
+      || !isValidNativeBuybackShopkeeperMutation(previous.mobs || [], next.mobs || [],
         next.nativeMutationDetails, acceptedPickupIntentValue)
       || !same(previous.heaps, next.heaps))) return false;
   if (!same(previous.transitions, next.transitions)) return false;
@@ -3294,7 +3473,8 @@ export function isValidNativeWorldMutation(previous: any, next: any, actionValue
       "enemySeen", "alerted", "buffs"]) if (!same(oldMob[key], newMob[key])) return false;
     if (!same(oldMob.serializedBundle, newMob.serializedBundle)
         && !(action === "INTERACT" && Number(oldMob.pos) === Number(target))
-        && !(action === "SELL" && String(oldMob.entityId || "") === String(next.nativeMutationDetails?.shopEntityId || ""))) return false;
+        && !(action === "SELL" && String(oldMob.entityId || "") === String(next.nativeMutationDetails?.shopEntityId || ""))
+        && !(action === "BUYBACK" && String(oldMob.entityId || "") === String(next.nativeMutationDetails?.shopEntityId || ""))) return false;
   }
 
   const dist = (a: number, b: number) => Math.max(Math.abs((a % width) - (b % width)),
@@ -5157,9 +5337,12 @@ export class MatchRoom {
           const mutationLockRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", mutationLockKey).toArray()[0];
           const mutationLockMatches = !requiresNativeMutationSnapshot(mutationAction)
             || classifyNativeMutationLock(mutationLockRow?.value, session.playerId, mutationRequestId, mutationAction) === "OWNED";
-          const pickupClaim = (mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails
+          const hasItemClaim = mutationAction === "PICKUP" || mutationAction === "BUY" || mutationAction === "BUYBACK";
+          const claimHeapId = mutationAction === "BUYBACK" ? mutationDetails?.shopEntityId : mutationDetails?.heapId;
+          const claimItemId = mutationAction === "BUYBACK" ? mutationDetails?.buybackItemId : mutationDetails?.itemId;
+          const pickupClaim = hasItemClaim && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ?",
-                depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || "")).toArray()[0] : null;
+                depth, Number(level.branch), String(claimHeapId || ""), String(claimItemId || "")).toArray()[0] : null;
           const chestClaim = mutationAction === "OPEN_CHEST" && mutationDetails
             ? this.sql.exec("SELECT claimed_by,request_id FROM claimed_chest_instances WHERE depth = ? AND heap_id = ?",
                 depth, String(mutationDetails.heapId || "")).toArray()[0] : null;
@@ -5204,6 +5387,16 @@ export class MatchRoom {
                   && acceptedPayload?.resultItemId === mutationDetails.resultItemId
                   && acceptedPayload?.resultHeapId === mutationDetails.resultHeapId
                   && acceptedPayload?.acquiredByInventory === mutationDetails.acquiredByInventory)
+                && (mutationAction !== "BUYBACK" || mutationDetails != null && pickupClaim
+                  && String(pickupClaim.claimed_by) === session.playerId
+                  && String(pickupClaim.request_id) === mutationRequestId
+                  && acceptedPayload?.shopEntityId === mutationDetails.shopEntityId
+                  && acceptedPayload?.buybackItemId === mutationDetails.buybackItemId
+                  && acceptedPayload?.buybackItemClass === mutationDetails.buybackItemClass
+                  && acceptedPayload?.buybackQuantity === mutationDetails.buybackQuantity
+                  && acceptedPayload?.price === mutationDetails.price
+                  && acceptedPayload?.resultItemId === mutationDetails.resultItemId
+                  && acceptedPayload?.resultItemBundle === mutationDetails.resultItemBundle)
                 && (mutationAction !== "SELL" || mutationDetails != null
                   && acceptedPayload?.shopEntityId === mutationDetails.shopEntityId
                   && acceptedPayload?.sourceItemLevel === mutationDetails.sourceItemLevel
@@ -5310,9 +5503,12 @@ export class MatchRoom {
                 && !isValidNativeMutationActionCost(trustedHeroRow.value, level.heroStateJson, accepted?.actionCost))
               || !isValidNativeWorldMutation(previousSnapshot, level, mutationAction,
                 mutationFrom, mutationTarget, trustedHeroRow.value, acceptedPayload)) {
-            if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
+            if ((mutationAction === "PICKUP" || mutationAction === "BUY" || mutationAction === "BUYBACK") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-              depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+              depth, Number(level.branch),
+              String((mutationAction === "BUYBACK" ? mutationDetails.shopEntityId : mutationDetails.heapId) || ""),
+              String((mutationAction === "BUYBACK" ? mutationDetails.buybackItemId : mutationDetails.itemId) || ""),
+              session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
@@ -5327,11 +5523,14 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "SELL" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW" && mutationAction !== "ALCHEMY" && mutationAction !== "USE_ABILITY");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "BUYBACK" && mutationAction !== "SELL" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW" && mutationAction !== "ALCHEMY" && mutationAction !== "USE_ABILITY");
           if (merged == null) {
-            if ((mutationAction === "PICKUP" || mutationAction === "BUY") && mutationDetails) this.sql.exec(
+            if ((mutationAction === "PICKUP" || mutationAction === "BUY" || mutationAction === "BUYBACK") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-              depth, Number(level.branch), String(mutationDetails.heapId || ""), String(mutationDetails.itemId || ""), session.playerId, mutationRequestId);
+              depth, Number(level.branch),
+              String((mutationAction === "BUYBACK" ? mutationDetails.shopEntityId : mutationDetails.heapId) || ""),
+              String((mutationAction === "BUYBACK" ? mutationDetails.buybackItemId : mutationDetails.itemId) || ""),
+              session.playerId, mutationRequestId);
             if (mutationAction === "OPEN_CHEST" && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
               depth, String(mutationDetails.heapId || ""), session.playerId, mutationRequestId);
@@ -5353,7 +5552,7 @@ export class MatchRoom {
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
           if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
               || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP"
-              || mutationAction === "BUY" || mutationAction === "SELL" || mutationAction === "USE_ITEM" || mutationAction === "THROW" || mutationAction === "ALCHEMY" || mutationAction === "USE_ABILITY") {
+              || mutationAction === "BUY" || mutationAction === "BUYBACK" || mutationAction === "SELL" || mutationAction === "USE_ITEM" || mutationAction === "THROW" || mutationAction === "ALCHEMY" || mutationAction === "USE_ABILITY") {
             mergedHero.inventoryBundle = reportedHero.inventoryBundle;
             mergedHero.inventoryItemsJson = reportedHero.inventoryItemsJson;
             mergedHero.nativeItemEconomyJson = reportedHero.nativeItemEconomyJson;
@@ -5385,7 +5584,7 @@ export class MatchRoom {
                 return { ...previousMob, serializedBundle: submittedMob.serializedBundle };
               }
             }
-            if (mutationAction === "SELL"
+            if ((mutationAction === "SELL" || mutationAction === "BUYBACK")
                 && String(previousMob?.entityId || "") === String(mutationDetails?.shopEntityId || "")) {
               const submittedMob = submittedMobs.find((candidate: any) =>
                 String(candidate?.entityId || "") === String(previousMob?.entityId || ""));
@@ -5492,9 +5691,11 @@ export class MatchRoom {
               verifiedMutationRequestId, verifiedMutationAction)) {
             this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
           }
-          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY") && verifiedMutationDetails) this.sql.exec(
+          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY" || verifiedMutationAction === "BUYBACK") && verifiedMutationDetails) this.sql.exec(
             "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-            depth, Number(level.branch), String(verifiedMutationDetails.heapId || ""), String(verifiedMutationDetails.itemId || ""),
+            depth, Number(level.branch),
+            String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.shopEntityId : verifiedMutationDetails.heapId) || ""),
+            String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.buybackItemId : verifiedMutationDetails.itemId) || ""),
             session.playerId, verifiedMutationRequestId);
           if (verifiedMutationAction === "OPEN_CHEST" && verifiedMutationDetails) this.sql.exec(
             "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
@@ -7347,6 +7548,42 @@ export class MatchRoom {
                 stackable:data.stackable, itemLevel:Number(data.itemLevel), cursed:data.cursed, cursedKnown:data.cursedKnown,
                 price:Number(data.price), resultItemId:String(data.resultItemId), resultHeapId:String(data.resultHeapId || ""),
                 acquiredByInventory:data.acquiredByInventory };
+              actionValid = true;
+              actionCost = Number(data.engineActionCost);
+            }
+          } else if (actionStr === "BUYBACK") {
+            const data = payload.data || {};
+            const requestId = String(msg.requestId || "");
+            const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
+            let levelSnapshot: any = null;
+            try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
+            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
+            const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
+            if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
+                && hasCompleteNativeLevelSnapshot(levelSnapshot)
+                && hasMatchingNativeHeroStateSnapshot(String(payload.heroStateJson || ""), String(heroRow.value))
+                && isValidNativeBuybackIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow, heroRow.value)) {
+              this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
+              const reserved = reserveNativeLootClaim(this.state.storage, this.sql, this.currentDepth, 0,
+                String(data.shopEntityId), String(data.buybackItemId), session.playerId, requestId);
+              if (!reserved) {
+                ws.send(JSON.stringify({ protocolVersion:"1.0.0", messageType:"ERROR", requestId:msg.requestId,
+                  sequence:this.currentSequence, payloadJson:JSON.stringify({error:"ITEM_ALREADY_CLAIMED",
+                    shopEntityId:data.shopEntityId,buybackItemId:data.buybackItemId}) }));
+                return;
+              }
+              eventType = "WORLD_ACTION_RESOLVED";
+              actionResultPayload = {
+                playerId:session.playerId, actionType:"BUYBACK", from:Number(playerRow.pos),
+                targetPos:Number(playerRow.pos), depth:this.currentDepth, branch:0,
+                shopEntityId:String(data.shopEntityId), buybackItemId:String(data.buybackItemId),
+                buybackItemClass:String(data.buybackItemClass), buybackQuantity:Number(data.buybackQuantity),
+                price:Number(data.price), resultItemId:String(data.resultItemId), itemClass:String(data.itemClass),
+                itemLevel:Number(data.itemLevel), cursed:data.cursed, cursedKnown:data.cursedKnown,
+                stackable:data.stackable, nativeValue:Number(data.nativeValue),
+                nativeUnitValue:Number(data.nativeUnitValue), resultItemBundle:String(data.resultItemBundle)
+              };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }
