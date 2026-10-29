@@ -3153,6 +3153,8 @@ describe("Native Shopkeeper buyback transactions", () => {
     const data=d(),result=accepted(data);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify(newHero),data,result)).toBe(true);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,gold:69}),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify(newHero),data,
+      {...result,nativeValue:31})).toBe(false);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,cooldown:0}),data,result)).toBe(false);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,cooldown:2}),data,result)).toBe(false);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,
@@ -3174,7 +3176,8 @@ describe("Native Shopkeeper buyback transactions", () => {
       serializedBundle:"native-item:stable-buyback-ring-001"};
     const level={depth:4,branch:0,locked:false,width:8,height:8,heaps:[],mobs:[shop([ring])]};
     const data=d({buybackItemId:ring.itemId,buybackItemClass:ringClass,itemClass:ringClass,price:40,
-      nativeValue:40,nativeUnitValue:40,stackable:false,resultItemBundle:ring.serializedBundle});
+      itemLevel:0,cursed:false,cursedKnown:false,nativeValue:40,nativeUnitValue:40,stackable:false,
+      resultItemId:ring.itemId,resultItemBundle:ring.serializedBundle});
     const nativeHero=JSON.stringify(hero([],100,[],{
       combatBundle:JSON.stringify({time:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
         talents_tier_1:{},talents_tier_2:{THIEFS_INTUITION:2},talents_tier_3:{},talents_tier_4:{},replacements:{}})
