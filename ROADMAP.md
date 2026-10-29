@@ -662,3 +662,10 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Exact-HEAD CI [40909964645](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40909964645) passed backend TypeScript build and tests plus Android JVM tests/debug APK compile. Both mirrored backend test files passed 203 tests each; Android ended with `BUILD SUCCESSFUL in 54s`.
 - Phase 7 remains open. No deployed Worker end-to-end test or physical-device match was performed; these remain Phase 22 and Phase 23.
 
+
+
+### 2026-10-29 — Phase 7 inventory action-cost binding and audited scope
+
+- Added a server-side acceptance check tying the trusted native Hero cooldown delta to the same action cost recorded in the accepted world-time transaction, restricted to native-mutation-lock actions. Added positive/negative unit regressions.
+- Code commit [3291bfb](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/3291bfbca20d540aeab8b323c93d2633c473ef4e) passed exact-HEAD workflow [40927978622](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40927978622): backend build/tests and Android JVM tests/debug APK compilation all succeeded. Vitest reported 205 tests in each mirrored TypeScript/JavaScript output (410 executions, not 410 unique scenarios).
+- Phase 7 stays **OPEN**: item-action coverage is not yet complete; scroll `READ`, wand `ZAP`, and Shopkeeper buyback remain fail-closed. Continue the end-to-end audit against every Phase 7 acceptance criterion. No deployed Worker or physical two-device verification was performed; Phase 22 and Phase 23 stay open.
