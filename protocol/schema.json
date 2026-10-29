@@ -57,6 +57,11 @@
     }
   },
   "definitions": {
+    "NativeUseItemAction": {
+      "type": "string",
+      "enum": ["DRINK", "EAT", "READ"],
+      "description": "Native item action. READ is currently accepted only for ScrollOfRecharging after exact Hero/buff validation; all other scroll reads remain fail-closed."
+    },
     "NativeMobEntity": {
       "type": "object",
       "required": [

@@ -2779,6 +2779,77 @@ describe("Native item consumption transaction validation", () => {
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-meat-pie-001",
         "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie",1,true)])))).toBe(true);
   });
+  it("supports READ only for a safe native ScrollOfRecharging intent",()=>{
+    const scroll="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
+    const identify="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const talentBundle=(overrides:Record<string,any>={})=>JSON.stringify({
+      time:10,STR:10,items:"inventory-before",
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{},...overrides
+    });
+    const before=JSON.stringify(hero([row("native-scroll-recharging-001",scroll,1,true)],{
+      cooldown:0,combatBundle:talentBundle()
+    }));
+    const read=intent("native-scroll-recharging-001",scroll,"READ",1,true);
+    expect(isValidNativeUseItemIntent(level,read,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-scroll-recharging-001",identify,"READ",1,true),
+      4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("native-scroll-recharging-001",scroll,"DRINK",1,true),
+      4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(false);
+    const talentBefore=JSON.stringify(hero([row("native-scroll-recharging-talent-001",scroll,1,true)],{
+      cooldown:0,combatBundle:talentBundle({talents_tier_2:{INSCRIBED_STEALTH:1}})
+    }));
+    expect(isValidNativeUseItemIntent(level,intent("native-scroll-recharging-talent-001",scroll,"READ",1,true),
+      4,"player-001",{pos:9,state:"ALIVE"},talentBefore)).toBe(false);
+    const invisibleBefore=JSON.stringify(hero([row("native-scroll-recharging-invisible-001",scroll,1,true)],{
+      cooldown:0,combatBundle:talentBundle(),
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",time:25,id:95}}),
+      buffCooldown_1:25
+    }));
+    expect(isValidNativeUseItemIntent(level,intent("native-scroll-recharging-invisible-001",scroll,"READ",1,true),
+      4,"player-001",{pos:9,state:"ALIVE"},invisibleBefore)).toBe(false);
+  });
+
+  it("validates the exact native ScrollOfRecharging buff and rejects inflated duration",()=>{
+    const scroll="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
+    const recharging="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging";
+    const talentBundle=(time:string,items:string)=>JSON.stringify({
+      time:time==="before"?10:11,STR:10,items,
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}
+    });
+    const id="native-scroll-recharging-002";
+    const before=JSON.stringify(hero([row(id,scroll,1,true)],{
+      cooldown:0,combatBundle:talentBundle("before","inventory-before")
+    }));
+    const data=intent(id,scroll,"READ",1,true),accepted={...data,actionType:"USE_ITEM"};
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:talentBundle("after","inventory-after"),buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:recharging,time:40,id:96}}),buffCooldown_1:30
+    }));
+    expect(isValidNativeUseItemMutation(before,after,data,accepted)).toBe(true);
+    const inflated=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:talentBundle("after","inventory-after"),buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:recharging,time:55,id:96}}),buffCooldown_1:45
+    }));
+    expect(isValidNativeUseItemMutation(before,inflated,data,accepted)).toBe(false);
+    expect(isValidNativeUseItemMutation(before,before,data,accepted)).toBe(false);
+    const alreadyActive=JSON.stringify(hero([row(id,scroll,2,true)],{
+      cooldown:0,combatBundle:talentBundle("before","inventory-before"),buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:recharging,time:15,id:97}}),buffCooldown_1:5
+    }));
+    const extended=JSON.stringify(hero([row(id,scroll,1,true)],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:talentBundle("after","inventory-after"),buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:recharging,time:45,id:97}}),buffCooldown_1:35
+    }));
+    const extendedData=intent(id,scroll,"READ",2,true),extendedAccepted={...extendedData,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(alreadyActive,extended,extendedData,extendedAccepted)).toBe(true);
+  });
+
   it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
     const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
     const after=JSON.stringify(hero([row("native-other-001",food)],{inventoryBundle:"inventory-after"}));

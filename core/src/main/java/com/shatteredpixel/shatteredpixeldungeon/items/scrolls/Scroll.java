@@ -173,10 +173,7 @@ public abstract class Scroll extends Item {
 	public void execute( Hero hero, String action ) {
 
 		if (AC_READ.equals(action)
-				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.isLocalMultiplayerHero(hero)) {
-			hero.rejectUnsupportedMultiplayerWorldAction();
-			return;
-		}
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.rejectIfUnsupported(hero, this, "READ")) return;
 		super.execute( hero, action );
 
 		if (action.equals( AC_READ )) {
@@ -190,7 +187,11 @@ public abstract class Scroll extends Item {
 					&& !(this instanceof ScrollOfRemoveCurse || this instanceof ScrollOfAntiMagic)){
 				GLog.n( Messages.get(this, "cursed") );
 			} else {
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.Context nativeUse =
+						com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.begin(hero, this, "READ");
+				if (com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.isBlocked(nativeUse)) return;
 				doRead();
+				com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeItemUse.finish(nativeUse);
 			}
 			
 		}

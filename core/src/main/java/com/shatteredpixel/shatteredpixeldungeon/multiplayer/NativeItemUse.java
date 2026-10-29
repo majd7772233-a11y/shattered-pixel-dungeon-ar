@@ -2,7 +2,9 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.badlogic.gdx.utils.Json;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 
 /**
@@ -43,6 +45,9 @@ public final class NativeItemUse {
     public static boolean isSupportedAction(Item item, String action) {
         if (item == null || action == null) return false;
         String cls = item.getClass().getName();
+        if ("READ".equals(action)) {
+            return cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging");
+        }
         if ("DRINK".equals(action)) {
             return cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing")
                 || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste")
@@ -61,10 +66,34 @@ public final class NativeItemUse {
         return false;
     }
 
+    /**
+     * Scroll.readAnimation() invokes native talent procs and Invisibility.dispel().
+     * Reject these side paths before this narrowly-supported native read starts.
+     */
+    private static boolean isSafeRechargingScrollRead(Hero hero, Item item) {
+        if (hero == null || item == null
+                || !"com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging".equals(item.getClass().getName())
+                || hero.hasTalent(Talent.INSCRIBED_POWER)
+                || hero.hasTalent(Talent.INSCRIBED_STEALTH)
+                || hero.hasTalent(Talent.RECALL_INSCRIPTION)) return false;
+        for (Buff buff : hero.buffs()) {
+            String name = buff.getClass().getName();
+            if (name.endsWith(".Invisibility")
+                    || name.endsWith("CloakOfShadows$cloakStealth")
+                    || name.endsWith("TimekeepersHourglass$timeFreeze")
+                    || name.endsWith("Invisibility$Preparation")
+                    || name.endsWith("Swiftthistle$TimeBubble")
+                    || name.endsWith("RoundShield$GuardTracker")) return false;
+        }
+        return true;
+    }
+
     /** Reject unsupported use before any local-only item effect can be applied. */
     public static boolean rejectIfUnsupported(Hero hero, Item item, String action) {
         if (!isLocalMultiplayerHero(hero)) return false;
-        if (!isSupportedAction(item, action) || Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
+        boolean unsupported = !isSupportedAction(item, action);
+        if ("READ".equals(action) && !isSafeRechargingScrollRead(hero, item)) unsupported = true;
+        if (unsupported || Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
             hero.rejectUnsupportedMultiplayerWorldAction();
             return true;
         }

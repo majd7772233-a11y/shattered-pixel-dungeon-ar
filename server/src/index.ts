@@ -517,6 +517,9 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
     allowed = new Set([base + "Barrier", base + "Poison"]);
+  } else if (action === "READ"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging") {
+    allowed = new Set([base + "Recharging"]);
   } else return false;
 
   const allClasses = new Set<string>([...before.keys(), ...after.keys()]);
@@ -527,13 +530,15 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       newRows.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})))) return false;
   }
 
+  const rechargingScrollRead = action === "READ"
+    && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
   const timedPotionBuff: Record<string, string> = {
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste": base + "Haste",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility": base + "Invisibility",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": base + "Levitation"
   };
-  const timedBuffName = timedPotionBuff[itemClass];
-  if (action === "DRINK" && timedBuffName) {
+  const timedBuffName = timedPotionBuff[itemClass] || (rechargingScrollRead ? base + "Recharging" : "");
+  if ((action === "DRINK" && !!timedPotionBuff[itemClass]) || rechargingScrollRead) {
     const oldRows = before.get(timedBuffName) || [], newRows = after.get(timedBuffName) || [];
     if (oldRows.length > 1 || newRows.length !== 1) return false;
     const nextRow = newRows[0], nextData = nextRow.data;
@@ -546,10 +551,12 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     const heroTime = Number(nativeHeroBundle?.time), heroCooldown = Number(next.cooldown);
     const actorClock = heroTime - heroCooldown;
     const expectedCooldown = Math.max(0, Number(nextData.time) - actorClock);
+    const maximumCooldown = rechargingScrollRead ? oldCooldown + 30 : Math.max(oldCooldown, 20);
     if (!Number.isFinite(nextCooldown) || nextCooldown < 0
-        || nextCooldown > Math.max(oldCooldown, 20) + 0.05
+        || nextCooldown > maximumCooldown + 0.05
         || !Number.isFinite(heroTime) || !Number.isFinite(heroCooldown) || heroCooldown < 0
         || !Number.isFinite(expectedCooldown) || Math.abs(nextCooldown - expectedCooldown) > 0.06) return false;
+    if (rechargingScrollRead && Math.abs(nextCooldown - (oldRows.length === 1 ? oldCooldown + 30 : 30)) > 0.06) return false;
     if (oldRows.length === 1) {
       const oldData = oldRows[0].data;
       if (Number(nextData.id) !== Number(oldData.id)) return false;
@@ -559,7 +566,8 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
         return result;
       };
       if (!sameNativeItemValue(stripTime(oldData), stripTime(nextData))) return false;
-    }
+      if (rechargingScrollRead && Math.abs(Number(nextData.time) - Number(oldData.time) - 30) > 0.06) return false;
+    } else if (rechargingScrollRead && Math.abs(Number(nextData.time) - actorClock - 30) > 0.06) return false;
   }
 
   if (action === "EAT") {
@@ -655,6 +663,33 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   return true;
 }
 
+/** The first supported native READ is ScrollOfRecharging, and only when it has no unmodelled side effects. */
+function isNativeRechargingScrollReadSafe(hero: any): boolean {
+  const combat = parseNativeBundleObject(hero && hero.combatBundle);
+  if (!combat) return false;
+  const prohibitedTalents = new Set(["INSCRIBED_POWER", "INSCRIBED_STEALTH", "RECALL_INSCRIPTION"]);
+  for (let tierNumber = 1; tierNumber <= 4; tierNumber++) {
+    const tier = combat["talents_tier_" + tierNumber];
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) return false;
+    for (const talent of prohibitedTalents) if (Number(tier[talent] || 0) > 0) return false;
+  }
+  const replacements = combat.replacements;
+  if (!replacements || typeof replacements !== "object" || Array.isArray(replacements)) return false;
+  for (const [from, to] of Object.entries(replacements)) {
+    if (prohibitedTalents.has(String(from)) || prohibitedTalents.has(String(to))) return false;
+  }
+  const buffs = nativeUseItemBuffMap(hero);
+  if (!buffs) return false;
+  const dispelledBuffSuffixes = [
+    ".Invisibility", "CloakOfShadows$cloakStealth", "TimekeepersHourglass$timeFreeze",
+    "Invisibility$Preparation", "Swiftthistle$TimeBubble", "RoundShield$GuardTracker"
+  ];
+  for (const className of buffs.keys()) {
+    if (dispelledBuffSuffixes.some(suffix => className.endsWith(suffix))) return false;
+  }
+  return true;
+}
+
 /** A consume intent must identify one item already owned by the authenticated hero. */
 export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -667,7 +702,7 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   const itemAction = String(data.itemAction || "");
   if (data.from !== pos || data.to !== pos || data.targetPos !== pos || Number(data.depth) !== depth
       || data.branch !== 0 || id.length < 8 || id.length > 80 || cls.length < 1 || cls.length > 256
-      || !["DRINK", "EAT"].includes(itemAction) || data.expectedQuantity !== 1
+      || !["DRINK", "EAT", "READ"].includes(itemAction) || data.expectedQuantity !== 1
       || !Number.isInteger(data.sourceQuantityBefore) || data.sourceQuantityBefore < 1 || data.sourceQuantityBefore > 100000
       || typeof data.stackable !== "boolean" || !Number.isFinite(data.engineActionCost)
       || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
@@ -686,10 +721,13 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat",
     "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie"
   ].includes(cls);
-  if (!supportedDrink && !supportedFood) return false;
+  const supportedScroll = itemAction === "READ"
+    && cls === "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
+  if (!supportedDrink && !supportedFood && !supportedScroll) return false;
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  if (supportedScroll && !isNativeRechargingScrollReadSafe(hero)) return false;
   if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
     let combat: any;
     try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }
@@ -718,7 +756,7 @@ export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: 
       || accepted.itemId !== details.itemId || accepted.itemClass !== details.itemClass
       || accepted.itemAction !== details.itemAction || accepted.expectedQuantity !== details.expectedQuantity
       || accepted.sourceQuantityBefore !== details.sourceQuantityBefore || accepted.stackable !== details.stackable
-      || !["DRINK", "EAT"].includes(String(details.itemAction)) || details.expectedQuantity !== 1
+      || !["DRINK", "EAT", "READ"].includes(String(details.itemAction)) || details.expectedQuantity !== 1
       || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
       || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle
       || !nativeUseItemCombatBundleMatches(previous, next, String(details.itemClass || ""))
