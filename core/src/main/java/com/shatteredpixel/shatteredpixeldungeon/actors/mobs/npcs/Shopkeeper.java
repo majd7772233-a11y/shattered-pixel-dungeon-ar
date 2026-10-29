@@ -339,9 +339,9 @@ public class Shopkeeper extends NPC {
 		if (!Item.isValidMultiplayerItemId(shopId)) return false;
 		try {
 			java.lang.reflect.Method collect = item.getClass().getMethod("collect", Bag.class);
-			// A class-specific collect() may apply charges, activation or other state not covered by
-			// this bounded inventory transaction. Unsupported classes remain visibly unavailable.
-			return collect.getDeclaringClass() == Item.class;
+			java.lang.reflect.Method pickupDelay = item.getClass().getMethod("pickupDelay");
+			// Class-specific collection or pickup timing may mutate state outside this transaction.
+			return collect.getDeclaringClass() == Item.class && pickupDelay.getDeclaringClass() == Item.class;
 		} catch (ReflectiveOperationException unsupportedCollect) {
 			return false;
 		}
@@ -385,7 +385,7 @@ public class Shopkeeper extends NPC {
 			manager.requestResync(manager.getLastSequence());
 			return;
 		}
-		// Preserve the native no-turn buyback behavior; publish only after the inventory and seller resolve.
+		// Preserve native doPickUp timing; publish only after inventory and seller resolve.
 		buybackItems.remove(index);
 		Dungeon.gold -= price;
 		Statistics.goldCollected -= price;

@@ -3122,7 +3122,7 @@ describe("Native Shopkeeper buyback transactions", () => {
     shopkeeperTurnsSinceHarmed:-1,buybackItems:buyback
   });
   const d=(overrides:Record<string,any>={})=>({
-    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:0,
+    from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:1,
     shopEntityId:"stable-buyback-shop-001",buybackItemId:"stable-buyback-item-001",
     buybackItemClass:cls,buybackQuantity:1,price:30,resultItemId:"stable-buyback-item-001",
     itemClass:cls,itemLevel:0,cursed:false,cursedKnown:true,stackable:true,nativeValue:30,nativeUnitValue:30,
@@ -3135,6 +3135,7 @@ describe("Native Shopkeeper buyback transactions", () => {
     const source=item("stable-buyback-item-001"), level={depth:4,branch:0,locked:false,width:8,height:8,heaps:[],mobs:[shop([source])]};
     const before=JSON.stringify(hero([],100));
     expect(isValidNativeBuybackIntent(level,d(),4,"player-001",player,before)).toBe(true);
+    expect(isValidNativeBuybackIntent(level,d({engineActionCost:0}),4,"player-001",player,before)).toBe(false);
     expect(isValidNativeBuybackIntent({...level,mobs:[shop([])]},d(),4,"player-001",player,before)).toBe(false);
     expect(isValidNativeBuybackIntent(level,d({price:29}),4,"player-001",player,before)).toBe(false);
     expect(isValidNativeBuybackIntent(level,d({shopEntityId:"stable-other-shop-001"}),4,"player-001",player,before)).toBe(false);
@@ -3145,13 +3146,15 @@ describe("Native Shopkeeper buyback transactions", () => {
 
   it("commits exactly one item and the exact gold debit while removing that item from buyback",()=>{
     const source=item("stable-buyback-item-001"), oldHero=hero([],100),newHero=hero([source],70,[],{
-      inventoryBundle:"native-inventory-after",
+      cooldown:1,inventoryBundle:"native-inventory-after",
       combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-after",buffs:[],
         talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     });
     const data=d(),result=accepted(data);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify(newHero),data,result)).toBe(true);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,gold:69}),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,cooldown:0}),data,result)).toBe(false);
+    expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,cooldown:2}),data,result)).toBe(false);
     expect(isValidNativeBuybackInventoryMutation(JSON.stringify(oldHero),JSON.stringify({...newHero,
       inventoryItemsJson:JSON.stringify([source,{...source,itemId:"forged-extra-item-001"}]),
       nativeItemEconomyJson:JSON.stringify([economy(source),economy({...source,itemId:"forged-extra-item-001"})])

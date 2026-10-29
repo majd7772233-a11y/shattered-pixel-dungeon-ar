@@ -728,7 +728,7 @@ export function isValidNativeBuybackIntent(level: any, dataValue: unknown, depth
       || resultId !== itemId || cls.length < 1 || cls.length > 256 || data.itemClass !== cls
       || !Number.isInteger(quantity) || quantity < 1 || quantity > 100000
       || !Number.isInteger(price) || price < 1 || price > 10000000
-      || !Number.isFinite(data.engineActionCost) || data.engineActionCost < 0 || data.engineActionCost > 0.06
+      || !Number.isFinite(data.engineActionCost) || Math.abs(data.engineActionCost - 1) > 0.06
       || !Number.isInteger(data.itemLevel) || data.itemLevel < -100 || data.itemLevel > 10000
       || typeof data.cursed !== "boolean" || typeof data.cursedKnown !== "boolean"
       || typeof data.stackable !== "boolean" || !Number.isInteger(data.nativeValue) || data.nativeValue !== price
@@ -790,7 +790,9 @@ export function isValidNativeBuybackInventoryMutation(previousValue: unknown, ne
       || previous.inventoryBundle === next.inventoryBundle
       || !Number.isInteger(previous.gold) || !Number.isInteger(next.gold) || next.gold !== previous.gold-price
       || next.gold < 0 || previous.hp !== next.hp || previous.ht !== next.ht || previous.pos !== next.pos
-      || previous.shielding !== next.shielding || previous.cooldown !== next.cooldown
+      || previous.shielding !== next.shielding
+      || !Number.isFinite(Number(previous.cooldown)) || !Number.isFinite(Number(next.cooldown))
+      || Math.abs((Number(next.cooldown) - Number(previous.cooldown)) - 1) > 0.06
       || previous.alchemyEnergy !== next.alchemyEnergy || previous.notesBundle !== next.notesBundle
       || previous.questStateBundle !== next.questStateBundle
       || previous.ironKeyCount !== next.ironKeyCount || previous.crystalKeyCount !== next.crystalKeyCount
