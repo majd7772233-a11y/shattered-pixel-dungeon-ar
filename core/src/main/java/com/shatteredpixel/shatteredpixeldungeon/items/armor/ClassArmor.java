@@ -187,6 +187,15 @@ abstract public class ClassArmor extends Armor {
 	@Override
 	public void execute( Hero hero, String action ) {
 
+		if (hero == Dungeon.hero
+				&& com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()
+				&& (action.equals(AC_TRANSFER) || (action.equals(AC_ABILITY) && hero.armorAbility == null))) {
+			// Transfer consumes/transforms armor and selecting a new class-armor ability mutates Hero state.
+			// Neither has an action-bound transaction here; reject before opening their local UI.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
+
 		super.execute( hero, action );
 
 		if (action.equals(AC_ABILITY)){
