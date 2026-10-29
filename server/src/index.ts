@@ -663,6 +663,27 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   return true;
 }
 
+/** The native food callback has bounded Hunger/WellFed-only effects only without these talents. */
+function isNativeFoodUseSafe(hero: any): boolean {
+  const combat = parseNativeBundleObject(hero && hero.combatBundle);
+  if (!combat) return false;
+  const sideEffectTalents = new Set([
+    "HEARTY_MEAL", "IRON_STOMACH", "EMPOWERING_MEAL", "ENERGIZING_MEAL", "MYSTICAL_MEAL",
+    "INVIGORATING_MEAL", "STRENGTHENING_MEAL", "FOCUSED_MEAL", "SATIATED_SPELLS", "ENLIGHTENING_MEAL"
+  ]);
+  for (let tierNumber = 1; tierNumber <= 4; tierNumber++) {
+    const tier = combat["talents_tier_" + tierNumber];
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) return false;
+    for (const talent of sideEffectTalents) if (Number(tier[talent] || 0) > 0) return false;
+  }
+  const replacements = combat.replacements;
+  if (!replacements || typeof replacements !== "object" || Array.isArray(replacements)) return false;
+  for (const [from, to] of Object.entries(replacements)) {
+    if (sideEffectTalents.has(String(from)) || sideEffectTalents.has(String(to))) return false;
+  }
+  return true;
+}
+
 /** The first supported native READ is ScrollOfRecharging, and only when it has no unmodelled side effects. */
 function isNativeRechargingScrollReadSafe(hero: any): boolean {
   const combat = parseNativeBundleObject(hero && hero.combatBundle);
@@ -895,6 +916,7 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
   if (supportedScroll && !isNativeRechargingScrollReadSafe(hero)) return false;
+  if (supportedFood && !isNativeFoodUseSafe(hero)) return false;
   if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
     let combat: any;
     try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }

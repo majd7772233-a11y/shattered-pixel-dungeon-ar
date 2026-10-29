@@ -88,11 +88,27 @@ public final class NativeItemUse {
         return true;
     }
 
+    /** Food talents can mutate HP, several native buffs, wand/weapon charges and artifact state. */
+    private static boolean isSafeFoodUse(Hero hero) {
+        return hero != null
+            && !hero.hasTalent(Talent.HEARTY_MEAL)
+            && !hero.hasTalent(Talent.IRON_STOMACH)
+            && !hero.hasTalent(Talent.EMPOWERING_MEAL)
+            && !hero.hasTalent(Talent.ENERGIZING_MEAL)
+            && !hero.hasTalent(Talent.MYSTICAL_MEAL)
+            && !hero.hasTalent(Talent.INVIGORATING_MEAL)
+            && !hero.hasTalent(Talent.STRENGTHENING_MEAL)
+            && !hero.hasTalent(Talent.FOCUSED_MEAL)
+            && !hero.hasTalent(Talent.SATIATED_SPELLS)
+            && !hero.hasTalent(Talent.ENLIGHTENING_MEAL);
+    }
+
     /** Reject unsupported use before any local-only item effect can be applied. */
     public static boolean rejectIfUnsupported(Hero hero, Item item, String action) {
         if (!isLocalMultiplayerHero(hero)) return false;
         boolean unsupported = !isSupportedAction(item, action);
         if ("READ".equals(action) && !isSafeRechargingScrollRead(hero, item)) unsupported = true;
+        if ("EAT".equals(action) && !isSafeFoodUse(hero)) unsupported = true;
         if (unsupported || Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
             hero.rejectUnsupportedMultiplayerWorldAction();
             return true;

@@ -2021,6 +2021,31 @@ describe("Unsupported native item actions remain fail-closed", () => {
     engineActionCost:1,itemId:id,itemClass:cls,itemAction,expectedQuantity:1,sourceQuantityBefore:1,stackable:false});
   const level={depth:4,branch:0,locked:false,heaps:[]};
   const player={pos:9,state:"ALIVE"};
+  it("rejects eating when a native food talent would mutate state outside the bounded food transaction",()=>{
+    const food="com.shatteredpixel.shatteredpixeldungeon.items.food.SmallRation";
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const row=(id:string)=>({itemId:id,className:food,quantity:1,level:0,cursed:false,cursedKnown:false,
+      stackable:true,equipped:false,serializedBundle:"native-item:"+id});
+    const before=(id:string,talents:Record<string,any>={})=>JSON.stringify({
+      pos:9,hp:10,ht:10,gold:0,inventoryBundle:"inventory-before",
+      inventoryItemsJson:JSON.stringify([row(id)]),quickslotsJson:"[]",
+      nativeItemEconomyJson:JSON.stringify([{itemId:id,className:food,quantity:1,nativeValue:10,
+        nativeUnitValue:10,nativeSellable:true}]),
+      combatBundle:JSON.stringify({time:10,inventory:"inventory-before",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{},...talents})
+    });
+    const intent=(id:string)=>({from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:3,
+      itemId:id,itemClass:food,itemAction:"EAT",expectedQuantity:1,sourceQuantityBefore:1,stackable:true});
+    expect(isValidNativeUseItemIntent(level,intent("stable-food-safe-001"),4,"player-001",
+      {pos:9,state:"ALIVE"},before("stable-food-safe-001"))).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("stable-food-hearty-001"),4,"player-001",
+      {pos:9,state:"ALIVE"},before("stable-food-hearty-001",{talents_tier_1:{HEARTY_MEAL:1}}))).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("stable-food-recharge-001"),4,"player-001",
+      {pos:9,state:"ALIVE"},before("stable-food-recharge-001",{talents_tier_3:{ENERGIZING_MEAL:1}}))).toBe(false);
+    expect(isValidNativeUseItemIntent(level,intent("stable-food-metamorph-001"),4,"player-001",
+      {pos:9,state:"ALIVE"},before("stable-food-metamorph-001",{replacements:{HEARTY_MEAL:"HEROIC_ENERGY"}}))).toBe(false);
+  });
+
   it("rejects READ and ZAP until their native effects have a validated shared result",()=>{
     const scroll=row("stable-unsupported-scroll-001",scrollClass);
     const wand=row("stable-unsupported-wand-001",wandClass);
