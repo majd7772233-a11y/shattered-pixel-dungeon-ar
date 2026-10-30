@@ -2133,6 +2133,8 @@ describe("Unsupported native item actions remain fail-closed", () => {
   const hero=(item:any)=>JSON.stringify({hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory",
     combatBundle:JSON.stringify({STR:10,inventory:"inventory",items:"inventory",buffs:[],
       talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+    potionStatusBundle:JSON.stringify({PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true}),
+    scrollStatusBundle:JSON.stringify({ScrollOfIdentify_label:"SOWILO",ScrollOfIdentify_known:false}),
     inventoryItemsJson:JSON.stringify([item]),quickslotsJson:"[]"});
   const intent=(id:string,cls:string,itemAction:string)=>({from:9,to:9,targetPos:9,depth:4,branch:0,
     engineActionCost:1,itemId:id,itemClass:cls,itemAction,expectedQuantity:1,sourceQuantityBefore:1,stackable:false});
@@ -2148,6 +2150,8 @@ describe("Unsupported native item actions remain fail-closed", () => {
       inventoryItemsJson:JSON.stringify([row(id)]),quickslotsJson:"[]",
       nativeItemEconomyJson:JSON.stringify([{itemId:id,className:food,quantity:1,nativeValue:10,
         nativeUnitValue:10,nativeSellable:true}]),
+      potionStatusBundle:JSON.stringify({PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true}),
+      scrollStatusBundle:JSON.stringify({ScrollOfIdentify_label:"SOWILO",ScrollOfIdentify_known:false}),
       combatBundle:JSON.stringify({time:10,inventory:"inventory-before",buffs:[],
         talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{},...talents})
     });
@@ -2998,40 +3002,58 @@ describe("Native item consumption transaction validation", () => {
   });
 
   it("allows only the consumed Potion or Scroll class to become identified",()=>{
-    const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
+    const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
     const scroll="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
     const potionState=(known:boolean)=>JSON.stringify({
-      PotionOfHaste_label:"AMBER",PotionOfHaste_known:known,
+      PotionOfStrength_label:"GOLD",PotionOfStrength_known:known,
       PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true
     });
     const scrollState=(known:boolean,label="KAUNAN")=>JSON.stringify({
       ScrollOfRecharging_label:label,ScrollOfRecharging_known:known,
       ScrollOfIdentify_label:"SOWILO",ScrollOfIdentify_known:false
     });
-    const beforePotion=JSON.stringify(hero([row("native-status-potion-001",haste)],{
-      potionStatusBundle:potionState(false)
+    const beforePotion=JSON.stringify(hero([row("native-status-potion-001",strength)],{
+      cooldown:0,potionStatusBundle:potionState(false),
+      combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
-    const afterPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      potionStatusBundle:potionState(true)
+    const afterPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      potionStatusBundle:potionState(true),
+      combatBundle:JSON.stringify({time:11,STR:11,inventory:"inventory-after",items:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
-    const potionData=intent("native-status-potion-001",haste,"DRINK");
+    const potionData=intent("native-status-potion-001",strength,"DRINK");
     expect(isValidNativeUseItemMutation(beforePotion,afterPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(true);
-    const forgedPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      potionStatusBundle:JSON.stringify({PotionOfHaste_label:"AMBER",PotionOfHaste_known:true,
-        PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:false})
+    const forgedPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      potionStatusBundle:JSON.stringify({PotionOfStrength_label:"GOLD",PotionOfStrength_known:true,
+        PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:false}),
+      combatBundle:JSON.stringify({time:11,STR:11,inventory:"inventory-after",items:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     expect(isValidNativeUseItemMutation(beforePotion,forgedPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(false);
 
     const beforeScroll=JSON.stringify(hero([row("native-status-scroll-001",scroll,1,true)],{
-      scrollStatusBundle:scrollState(false)
+      cooldown:0,scrollStatusBundle:scrollState(false),
+      combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
-    const afterScroll=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      scrollStatusBundle:scrollState(true)
+    const afterScroll=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      scrollStatusBundle:scrollState(true),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,inventory:"inventory-after",items:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging",time:40,id:96}}),
+      buffCooldown_1:30
     }));
     const scrollData=intent("native-status-scroll-001",scroll,"READ",1,true);
     expect(isValidNativeUseItemMutation(beforeScroll,afterScroll,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(true);
-    const forgedLabel=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
-      scrollStatusBundle:scrollState(true,"FORGED")
+    const forgedLabel=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      scrollStatusBundle:scrollState(true,"FORGED"),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,inventory:"inventory-after",items:"inventory-after",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging",time:40,id:96}}),
+      buffCooldown_1:30
     }));
     expect(isValidNativeUseItemMutation(beforeScroll,forgedLabel,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(false);
   });
