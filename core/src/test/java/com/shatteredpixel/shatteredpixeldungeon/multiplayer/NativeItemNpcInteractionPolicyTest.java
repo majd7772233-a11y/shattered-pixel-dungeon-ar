@@ -49,6 +49,16 @@ public class NativeItemNpcInteractionPolicyTest {
     }
 
     @Test
+    public void compoundPickupTypesAreRejectedBeforeNativeSideEffects() {
+        Assert.assertFalse(MultiplayerActionDispatcher.supportsNativeLostBackpackPickup(
+                com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack.class));
+        Assert.assertTrue(MultiplayerActionDispatcher.supportsNativeLostBackpackPickup(
+                com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing.class));
+        Assert.assertFalse(MultiplayerActionDispatcher.supportsNativeTippedDartPickup(true));
+        Assert.assertTrue(MultiplayerActionDispatcher.supportsNativeTippedDartPickup(false));
+    }
+
+    @Test
     public void questNpcInteractionsAreRejectedBeforeUnvalidatedItemRewardsOrTransforms() {
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Blacksmith.class));
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Ghost.class));
