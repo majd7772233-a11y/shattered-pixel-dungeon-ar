@@ -142,6 +142,53 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void remoteHeroRestoreDoesNotOverwriteLocalPotionAndScrollKnowledge() {
+        com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.clearColors();
+        com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.clearLabels();
+        try {
+            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.initColors();
+            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.initLabels();
+
+            com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing healing =
+                    new com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing();
+            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging recharging =
+                    new com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging();
+            Assert.assertFalse(healing.isKnown());
+            Assert.assertFalse(recharging.isKnown());
+
+            Bundle remotePotionStatus = new Bundle();
+            remotePotionStatus.put("PotionOfHealing_known", true);
+            Bundle remoteScrollStatus = new Bundle();
+            remoteScrollStatus.put("ScrollOfRecharging_known", true);
+            Bundle remoteState = new Bundle();
+            remoteState.put("hp", 20);
+            remoteState.put("ht", 20);
+            remoteState.put("pos", hero.pos);
+            remoteState.put("cooldown", 0f);
+            remoteState.put("buffCount", 0);
+            remoteState.put("potionStatusBundle", remotePotionStatus.toString());
+            remoteState.put("scrollStatusBundle", remoteScrollStatus.toString());
+
+            RemoteHero remoteHero = new RemoteHero();
+            WorldSnapshot.restoreRemoteHeroState(remoteHero, remoteState.toString());
+
+            Assert.assertFalse("A remote player's potion discovery must not leak into the local run",
+                    healing.isKnown());
+            Assert.assertFalse("A remote player's scroll discovery must not leak into the local run",
+                    recharging.isKnown());
+
+            WorldSnapshot.restoreRemoteHeroState(hero, remoteState.toString());
+            Assert.assertTrue("The local player's own potion knowledge must be restored",
+                    healing.isKnown());
+            Assert.assertTrue("The local player's own scroll knowledge must be restored",
+                    recharging.isKnown());
+        } finally {
+            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.clearColors();
+            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.clearLabels();
+        }
+    }
+
+    @Test
     public void sharedNativeActorTurnsRunOnlyOnTheLevelPublisher() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         Mob mob = addRat(hero.pos + 1, 18);
