@@ -23,4 +23,47 @@ describe("Native pickup status side-effect policy", () => {
     expect(isValidNativePickupIntent(level, intent, 4, "player-001", player, state(2))).toBe(false);
     expect(isValidNativePickupIntent(level, intent, 4, "player-001", player)).toBe(false);
   });
+
+  it("rejects LostBackpack pickup because it restores several native systems at once", () => {
+    const itemClass = "com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack";
+    const itemId = "stable-lost-backpack-001";
+    const bundle = JSON.stringify({ item: { __className: itemClass, multiplayer_item_id: itemId, quantity: 1 } });
+    const level = { depth: 4, branch: 0, locked: false, heaps: [{
+      heapId: "stable-lost-backpack-heap", pos: 9, type: "HEAP",
+      items: [{ itemId, className: itemClass, quantity: 1, level: 0, cursed: false,
+        cursedKnown: false, stackable: false, serializedBundle: bundle }]
+    }] };
+    const intent = { from: 9, to: 9, targetPos: 9, itemPos: 9, depth: 4, branch: 0,
+      engineActionCost: 1, heapId: "stable-lost-backpack-heap", itemId,
+      itemClass, expectedQuantity: 1, stackable: false, itemBundle: bundle };
+    expect(isValidNativePickupIntent(level, intent, 4, "player-001", { pos: 9, state: "ALIVE" },
+      JSON.stringify({ pos: 9, hp: 10, inventoryItemsJson: "[]" }))).toBe(false);
+  });
+
+  it("rejects a same-class dart merge while allowing a non-merging pickup", () => {
+    const dartClass = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.HealingDart";
+    const otherDartClass = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.PoisonDart";
+    const itemId = "stable-healing-dart-001";
+    const bundle = JSON.stringify({ item: { __className: dartClass, multiplayer_item_id: itemId, quantity: 1 } });
+    const row = (id: string, className: string) => ({
+      itemId: id, className, quantity: 1, level: 0, cursed: false, cursedKnown: false,
+      stackable: true, equipped: false,
+      serializedBundle: JSON.stringify({ item: { __className: className, multiplayer_item_id: id, quantity: 1 } })
+    });
+    const level = { depth: 4, branch: 0, locked: false, heaps: [{
+      heapId: "stable-healing-dart-heap", pos: 9, type: "HEAP",
+      items: [{ ...row(itemId, dartClass), serializedBundle: bundle }]
+    }] };
+    const intent = { from: 9, to: 9, targetPos: 9, itemPos: 9, depth: 4, branch: 0,
+      engineActionCost: 1, heapId: "stable-healing-dart-heap", itemId,
+      itemClass: dartClass, expectedQuantity: 1, stackable: true, itemBundle: bundle };
+    const player = { pos: 9, state: "ALIVE" };
+    const heroState = (items: any[]) => JSON.stringify({ pos: 9, hp: 10, inventoryItemsJson: JSON.stringify(items) });
+    expect(isValidNativePickupIntent(level, intent, 4, "player-001", player, heroState([]))).toBe(true);
+    expect(isValidNativePickupIntent(level, intent, 4, "player-001", player,
+      heroState([row("stable-existing-healing-dart", dartClass)]))).toBe(false);
+    expect(isValidNativePickupIntent(level, intent, 4, "player-001", player,
+      heroState([row("stable-existing-poison-dart", otherDartClass)]))).toBe(true);
+    expect(isValidNativePickupIntent(level, intent, 4, "player-001", player)).toBe(false);
+  });
 });
