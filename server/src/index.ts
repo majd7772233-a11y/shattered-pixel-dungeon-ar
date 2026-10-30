@@ -2886,7 +2886,7 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
       || typeof top?.serializedBundle !== "string" || !top.serializedBundle.includes(itemId)) return false;
   if (data.itemBundle !== undefined && (typeof data.itemBundle !== "string"
       || data.itemBundle !== top.serializedBundle)) return false;
-  if (itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.bags.")) {
+  if (itemClass.toLowerCase().includes("bag")) {
     const bundleRoot = parseNativeBundleObject(data.itemBundle);
     const bagItem = nativeEquipmentBundleItem(bundleRoot);
     if (!NATIVE_MULTIPLAYER_BAG_CLASSES.has(itemClass) || typeof data.itemBundle !== "string"
