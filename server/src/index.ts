@@ -367,14 +367,19 @@ function isSupportedNativeEquipmentIntent(hero: any, item: any, action: string):
       || decoded.seal != null)) return false;
   const heroInventory = parseNativeInventoryIndex(hero);
   if (!heroInventory) return false;
+  if (weapon && String(combat.class || "") === "DUELIST"
+      && heroInventory.some((candidate: any) => candidate.equipped === true
+        && String(candidate.className || "").includes(".items.weapon.melee."))) return false;
   if (action === "EQUIP") {
     if (weapon && nativeEquipmentTalentPoints(combat, "SWIFT_EQUIP") > 0) return false;
-    if (weapon && nativeEquipmentTalentPoints(combat, "ADVENTURERS_INTUITION") === 2 && decoded.levelKnown !== true) return false;
-    if (armor && nativeEquipmentTalentPoints(combat, "VETERANS_INTUITION") === 2 && decoded.levelKnown !== true) return false;
+    // onItemEquipped can mutate the equipped bundle even when identification is already
+    // known (Shard of Oblivion switches it to setIDReady instead).
+    if (weapon && nativeEquipmentTalentPoints(combat, "ADVENTURERS_INTUITION") === 2) return false;
+    if (armor && nativeEquipmentTalentPoints(combat, "VETERANS_INTUITION") === 2) return false;
     if (String(combat.class || "") !== "CLERIC"
         && nativeEquipmentTalentPoints(combat, "HOLY_INTUITION") > 0
         && item.cursed === true && item.cursedKnown !== true) return false;
-    if (armor && String(combat.class || "") === "WARRIOR") {
+    if (armor) {
       const oldArmor = heroInventory.filter((candidate: any) => candidate.equipped === true
         && String(candidate.className || "").startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor."));
       if (oldArmor.length > 1) return false;
@@ -445,10 +450,15 @@ export function isValidNativeEquipmentBelongingsMutation(previous: any, next: an
   const nextSlotId = nativeEquipmentPayloadId(newBelongings[slot]);
   if (action === "EQUIP") {
     if (oldTarget.equipped !== false || newTarget.equipped !== true || nextSlotId !== itemId
-        || priorSlotId !== (replaced ? String(replaced.itemId) : "")) return false;
+        || priorSlotId !== (replaced ? String(replaced.itemId) : "")
+        || (replaced
+          ? !nativeEquipmentPayloadMatchesRow(oldBelongings[slot], replaced)
+          : oldBelongings[slot] != null)
+        || !nativeEquipmentPayloadMatchesRow(newBelongings[slot], newTarget)) return false;
   } else {
     if (oldTarget.equipped !== true || newTarget.equipped !== false || priorSlotId !== itemId
-        || nextSlotId !== "") return false;
+        || nextSlotId !== "" || !nativeEquipmentPayloadMatchesRow(oldBelongings[slot], oldTarget)
+        || newBelongings[slot] != null) return false;
   }
 
   const oldRootItems = oldBelongings.inventory.map(nativeEquipmentBundleItem);
