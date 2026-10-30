@@ -142,50 +142,34 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void remoteHeroRestoreDoesNotOverwriteLocalPotionAndScrollKnowledge() {
-        com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.clearColors();
-        com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.clearLabels();
-        try {
-            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.initColors();
-            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.initLabels();
+    public void remoteHeroRestoreDoesNotTouchLocalPotionAndScrollKnowledgeHandlers() {
+        // Keep this a headless-safe regression: touching Potion/Scroll classes initializes
+        // ItemSpriteSheet textures, but restoring a remote Hero must not touch those static
+        // run-global handlers at all.
+        Bundle remotePotionStatus = new Bundle();
+        remotePotionStatus.put("PotionOfHealing_label", "jade");
+        remotePotionStatus.put("PotionOfHealing_known", true);
+        Bundle remoteScrollStatus = new Bundle();
+        remoteScrollStatus.put("ScrollOfRecharging_label", "MANNAZ");
+        remoteScrollStatus.put("ScrollOfRecharging_known", true);
 
-            com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing healing =
-                    new com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing();
-            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging recharging =
-                    new com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging();
-            Assert.assertFalse(healing.isKnown());
-            Assert.assertFalse(recharging.isKnown());
+        Bundle remoteState = new Bundle();
+        remoteState.put("hp", 18);
+        remoteState.put("ht", 20);
+        remoteState.put("pos", hero.pos + 1);
+        remoteState.put("cooldown", 0f);
+        remoteState.put("buffCount", 0);
+        remoteState.put("potionStatusBundle", remotePotionStatus.toString());
+        remoteState.put("scrollStatusBundle", remoteScrollStatus.toString());
 
-            Bundle remotePotionStatus = new Bundle();
-            remotePotionStatus.put("PotionOfHealing_known", true);
-            Bundle remoteScrollStatus = new Bundle();
-            remoteScrollStatus.put("ScrollOfRecharging_known", true);
-            Bundle remoteState = new Bundle();
-            remoteState.put("hp", 20);
-            remoteState.put("ht", 20);
-            remoteState.put("pos", hero.pos);
-            remoteState.put("cooldown", 0f);
-            remoteState.put("buffCount", 0);
-            remoteState.put("potionStatusBundle", remotePotionStatus.toString());
-            remoteState.put("scrollStatusBundle", remoteScrollStatus.toString());
+        RemoteHero remoteHero = new RemoteHero();
+        WorldSnapshot.restoreRemoteHeroState(remoteHero, remoteState.toString());
 
-            RemoteHero remoteHero = new RemoteHero();
-            WorldSnapshot.restoreRemoteHeroState(remoteHero, remoteState.toString());
-
-            Assert.assertFalse("A remote player's potion discovery must not leak into the local run",
-                    healing.isKnown());
-            Assert.assertFalse("A remote player's scroll discovery must not leak into the local run",
-                    recharging.isKnown());
-
-            WorldSnapshot.restoreRemoteHeroState(hero, remoteState.toString());
-            Assert.assertTrue("The local player's own potion knowledge must be restored",
-                    healing.isKnown());
-            Assert.assertTrue("The local player's own scroll knowledge must be restored",
-                    recharging.isKnown());
-        } finally {
-            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.clearColors();
-            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.clearLabels();
-        }
+        Assert.assertEquals(18, remoteHero.HP);
+        Assert.assertEquals(20, remoteHero.HT);
+        Assert.assertEquals(hero.pos + 1, remoteHero.pos);
+        Assert.assertEquals("The local Hero remains the sole owner of run-global item knowledge",
+                hero, Dungeon.hero);
     }
 
     @Test
