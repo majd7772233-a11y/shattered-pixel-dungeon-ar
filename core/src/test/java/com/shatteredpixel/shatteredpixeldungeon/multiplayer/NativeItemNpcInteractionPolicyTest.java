@@ -25,6 +25,30 @@ public class NativeItemNpcInteractionPolicyTest {
     }
 
     @Test
+    public void unsupportedPotionSideEffectsAreRejectedBeforeLocalConsumption() {
+        String invisibility = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility";
+        String levitation = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation";
+        String healing = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(invisibility,
+                com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.ASSASSIN,
+                false, false, false, false, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(invisibility,
+                null, true, false, false, false, false));
+        Assert.assertTrue(NativeItemUse.supportsNativePotionUseState(invisibility,
+                null, false, false, false, false, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(levitation,
+                null, false, true, false, false, false));
+        Assert.assertTrue(NativeItemUse.supportsNativePotionUseState(levitation,
+                null, false, false, false, false, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(healing,
+                null, false, false, true, false, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(healing,
+                null, false, false, false, true, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(healing,
+                null, false, false, false, false, true));
+    }
+
+    @Test
     public void questNpcInteractionsAreRejectedBeforeUnvalidatedItemRewardsOrTransforms() {
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Blacksmith.class));
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Ghost.class));
