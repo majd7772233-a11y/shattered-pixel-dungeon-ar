@@ -86,20 +86,22 @@ public abstract class EquipableItem extends Item {
 
 		if (this instanceof KindOfWeapon) {
 			if (hero.subClass == HeroSubClass.CHAMPION
+					|| (hero.heroClass == HeroClass.DUELIST && hero.belongings.weapon instanceof MeleeWeapon)
 					|| (this instanceof MeleeWeapon && hero.heroClass == HeroClass.DUELIST)
 					|| (action.equals(AC_EQUIP) && hero.hasTalent(Talent.SWIFT_EQUIP))
-					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.ADVENTURERS_INTUITION) == 2 && !isIdentified())) {
+					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.ADVENTURERS_INTUITION) == 2)) {
 				return false;
 			}
 		} else if (this instanceof Armor) {
 			Armor armor = (Armor)this;
 			if (armor.checkSeal() != null
-					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.VETERANS_INTUITION) == 2 && !isIdentified())) {
+					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.VETERANS_INTUITION) == 2)) {
 				return false;
 			}
-			if (action.equals(AC_EQUIP) && hero.heroClass == HeroClass.WARRIOR
-					&& hero.belongings.armor != null && hero.belongings.armor.checkSeal() != null) {
-				// The native follow-up seal-transfer dialog is a second, separate inventory mutation.
+			if (action.equals(AC_EQUIP) && hero.belongings.armor != null
+					&& hero.belongings.armor.checkSeal() != null) {
+				// Removing any sealed armor detaches its native BrokenSeal buff; the
+				// follow-up transfer dialog is also a separate inventory mutation.
 				return false;
 			}
 		}
@@ -111,6 +113,9 @@ public abstract class EquipableItem extends Item {
 		}
 
 		if (action.equals(AC_EQUIP)) {
+			// The currently validated protocol moves only a direct backpack item. A nested
+			// bag transfer also rewrites the container bundle and is not the same transaction.
+			if (!hero.belongings.backpack.items.contains(this)) return false;
 			Item replaced = this instanceof Armor ? hero.belongings.armor
 					: hero.belongings.weapon;
 			if (replaced != null && replaced != this
