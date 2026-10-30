@@ -15,6 +15,12 @@ public class MultiplayerActionDispatcher {
         return npcClass != null && Shopkeeper.class.isAssignableFrom(npcClass);
     }
 
+    /** Ring pickup can identify a run-global Ring status that is not carried in Hero snapshots. */
+    public static boolean supportsNativePickupKnowledge(String itemClass, int thievesIntuitionPoints) {
+        return itemClass == null || !itemClass.startsWith(
+                "com.shatteredpixel.shatteredpixeldungeon.items.rings.") || thievesIntuitionPoints != 2;
+    }
+
     public static void onHeroPerformAction(HeroAction action) {
         Hero hero = Dungeon.hero;
         onHeroPerformAction(action, hero == null ? 0f : hero.cooldown(),
@@ -118,6 +124,11 @@ public class MultiplayerActionDispatcher {
             com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(targetPos);
             com.shatteredpixel.shatteredpixeldungeon.items.Item item = heap == null ? null : heap.peek();
             if (item == null) return;
+            if (!supportsNativePickupKnowledge(item.getClass().getName(),
+                    hero.pointsInTalent(com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent.THIEFS_INTUITION))) {
+                hero.rejectUnsupportedMultiplayerWorldAction();
+                return;
+            }
             // Native SPD may automatically store a picked-up item inside a special Bag, or move
             // existing backpack items into a new Bag. Reject these compound mutations pre-effect.
             if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag) {
