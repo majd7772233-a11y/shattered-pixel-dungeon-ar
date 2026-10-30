@@ -1603,11 +1603,7 @@ export function isValidNativeBuyInventoryMutation(previousValue: unknown, nextVa
   const afterById = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
   const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
   if (!beforeSlots || !afterSlots) return false;
-  const slotShape = (entries: any[], mutableId: string) => entries
-    .map((entry: any) => ({ slot: entry.slot, itemId: entry.itemId, className: entry.className,
-      quantity: String(entry.itemId) === mutableId ? 0 : entry.quantity,
-      serializedBundle: String(entry.itemId) === mutableId ? "" : entry.serializedBundle }))
-    .sort((a: any, b: any) => a.slot - b.slot);
+
   if (!details.acquiredByInventory) {
     return previous.inventoryBundle === next.inventoryBundle && sameNativeItemValue(before, after)
       && previous.quickslotsJson === next.quickslotsJson && sameNativeItemValue(beforeSlots, afterSlots);
@@ -1636,7 +1632,25 @@ export function isValidNativeBuyInventoryMutation(previousValue: unknown, nextVa
           after.filter((item: any) => String(item.itemId) !== resultId))) return false;
     merged = true;
   }
-  return sameNativeItemValue(slotShape(beforeSlots, merged ? resultId : ""), slotShape(afterSlots, merged ? resultId : ""));
+  const unrelatedSlots = (entries: any[]) => entries.filter((entry: any) => String(entry.itemId) !== resultId)
+    .map((entry: any) => ({slot:entry.slot,itemId:entry.itemId,className:entry.className,
+      quantity:entry.quantity,serializedBundle:entry.serializedBundle}))
+    .sort((a: any,b: any) => Number(a.slot)-Number(b.slot));
+  if (!sameNativeItemValue(unrelatedSlots(beforeSlots), unrelatedSlots(afterSlots))) return false;
+
+  // A new purchase may fill one quickslot placeholder; a merge must preserve the existing target slot.
+  const oldTargetSlots = beforeSlots.filter((entry: any) => String(entry.itemId) === resultId);
+  const newTargetSlots = afterSlots.filter((entry: any) => String(entry.itemId) === resultId);
+  if (oldTargetSlots.length > 1 || newTargetSlots.length > 1
+      || (merged && (oldTargetSlots.length !== newTargetSlots.length
+        || (oldTargetSlots.length === 1 && Number(oldTargetSlots[0].slot) !== Number(newTargetSlots[0].slot))))
+      || (!merged && oldTargetSlots.length !== 0)) return false;
+  const nativeResult = nativeBuyItemBundle(afterById.get(resultId)?.serializedBundle);
+  if (!nativeResult) return false;
+  if (newTargetSlots.length === 1) {
+    if (Number(nativeResult.item.quickslotpos) !== Number(newTargetSlots[0].slot)) return false;
+  } else if (Object.prototype.hasOwnProperty.call(nativeResult.item, "quickslotpos")) return false;
+  return true;
 }
 
 /** Only the exact sale heap can disappear; a full backpack may replace it with a heap holding the paid item. */
