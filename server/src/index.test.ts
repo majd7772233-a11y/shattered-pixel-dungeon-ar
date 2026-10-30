@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1085,6 +1085,14 @@ describe('Authoritative native hero pre-state', () => {
     expect(hasMatchingNativeHeroStateSnapshot({ ...state, inventoryBundle: 'forged-inventory' }, state)).toBe(false);
     expect(hasMatchingNativeHeroStateSnapshot({ ...state, buffCooldown_0: 99 }, state)).toBe(false);
     expect(hasMatchingNativeHeroStateSnapshot({ ...state, shielding: 100 }, state)).toBe(false);
+    const identified = { ...state, potionStatusBundle:'{"PotionOfHaste_label":"AMBER","PotionOfHaste_known":false}',
+      scrollStatusBundle:'{"ScrollOfRecharging_label":"KAUNAN","ScrollOfRecharging_known":false}' };
+    expect(hasMatchingNativeHeroStateSnapshot(identified, identified)).toBe(true);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...identified,
+      potionStatusBundle:'{"PotionOfHaste_label":"AMBER","PotionOfHaste_known":true}' }, identified)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...identified,
+      scrollStatusBundle:'{"ScrollOfRecharging_label":"FORGED","ScrollOfRecharging_known":false}' }, identified)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot({ ...identified, potionStatusBundle:undefined }, identified)).toBe(false);
   });
   it('rejects malformed or absent hero snapshots', () => {
     expect(hasMatchingNativeHeroStateSnapshot('{bad-json', heroState())).toBe(false);
@@ -3024,6 +3032,9 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(parseNativeItemStatusBundle(potionState(false))).not.toBeNull();
     expect(isValidNativeItemStatusMutation(JSON.parse(beforePotion),JSON.parse(afterPotion),"DRINK",strength)).toBe(true);
+    expect(mergeNativeItemStatusState(beforePotion,afterPotion,"DRINK",strength)).toEqual({
+      potionStatusBundle:potionState(true),scrollStatusBundle:defaultScrollStatus()
+    });
     const potionData=intent("native-status-potion-001",strength,"DRINK");
     expect(isValidNativeUseItemMutation(beforePotion,afterPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(true);
     const forgedPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
@@ -3049,6 +3060,10 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(parseNativeItemStatusBundle(scrollState(false))).not.toBeNull();
     expect(isValidNativeItemStatusMutation(JSON.parse(beforeScroll),JSON.parse(afterScroll),"READ",scroll)).toBe(true);
+    expect(mergeNativeItemStatusState(beforeScroll,afterScroll,"READ",scroll)).toEqual({
+      potionStatusBundle:defaultPotionStatus(),scrollStatusBundle:scrollState(true)
+    });
+    expect(mergeNativeItemStatusState(beforeScroll,forgedLabel,"READ",scroll)).toBeNull();
     const scrollData=intent("native-status-scroll-001",scroll,"READ",1,true);
     expect(isValidNativeUseItemMutation(beforeScroll,afterScroll,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(true);
     const forgedLabel=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,

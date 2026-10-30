@@ -1238,6 +1238,24 @@ export function isValidNativeItemStatusMutation(previous: any, next: any, action
   return sameNativeItemValue(oldPotions,newPotions) && sameNativeItemValue(oldScrolls,newScrolls);
 }
 
+/** Returns the exact validated run-knowledge fields to commit for this native read/drink. */
+export function mergeNativeItemStatusState(previousValue: unknown, reportedValue: unknown,
+  actionValue: unknown, itemClassValue: unknown): {potionStatusBundle:string,scrollStatusBundle:string} | null {
+  let previous: any, reported: any;
+  try {
+    previous = JSON.parse(String(previousValue || ""));
+    reported = JSON.parse(String(reportedValue || ""));
+  } catch (_) { return null; }
+  const action = String(actionValue || ""), itemClass = String(itemClassValue || "");
+  if (!previous || !reported || typeof reported.potionStatusBundle !== "string"
+      || typeof reported.scrollStatusBundle !== "string"
+      || !isValidNativeItemStatusMutation(previous,reported,action,itemClass)) return null;
+  return {
+    potionStatusBundle: reported.potionStatusBundle,
+    scrollStatusBundle: reported.scrollStatusBundle
+  };
+}
+
 /** A consume intent must identify one item already owned by the authenticated hero. */
 export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -1356,7 +1374,7 @@ export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: 
       || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
       || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle
       || !nativeUseItemCombatBundleMatches(previous, next, String(details.itemClass || ""))
-      || !isValidNativeItemStatusMutation(previous,next,String(details.itemAction),String(details.itemClass || ""))
+      || !mergeNativeItemStatusState(previous,next,String(details.itemAction),String(details.itemClass || ""))
       || !isValidNativeUseItemBuffMutation(previous, next, String(details.itemAction), String(details.itemClass || ""))) return false;
   const id = String(details.itemId || ""), cls = String(details.itemClass || "");
   const oldSource = before.filter((item: any) => String(item.itemId) === id);
@@ -5098,11 +5116,19 @@ export function hasMatchingNativeHeroEquipmentState(reported: unknown, trusted: 
   try {
     const next = typeof reported === "string" ? JSON.parse(reported) : reported as any;
     const saved = typeof trusted === "string" ? JSON.parse(trusted) : trusted as any;
-    return !!next && !!saved
-      && typeof next.combatBundle === "string" && next.combatBundle.length > 0
-      && next.combatBundle === saved.combatBundle
-      && typeof next.inventoryBundle === "string" && next.inventoryBundle.length > 0
-      && next.inventoryBundle === saved.inventoryBundle;
+    if (!next || !saved || typeof next.combatBundle !== "string" || next.combatBundle.length < 1
+        || next.combatBundle !== saved.combatBundle || typeof next.inventoryBundle !== "string"
+        || next.inventoryBundle.length < 1 || next.inventoryBundle !== saved.inventoryBundle) return false;
+    // Potion/Scroll ItemStatusHandlers are per-player run knowledge. Bind the reported
+    // pre-state to the server-held state so a client cannot invent a favorable "unknown" baseline.
+    for (const field of ["potionStatusBundle", "scrollStatusBundle"]) {
+      const hasNext = Object.prototype.hasOwnProperty.call(next, field);
+      const hasSaved = Object.prototype.hasOwnProperty.call(saved, field);
+      if (hasNext !== hasSaved) return false;
+      if (hasNext && (typeof next[field] !== "string" || next[field].length < 2
+          || next[field] !== saved[field])) return false;
+    }
+    return true;
   } catch (_) { return false; }
 }
 
@@ -6201,6 +6227,11 @@ export class MatchRoom {
             }
           }
           if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
+          if (mutationAction === "USE_ITEM") {
+            const itemStatus = mergeNativeItemStatusState(trustedHeroRow.value, level.heroStateJson,
+              String(mutationDetails?.itemAction || ""), String(mutationDetails?.itemClass || ""));
+            if (itemStatus) Object.assign(mergedHero, itemStatus);
+          }
           if (mutationAction === "INTERACT" || mutationAction === "MINE" || mutationAction === "PICKUP"
               || mutationAction === "DROP" || mutationAction === "EQUIP" || mutationAction === "UNEQUIP"
               || mutationAction === "BUY" || mutationAction === "BUYBACK" || mutationAction === "SELL" || mutationAction === "USE_ITEM" || mutationAction === "THROW" || mutationAction === "ALCHEMY" || mutationAction === "USE_ABILITY") {

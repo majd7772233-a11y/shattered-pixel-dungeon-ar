@@ -245,15 +245,18 @@ public class WorldSnapshot {
         if (Dungeon.level != null && nativePos >= 0 && nativePos < Dungeon.level.length()) {
             hero.pos = nativePos;
         }
-        // Potion/Scroll handlers are static run-global state. Reconcile them before native
-        // inventory item bundles are restored so remote Hero replicas share the same labels.
-        Bundle potionStatus = readBundle(heroState.getString("potionStatusBundle"));
-        if (potionStatus != null) {
-            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.restoreMultiplayerStatusBundle(potionStatus);
-        }
-        Bundle scrollStatus = readBundle(heroState.getString("scrollStatusBundle"));
-        if (scrollStatus != null) {
-            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.restoreMultiplayerStatusBundle(scrollStatus);
+        // ItemStatusHandlers are static in this native SPD process, while co-op knowledge
+        // belongs to the local player. A remote Hero snapshot must never overwrite Dungeon.hero's
+        // Potion/Scroll identification state.
+        if (hero == Dungeon.hero) {
+            Bundle potionStatus = readBundle(heroState.getString("potionStatusBundle"));
+            if (potionStatus != null) {
+                com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.restoreMultiplayerStatusBundle(potionStatus);
+            }
+            Bundle scrollStatus = readBundle(heroState.getString("scrollStatusBundle"));
+            if (scrollStatus != null) {
+                com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.restoreMultiplayerStatusBundle(scrollStatus);
+            }
         }
         Bundle nativeHero = readBundle(heroState.getString("combatBundle"));
         if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
