@@ -1174,6 +1174,70 @@ export function isValidNativeBuybackShopkeeperMutation(previousMobs:any[], nextM
   return true;
 }
 
+const NATIVE_SUPPORTED_POTION_STATUS_CLASS: Record<string,string> = {
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing": "PotionOfHealing",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste": "PotionOfHaste",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility": "PotionOfInvisibility",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": "PotionOfLevitation",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength": "PotionOfStrength",
+  // Native ExoticPotion.setKnown() marks the regular base Potion class.
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding": "PotionOfHealing"
+};
+const NATIVE_SUPPORTED_SCROLL_STATUS_CLASS: Record<string,string> = {
+  "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging": "ScrollOfRecharging"
+};
+
+/** ItemStatusHandler stores exact _label strings and _known booleans for every native class. */
+function parseNativeItemStatusBundle(value: unknown): any | null {
+  const parsed = parseNativeBundleObject(value);
+  if (!parsed || Object.keys(parsed).length < 2 || Object.keys(parsed).length > 256) return null;
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (key.length < 8 || key.length > 160) return null;
+    if (key.endsWith("_label")) {
+      if (typeof entry !== "string" || entry.length < 1 || entry.length > 80) return null;
+    } else if (key.endsWith("_known")) {
+      if (typeof entry !== "boolean") return null;
+    } else return null;
+  }
+  return parsed;
+}
+
+function nativeStatusTargetKey(action: string, itemClass: string): string {
+  if (action === "DRINK") {
+    const name = NATIVE_SUPPORTED_POTION_STATUS_CLASS[itemClass];
+    return name ? name + "_known" : "";
+  }
+  if (action === "READ") {
+    const name = NATIVE_SUPPORTED_SCROLL_STATUS_CLASS[itemClass];
+    return name ? name + "_known" : "";
+  }
+  return "";
+}
+
+/** A native read/drink may reveal only the exact Potion/Scroll class being consumed. */
+function isValidNativeItemStatusMutation(previous: any, next: any, action: string, itemClass: string): boolean {
+  const oldPotions = parseNativeItemStatusBundle(previous?.potionStatusBundle);
+  const newPotions = parseNativeItemStatusBundle(next?.potionStatusBundle);
+  const oldScrolls = parseNativeItemStatusBundle(previous?.scrollStatusBundle);
+  const newScrolls = parseNativeItemStatusBundle(next?.scrollStatusBundle);
+  if (!oldPotions || !newPotions || !oldScrolls || !newScrolls) return false;
+  const compare = (before: any, after: any, targetKey: string) => {
+    const oldKeys = Object.keys(before).sort(), newKeys = Object.keys(after).sort();
+    if (!sameNativeItemValue(oldKeys,newKeys) || (targetKey && !Object.prototype.hasOwnProperty.call(before,targetKey))) return false;
+    for (const key of oldKeys) {
+      if (key === targetKey) {
+        // Native identify() only promotes unknown to known, never the reverse.
+        if (before[key] !== true && after[key] !== true) return false;
+      } else if (before[key] !== after[key]) return false;
+    }
+    return true;
+  };
+  const targetKey = nativeStatusTargetKey(action,itemClass);
+  if (action === "DRINK") return compare(oldPotions,newPotions,targetKey) && sameNativeItemValue(oldScrolls,newScrolls);
+  if (action === "READ") return compare(oldScrolls,newScrolls,targetKey) && sameNativeItemValue(oldPotions,newPotions);
+  return sameNativeItemValue(oldPotions,newPotions) && sameNativeItemValue(oldScrolls,newScrolls);
+}
+
 /** A consume intent must identify one item already owned by the authenticated hero. */
 export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -1210,7 +1274,9 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   if (!supportedDrink && !supportedFood && !supportedScroll) return false;
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
-  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
+  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0
+      || !parseNativeItemStatusBundle(hero.potionStatusBundle)
+      || !parseNativeItemStatusBundle(hero.scrollStatusBundle)) return false;
   if (supportedScroll && !isNativeRechargingScrollReadSafe(hero)) return false;
   if (supportedFood && !isNativeFoodUseSafe(hero)) return false;
   if (supportedDrink && !isNativePotionUseSafe(hero, cls)) return false;
@@ -1231,6 +1297,50 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     && source[0].stackable === data.stackable;
 }
 
+/** Validates the exact QuickSlot mutation performed by native Item.detach(). */
+function isValidNativeUseItemQuickslotMutation(sourceId: string, itemClass: string,
+  sourceQuantityBefore: number, stackable: boolean, sourceAfter: any | undefined,
+  beforeSlots: any[], afterSlots: any[]): boolean {
+  const oldSourceSlots = beforeSlots.filter((slot:any)=>String(slot.itemId)===sourceId);
+  const newSourceSlots = afterSlots.filter((slot:any)=>String(slot.itemId)===sourceId);
+  if (oldSourceSlots.length > 1 || newSourceSlots.length > 1) return false;
+  const oldSlot = oldSourceSlots[0];
+  const newSlot = newSourceSlots[0];
+  if (oldSlot && String(oldSlot.className)!==itemClass) return false;
+
+  if (sourceQuantityBefore > 1) {
+    if (oldSlot) {
+      if (!sourceAfter || !newSlot || Number(newSlot.slot)!==Number(oldSlot.slot)
+          || String(newSlot.className)!==itemClass || Number(newSlot.quantity)!==sourceQuantityBefore-1
+          || String(newSlot.serializedBundle)!==String(sourceAfter.serializedBundle)) return false;
+    } else if (newSlot) return false;
+  } else if (oldSlot) {
+    if (newSlot) return false;
+    const atOldIndex = afterSlots.filter((slot:any)=>Number(slot.slot)===Number(oldSlot.slot));
+    if (atOldIndex.length > 1) return false;
+    if (atOldIndex.length === 1) {
+      // Stackable items become a fresh-ID virtual item with quantity=0. Item.storeInBundle()
+      // records both the new multiplayer_item_id and the exact quickslotpos.
+      if (!stackable) return false;
+      const placeholder = atOldIndex[0];
+      const root = parseNativeBundleObject(placeholder.serializedBundle);
+      const nativeItem = root && root.item;
+      if (Number(placeholder.quantity)!==0 || String(placeholder.className)!==itemClass
+          || String(placeholder.itemId)===sourceId || !nativeItem || typeof nativeItem!=="object"
+          || String(nativeItem.__className||"")!==itemClass || Number(nativeItem.quantity)!==0
+          || String(nativeItem.multiplayer_item_id||"")!==String(placeholder.itemId)
+          || Number(nativeItem.quickslotpos)!==Number(oldSlot.slot)) return false;
+    }
+  } else if (newSlot) return false;
+
+  const oldIndex = oldSlot ? Number(oldSlot.slot) : -1;
+  const normalize = (slots:any[])=>slots.filter((slot:any)=>Number(slot.slot)!==oldIndex)
+    .map((slot:any)=>({slot:slot.slot,itemId:slot.itemId,className:slot.className,
+      quantity:slot.quantity,serializedBundle:slot.serializedBundle}))
+    .sort((a:any,b:any)=>Number(a.slot)-Number(b.slot));
+  return sameNativeItemValue(normalize(beforeSlots),normalize(afterSlots));
+}
+
 /** A validated consume removes one source unit and cannot rewrite unrelated inventory or quickslots. */
 export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: unknown,
   detailsValue: unknown, acceptedValue: unknown): boolean {
@@ -1246,6 +1356,7 @@ export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: 
       || !Number.isInteger(details.sourceQuantityBefore) || details.sourceQuantityBefore < 1
       || previous.gold !== next.gold || previous.inventoryBundle === next.inventoryBundle
       || !nativeUseItemCombatBundleMatches(previous, next, String(details.itemClass || ""))
+      || !isValidNativeItemStatusMutation(previous,next,String(details.itemAction),String(details.itemClass || ""))
       || !isValidNativeUseItemBuffMutation(previous, next, String(details.itemAction), String(details.itemClass || ""))) return false;
   const id = String(details.itemId || ""), cls = String(details.itemClass || "");
   const oldSource = before.filter((item: any) => String(item.itemId) === id);
@@ -1264,11 +1375,8 @@ export function isValidNativeUseItemMutation(previousValue: unknown, nextValue: 
       after.filter((item: any) => String(item.itemId) !== id))) return false;
   const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
   if (!beforeSlots || !afterSlots) return false;
-  const unrelatedSlots = (slots: any[]) => slots.filter((slot: any) => String(slot.itemId) !== id)
-    .map((slot: any) => ({slot:slot.slot,itemId:slot.itemId,className:slot.className,
-      quantity:slot.quantity,serializedBundle:slot.serializedBundle}))
-    .sort((a: any,b: any) => Number(a.slot)-Number(b.slot));
-  return sameNativeItemValue(unrelatedSlots(beforeSlots), unrelatedSlots(afterSlots));
+  return isValidNativeUseItemQuickslotMutation(id,cls,Number(details.sourceQuantityBefore),
+    details.stackable,newSource[0],beforeSlots,afterSlots);
 }
 
 

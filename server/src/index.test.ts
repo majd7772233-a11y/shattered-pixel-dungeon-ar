@@ -2880,10 +2880,22 @@ describe("Native item consumption transaction validation", () => {
   const defaultHungerBundle = JSON.stringify({buff:{
     __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",level:55,partialDamage:0
   }});
+  const defaultPotionStatus = () => JSON.stringify({
+    PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true,
+    PotionOfHaste_label:"AMBER",PotionOfHaste_known:true,
+    PotionOfInvisibility_label:"TEAL",PotionOfInvisibility_known:true,
+    PotionOfLevitation_label:"SILVER",PotionOfLevitation_known:true,
+    PotionOfStrength_label:"GOLD",PotionOfStrength_known:true
+  });
+  const defaultScrollStatus = () => JSON.stringify({
+    ScrollOfRecharging_label:"KAUNAN",ScrollOfRecharging_known:true,
+    ScrollOfIdentify_label:"SOWILO",ScrollOfIdentify_known:true
+  });
   const hero = (items:any[], extra:Record<string,any>={}) => ({
     hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory-before",
     combatBundle:JSON.stringify({STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
       talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+    potionStatusBundle:defaultPotionStatus(),scrollStatusBundle:defaultScrollStatus(),
     buffCount:1,buff_0:defaultHungerBundle,buffCooldown_0:0,
     inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
   });
@@ -2983,6 +2995,45 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemIntent(level,intent("native-scroll-recharging-invisible-001",scroll,"READ",1,true),
       4,"player-001",{pos:9,state:"ALIVE"},invisibleBefore)).toBe(false);
+  });
+
+  it("allows only the consumed Potion or Scroll class to become identified",()=>{
+    const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
+    const scroll="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
+    const potionState=(known:boolean)=>JSON.stringify({
+      PotionOfHaste_label:"AMBER",PotionOfHaste_known:known,
+      PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true
+    });
+    const scrollState=(known:boolean,label="KAUNAN")=>JSON.stringify({
+      ScrollOfRecharging_label:label,ScrollOfRecharging_known:known,
+      ScrollOfIdentify_label:"SOWILO",ScrollOfIdentify_known:false
+    });
+    const beforePotion=JSON.stringify(hero([row("native-status-potion-001",haste)],{
+      potionStatusBundle:potionState(false)
+    }));
+    const afterPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      potionStatusBundle:potionState(true)
+    }));
+    const potionData=intent("native-status-potion-001",haste,"DRINK");
+    expect(isValidNativeUseItemMutation(beforePotion,afterPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(true);
+    const forgedPotion=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      potionStatusBundle:JSON.stringify({PotionOfHaste_label:"AMBER",PotionOfHaste_known:true,
+        PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:false})
+    }));
+    expect(isValidNativeUseItemMutation(beforePotion,forgedPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(false);
+
+    const beforeScroll=JSON.stringify(hero([row("native-status-scroll-001",scroll,1,true)],{
+      scrollStatusBundle:scrollState(false)
+    }));
+    const afterScroll=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      scrollStatusBundle:scrollState(true)
+    }));
+    const scrollData=intent("native-status-scroll-001",scroll,"READ",1,true);
+    expect(isValidNativeUseItemMutation(beforeScroll,afterScroll,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(true);
+    const forgedLabel=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      scrollStatusBundle:scrollState(true,"FORGED")
+    }));
+    expect(isValidNativeUseItemMutation(beforeScroll,forgedLabel,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(false);
   });
 
   it("validates the exact native ScrollOfRecharging buff and rejects inflated duration",()=>{
@@ -3242,6 +3293,49 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
   });
+  it("validates native source-slot remainder and last-unit placeholder conversion",()=>{
+    const itemClass="com.shatteredpixel.shatteredpixeldungeon.items.food.Food";
+    const nativeItem=(id:string,quantity:number,slot:number)=>JSON.stringify({item:{
+      __className:itemClass,quantity,multiplayer_item_id:id,quickslotpos:slot
+    }});
+    const slot=(slotIndex:number,id:string,quantity:number,bundle:string)=>({
+      slot:slotIndex,itemId:id,className:itemClass,quantity,serializedBundle:bundle
+    });
+    const stackId="native-quickslot-food-stack-001";
+    const beforeBundle=nativeItem(stackId,4,2),afterBundle=nativeItem(stackId,3,2);
+    const before=JSON.stringify(hero([row(stackId,itemClass,4,true,beforeBundle)],{
+      quickslotsJson:JSON.stringify([slot(2,stackId,4,beforeBundle)])
+    }));
+    const after=JSON.stringify(hero([row(stackId,itemClass,3,true,afterBundle)],{
+      inventoryBundle:"inventory-after",quickslotsJson:JSON.stringify([slot(2,stackId,3,afterBundle)])
+    }));
+    const data=intent(stackId,itemClass,"EAT",4,true),accepted={...data,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,data,accepted)).toBe(true);
+    const moved=JSON.stringify(hero([row(stackId,itemClass,3,true,afterBundle)],{
+      inventoryBundle:"inventory-after",quickslotsJson:JSON.stringify([slot(3,stackId,3,nativeItem(stackId,3,3))])
+    }));
+    expect(isValidNativeUseItemMutation(before,moved,data,accepted)).toBe(false);
+
+    const oneId="native-quickslot-food-one-001",oldOne=nativeItem(oneId,1,1);
+    const placeholderId="native-quickslot-food-placeholder-001",placeholder=nativeItem(placeholderId,0,1);
+    const beforeOne=JSON.stringify(hero([row(oneId,itemClass,1,true,oldOne)],{
+      quickslotsJson:JSON.stringify([slot(1,oneId,1,oldOne)])
+    }));
+    const afterOne=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      quickslotsJson:JSON.stringify([slot(1,placeholderId,0,placeholder)])
+    }));
+    const oneData=intent(oneId,itemClass,"EAT",1,true),oneAccepted={...oneData,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(beforeOne,afterOne,oneData,oneAccepted)).toBe(true);
+    const wrongIndex=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      quickslotsJson:JSON.stringify([slot(2,placeholderId,0,nativeItem(placeholderId,0,2))])
+    }));
+    expect(isValidNativeUseItemMutation(beforeOne,wrongIndex,oneData,oneAccepted)).toBe(false);
+    const positiveQuantity=JSON.stringify(hero([],{inventoryBundle:"inventory-after",
+      quickslotsJson:JSON.stringify([slot(1,placeholderId,1,nativeItem(placeholderId,1,1))])
+    }));
+    expect(isValidNativeUseItemMutation(beforeOne,positiveQuantity,oneData,oneAccepted)).toBe(false);
+  });
+
   it("accepts a one-unit stack decrement only when the same stable source ID remains",()=>{
     const before=JSON.stringify(hero([row("native-food-stack-001",food,4,true)]));
     const after=JSON.stringify(hero([row("native-food-stack-001",food,3,true)],{inventoryBundle:"inventory-after"}));
