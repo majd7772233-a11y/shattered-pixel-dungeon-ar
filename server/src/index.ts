@@ -304,7 +304,7 @@ function nativeEquipmentComparableItem(value: any): any {
   return copy;
 }
 
-function nativeEquipmentPayloadMatchesRow(payload: any, row: any): boolean {
+export function nativeEquipmentPayloadMatchesRow(payload: any, row: any): boolean {
   const item = nativeEquipmentBundleItem(payload), expected = nativeEquipmentRowItem(row);
   return !!item && !!expected && String(item.multiplayer_item_id || "") === String(row.itemId)
     && String(item.__className || "") === String(row.className)
@@ -312,7 +312,7 @@ function nativeEquipmentPayloadMatchesRow(payload: any, row: any): boolean {
     && item.cursedKnown === (row.cursedKnown === true);
 }
 
-function nativeEquipmentRowBundleTransitionMatches(before: any, after: any, allowCurseKnowledge: boolean): boolean {
+export function nativeEquipmentRowBundleTransitionMatches(before: any, after: any, allowCurseKnowledge: boolean): boolean {
   const oldItem = nativeEquipmentRowItem(before), newItem = nativeEquipmentRowItem(after);
   if (!oldItem || !newItem || String(before.itemId) !== String(after.itemId)
       || String(before.className) !== String(after.className)
@@ -322,7 +322,7 @@ function nativeEquipmentRowBundleTransitionMatches(before: any, after: any, allo
   return sameNativeItemValue(nativeEquipmentComparableItem(oldItem), nativeEquipmentComparableItem(newItem));
 }
 
-function nativeEquipmentQuickslotPositionMatches(row: any, slots: any[]): boolean {
+export function nativeEquipmentQuickslotPositionMatches(row: any, slots: any[]): boolean {
   const item = nativeEquipmentRowItem(row);
   if (!item) return false;
   const slot = slots.find((entry: any) => String(entry.itemId) === String(row.itemId));
@@ -422,7 +422,7 @@ export function isValidNativeEquipmentIntent(heroStateValue: unknown, dataValue:
 }
 
 /** A native equipment snapshot may only move one exact item between its typed Hero slot and backpack. */
-function isValidNativeEquipmentBelongingsMutation(previous: any, next: any, before: any[], after: any[],
+export function isValidNativeEquipmentBelongingsMutation(previous: any, next: any, before: any[], after: any[],
   action: string, itemId: string, itemClass: string): boolean {
   const oldBelongings = parseNativeBundleObject(previous?.inventoryBundle);
   const newBelongings = parseNativeBundleObject(next?.inventoryBundle);
@@ -492,7 +492,7 @@ function isValidNativeEquipmentBelongingsMutation(previous: any, next: any, befo
   return true;
 }
 
-function isValidNativeEquipmentCombatBundleMutation(previous: any, next: any): boolean {
+export function isValidNativeEquipmentCombatBundleMutation(previous: any, next: any): boolean {
   const beforeCombat = parseNativeBundleObject(previous?.combatBundle);
   const afterCombat = parseNativeBundleObject(next?.combatBundle);
   const beforeBelongings = parseNativeBundleObject(previous?.inventoryBundle);
