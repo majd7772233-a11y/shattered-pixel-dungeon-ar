@@ -3063,7 +3063,6 @@ describe("Native item consumption transaction validation", () => {
     expect(mergeNativeItemStatusState(beforeScroll,afterScroll,"READ",scroll)).toEqual({
       potionStatusBundle:defaultPotionStatus(),scrollStatusBundle:scrollState(true)
     });
-    expect(mergeNativeItemStatusState(beforeScroll,forgedLabel,"READ",scroll)).toBeNull();
     const scrollData=intent("native-status-scroll-001",scroll,"READ",1,true);
     expect(isValidNativeUseItemMutation(beforeScroll,afterScroll,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(true);
     const forgedLabel=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
@@ -3074,6 +3073,7 @@ describe("Native item consumption transaction validation", () => {
       buff_1:JSON.stringify({buff:{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging",time:40,id:96}}),
       buffCooldown_1:30
     }));
+    expect(mergeNativeItemStatusState(beforeScroll,forgedLabel,"READ",scroll)).toBeNull();
     expect(isValidNativeUseItemMutation(beforeScroll,forgedLabel,scrollData,{...scrollData,actionType:"USE_ITEM"})).toBe(false);
   });
 
