@@ -2873,9 +2873,9 @@ describe("Native mutation action-cost binding", () => {
 describe("Native item consumption transaction validation", () => {
   const potion = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
   const food = "com.shatteredpixel.shatteredpixeldungeon.items.food.Food";
-  const row = (id:string, cls=potion, quantity=1, stackable=false) => ({
+  const row = (id:string, cls=potion, quantity=1, stackable=false, serializedBundle?:string) => ({
     itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,
-    serializedBundle:"native-item-bundle:"+id+":quantity="+quantity
+    serializedBundle:serializedBundle || ("native-item-bundle:"+id+":quantity="+quantity)
   });
   const defaultHungerBundle = JSON.stringify({buff:{
     __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",level:55,partialDamage:0
