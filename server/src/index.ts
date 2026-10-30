@@ -1188,7 +1188,7 @@ const NATIVE_SUPPORTED_SCROLL_STATUS_CLASS: Record<string,string> = {
 };
 
 /** ItemStatusHandler stores exact _label strings and _known booleans for every native class. */
-function parseNativeItemStatusBundle(value: unknown): any | null {
+export function parseNativeItemStatusBundle(value: unknown): any | null {
   const parsed = parseNativeBundleObject(value);
   if (!parsed || Object.keys(parsed).length < 2 || Object.keys(parsed).length > 256) return null;
   for (const [key, entry] of Object.entries(parsed)) {
@@ -1215,7 +1215,7 @@ function nativeStatusTargetKey(action: string, itemClass: string): string {
 }
 
 /** A native read/drink may reveal only the exact Potion/Scroll class being consumed. */
-function isValidNativeItemStatusMutation(previous: any, next: any, action: string, itemClass: string): boolean {
+export function isValidNativeItemStatusMutation(previous: any, next: any, action: string, itemClass: string): boolean {
   const oldPotions = parseNativeItemStatusBundle(previous?.potionStatusBundle);
   const newPotions = parseNativeItemStatusBundle(next?.potionStatusBundle);
   const oldScrolls = parseNativeItemStatusBundle(previous?.scrollStatusBundle);
