@@ -103,16 +103,29 @@ public final class NativeItemUse {
             && !hero.hasTalent(Talent.ENLIGHTENING_MEAL);
     }
 
+    /** Mirrors the original Potion.apply() side paths that are not yet in the mutation contract. */
+    public static boolean supportsNativePotionUseState(String itemClass,
+            com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass heroSubClass,
+            boolean protectiveShadows, boolean rooted, boolean liquidWillpower,
+            boolean liquidNature, boolean liquidAgility) {
+        if (liquidWillpower || liquidNature || liquidAgility) return false;
+        if ("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility".equals(itemClass)) {
+            return heroSubClass != com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.ASSASSIN
+                    && !protectiveShadows;
+        }
+        if ("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation".equals(itemClass)) {
+            return !rooted;
+        }
+        return true;
+    }
+
     /** Potion callbacks can alter HP, shields, terrain and enemy buffs beyond the drink's own effect. */
     private static boolean isSafePotionUse(Hero hero, Item item) {
-        if (hero == null || item == null
-                || hero.hasTalent(Talent.LIQUID_WILLPOWER)
-                || hero.hasTalent(Talent.LIQUID_NATURE)
-                || hero.hasTalent(Talent.LIQUID_AGILITY)) return false;
-        // Invisibility.attachTo() adds Preparation for Assassins and ProtectiveShadowsTracker
-        // for this talent. Assassin is also checked by the Worker; reject Protective Shadows here.
-        return !"com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility"
-                .equals(item.getClass().getName()) || !hero.hasTalent(Talent.PROTECTIVE_SHADOWS);
+        return hero != null && item != null && supportsNativePotionUseState(item.getClass().getName(),
+                hero.subClass, hero.hasTalent(Talent.PROTECTIVE_SHADOWS),
+                hero.buff(com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots.class) != null,
+                hero.hasTalent(Talent.LIQUID_WILLPOWER), hero.hasTalent(Talent.LIQUID_NATURE),
+                hero.hasTalent(Talent.LIQUID_AGILITY));
     }
 
     /** Reject unsupported use before any local-only item effect can be applied. */
