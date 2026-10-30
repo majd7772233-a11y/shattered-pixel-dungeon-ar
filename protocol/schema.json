@@ -59,7 +59,11 @@
   "definitions": {
     "NativeUseItemAction": {
       "type": "string",
-      "enum": ["DRINK", "EAT", "READ"],
+      "enum": [
+        "DRINK",
+        "EAT",
+        "READ"
+      ],
       "description": "Native item action. READ is currently accepted only for ScrollOfRecharging after exact Hero/buff validation; all other scroll reads remain fail-closed."
     },
     "NativeMobEntity": {
@@ -340,11 +344,16 @@
         "nativeMutationDetails": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Stable identity for a native item/heap mutation; present only on the action-bound post-state snapshot.",
+          "description": "Strict action-specific metadata emitted by the original SPD engine for a validated native item/economy/world mutation. Only fields listed here may appear.",
           "properties": {
             "sourceTerrain": {
               "type": "integer",
-              "enum": [4, 12, 35, 36],
+              "enum": [
+                4,
+                12,
+                35,
+                36
+              ],
               "description": "Authoritative terrain before a native MINE action."
             },
             "heapId": {
@@ -577,6 +586,51 @@
             },
             "resultCursedKnown": {
               "type": "boolean"
+            },
+            "itemAction": {
+              "type": "string",
+              "enum": [
+                "DRINK",
+                "EAT",
+                "READ"
+              ],
+              "description": "Exact native consumable action validated against the supported item class and original Hero result."
+            },
+            "itemBundle": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200000,
+              "description": "Exact original native item bundle supplied by a FOR_SALE heap during BUY."
+            },
+            "buybackItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80,
+              "description": "Stable identity of the exact item instance in the Shopkeeper buyback list."
+            },
+            "buybackItemClass": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Exact native class of the item selected from the Shopkeeper buyback list."
+            },
+            "buybackQuantity": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "description": "Exact native quantity of the buyback item before collection."
+            },
+            "nativeValue": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000000,
+              "description": "Original native Item.value() used by the Shopkeeper BUYBACK transaction."
+            },
+            "nativeUnitValue": {
+              "type": "integer",
+              "minimum": -1,
+              "maximum": 10000000,
+              "description": "Native per-unit item value for BUYBACK; -1 means partial-unit linearity is not known."
             }
           }
         }
