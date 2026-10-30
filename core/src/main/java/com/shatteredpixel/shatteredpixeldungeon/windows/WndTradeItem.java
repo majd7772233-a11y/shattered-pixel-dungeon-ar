@@ -26,12 +26,16 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Shopkeeper;
 import com.shatteredpixel.shatteredpixeldungeon.items.EquipableItem;
 import com.shatteredpixel.shatteredpixeldungeon.items.Gold;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
+import com.shatteredpixel.shatteredpixeldungeon.items.rings.Ring;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.TippedDart;
 import com.shatteredpixel.shatteredpixeldungeon.items.artifacts.MasterThievesArmband;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
@@ -237,6 +241,29 @@ public class WndTradeItem extends WndInfoItem {
                 .getInstance().isMultiplayerActive();
     }
 
+    /** Reject custom pickup/collection callbacks not covered by the native BUY transaction. */
+    private static boolean isSafeMultiplayerPurchase(Item offered, Hero hero) {
+        if (offered == null || hero == null) return false;
+        if (offered instanceof Ring && hero.pointsInTalent(Talent.THIEFS_INTUITION) == 2) return false;
+        for (Item existing : hero.belongings.backpack.items) {
+            if (existing instanceof Bag && ((Bag) existing).canHold(offered)) return false;
+        }
+        boolean wouldMerge = false;
+        if (offered.stackable) {
+            for (Item existing : hero.belongings.getAllItems(Item.class)) {
+                if (existing != null && existing.stackable && existing.isSimilar(offered)) { wouldMerge = true; break; }
+            }
+        }
+        if (wouldMerge && (offered instanceof TippedDart || TippedDart.lostDarts > 0)) return false;
+        try {
+            java.lang.reflect.Method collect = offered.getClass().getMethod("collect", Bag.class);
+            java.lang.reflect.Method pickupDelay = offered.getClass().getMethod("pickupDelay");
+            java.lang.reflect.Method doPickUp = offered.getClass().getMethod("doPickUp", Hero.class, int.class);
+            return collect.getDeclaringClass() == Item.class && pickupDelay.getDeclaringClass() == Item.class
+                    && doPickUp.getDeclaringClass() == Item.class;
+        } catch (ReflectiveOperationException unsupportedPickup) { return false; }
+    }
+
     /**
      * Publishes one sale only after native inventory, Gold and Shopkeeper buyback state agree.
      * Equipped gear and upgrade-tracked missiles fail closed because their extra combat state
@@ -414,10 +441,21 @@ public class WndTradeItem extends WndInfoItem {
 			return;
 		}
 		Item offered = heap.peek();
+        if (trackBuy && !isSafeMultiplayerPurchase(offered, hero)) {
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
 		int position = heap.pos;
 		String heapId = heap.multiplayerHeapId();
 		String itemId = offered.multiplayerItemId();
 		String itemClass = offered.getClass().getName();
+        String itemBundle = trackBuy
+                ? com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentItemBundle(offered) : null;
+        if (trackBuy && (itemBundle == null || itemBundle.isEmpty() || itemBundle.length() > 200000
+                || !itemBundle.contains(itemId))) {
+            manager.requestResync(manager.getLastSequence());
+            return;
+        }
 		int itemQuantity = offered.quantity();
 		int itemLevel = offered.level();
 		boolean itemStackable = offered.stackable;
@@ -472,6 +510,7 @@ public class WndTradeItem extends WndInfoItem {
 			String details = "{\"heapId\":" + json.toJson(heapId)
 					+ ",\"itemId\":" + json.toJson(itemId)
 					+ ",\"itemClass\":" + json.toJson(itemClass)
+                    + ",\"itemBundle\":" + json.toJson(itemBundle)
 					+ ",\"expectedQuantity\":" + itemQuantity
 					+ ",\"sourceQuantityBefore\":" + itemQuantity
 					+ ",\"stackable\":" + itemStackable

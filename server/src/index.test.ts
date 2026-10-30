@@ -3368,51 +3368,128 @@ describe("Native Shopkeeper buyback transactions", () => {
 });
 
 describe("Native shop purchase transaction validation", () => {
-  const potion = "com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing";
-  const item = (id:string, quantity=1, itemClass=potion, stackable=false, shopPrice=-1) => ({
-    itemId:id,className:itemClass,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,shopPrice,
-    serializedBundle:"native-bundle-item-id:"+id+"-quantity-"+quantity
+  const potion="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const ring="com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfAccuracy";
+  const wand="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+  const bag="com.shatteredpixel.shatteredpixeldungeon.items.bags.ScrollHolder";
+  const bundle=(id:string,quantity:number,cls:string,extra:Record<string,any>={})=>JSON.stringify({item:{
+    __className:cls,multiplayer_item_id:id,quantity,level:0,levelKnown:false,cursed:false,cursedKnown:false,...extra
+  }});
+  const item=(id:string,quantity=1,cls=potion,stackable=false,shopPrice=-1,extra:Record<string,any>={})=>({
+    itemId:id,className:cls,quantity,level:0,cursed:false,cursedKnown:false,stackable,equipped:false,shopPrice,
+    serializedBundle:bundle(id,quantity,cls,extra)
   });
-  const hero = (items:any[], extra:Record<string,any>={}) => ({
-    hp:10,ht:10,pos:9,shielding:0,gold:100,inventoryBundle:"native-inventory-bundle",
-    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",...extra
+  const combat=(time:number,inventory:string)=>JSON.stringify({time,STR:10,inventory,items:inventory,buffs:[],
+    talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}});
+  const hero=(items:any[],extra:Record<string,any>={})=>({
+    hp:10,ht:10,pos:9,shielding:0,gold:100,cooldown:0,inventoryBundle:"inventory-before",
+    inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",buffCount:0,
+    combatBundle:combat(10,"inventory-before"),...extra
   });
-  const heap = (heapId:string,pos:number,itemRow:any,type="FOR_SALE") => ({
-    heapId,pos,type,seen:true,haunted:false,hidden:false,autoExplored:false,items:[itemRow]
+  const afterBuy=(items:any[],extra:Record<string,any>={})=>hero(items,{
+    gold:75,cooldown:1,inventoryBundle:"inventory-after",combatBundle:combat(11,"inventory-after"),...extra
   });
-  const details = (extra:Record<string,any>={}) => ({
+  const heap=(heapId:string,pos:number,rows:any[],type="FOR_SALE")=>({
+    heapId,pos,type,seen:true,haunted:false,hidden:false,autoExplored:false,items:rows
+  });
+  const d=(extra:Record<string,any>={})=>({
     from:9,to:9,targetPos:9,depth:4,branch:0,engineActionCost:1,heapId:"stable-shop-001",
     itemId:"stable-shop-item-001",itemClass:potion,expectedQuantity:1,sourceQuantityBefore:1,
     stackable:false,itemLevel:0,cursed:false,cursedKnown:false,price:25,
+    itemBundle:bundle("stable-shop-item-001",1,potion),
     resultItemId:"stable-shop-item-001",resultHeapId:"",acquiredByInventory:true,...extra
   });
-  it("requires the exact sale heap, item ID, and native quoted price",()=>{
+  const player={pos:9,state:"ALIVE"};
+
+  it("requires the exact sale heap, quoted price, and byte-identical native item bundle",()=>{
     const sale=item("stable-shop-item-001",1,potion,false,25);
-    const level={depth:4,branch:0,locked:false,heaps:[heap("stable-shop-001",9,sale)]};
-    const prior=JSON.stringify(hero([])),player={pos:9,state:"ALIVE"};
-    expect(isValidNativeBuyIntent(level,details(),4,"player-001",player,prior)).toBe(true);
-    expect(isValidNativeBuyIntent(level,details({price:0}),4,"player-001",player,prior)).toBe(false);
-    expect(isValidNativeBuyIntent(level,details({heapId:"different-shop-001"}),4,"player-001",player,prior)).toBe(false);
-    expect(isValidNativeBuyIntent({...level,heaps:[heap("stable-shop-001",9,sale,"HEAP")]},
-      details(),4,"player-001",player,prior)).toBe(false);
+    const level={depth:4,branch:0,locked:false,heaps:[heap("stable-shop-001",9,[sale])]};
+    const prior=JSON.stringify(hero([])),details=d();
+    expect(isValidNativeBuyIntent(level,details,4,"player-001",player,prior)).toBe(true);
+    expect(isValidNativeBuyIntent(level,d({price:0}),4,"player-001",player,prior)).toBe(false);
+    expect(isValidNativeBuyIntent(level,d({heapId:"different-shop-001"}),4,"player-001",player,prior)).toBe(false);
+    expect(isValidNativeBuyIntent({...level,heaps:[heap("stable-shop-001",9,[sale],"HEAP")]},
+      details,4,"player-001",player,prior)).toBe(false);
+    expect(isValidNativeBuyIntent(level,d({itemBundle:bundle("stable-shop-item-001",1,potion,{level:2})}),
+      4,"player-001",player,prior)).toBe(false);
+    expect(isValidNativeBuyIntent(level,d({itemBundle:"forged-bundle-with-stable-shop-item-001"}),
+      4,"player-001",player,prior)).toBe(false);
   });
-  it("requires exact price deduction and exactly one acquired item",()=>{
-    const prior=JSON.stringify(hero([])),d=details(),accepted={...d,actionType:"BUY"};
-    const after=JSON.stringify(hero([item("stable-shop-item-001")],{gold:75,inventoryBundle:"inventory-after-buy"}));
-    expect(isValidNativeBuyInventoryMutation(prior,after,d,accepted)).toBe(true);
-    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(hero([item("stable-shop-item-001")],
-      {gold:74,inventoryBundle:"inventory-after-buy"})),d,accepted)).toBe(false);
-    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(hero([item("stable-shop-item-001"),item("stable-forged-001")],
-      {gold:75,inventoryBundle:"inventory-after-buy"})),d,accepted)).toBe(false);
+
+  it("rejects custom Bag/Wand pickup callbacks and ring identification from Thief's Intuition",()=>{
+    const prior=JSON.stringify(hero([]));
+    expect(isValidNativeBuyIntent({depth:4,branch:0,locked:false,heaps:[heap("stable-shop-001",9,
+      [item("stable-shop-item-001",1,bag,false,25)])]},d({itemClass:bag,itemBundle:bundle("stable-shop-item-001",1,bag)}),
+      4,"player-001",player,prior)).toBe(false);
+    expect(isValidNativeBuyIntent({depth:4,branch:0,locked:false,heaps:[heap("stable-shop-001",9,
+      [item("stable-shop-item-001",1,wand,false,25)])]},d({itemClass:wand,itemBundle:bundle("stable-shop-item-001",1,wand)}),
+      4,"player-001",player,prior)).toBe(false);
+    const ringD=d({itemClass:ring,itemBundle:bundle("stable-shop-item-001",1,ring)});
+    const ringLevel={depth:4,branch:0,locked:false,heaps:[heap("stable-shop-001",9,[item("stable-shop-item-001",1,ring,false,25)])]};
+    const thief=JSON.stringify(hero([],{combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-before",
+      items:"inventory-before",buffs:[],talents_tier_1:{},talents_tier_2:{THIEFS_INTUITION:2},
+      talents_tier_3:{},talents_tier_4:{},replacements:{}})}));
+    expect(isValidNativeBuyIntent(ringLevel,ringD,4,"player-001",player,thief)).toBe(false);
+    expect(isValidNativeBuyIntent(ringLevel,ringD,4,"player-001",player,prior)).toBe(true);
   });
-  it("removes the sale heap or replaces it with the purchased item if the inventory is full",()=>{
-    const sale=item("stable-shop-item-001",1,potion,false,25),before=[heap("stable-shop-001",9,sale)];
-    const d=details(),accepted={...d,actionType:"BUY"};
-    expect(isValidNativeBuyHeapMutation(before,[],9,d,accepted)).toBe(true);
-    const dropHeapId="stable-floor-drop-001",dropped=heap(dropHeapId,9,item("stable-shop-item-001"),"HEAP");
-    const full=details({acquiredByInventory:false,resultHeapId:dropHeapId});
-    expect(isValidNativeBuyHeapMutation(before,[dropped],9,full,{...full,actionType:"BUY"})).toBe(true);
-    expect(isValidNativeBuyHeapMutation(before,[heap("forged-shop-001",9,item("stable-shop-item-001"))],9,d,accepted)).toBe(false);
+
+  it("requires exact gold debit, original item bundle and unchanged native combat/buffs",()=>{
+    const prior=JSON.stringify(hero([])),details=d(),accepted={...details,actionType:"BUY"};
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([item("stable-shop-item-001")])),
+      details,accepted)).toBe(true);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([item("stable-shop-item-001")],{gold:74})),
+      details,accepted)).toBe(false);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([
+      item("stable-shop-item-001"),item("stable-forged-001")
+    ])),details,accepted)).toBe(false);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([
+      item("stable-shop-item-001",1,potion,false,-1,{level:1})
+    ])),details,accepted)).toBe(false);
+    const extraBuff=JSON.stringify(afterBuy([item("stable-shop-item-001")],{buffCount:1,
+      buff_0:JSON.stringify({buff:{__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",time:20,id:22}}),
+      buffCooldown_0:20}));
+    expect(isValidNativeBuyInventoryMutation(prior,extraBuff,details,accepted)).toBe(false);
+  });
+
+  it("allows only quickslot-position changes in a directly acquired native item bundle",()=>{
+    const prior=JSON.stringify(hero([])),details=d(),accepted={...details,actionType:"BUY"};
+    const slotted=bundle("stable-shop-item-001",1,potion,{quickslotpos:2});
+    const slotJson=JSON.stringify([{slot:2,itemId:"stable-shop-item-001",className:potion,quantity:1,serializedBundle:slotted}]);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([
+      {...item("stable-shop-item-001"),serializedBundle:slotted}
+    ],{quickslotsJson:slotJson})),details,accepted)).toBe(true);
+    const forged=bundle("stable-shop-item-001",1,potion,{quickslotpos:2,custom_enchantment:"FORGED"});
+    const forgedSlot=JSON.stringify([{slot:2,itemId:"stable-shop-item-001",className:potion,quantity:1,serializedBundle:forged}]);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([
+      {...item("stable-shop-item-001"),serializedBundle:forged}
+    ],{quickslotsJson:forgedSlot})),details,accepted)).toBe(false);
+  });
+
+  it("permits merges only when source, old stack and result share the same native bundle identity signature",()=>{
+    const ownedId="stable-owned-stack-001";
+    const prior=JSON.stringify(hero([item(ownedId,2,potion,true)]));
+    const details=d({stackable:true,resultItemId:ownedId});
+    const accepted={...details,actionType:"BUY"};
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([item(ownedId,3,potion,true)])),
+      details,accepted)).toBe(true);
+    const different=d({stackable:true,resultItemId:ownedId,itemBundle:bundle("stable-shop-item-001",1,potion,{custom_enchantment:"different"})});
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([item(ownedId,3,potion,true)])),
+      different,{...different,actionType:"BUY"})).toBe(false);
+    expect(isValidNativeBuyInventoryMutation(prior,JSON.stringify(afterBuy([
+      {...item(ownedId,3,potion,true),serializedBundle:bundle(ownedId,3,potion,{custom_enchantment:"forged"})}
+    ])),details,accepted)).toBe(false);
+  });
+
+  it("removes exactly the sale heap or leaves the exact original item when inventory is full",()=>{
+    const sale=item("stable-shop-item-001",1,potion,false,25),before=[heap("stable-shop-001",9,[sale])];
+    const details=d(),accepted={...details,actionType:"BUY"};
+    expect(isValidNativeBuyHeapMutation(before,[],9,details,accepted)).toBe(true);
+    const dropId="stable-floor-drop-001";
+    const full=d({acquiredByInventory:false,resultHeapId:dropId});
+    expect(isValidNativeBuyHeapMutation(before,[heap(dropId,9,[item("stable-shop-item-001")],"HEAP")],
+      9,full,{...full,actionType:"BUY"})).toBe(true);
+    const altered={...item("stable-shop-item-001"),serializedBundle:bundle("stable-shop-item-001",1,potion,{custom:"forged"})};
+    expect(isValidNativeBuyHeapMutation(before,[heap(dropId,9,[altered],"HEAP")],9,full,{...full,actionType:"BUY"})).toBe(false);
   });
 });
 

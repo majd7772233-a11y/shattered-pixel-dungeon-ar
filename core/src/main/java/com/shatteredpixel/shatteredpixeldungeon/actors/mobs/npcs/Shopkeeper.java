@@ -335,13 +335,19 @@ public class Shopkeeper extends NPC {
 				|| (item instanceof Ring && hero.pointsInTalent(Talent.THIEFS_INTUITION) == 2)
 				|| hero.belongings.getAllItems(Item.class).stream()
 					.anyMatch(owned -> item.multiplayerItemId().equals(owned.multiplayerItemId()))) return false;
+        for (Item existing : hero.belongings.backpack.items) {
+            if (existing instanceof Bag && ((Bag) existing).canHold(item)) return false;
+        }
 		String shopId = manager.getServerEntityId(id());
 		if (!Item.isValidMultiplayerItemId(shopId)) return false;
 		try {
 			java.lang.reflect.Method collect = item.getClass().getMethod("collect", Bag.class);
 			java.lang.reflect.Method pickupDelay = item.getClass().getMethod("pickupDelay");
-			// Class-specific collection or pickup timing may mutate state outside this transaction.
-			return collect.getDeclaringClass() == Item.class && pickupDelay.getDeclaringClass() == Item.class;
+            java.lang.reflect.Method doPickUp = item.getClass().getMethod("doPickUp",
+                    com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero.class, int.class);
+			// Class-specific collection, pickup, or timing may mutate state outside this transaction.
+			return collect.getDeclaringClass() == Item.class && pickupDelay.getDeclaringClass() == Item.class
+                    && doPickUp.getDeclaringClass() == Item.class;
 		} catch (ReflectiveOperationException unsupportedCollect) {
 			return false;
 		}

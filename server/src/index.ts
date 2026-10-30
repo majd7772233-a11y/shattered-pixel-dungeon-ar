@@ -1522,8 +1522,21 @@ export function isValidNativeBuyInventoryMutation(previousValue: unknown, nextVa
       || accepted.price !== details.price || accepted.stackable !== details.stackable
       || accepted.resultItemId !== details.resultItemId || accepted.resultHeapId !== details.resultHeapId
       || accepted.acquiredByInventory !== details.acquiredByInventory
+      || accepted.itemBundle !== details.itemBundle
+      || typeof details.itemBundle !== "string" || details.itemBundle.length < 1 || details.itemBundle.length > 200000
+      || !nativeBuyItemBundle(details.itemBundle)
       || !Number.isInteger(details.price) || details.price < 0 || !Number.isInteger(previous.gold)
-      || !Number.isInteger(next.gold) || previous.gold - next.gold !== details.price || next.gold < 0) return false;
+      || !Number.isInteger(next.gold) || previous.gold - next.gold !== details.price || next.gold < 0
+      || !nativeUseItemCombatBundleMatches(previous, next, "BUY")) return false;
+  const beforeBuffs = nativeUseItemBuffMap(previous), afterBuffs = nativeUseItemBuffMap(next);
+  if (!beforeBuffs || !afterBuffs) return false;
+  const normalizeBuyBuffs = (value: Map<string, any[]>) => Array.from(value.entries())
+    .sort((a: any,b: any) => String(a[0]).localeCompare(String(b[0])))
+    .map(([className, rows]: [string, any[]]) => ({
+      className, rows: rows.map(row => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown}))
+        .sort((a,b) => String(a.serializedBundle).localeCompare(String(b.serializedBundle)) || a.cooldown-b.cooldown)
+    }));
+  if (!sameNativeItemValue(normalizeBuyBuffs(beforeBuffs), normalizeBuyBuffs(afterBuffs))) return false;
   const sourceId = String(details.itemId || ""), resultId = String(details.resultItemId || "");
   const itemClass = String(details.itemClass || ""), quantity = Number(details.expectedQuantity);
   if (sourceId.length < 8 || sourceId.length > 80 || resultId.length < 8 || resultId.length > 80
@@ -1549,12 +1562,15 @@ export function isValidNativeBuyInventoryMutation(previousValue: unknown, nextVa
         || target.quantity !== quantity || target.stackable !== details.stackable
         || target.level !== details.itemLevel || target.cursed !== details.cursed
         || target.cursedKnown !== details.cursedKnown
+        || !nativeBuyBundleMatchesIgnoringQuickslot(details.itemBundle, target.serializedBundle)
         || !sameNativeItemValue(before, after.filter((item: any) => String(item.itemId) !== sourceId))) return false;
   } else {
     const oldTarget = beforeById.get(resultId), target = afterById.get(resultId);
     if (!details.stackable || !oldTarget || !target || oldTarget.stackable !== true || target.stackable !== true
         || String(oldTarget.className) !== itemClass || String(target.className) !== itemClass
         || target.quantity !== oldTarget.quantity + quantity
+        || !nativeBuyBundleMergeCompatible(details.itemBundle, oldTarget.serializedBundle)
+        || !nativeBuyBundleMergeCompatible(details.itemBundle, target.serializedBundle)
         || !sameNativeItemValue(itemValueWithout(oldTarget, ["quantity", "serializedBundle"]),
           itemValueWithout(target, ["quantity", "serializedBundle"]))
         || before.length !== after.length
@@ -1574,7 +1590,8 @@ export function isValidNativeBuyHeapMutation(previousHeaps: any, nextHeaps: any,
       || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
       || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
       || accepted.price !== details.price || accepted.resultItemId !== details.resultItemId
-      || accepted.resultHeapId !== details.resultHeapId || accepted.acquiredByInventory !== details.acquiredByInventory) return false;
+      || accepted.resultHeapId !== details.resultHeapId || accepted.acquiredByInventory !== details.acquiredByInventory
+      || accepted.itemBundle !== details.itemBundle) return false;
   const heapId = String(details.heapId || ""), itemId = String(details.itemId || "");
   const oldAt = previousHeaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
   if (heapId.length < 8 || oldAt.length !== 1 || Number(oldAt[0].pos) !== target || String(oldAt[0].type) !== "FOR_SALE"
@@ -1583,7 +1600,8 @@ export function isValidNativeBuyHeapMutation(previousHeaps: any, nextHeaps: any,
   if (String(source?.itemId || "") !== itemId || String(source?.className || "") !== String(details.itemClass || "")
       || Number(source?.quantity) !== Number(details.expectedQuantity) || source?.shopPrice !== details.price
       || source?.stackable !== details.stackable || Number(source?.level) !== Number(details.itemLevel)
-      || source?.cursed !== details.cursed || source?.cursedKnown !== details.cursedKnown) return false;
+      || source?.cursed !== details.cursed || source?.cursedKnown !== details.cursedKnown
+      || source?.serializedBundle !== details.itemBundle) return false;
   const afterAt = nextHeaps.filter((heap: any) => Number(heap?.pos) === target);
   if (details.acquiredByInventory) {
     if (afterAt.length !== 0) return false;
@@ -1596,6 +1614,7 @@ export function isValidNativeBuyHeapMutation(previousHeaps: any, nextHeaps: any,
     if (String(dropped?.itemId || "") !== itemId || String(dropped?.className || "") !== String(details.itemClass || "")
         || Number(dropped?.quantity) !== Number(details.expectedQuantity) || dropped?.stackable !== details.stackable
         || dropped?.shopPrice !== -1 || typeof dropped?.serializedBundle !== "string"
+        || !nativeBuyBundleMatchesIgnoringQuickslot(details.itemBundle, dropped.serializedBundle)
         || !dropped.serializedBundle.includes(itemId)) return false;
   }
   for (const old of previousHeaps) {
@@ -7999,8 +8018,8 @@ export class MatchRoom {
                 heapId:String(data.heapId), itemId:String(data.itemId),
                 itemClass:String(data.itemClass), expectedQuantity:Number(data.expectedQuantity), sourceQuantityBefore:Number(data.sourceQuantityBefore),
                 stackable:data.stackable, itemLevel:Number(data.itemLevel), cursed:data.cursed, cursedKnown:data.cursedKnown,
-                price:Number(data.price), resultItemId:String(data.resultItemId), resultHeapId:String(data.resultHeapId || ""),
-                acquiredByInventory:data.acquiredByInventory };
+                itemBundle:String(data.itemBundle), price:Number(data.price), resultItemId:String(data.resultItemId),
+                resultHeapId:String(data.resultHeapId || ""), acquiredByInventory:data.acquiredByInventory };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
             }
