@@ -2131,6 +2131,8 @@ describe("Unsupported native item actions remain fail-closed", () => {
   const row=(id:string,cls:string)=>({itemId:id,className:cls,quantity:1,level:0,cursed:false,cursedKnown:false,
     stackable:false,equipped:false,serializedBundle:"native-item-bundle:"+id});
   const hero=(item:any)=>JSON.stringify({hp:10,ht:10,pos:9,shielding:0,gold:0,inventoryBundle:"inventory",
+    combatBundle:JSON.stringify({STR:10,inventory:"inventory",items:"inventory",buffs:[],
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
     inventoryItemsJson:JSON.stringify([item]),quickslotsJson:"[]"});
   const intent=(id:string,cls:string,itemAction:string)=>({from:9,to:9,targetPos:9,depth:4,branch:0,
     engineActionCost:1,itemId:id,itemClass:cls,itemAction,expectedQuantity:1,sourceQuantityBefore:1,stackable:false});
@@ -3110,7 +3112,7 @@ describe("Native item consumption transaction validation", () => {
     const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
     const hasteBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste";
     const before=JSON.stringify(hero([row("native-haste-001",haste)],{
-      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
       combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
@@ -3142,7 +3144,7 @@ describe("Native item consumption transaction validation", () => {
     const roots="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots";
     const level={depth:4,branch:0,locked:false,heaps:[]};
     const beforeInvisibility=JSON.stringify(hero([row("native-invisibility-001",invisibility)],{
-      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const afterInvisibility=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
       combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
@@ -3153,13 +3155,13 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemIntent(level,invisIntent,4,"player-001",{pos:9,state:"ALIVE"},beforeInvisibility)).toBe(true);
     expect(isValidNativeUseItemMutation(beforeInvisibility,afterInvisibility,invisIntent,invisAccepted)).toBe(true);
     const assassin=JSON.stringify(hero([row("native-invisibility-assassin-001",invisibility)],{
-      combatBundle:JSON.stringify({STR:10,items:"inventory-before",subClass:"ASSASSIN"})
+      combatBundle:JSON.stringify({STR:10,items:"inventory-before",subClass:"ASSASSIN",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     expect(isValidNativeUseItemIntent(level,intent("native-invisibility-assassin-001",invisibility),4,
       "player-001",{pos:9,state:"ALIVE"},assassin)).toBe(false);
 
     const beforeLevitation=JSON.stringify(hero([row("native-levitation-001",levitation)],{
-      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const afterLevitation=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
       combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
@@ -3194,7 +3196,7 @@ describe("Native item consumption transaction validation", () => {
   it("accepts a native Hero clock advance only when it matches the cooldown delta",()=>{
     const strength="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength";
     const before=JSON.stringify(hero([row("native-strength-clock-001",strength)],{
-      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before"})
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const d=intent("native-strength-clock-001",strength),accepted={...d,actionType:"USE_ITEM"};
     const validAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
