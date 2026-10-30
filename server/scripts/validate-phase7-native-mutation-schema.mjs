@@ -12,33 +12,102 @@ assert.ok(mutation && mutation.type === "object", "nativeMutationDetails must be
 assert.equal(mutation.additionalProperties, false, "native mutation details must reject undocumented fields");
 
 const properties = mutation.properties || {};
-const emittedPhase7Fields = [
-  "heapId", "itemId", "itemClass", "expectedQuantity", "stackable", "resultItemId",
-  "sourceQuantityBefore", "itemLevel", "cursed", "cursedKnown", "price", "acquiredByInventory",
-  "resultHeapId", "expectedEquipped", "heapType", "alchemyEnergyBefore", "alchemyEnergyAfter",
-  "ingredients", "resultItemClass", "resultQuantity", "resultStackable", "resultLocation",
-  "abilityClass", "armorItemId", "armorClass", "armorChargeBefore", "armorChargeAfter",
-  "armorChargeUse", "shopEntityId", "sourceItemId", "soldQuantity", "sourceNativeValue",
-  "sourceNativeUnitValue", "sourceItemLevel", "sourceCursed", "sourceCursedKnown",
-  "resultItemBundle", "resultNativeValue", "resultNativeUnitValue", "resultItemLevel",
-  "resultCursed", "resultCursedKnown", "itemAction", "itemBundle", "buybackItemId",
-  "buybackItemClass", "buybackQuantity", "nativeValue", "nativeUnitValue"
-];
-for (const field of emittedPhase7Fields) {
+const expectedTypes = {
+  sourceTerrain: "integer",
+  heapId: "string",
+  itemId: "string",
+  itemClass: "string",
+  expectedQuantity: "integer",
+  stackable: "boolean",
+  resultItemId: "string",
+  sourceQuantityBefore: "integer",
+  itemLevel: "integer",
+  cursed: "boolean",
+  cursedKnown: "boolean",
+  price: "integer",
+  acquiredByInventory: "boolean",
+  resultHeapId: "string",
+  expectedEquipped: "boolean",
+  heapType: "string",
+  alchemyEnergyBefore: "integer",
+  alchemyEnergyAfter: "integer",
+  ingredients: "array",
+  resultItemClass: "string",
+  resultQuantity: "integer",
+  resultStackable: "boolean",
+  resultLocation: "string",
+  abilityClass: "string",
+  armorItemId: "string",
+  armorClass: "string",
+  armorChargeBefore: "number",
+  armorChargeAfter: "number",
+  armorChargeUse: "number",
+  shopEntityId: "string",
+  sourceItemId: "string",
+  soldQuantity: "integer",
+  sourceNativeValue: "integer",
+  sourceNativeUnitValue: "integer",
+  sourceItemLevel: "integer",
+  sourceCursed: "boolean",
+  sourceCursedKnown: "boolean",
+  resultItemBundle: "string",
+  resultNativeValue: "integer",
+  resultNativeUnitValue: "integer",
+  resultItemLevel: "integer",
+  resultCursed: "boolean",
+  resultCursedKnown: "boolean",
+  itemAction: "string",
+  itemBundle: "string",
+  buybackItemId: "string",
+  buybackItemClass: "string",
+  buybackQuantity: "integer",
+  nativeValue: "integer",
+  nativeUnitValue: "integer"
+};
+
+for (const [field, expectedType] of Object.entries(expectedTypes)) {
   assert.ok(Object.hasOwn(properties, field), `nativeMutationDetails is missing emitted field: ${field}`);
+  assert.equal(properties[field].type, expectedType, `nativeMutationDetails.${field} has the wrong schema type`);
 }
 
+const boundedString = (field, minLength, maxLength) => {
+  assert.equal(properties[field].minLength, minLength, `nativeMutationDetails.${field}.minLength`);
+  assert.equal(properties[field].maxLength, maxLength, `nativeMutationDetails.${field}.maxLength`);
+};
+const boundedInteger = (field, minimum, maximum) => {
+  assert.equal(properties[field].minimum, minimum, `nativeMutationDetails.${field}.minimum`);
+  assert.equal(properties[field].maximum, maximum, `nativeMutationDetails.${field}.maximum`);
+};
+
+boundedString("heapId", 8, 80);
+boundedString("itemId", 8, 80);
+boundedString("itemClass", 1, 256);
+boundedString("resultItemId", 8, 80);
+boundedString("resultHeapId", 0, 80);
+boundedString("itemBundle", 1, 200000);
+boundedString("buybackItemId", 8, 80);
+boundedString("buybackItemClass", 1, 256);
+boundedInteger("expectedQuantity", 1, 100000);
+boundedInteger("sourceQuantityBefore", 1, 100000);
+boundedInteger("buybackQuantity", 1, 100000);
+boundedInteger("price", 0, 10000000);
+boundedInteger("nativeValue", 0, 10000000);
+boundedInteger("nativeUnitValue", -1, 10000000);
 assert.deepEqual(properties.itemAction.enum, ["DRINK", "EAT", "READ"]);
-assert.equal(properties.itemBundle.maxLength, 200000);
-assert.equal(properties.buybackItemId.minLength, 8);
-assert.equal(properties.buybackItemClass.maxLength, 256);
-assert.equal(properties.buybackQuantity.maximum, 100000);
-assert.equal(properties.nativeValue.minimum, 0);
-assert.equal(properties.nativeUnitValue.minimum, -1);
+assert.deepEqual(properties.resultLocation.enum, ["INVENTORY", "HEAP"]);
+assert.deepEqual(properties.heapType.enum, ["CHEST", "LOCKED_CHEST", "CRYSTAL_CHEST"]);
+assert.equal(properties.ingredients.minItems, 1);
+assert.equal(properties.ingredients.maxItems, 3);
+assert.equal(properties.ingredients.items.additionalProperties, false);
+assert.deepEqual(properties.ingredients.items.required, [
+  "itemId", "itemClass", "sourceQuantityBefore", "consumedQuantity", "stackable"
+]);
 
-const actions = new Set(level.properties.nativeMutationAction.enum);
-for (const action of ["EQUIP", "UNEQUIP", "BUY", "BUYBACK", "SELL", "USE_ITEM", "ALCHEMY", "USE_ABILITY"]) {
-  assert.ok(actions.has(action), `NativeLevelSnapshot does not declare action ${action}`);
-}
+const expectedActions = [
+  "MOVE", "UNLOCK", "MINE", "INTERACT", "OPEN_CHEST", "PICKUP", "DROP",
+  "EQUIP", "UNEQUIP", "BUY", "BUYBACK", "SELL", "USE_ITEM", "THROW",
+  "ALCHEMY", "USE_ABILITY"
+];
+assert.deepEqual(level.properties.nativeMutationAction.enum, expectedActions);
 assert.deepEqual(definitions.NativeUseItemAction.enum, ["DRINK", "EAT", "READ"]);
 console.log("Phase 7 native mutation protocol schema: valid");
