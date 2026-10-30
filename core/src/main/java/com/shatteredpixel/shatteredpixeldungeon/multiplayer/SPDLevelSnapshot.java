@@ -496,6 +496,12 @@ public final class SPDLevelSnapshot {
         Bundle inventory = new Bundle();
         hero.belongings.storeInBundle(inventory);
         heroState.put("inventoryBundle", inventory.toString());
+        // Potion/Scroll knowledge and labels belong to run-global native ItemStatusHandlers.
+        // They are not part of Hero's combat or Belongings bundles, so carry them explicitly.
+        heroState.put("potionStatusBundle",
+                com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.multiplayerStatusBundle());
+        heroState.put("scrollStatusBundle",
+                com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.multiplayerStatusBundle());
         List<Map<String, Object>> inventoryIndex = new ArrayList<>();
         List<Map<String, Object>> nativeItemEconomy = new ArrayList<>();
         for (Item item : hero.belongings.getAllItems(Item.class)) {
