@@ -103,12 +103,21 @@ public final class NativeItemUse {
             && !hero.hasTalent(Talent.ENLIGHTENING_MEAL);
     }
 
+    /** Potion callbacks can alter HP, shields, terrain and enemy buffs beyond the drink's own effect. */
+    private static boolean isSafePotionUse(Hero hero) {
+        return hero != null
+            && !hero.hasTalent(Talent.LIQUID_WILLPOWER)
+            && !hero.hasTalent(Talent.LIQUID_NATURE)
+            && !hero.hasTalent(Talent.LIQUID_AGILITY);
+    }
+
     /** Reject unsupported use before any local-only item effect can be applied. */
     public static boolean rejectIfUnsupported(Hero hero, Item item, String action) {
         if (!isLocalMultiplayerHero(hero)) return false;
         boolean unsupported = !isSupportedAction(item, action);
         if ("READ".equals(action) && !isSafeRechargingScrollRead(hero, item)) unsupported = true;
         if ("EAT".equals(action) && !isSafeFoodUse(hero)) unsupported = true;
+        if ("DRINK".equals(action) && !isSafePotionUse(hero)) unsupported = true;
         if (unsupported || Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
             hero.rejectUnsupportedMultiplayerWorldAction();
             return true;

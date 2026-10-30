@@ -957,6 +957,28 @@ function isNativeRechargingScrollReadSafe(hero: any): boolean {
   return true;
 }
 
+/** The whitelisted native drink callback has no unmodelled talent proc only without these talents. */
+function isNativePotionUseSafe(hero: any): boolean {
+  const combat = parseNativeBundleObject(hero && hero.combatBundle);
+  if (!combat) return false;
+  const sideEffectTalents = new Set(["LIQUID_WILLPOWER", "LIQUID_NATURE", "LIQUID_AGILITY"]);
+  for (let tierNumber = 1; tierNumber <= 4; tierNumber++) {
+    const tier = combat["talents_tier_" + tierNumber];
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) return false;
+    for (const talent of sideEffectTalents) {
+      const value = tier[talent] === undefined ? 0 : Number(tier[talent]);
+      if (!Number.isFinite(value) || value < 0 || value > 2) return false;
+      if (value > 0) return false;
+    }
+  }
+  const replacements = combat.replacements;
+  if (!replacements || typeof replacements !== "object" || Array.isArray(replacements)) return false;
+  for (const [from, to] of Object.entries(replacements)) {
+    if (sideEffectTalents.has(String(from)) || sideEffectTalents.has(String(to))) return false;
+  }
+  return true;
+}
+
 /** Validates purchase of one exact native item from an adjacent Shopkeeper buyback list. */
 export function isValidNativeBuybackIntent(level: any, dataValue: unknown, depthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -1187,6 +1209,7 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
   if (supportedScroll && !isNativeRechargingScrollReadSafe(hero)) return false;
   if (supportedFood && !isNativeFoodUseSafe(hero)) return false;
+  if (supportedDrink && !isNativePotionUseSafe(hero)) return false;
   if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
     let combat: any;
     try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }

@@ -2923,6 +2923,34 @@ describe("Native item consumption transaction validation", () => {
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-meat-pie-001",
         "com.shatteredpixel.shatteredpixeldungeon.items.food.MeatPie",1,true)])))).toBe(true);
   });
+  it("rejects potion talent side effects before the native drink can be admitted",()=>{
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const healing="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+    const haste="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste";
+    const talentBundle=(tier1:Record<string,any>={},tier2:Record<string,any>={},
+      tier3:Record<string,any>={},tier4:Record<string,any>={},replacements:Record<string,string>={})=>JSON.stringify({
+        time:10,STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+        talents_tier_1:tier1,talents_tier_2:tier2,talents_tier_3:tier3,talents_tier_4:tier4,replacements
+      });
+    const check=(id:string,cls:string,bundle:string)=>isValidNativeUseItemIntent(
+      level,intent(id,cls,"DRINK"),4,"player-001",{pos:9,state:"ALIVE"},
+      JSON.stringify(hero([row(id,cls)],{cooldown:0,combatBundle:bundle}))
+    );
+    expect(check("native-potion-safe-001",healing,talentBundle())).toBe(true);
+    expect(check("native-potion-safe-haste-001",haste,talentBundle())).toBe(true);
+    expect(check("native-liquid-willpower-001",healing,
+      talentBundle({}, {LIQUID_WILLPOWER:1}))).toBe(false);
+    expect(check("native-liquid-nature-001",haste,
+      talentBundle({}, {}, {LIQUID_NATURE:2}))).toBe(false);
+    expect(check("native-liquid-agility-001",healing,
+      talentBundle({}, {}, {}, {LIQUID_AGILITY:1}))).toBe(false);
+    expect(check("native-liquid-replacement-001",healing,
+      talentBundle({}, {}, {}, {}, {OTHER_TALENT:"LIQUID_NATURE"}))).toBe(false);
+    expect(check("native-liquid-missing-tiers-001",healing,
+      JSON.stringify({time:10,STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
+        talents_tier_1:{},replacements:{}}))).toBe(false);
+  });
+
   it("supports READ only for a safe native ScrollOfRecharging intent",()=>{
     const scroll="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging";
     const identify="com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
