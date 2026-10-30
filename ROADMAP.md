@@ -28,7 +28,7 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 4 | Movement, floors and world interactions | Complete |
 | 5 | Stable item identity and pickup claims | Complete for implementation and automated acceptance |
 | 6 | Drops, partial stacks and floor heaps | Complete for implementation and automated acceptance |
-| 7 | Inventory actions and item economy | Open |
+| 7 | Inventory actions and item economy | Complete for implementation and automated acceptance |
 | 8 | Inventory persistence, restoration and exactly-once rewards | Open |
 | 9 | Native buffs and timed effects | Open |
 | 10 | Canonical protocol schema and one typed event path | Open |
@@ -270,18 +270,34 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 **Priority:** P0/P1 · **Dependencies:** phases 5–6 and existing Phase 4 world-action admission.
 
+**Status: Complete for implementation and automated acceptance on code/test SHA `744b78cebfae17609dd2b7d43e9d19bd42774056`.** Exact-SHA CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed protocol schema validation, backend TypeScript build and 456 Vitest executions across four test files, plus Android JVM tests and debug APK compilation (`BUILD SUCCESSFUL in 53s`).
+
 ### Work items
-- [ ] Trace native consumption and simple food/potion/scroll effects through the original Java engine; whitelist or validate supported actions without inventing TypeScript gameplay effects.
-- [ ] Synchronize equip/unequip, weapon/armor changes, quickslots, item transformations and inventory-capacity changes using complete action-bound native Hero state.
-- [ ] Make shop purchases/sales, gold changes, keys/chest costs, and other supported currency transactions atomic and exactly-once. Extend Phase 4 chest/key handling instead of creating a competing world-action path.
-- [ ] Validate alchemy, mining-related inventory changes and class/talent/item abilities against the actual native before/after bundles and their action costs.
-- [ ] Return structured rejection/resync outcomes for unsupported or ambiguous item mutations; never broadcast an unvalidated client inventory as truth.
-- [ ] Add negative and positive tests for currency races, invalid quantity changes, forged item additions, duplicated consumption, equipment/quickslot consistency and unsupported item actions.
+
+- [x] Trace native food, potion and scroll effects through original SPD code; whitelist supported effects and validate their real native bundles, Hero clock, cooldown, buffs and inventory outcomes.
+- [x] Synchronize supported equip/unequip, weapon/ordinary armor, quickslots, item bundles and capacity changes through action-bound native Hero state. Unsupported transformations and compound equipment cases are rejected safely.
+- [x] Make Shopkeeper purchases, sales and buyback, Gold and EnergyCrystal pickups, keys/chest costs and supported currency mutations atomic and exactly-once through stable claims, request locks and exact native quantity/value checks.
+- [x] Validate original alchemy recipes, mining/DarkGold inventory changes and supported class/talent/item abilities against native before/after bundles and accepted action costs.
+- [x] Return structured rejection/resync for unsupported or ambiguous item mutations; do not broadcast an unvalidated client inventory as truth.
+- [x] Add positive/negative tests for currency and claim races, altered quantities, forged item/economy data, repeated consumption, equipment/quickslot consistency, capacity, merge outcomes and unsupported actions.
+
+### Implemented action boundary
+
+- Native SPD paths support the whitelisted food and potion effects, `ScrollOfRecharging`, regular equipment actions, Shopkeeper BUY/SELL/BUYBACK, Gold/key/EnergyCrystal pickups, chest/key use, DarkGold mining, alchemy, and the supported Endure/Nature's Power abilities.
+- Other scrolls, wand actions, conditional/class equipment, unrepresented item transformations, quest rewards and ambiguous bag/item mutations fail closed.
+- The final pickup audit also rejects unsynchronized run-global identification, compound LostBackpack restoration, and a tipped-dart merge that would create additional floor/inventory items. Server validation independently checks trusted state for these cases.
 
 ### Acceptance criteria
-- Each item action has one validated native result and one inventory outcome.
-- Gold, purchases, sales, keys and consumable quantities cannot be duplicated by retries or forged snapshots.
-- Unsupported cases fail visibly and safely without pretending the action succeeded.
+
+- [x] Every enabled item action has one validated native result and one accepted inventory/economy outcome.
+- [x] Gold, purchases, sales, keys and consumable quantities cannot be duplicated by retries or forged snapshots.
+- [x] Unsupported cases fail visibly and safely; structured rejection/resync is used when the native result cannot be represented.
+
+### Verification and limits
+
+- Tested gameplay SHA: `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-HEAD CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed schema, backend and Android jobs.
+- No deployed Worker end-to-end smoke test or physical two-device match was run. Those remain Phase 22 and Phase 23.
+- **Next whole phase:** Phase 8 — Inventory Persistence, Restoration and Exactly-Once Rewards.
 
 ## Phase 8 — Inventory Persistence, Restoration and Exactly-Once Rewards
 
@@ -676,3 +692,11 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Audited the original native scheduling contract. `Actor.storeInBundle` includes `Hero.time`, while native item consumption advances Hero time/cooldown. Server validation now permits the native combat-bundle time change only when it matches the trusted-to-reported cooldown delta, and timed `Haste`, `Invisibility`, and `Levitation` buff expiration times must match their remaining cooldown against the same actor clock.
 - Positive/negative tests now cover native clock advancement, mismatched cooldown/time, missing clock data, forged timed-buff schedules, and overlong effects. Intermediate CI [40928973468](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40928973468) exposed a missing schedule check in a new negative test; follow-up commit [e4f57ad](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/e4f57ad0d65f9857a346a67879db6182631897d2) implemented the check. Exact-HEAD CI [40929166097](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/40929166097) then passed both backend and Android jobs.
 - Backend tests: 206 tests in each mirrored TypeScript/JavaScript output (412 reported executions, not 412 unique cases); Android JVM tests and debug APK compilation succeeded. Phase 7 remains **OPEN**: native scroll `READ`, wand `ZAP`, and Shopkeeper buyback are still fail-closed, and remaining item-action/economy acceptance criteria have not all been completed. No deployed Worker or physical two-device validation was run; Phase 22 and Phase 23 remain open.
+
+
+### 2026-10-30 — Phase 7 completed
+
+- Completed all Phase 7 work items and acceptance criteria. Enabled actions use original native SPD results; server validation binds trusted pre-state, action cost, item identity, inventory/economy/quickslot changes, floor deltas and replay/claim state. Unsupported or ambiguous effects fail closed with visible rejection/resync.
+- Final side-effect audit closed Ring identification, unsafe potion side effects, LostBackpack restoration and tipped-dart merge-generated extras through client preflight, Worker validation and positive/negative regressions.
+- Exact tested gameplay SHA `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-HEAD CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455): schema valid, backend build and 456 tests passed, Android JVM tests and APK compile passed.
+- Phase 7 is complete for implementation and automated acceptance. Phase 8 is next. No deployed Worker or physical-device test was performed; Phases 22 and 23 remain open.
