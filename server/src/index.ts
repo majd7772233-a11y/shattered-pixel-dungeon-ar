@@ -330,6 +330,14 @@ function nativeEquipmentQuickslotPositionMatches(row: any, slots: any[]): boolea
   return Number(item.quickslotpos) === Number(slot.slot);
 }
 
+function nativeEquipmentQuickslotBundleMatchesRow(serializedBundle: unknown, row: any): boolean {
+  if (typeof serializedBundle !== "string") return false;
+  let payload: any;
+  try { payload = JSON.parse(serializedBundle); } catch (_) { return false; }
+  return nativeEquipmentPayloadMatchesRow(payload, row);
+}
+
+
 function nativeEquipmentTalentPoints(combat: any, talent: string): number {
   if (!combat || typeof combat !== "object") return 0;
   let points = 0;
@@ -357,6 +365,8 @@ function isSupportedNativeEquipmentIntent(hero: any, item: any, action: string):
       || (className.includes(".items.weapon.melee.") && String(combat.class || "") === "DUELIST"))) return false;
   if (armor && (/(Warrior|Rogue|Mage|Huntress|Duelist|Cleric)Armor$/.test(className)
       || decoded.seal != null)) return false;
+  const heroInventory = parseNativeInventoryIndex(hero);
+  if (!heroInventory) return false;
   if (action === "EQUIP") {
     if (weapon && nativeEquipmentTalentPoints(combat, "SWIFT_EQUIP") > 0) return false;
     if (weapon && nativeEquipmentTalentPoints(combat, "ADVENTURERS_INTUITION") === 2 && decoded.levelKnown !== true) return false;
@@ -365,7 +375,7 @@ function isSupportedNativeEquipmentIntent(hero: any, item: any, action: string):
         && nativeEquipmentTalentPoints(combat, "HOLY_INTUITION") > 0
         && item.cursed === true && item.cursedKnown !== true) return false;
     if (armor && String(combat.class || "") === "WARRIOR") {
-      const oldArmor = parseNativeInventoryIndex(hero).filter((candidate: any) => candidate.equipped === true
+      const oldArmor = heroInventory.filter((candidate: any) => candidate.equipped === true
         && String(candidate.className || "").startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor."));
       if (oldArmor.length > 1) return false;
       if (oldArmor.length === 1) {
@@ -445,15 +455,15 @@ function isValidNativeEquipmentBelongingsMutation(previous: any, next: any, befo
   const newRootItems = newBelongings.inventory.map(nativeEquipmentBundleItem);
   if (oldRootItems.some((item: any) => !item || !nativeEquipmentPayloadId(item))
       || newRootItems.some((item: any) => !item || !nativeEquipmentPayloadId(item))) return false;
-  const oldIds = oldRootItems.map(nativeEquipmentPayloadId);
-  const newIds = newRootItems.map(nativeEquipmentPayloadId);
+  const oldIds = oldRootItems.map((item: any) => nativeEquipmentPayloadId(item));
+  const newIds = newRootItems.map((item: any) => nativeEquipmentPayloadId(item));
   if (new Set(oldIds).size !== oldIds.length || new Set(newIds).size !== newIds.length) return false;
-  const oldDirectTarget = oldIds.filter(id => id === itemId).length;
+  const oldDirectTarget = oldIds.filter((id: string) => id === itemId).length;
   if (action === "EQUIP" ? oldDirectTarget !== 1 : oldDirectTarget !== 0) return false;
 
   const expected = oldRootItems.slice();
   if (action === "EQUIP") {
-    expected.splice(expected.findIndex(item => nativeEquipmentPayloadId(item) === itemId), 1);
+    expected.splice(expected.findIndex((item: any) => nativeEquipmentPayloadId(item) === itemId), 1);
     if (replaced) {
       const row = after.find(candidate => String(candidate.itemId) === String(replaced.itemId));
       const item = nativeEquipmentRowItem(row);
@@ -588,7 +598,7 @@ export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue
     const oldItem = beforeMap.get(String(oldSlot.itemId));
     if (!currentItem || !oldItem || String(current.className) !== String(currentItem.className)
         || Number(current.quantity) !== Number(currentItem.quantity)
-        || !nativeEquipmentPayloadMatchesRow({item: nativeEquipmentBundleItem(JSON.parse(current.serializedBundle))}, currentItem)) return false;
+        || !nativeEquipmentQuickslotBundleMatchesRow(current.serializedBundle, currentItem)) return false;
     if (expectedId === String(details.itemId)) {
       if (String(current.className) !== String(details.itemClass)) return false;
     } else if (String(current.className) !== String(oldSlot.className)
