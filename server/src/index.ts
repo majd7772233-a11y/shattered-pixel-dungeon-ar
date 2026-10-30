@@ -3103,7 +3103,7 @@ export function isValidNativePickupInventoryMutation(previousValue: unknown, nex
 
 /** Validates a pickup request against one exact stable heap and its current top item. */
 export function isValidNativePickupIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
-  playerIdValue: unknown, player: any): boolean {
+  playerIdValue: unknown, player: any, trustedHeroStateValue?: unknown): boolean {
   const data: any = dataValue;
   const playerId = String(playerIdValue || "");
   const depth = Number(currentDepthValue);
@@ -3131,6 +3131,15 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
       || typeof top?.serializedBundle !== "string" || !top.serializedBundle.includes(itemId)) return false;
   if (data.itemBundle !== undefined && (typeof data.itemBundle !== "string"
       || data.itemBundle !== top.serializedBundle)) return false;
+  // Talent.onItemCollected() identifies Rings at Thief's Intuition tier 2. Ring status is
+  // run-global but is not part of the multiplayer Hero snapshot, so reject that unsynced proc.
+  if (itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.rings.")) {
+    if (typeof trustedHeroStateValue !== "string") return false;
+    let trustedHero: any;
+    try { trustedHero = JSON.parse(trustedHeroStateValue); } catch (_) { return false; }
+    const combat = parseNativeBundleObject(trustedHero?.combatBundle);
+    if (!combat || nativeEquipmentTalentPoints(combat, "THIEFS_INTUITION") === 2) return false;
+  }
   if (itemClass.toLowerCase().includes("bag")) {
     const bundleRoot = parseNativeBundleObject(data.itemBundle);
     const bagItem = nativeEquipmentBundleItem(bundleRoot);
@@ -8158,12 +8167,14 @@ export class MatchRoom {
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
             const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const pickupHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const transitionPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             const pickupRequestId = String(msg.requestId || "");
             this.sql.exec("DELETE FROM claimed_item_instances WHERE created_at < datetime('now', '-2 minutes')");
             if (!transitionPending && pickupRequestId.length > 0 && pickupRequestId.length <= 128
                 && hasCompleteNativeLevelSnapshot(levelSnapshot)
-                && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow)
+                && isValidNativePickupIntent(levelSnapshot, data, this.currentDepth, session.playerId, playerRow,
+                  typeof pickupHeroRow?.value === "string" ? String(pickupHeroRow.value) : undefined)
                 && itemPos === Number(targetPos)) {
               const reserved = reserveNativeLootClaim(this.state.storage, this.sql, this.currentDepth,
                 Number(data.branch), String(data.heapId), String(data.itemId), session.playerId, pickupRequestId);
