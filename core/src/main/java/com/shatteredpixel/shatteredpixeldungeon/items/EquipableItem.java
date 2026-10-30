@@ -26,6 +26,13 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
+import com.shatteredpixel.shatteredpixeldungeon.items.armor.Armor;
+import com.shatteredpixel.shatteredpixeldungeon.items.armor.ClassArmor;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.MagesStaff;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.MeleeWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.effects.particles.ShadowParticle;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Document;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
@@ -66,6 +73,59 @@ public abstract class EquipableItem extends Item {
 
 	protected static int slotOfUnequipped = -1;
 
+	/**
+	 * Multiplayer equips are currently limited to native weapon/ordinary armor swaps whose
+	 * complete post-state is validated by the Worker. Reject equipment variants that trigger
+	 * a dialog, talent RNG, passive Buff attachment, item identification, or a floor drop.
+	 */
+	private boolean supportsMultiplayerEquipmentAction(Hero hero, String action) {
+		if (hero == null || !(this instanceof KindOfWeapon || this instanceof Armor)
+				|| this instanceof KindofMisc || this instanceof ClassArmor || this instanceof MagesStaff) {
+			return false;
+		}
+
+		if (this instanceof KindOfWeapon) {
+			if (hero.subClass == HeroSubClass.CHAMPION
+					|| (this instanceof MeleeWeapon && hero.heroClass == HeroClass.DUELIST)
+					|| (action.equals(AC_EQUIP) && hero.hasTalent(Talent.SWIFT_EQUIP))
+					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.ADVENTURERS_INTUITION) == 2 && !isIdentified())) {
+				return false;
+			}
+		} else if (this instanceof Armor) {
+			Armor armor = (Armor)this;
+			if (armor.checkSeal() != null
+					|| (action.equals(AC_EQUIP) && hero.pointsInTalent(Talent.VETERANS_INTUITION) == 2 && !isIdentified())) {
+				return false;
+			}
+			if (action.equals(AC_EQUIP) && hero.heroClass == HeroClass.WARRIOR
+					&& hero.belongings.armor != null && hero.belongings.armor.checkSeal() != null) {
+				// The native follow-up seal-transfer dialog is a second, separate inventory mutation.
+				return false;
+			}
+		}
+
+		if (hero.heroClass != HeroClass.CLERIC && hero.hasTalent(Talent.HOLY_INTUITION)
+				&& cursed && !cursedKnown && action.equals(AC_EQUIP)) {
+			// Native equip has a random chance to reveal the curse without equipping the item.
+			return false;
+		}
+
+		if (action.equals(AC_EQUIP)) {
+			Item replaced = this instanceof Armor ? hero.belongings.armor
+					: hero.belongings.weapon;
+			if (replaced != null && replaced != this
+					&& !hero.belongings.backpack.canHold(replaced)
+					&& !hero.belongings.backpack.items.contains(this)) {
+				// The replacement would be dropped when the source item is inside a nested bag.
+				return false;
+			}
+		} else if (action.equals(AC_UNEQUIP) && !hero.belongings.backpack.canHold(this)) {
+			return false;
+		}
+
+		return true;
+	}
+
 	@Override
 	public void execute( Hero hero, String action ) {
 
@@ -73,7 +133,8 @@ public abstract class EquipableItem extends Item {
         com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager multiplayer =
                 com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
         boolean trackEquipment = equipmentAction && hero == Dungeon.hero && multiplayer.isMultiplayerActive();
-        if (trackEquipment && (Dungeon.branch != 0 || Dungeon.level == null || Dungeon.level.locked)) {
+        if (trackEquipment && (Dungeon.branch != 0 || Dungeon.level == null || Dungeon.level.locked
+                || !supportsMultiplayerEquipmentAction(hero, action))) {
             hero.rejectUnsupportedMultiplayerWorldAction();
             return;
         }

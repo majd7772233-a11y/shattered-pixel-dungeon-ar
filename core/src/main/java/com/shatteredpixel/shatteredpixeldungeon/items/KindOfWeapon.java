@@ -48,6 +48,13 @@ abstract public class KindOfWeapon extends EquipableItem {
 	
 	@Override
 	public void execute(Hero hero, String action) {
+		if (hero == Dungeon.hero && com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance().isMultiplayerActive()
+				&& hero.subClass == HeroSubClass.CHAMPION && action.equals(AC_EQUIP)) {
+			// Champion primary/secondary selection is a two-slot dialog transaction. Keep it
+			// fail-closed until the protocol carries and validates the selected weapon slot.
+			hero.rejectUnsupportedMultiplayerWorldAction();
+			return;
+		}
 		if (hero.subClass == HeroSubClass.CHAMPION && action.equals(AC_EQUIP)){
 			usesTargeting = false;
 			String primaryName = Messages.titleCase(hero.belongings.weapon != null ? hero.belongings.weapon.trueName() : Messages.get(KindOfWeapon.class, "empty"));
