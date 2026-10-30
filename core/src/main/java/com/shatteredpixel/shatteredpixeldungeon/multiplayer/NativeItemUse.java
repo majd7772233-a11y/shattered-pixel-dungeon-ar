@@ -104,11 +104,15 @@ public final class NativeItemUse {
     }
 
     /** Potion callbacks can alter HP, shields, terrain and enemy buffs beyond the drink's own effect. */
-    private static boolean isSafePotionUse(Hero hero) {
-        return hero != null
-            && !hero.hasTalent(Talent.LIQUID_WILLPOWER)
-            && !hero.hasTalent(Talent.LIQUID_NATURE)
-            && !hero.hasTalent(Talent.LIQUID_AGILITY);
+    private static boolean isSafePotionUse(Hero hero, Item item) {
+        if (hero == null || item == null
+                || hero.hasTalent(Talent.LIQUID_WILLPOWER)
+                || hero.hasTalent(Talent.LIQUID_NATURE)
+                || hero.hasTalent(Talent.LIQUID_AGILITY)) return false;
+        // Invisibility.attachTo() adds Preparation for Assassins and ProtectiveShadowsTracker
+        // for this talent. Assassin is also checked by the Worker; reject Protective Shadows here.
+        return !"com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility"
+                .equals(item.getClass().getName()) || !hero.hasTalent(Talent.PROTECTIVE_SHADOWS);
     }
 
     /** Reject unsupported use before any local-only item effect can be applied. */
@@ -117,7 +121,7 @@ public final class NativeItemUse {
         boolean unsupported = !isSupportedAction(item, action);
         if ("READ".equals(action) && !isSafeRechargingScrollRead(hero, item)) unsupported = true;
         if ("EAT".equals(action) && !isSafeFoodUse(hero)) unsupported = true;
-        if ("DRINK".equals(action) && !isSafePotionUse(hero)) unsupported = true;
+        if ("DRINK".equals(action) && !isSafePotionUse(hero, item)) unsupported = true;
         if (unsupported || Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked) {
             hero.rejectUnsupportedMultiplayerWorldAction();
             return true;

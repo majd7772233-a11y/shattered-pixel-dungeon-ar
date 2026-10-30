@@ -958,10 +958,14 @@ function isNativeRechargingScrollReadSafe(hero: any): boolean {
 }
 
 /** The whitelisted native drink callback has no unmodelled talent proc only without these talents. */
-function isNativePotionUseSafe(hero: any): boolean {
+function isNativePotionUseSafe(hero: any, itemClass: string): boolean {
   const combat = parseNativeBundleObject(hero && hero.combatBundle);
   if (!combat) return false;
   const sideEffectTalents = new Set(["LIQUID_WILLPOWER", "LIQUID_NATURE", "LIQUID_AGILITY"]);
+  if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
+    // Invisibility.attachTo() may add this extra native tracker independently of onPotionUsed().
+    sideEffectTalents.add("PROTECTIVE_SHADOWS");
+  }
   for (let tierNumber = 1; tierNumber <= 4; tierNumber++) {
     const tier = combat["talents_tier_" + tierNumber];
     if (!tier || typeof tier !== "object" || Array.isArray(tier)) return false;
@@ -1209,7 +1213,7 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
   if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.hp) || hero.hp <= 0) return false;
   if (supportedScroll && !isNativeRechargingScrollReadSafe(hero)) return false;
   if (supportedFood && !isNativeFoodUseSafe(hero)) return false;
-  if (supportedDrink && !isNativePotionUseSafe(hero)) return false;
+  if (supportedDrink && !isNativePotionUseSafe(hero, cls)) return false;
   if (cls === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility") {
     let combat: any;
     try { combat = JSON.parse(String(hero.combatBundle || "")); } catch (_) { return false; }

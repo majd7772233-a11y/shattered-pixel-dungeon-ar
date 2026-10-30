@@ -1,11 +1,19 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.NPC;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Shopkeeper;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroAction;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
 
 public class MultiplayerActionDispatcher {
+
+    /** Only the Shopkeeper has a complete inventory/economy action protocol in this phase. */
+    public static boolean supportsMultiplayerNpcInteraction(Class<?> npcClass) {
+        return npcClass != null && Shopkeeper.class.isAssignableFrom(npcClass);
+    }
 
     public static void onHeroPerformAction(HeroAction action) {
         Hero hero = Dungeon.hero;
@@ -59,7 +67,15 @@ public class MultiplayerActionDispatcher {
                 return;
             }
             if (action instanceof HeroAction.Interact) {
-                targetPos = ((HeroAction.Interact) action).ch == null ? -1 : ((HeroAction.Interact) action).ch.pos;
+                Char interactionTarget = ((HeroAction.Interact) action).ch;
+                targetPos = interactionTarget == null ? -1 : interactionTarget.pos;
+                if (interactionTarget instanceof NPC
+                        && !supportsMultiplayerNpcInteraction(interactionTarget.getClass())) {
+                    // These NPC callbacks can grant/transform inventory via quest windows; the
+                    // generic INTERACT validator intentionally forbids those inventory deltas.
+                    hero.rejectUnsupportedMultiplayerWorldAction();
+                    return;
+                }
             }
             if (targetPos < 0 || Dungeon.level.distance(currentPos, targetPos) > 1) return;
             if (action instanceof HeroAction.OpenChest) {

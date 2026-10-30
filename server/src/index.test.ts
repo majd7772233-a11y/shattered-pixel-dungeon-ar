@@ -3159,6 +3159,12 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemIntent(level,intent("native-invisibility-assassin-001",invisibility),4,
       "player-001",{pos:9,state:"ALIVE"},assassin)).toBe(false);
+    const protectiveShadows=JSON.stringify(hero([row("native-invisibility-protective-001",invisibility)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",
+        talents_tier_1:{},talents_tier_2:{PROTECTIVE_SHADOWS:1},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    }));
+    expect(isValidNativeUseItemIntent(level,intent("native-invisibility-protective-001",invisibility),4,
+      "player-001",{pos:9,state:"ALIVE"},protectiveShadows)).toBe(false);
 
     const beforeLevitation=JSON.stringify(hero([row("native-levitation-001",levitation)],{
       cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
