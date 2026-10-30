@@ -562,7 +562,8 @@ export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue
           || !nativeEquipmentRowBundleTransitionMatches(old, current, true)) return false;
       targetFound = true;
     } else {
-      if (!sameNativeItemValue(itemValueWithout(old, ["equipped"]), itemValueWithout(current, ["equipped"]))) return false;
+      if (!sameNativeItemValue(itemValueWithout(old, ["equipped", "serializedBundle"]),
+            itemValueWithout(current, ["equipped", "serializedBundle"]))) return false;
       if (old.equipped !== current.equipped) {
         if (action !== "EQUIP" || old.equipped !== true || current.equipped !== false
             || old.className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon.")
