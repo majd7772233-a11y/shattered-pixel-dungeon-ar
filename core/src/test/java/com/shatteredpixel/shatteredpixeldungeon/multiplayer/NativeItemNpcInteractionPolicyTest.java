@@ -15,6 +15,16 @@ public class NativeItemNpcInteractionPolicyTest {
     }
 
     @Test
+    public void ringPickupKnowledgePolicyIsFailClosedAtThiefIntuitionTierTwo() {
+        String ring = "com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfMight";
+        String potion = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+        Assert.assertTrue(MultiplayerActionDispatcher.supportsNativePickupKnowledge(ring, 0));
+        Assert.assertTrue(MultiplayerActionDispatcher.supportsNativePickupKnowledge(ring, 1));
+        Assert.assertFalse(MultiplayerActionDispatcher.supportsNativePickupKnowledge(ring, 2));
+        Assert.assertTrue(MultiplayerActionDispatcher.supportsNativePickupKnowledge(potion, 2));
+    }
+
+    @Test
     public void questNpcInteractionsAreRejectedBeforeUnvalidatedItemRewardsOrTransforms() {
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Blacksmith.class));
         Assert.assertFalse(MultiplayerActionDispatcher.supportsMultiplayerNpcInteraction(Ghost.class));
