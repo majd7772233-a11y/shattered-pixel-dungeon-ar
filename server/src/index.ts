@@ -2124,6 +2124,80 @@ export function classifyNativeMutationLock(lockValue: unknown, playerIdValue: un
   return String(lock.requestId || "") === requestId && String(lock.actionType) === action ? "OWNED" : "PENDING";
 }
 
+const NATIVE_MULTIPLAYER_BAG_CLASSES = new Set([
+  "com.shatteredpixel.shatteredpixeldungeon.items.bags.ScrollHolder",
+  "com.shatteredpixel.shatteredpixeldungeon.items.bags.PotionBandolier",
+  "com.shatteredpixel.shatteredpixeldungeon.items.bags.VelvetPouch",
+  "com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster"
+]);
+
+function nativeBagCanHoldItemClass(bagClassValue: unknown, itemClassValue: unknown): boolean {
+  const bagClass = String(bagClassValue || ""), itemClass = String(itemClassValue || "");
+  if (bagClass.endsWith(".ScrollHolder")) {
+    return itemClass.includes(".items.scrolls.") || itemClass.includes(".items.spells.")
+      || itemClass.endsWith(".ArcaneResin") || itemClass.endsWith(".Stylus");
+  }
+  if (bagClass.endsWith(".PotionBandolier")) {
+    return itemClass.includes(".items.potions.") || itemClass.endsWith(".LiquidMetal")
+      || itemClass.endsWith(".Waterskin");
+  }
+  if (bagClass.endsWith(".VelvetPouch")) {
+    return itemClass.includes(".plants.") && itemClass.endsWith("$Seed")
+      || itemClass.endsWith(".Runestone") || itemClass.endsWith(".GooBlob") || itemClass.endsWith(".MetalShard");
+  }
+  if (bagClass.endsWith(".MagicalHolster")) {
+    return itemClass.includes(".items.wands.") || itemClass.includes(".items.weapon.missiles.")
+      || itemClass.includes(".items.bombs.");
+  }
+  return false;
+}
+
+/** Validates the flattened inventory index against the exact native Belongings/Bag bundle tree. */
+export function isValidNativeInventoryBundleIndex(heroValue: any, rowsValue: unknown): boolean {
+  if (!heroValue || typeof heroValue !== "object" || !Array.isArray(rowsValue) || rowsValue.length > 1024) return false;
+  const root = parseNativeBundleObject(heroValue.inventoryBundle);
+  if (!root || !Array.isArray(root.inventory) || root.inventory.length > 1024) return false;
+  const rows: any[] = rowsValue;
+  const byId = new Map<string, any>();
+  for (const row of rows) {
+    const id = String(row?.itemId || "");
+    if (!id || byId.has(id) || typeof row?.containerId !== "string"
+        || row.containerId.length < 1 || row.containerId.length > 80) return false;
+    byId.set(id, row);
+  }
+  const seen = new Set<string>();
+  const visit = (payload: any, containerId: string, depth: number, equippedSlot: boolean): boolean => {
+    if (depth > 8 || seen.size >= 1024) return false;
+    const item = nativeEquipmentBundleItem(payload);
+    const id = String(item?.multiplayer_item_id || ""), className = String(item?.__className || "");
+    const row = byId.get(id);
+    if (!item || !row || !id || seen.has(id) || className !== String(row.className)
+        || String(row.containerId) !== containerId || row.equipped !== equippedSlot
+        || !nativeEquipmentPayloadMatchesRow(item, row)) return false;
+    const bagClass = className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.bags.");
+    if (bagClass) {
+      if (item.inventory !== undefined && !Array.isArray(item.inventory)) return false;
+      const children = Array.isArray(item.inventory) ? item.inventory : [];
+      if (children.length > 20) return false;
+      seen.add(id);
+      for (const child of children) if (!visit(child, id, depth + 1, false)) return false;
+    } else {
+      if (Array.isArray(item.inventory) && item.inventory.length > 0) return false;
+      seen.add(id);
+    }
+    return true;
+  };
+  for (const payload of root.inventory) if (!visit(payload, "BACKPACK", 0, false)) return false;
+  const equipmentSlots: Array<[string,string]> = [
+    ["weapon","WEAPON"],["armor","ARMOR"],["artifact","ARTIFACT"],
+    ["misc","MISC"],["ring","RING"],["second_wep","SECOND_WEP"]
+  ];
+  for (const [field,containerId] of equipmentSlots) {
+    if (root[field] != null && !visit(root[field], containerId, 0, true)) return false;
+  }
+  return seen.size === rows.length;
+}
+
 function parseNativeInventoryIndex(heroValue: any): any[] | null {
   if (!heroValue || typeof heroValue !== "object" || typeof heroValue.inventoryItemsJson !== "string"
       || heroValue.inventoryItemsJson.length < 2 || heroValue.inventoryItemsJson.length > 200000) return null;
@@ -2140,6 +2214,13 @@ function parseNativeInventoryIndex(heroValue: any): any[] | null {
           || typeof item?.serializedBundle !== "string" || item.serializedBundle.length < 1
           || item.serializedBundle.length > 200000 || !item.serializedBundle.includes(id)) return null;
       ids.add(id);
+    }
+    if (Object.prototype.hasOwnProperty.call(heroValue, "nativeInventoryTreeVersion")) {
+      if (heroValue.nativeInventoryTreeVersion !== 1 || rows.some((row:any) =>
+          !Object.prototype.hasOwnProperty.call(row, "containerId"))
+          || !isValidNativeInventoryBundleIndex(heroValue, rows)) return null;
+    } else if (rows.some((row:any) => Object.prototype.hasOwnProperty.call(row, "containerId"))) {
+      return null;
     }
     return rows;
   } catch (_) { return null; }
@@ -2681,6 +2762,37 @@ export function isValidNativePickupInventoryMutation(previousValue: unknown, nex
   const afterMap = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
   if (cls.endsWith(".Gold")) return next.gold === previous.gold + amount && sameNativeItemValue(before, after);
   if (previous.gold !== next.gold) return false;
+  if (NATIVE_MULTIPLAYER_BAG_CLASSES.has(cls)) {
+    const bundleText = String(accepted.itemBundle || "");
+    const bundleRoot = parseNativeBundleObject(bundleText);
+    const bagItem = nativeEquipmentBundleItem(bundleRoot);
+    if (!bundleText || !bagItem || String(bagItem.__className || "") !== cls
+        || !Array.isArray(bagItem.inventory) || bagItem.inventory.length !== 0
+        || amount !== 1 || accepted.stackable !== false || typeof accepted.itemBundle !== "string") return false;
+    const added = after.filter((row:any) => String(row.itemId) === id);
+    if (added.length !== 1 || added[0].containerId !== "BACKPACK" || added[0].equipped !== false
+        || String(added[0].className) !== cls || added[0].quantity !== 1
+        || String(added[0].serializedBundle) !== bundleText || beforeMap.has(id)
+        || after.length !== before.length + 1
+        || !sameNativeItemValue(before, after.filter((row:any) => String(row.itemId) !== id))) return false;
+    for (const existing of before) {
+      if (existing.containerId === "BACKPACK" && nativeBagCanHoldItemClass(cls, existing.className)) return false;
+    }
+    const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
+    if (!beforeSlots || !afterSlots) return false;
+    const oldForBag = beforeSlots.filter((slot:any) => String(slot.itemId) === id);
+    const newForBag = afterSlots.filter((slot:any) => String(slot.itemId) === id);
+    if (oldForBag.length > 1 || newForBag.length > 1) return false;
+    if (oldForBag.length === 0) {
+      if (newForBag.length !== 0) return false;
+    } else if (oldForBag[0].quantity !== 0 || newForBag.length !== 1
+        || Number(newForBag[0].slot) !== Number(oldForBag[0].slot)
+        || newForBag[0].className !== cls || newForBag[0].quantity !== 1
+        || newForBag[0].serializedBundle !== bundleText) return false;
+    const withoutBag = (slots:any[]) => slots.filter((slot:any) => String(slot.itemId) !== id)
+      .slice().sort((a:any,b:any) => Number(a.slot)-Number(b.slot));
+    return sameNativeItemValue(withoutBag(beforeSlots), withoutBag(afterSlots));
+  }
   if (cls.endsWith(".EnergyCrystal")) {
     const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
     return previous.inventoryBundle === next.inventoryBundle
@@ -2769,9 +2881,20 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
   const heap = matches[0];
   if (Number(heap.pos) !== pos || String(heap.type) !== "HEAP" || !Array.isArray(heap.items) || heap.items.length === 0) return false;
   const top = heap.items[0];
-  return String(top?.itemId || "") === itemId && String(top?.className || "") === itemClass
-    && Number(top?.quantity) === quantity && top?.stackable === stackable
-    && typeof top?.serializedBundle === "string" && top.serializedBundle.includes(itemId);
+  if (String(top?.itemId || "") !== itemId || String(top?.className || "") !== itemClass
+      || Number(top?.quantity) !== quantity || top?.stackable !== stackable
+      || typeof top?.serializedBundle !== "string" || !top.serializedBundle.includes(itemId)) return false;
+  if (data.itemBundle !== undefined && (typeof data.itemBundle !== "string"
+      || data.itemBundle !== top.serializedBundle)) return false;
+  if (itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.bags.")) {
+    const bundleRoot = parseNativeBundleObject(data.itemBundle);
+    const bagItem = nativeEquipmentBundleItem(bundleRoot);
+    if (!NATIVE_MULTIPLAYER_BAG_CLASSES.has(itemClass) || typeof data.itemBundle !== "string"
+        || !bagItem || String(bagItem.__className || "") !== itemClass
+        || !Array.isArray(bagItem.inventory) || bagItem.inventory.length !== 0
+        || quantity !== 1 || stackable !== false) return false;
+  }
+  return true;
 }
 
 /** Allows only removal of the accepted top item; other heaps and remaining item order stay unchanged. */
@@ -2784,7 +2907,9 @@ export function isValidNativePickupHeapMutation(previousHeaps: any, nextHeaps: a
       || accepted.branch !== 0 || accepted.targetPos !== target || accepted.from !== target
       || accepted.heapId !== details.heapId || accepted.itemId !== details.itemId
       || accepted.itemClass !== details.itemClass || accepted.expectedQuantity !== details.expectedQuantity
-      || accepted.stackable !== details.stackable || !Number.isInteger(accepted.depth) || accepted.depth < 1) return false;
+      || accepted.stackable !== details.stackable
+      || (accepted.itemBundle !== undefined && accepted.itemBundle !== details.itemBundle)
+      || !Number.isInteger(accepted.depth) || accepted.depth < 1) return false;
   const heapId = String(details.heapId || ""), itemId = String(details.itemId || "");
   if (heapId.length < 8 || heapId.length > 80 || itemId.length < 8 || itemId.length > 80) return false;
   const canonical = (value: any): any => {
@@ -7795,7 +7920,8 @@ export class MatchRoom {
                 playerId: session.playerId, actionType: "PICKUP", from: itemPos, targetPos: itemPos,
                 itemPos, depth: this.currentDepth, branch: Number(data.branch),
                 heapId: String(data.heapId), itemId: String(data.itemId),
-                itemClass: String(data.itemClass), expectedQuantity: Number(data.expectedQuantity), stackable: data.stackable
+                itemClass: String(data.itemClass), itemBundle: String(data.itemBundle || ""),
+                expectedQuantity: Number(data.expectedQuantity), stackable: data.stackable
               };
               actionValid = true;
               actionCost = Number(data.engineActionCost);
