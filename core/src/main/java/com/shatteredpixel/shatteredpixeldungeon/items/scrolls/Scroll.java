@@ -114,6 +114,19 @@ public abstract class Scroll extends Item {
 		handler.save( bundle );
 	}
 
+	/** Serializes the native run-global scroll labels and known state for multiplayer reconciliation. */
+	public static String multiplayerStatusBundle() {
+		if (handler == null) return "";
+		Bundle bundle = new Bundle();
+		handler.save(bundle);
+		return bundle.toString();
+	}
+
+	/** Restores the authoritative native scroll status handler from a multiplayer snapshot. */
+	public static void restoreMultiplayerStatusBundle(Bundle bundle) {
+		if (bundle != null) restore(bundle);
+	}
+
 	public static void saveSelectively( Bundle bundle, ArrayList<Item> items ) {
 		ArrayList<Class<?extends Item>> classes = new ArrayList<>();
 		for (Item i : items){
