@@ -3442,3 +3442,121 @@ describe('Stable native pickup transactions', () => {
     expect(isValidNativePickupHeapMutation([oldHeap], [afterOne], 9, details, { ...accepted, heapId: 'stable-heap-other' })).toBe(false);
   });
 });
+
+
+describe("Native inventory container ownership and safe Bag pickup", () => {
+  const rootBag = "com.shatteredpixel.shatteredpixeldungeon.items.bags.ScrollHolder";
+  const potionBag = "com.shatteredpixel.shatteredpixeldungeon.items.bags.PotionBandolier";
+  const scrollClass = "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify";
+  const potionClass = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+  const daggerClass = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger";
+  const payload = (id:string, className:string, extra:Record<string,any>={}) => ({
+    __className:className,multiplayer_item_id:id,quantity:1,level:0,
+    levelKnown:true,cursed:false,cursedKnown:true,...extra
+  });
+  const bundle = (item:any) => JSON.stringify({item});
+  const row = (item:any, containerId:string, equipped=false) => ({
+    itemId:String(item.multiplayer_item_id),className:String(item.__className),quantity:Number(item.quantity),
+    level:Number(item.level),cursed:item.cursed===true,cursedKnown:item.cursedKnown===true,
+    stackable:item.stackable===true,equipped,containerId,serializedBundle:bundle(item)
+  });
+  const state = (rows:any[], belongings:any, extra:Record<string,any>={}) => ({
+    nativeInventoryTreeVersion:1,inventoryBundle:JSON.stringify(belongings),
+    inventoryItemsJson:JSON.stringify(rows),quickslotsJson:"[]",gold:0,...extra
+  });
+
+  it("matches every flattened item to its exact backpack, nested Bag, or typed equipment slot",()=>{
+    const scroll=payload("tree-scroll-0001",scrollClass);
+    const bag=payload("tree-bag-0001",rootBag,{inventory:[scroll]});
+    const weapon=payload("tree-weapon-001",daggerClass);
+    const rows=[row(bag,"BACKPACK"),row(scroll,"tree-bag-0001"),row(weapon,"WEAPON",true)];
+    const valid=state(rows,{inventory:[bag],weapon});
+    expect(isValidNativeInventoryBundleIndex(valid,rows)).toBe(true);
+    expect(isValidNativeInventoryBundleIndex(valid,[
+      rows[0],{...rows[1],containerId:"BACKPACK"},rows[2]
+    ])).toBe(false);
+    expect(isValidNativeInventoryBundleIndex(valid,[rows[0],rows[2]])).toBe(false);
+    expect(isValidNativeInventoryBundleIndex(valid,[
+      rows[0],rows[1],{...rows[2],containerId:"BACKPACK",equipped:false}
+    ])).toBe(false);
+    const forgedBag=payload("tree-bag-0001",rootBag,{inventory:[{...scroll,multiplayer_item_id:"tree-forged-child-001"}]});
+    expect(isValidNativeInventoryBundleIndex(state(rows,{inventory:[forgedBag],weapon}),rows)).toBe(false);
+  });
+
+  it("accepts an exact empty supported Bag pickup without changing existing container ownership",()=>{
+    const bagId="safe-scroll-holder-001";
+    const bag=payload(bagId,rootBag,{inventory:[]});
+    const bagBundle=bundle(bag);
+    const bagRow=row(bag,"BACKPACK");
+    const before=state([],{inventory:[]});
+    const after=state([bagRow],{inventory:[bag]});
+    const accepted={
+      actionType:"PICKUP",itemId:bagId,itemClass:rootBag,expectedQuantity:1,stackable:false,itemBundle:bagBundle
+    };
+    expect(isValidNativeInventoryBundleIndex(before,[])).toBe(true);
+    expect(isValidNativeInventoryBundleIndex(after,[bagRow])).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(before),JSON.stringify(after),accepted)).toBe(true);
+
+    const heap={heapId:"safe-bag-heap-001",pos:9,type:"HEAP",items:[{
+      itemId:bagId,className:rootBag,quantity:1,level:0,cursed:false,cursedKnown:true,
+      stackable:false,serializedBundle:bagBundle
+    }]};
+    const level={depth:4,branch:0,locked:false,heaps:[heap]};
+    const intent={
+      from:9,to:9,targetPos:9,itemPos:9,depth:4,branch:0,engineActionCost:1,
+      heapId:heap.heapId,itemId:bagId,itemClass:rootBag,expectedQuantity:1,stackable:false,itemBundle:bagBundle
+    };
+    expect(isValidNativePickupIntent(level,intent,4,"bag-player-001",{pos:9,state:"ALIVE"})).toBe(true);
+  });
+
+  it("rejects a filled, unsupported, forged, or container-transfer Bag pickup",()=>{
+    const bagId="unsafe-scroll-holder-001";
+    const child=payload("unsafe-bag-child-001",scrollClass);
+    const filledBag=payload(bagId,rootBag,{inventory:[child]});
+    const filledBundle=bundle(filledBag);
+    const makeIntent=(className:string,id:string,itemBundle:string)=>({
+      from:9,to:9,targetPos:9,itemPos:9,depth:4,branch:0,engineActionCost:1,
+      heapId:"unsafe-bag-heap-001",itemId:id,itemClass:className,expectedQuantity:1,stackable:false,itemBundle
+    });
+    const floor=(id:string,className:string,itemBundle:string)=>({heapId:"unsafe-bag-heap-001",pos:9,type:"HEAP",
+      items:[{itemId:id,className,quantity:1,level:0,cursed:false,cursedKnown:true,stackable:false,serializedBundle:itemBundle}]});
+    expect(isValidNativePickupIntent({depth:4,branch:0,locked:false,heaps:[floor(bagId,rootBag,filledBundle)]},
+      makeIntent(rootBag,bagId,filledBundle),4,"bag-player-001",{pos:9,state:"ALIVE"})).toBe(false);
+
+    const unsupportedClass="com.example.UnvalidatedBag";
+    const unsupported=payload("unsafe-unknown-bag-001",unsupportedClass,{inventory:[]});
+    const unsupportedBundle=bundle(unsupported);
+    expect(isValidNativePickupIntent({depth:4,branch:0,locked:false,
+      heaps:[floor("unsafe-unknown-bag-001",unsupportedClass,unsupportedBundle)]},
+      makeIntent(unsupportedClass,"unsafe-unknown-bag-001",unsupportedBundle),4,
+      "bag-player-001",{pos:9,state:"ALIVE"})).toBe(false);
+
+    const emptyBag=payload(bagId,rootBag,{inventory:[]}), emptyBundle=bundle(emptyBag);
+    const mismatched=makeIntent(rootBag,bagId,bundle(payload(bagId,rootBag,{inventory:[]}))+" ");
+    expect(isValidNativePickupIntent({depth:4,branch:0,locked:false,heaps:[floor(bagId,rootBag,emptyBundle)]},
+      mismatched,4,"bag-player-001",{pos:9,state:"ALIVE"})).toBe(false);
+
+    const existingScroll=payload("already-owned-scroll-001",scrollClass);
+    const existingRow=row(existingScroll,"BACKPACK");
+    const transferredBag=payload(bagId,rootBag,{inventory:[existingScroll]});
+    const transferredRow=row(transferredBag,"BACKPACK");
+    const movedScrollRow=row(existingScroll,bagId);
+    const previous=state([existingRow],{inventory:[existingScroll]});
+    const next=state([transferredRow,movedScrollRow],{inventory:[transferredBag]});
+    expect(isValidNativeInventoryBundleIndex(previous,[existingRow])).toBe(true);
+    expect(isValidNativeInventoryBundleIndex(next,[transferredRow,movedScrollRow])).toBe(true);
+    expect(isValidNativePickupInventoryMutation(JSON.stringify(previous),JSON.stringify(next),{
+      actionType:"PICKUP",itemId:bagId,itemClass:rootBag,expectedQuantity:1,stackable:false,itemBundle:emptyBundle
+    })).toBe(false);
+  });
+
+  it("rejects container markers that are missing, mixed, or not backed by the native bundle tree",()=>{
+    const scroll=payload("tree-marker-scroll-001",scrollClass);
+    const scrollRow=row(scroll,"BACKPACK");
+    const valid=state([scrollRow],{inventory:[scroll]});
+    expect(isValidNativeInventoryBundleIndex(valid,[scrollRow])).toBe(true);
+    expect(isValidNativeInventoryBundleIndex(valid,[{...scrollRow,containerId:"ORPHAN-BAG"}])).toBe(false);
+    expect(isValidNativeInventoryBundleIndex(valid,[{...scrollRow,containerId:undefined}])).toBe(false);
+    expect(isValidNativeInventoryBundleIndex({...valid,inventoryBundle:JSON.stringify({inventory:[]})},[scrollRow])).toBe(false);
+  });
+});
