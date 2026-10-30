@@ -1,5 +1,7 @@
 # Multiplayer Continuation Checkpoint
 
+> **Superseded on 2026-10-30.** This file is retained as historical Phase 1/2 technical context only. Its older phase-status statements are not current instructions. The active continuation checkpoint is in `GPT.md`, and the authoritative phase map/status is in `ROADMAP.md`. Current status: Phases 1–7 are complete for implementation and automated acceptance; Phase 8 is next. Latest tested Phase 7 code SHA: `744b78cebfae17609dd2b7d43e9d19bd42774056` (CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed).
+
 Updated: 2026-10-21 (UTC)
 
 ## Repository / branch guardrails
