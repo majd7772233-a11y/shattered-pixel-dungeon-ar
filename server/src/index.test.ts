@@ -3115,7 +3115,7 @@ describe("Native item consumption transaction validation", () => {
       cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
       buff_1:JSON.stringify({buff:{__className:hasteBuff,time:30,id:52}}),buffCooldown_1:20
     }));
@@ -3124,13 +3124,13 @@ describe("Native item consumption transaction validation", () => {
       "player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     const mismatchedClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
       buff_1:JSON.stringify({buff:{__className:hasteBuff,time:55,id:52}}),buffCooldown_1:20
     }));
     expect(isValidNativeUseItemMutation(before,mismatchedClock,d,accepted)).toBe(false);
     const overlong=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
       buff_1:JSON.stringify({buff:{__className:hasteBuff,time:55,id:52}}),buffCooldown_1:45
     }));
@@ -3147,7 +3147,7 @@ describe("Native item consumption transaction validation", () => {
       cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const afterInvisibility=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
       buff_1:JSON.stringify({buff:{__className:invisBuff,time:30,id:61}}),buffCooldown_1:20
     }));
@@ -3164,7 +3164,7 @@ describe("Native item consumption transaction validation", () => {
       cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     const afterLevitation=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after"}),buffCount:2,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
       buff_1:JSON.stringify({buff:{__className:levBuff,time:30,id:62}}),buffCooldown_1:20
     }));
@@ -3200,7 +3200,7 @@ describe("Native item consumption transaction validation", () => {
     }));
     const d=intent("native-strength-clock-001",strength),accepted={...d,actionType:"USE_ITEM"};
     const validAfter=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
-      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after"})
+      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     expect(isValidNativeUseItemMutation(before,validAfter,d,accepted)).toBe(true);
     const forgedClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
@@ -3208,7 +3208,7 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(before,forgedClock,d,accepted)).toBe(false);
     const forgedCooldown=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:2,
-      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after"})
+      combatBundle:JSON.stringify({time:11,STR:11,items:"inventory-after",talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
     }));
     expect(isValidNativeUseItemMutation(before,forgedCooldown,d,accepted)).toBe(false);
     const missingClock=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
