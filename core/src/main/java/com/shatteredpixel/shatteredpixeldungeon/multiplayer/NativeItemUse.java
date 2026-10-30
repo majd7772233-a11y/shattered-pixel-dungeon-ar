@@ -120,7 +120,9 @@ public final class NativeItemUse {
     public static Context begin(Hero hero, Item item, String action) {
         if (!isLocalMultiplayerHero(hero)) return null;
         if (rejectIfUnsupported(hero, item, action)) return BLOCKED;
-        if (item.quantity() < 1 || !hero.belongings.getAllItems(Item.class).contains(item)) {
+        if (item.quantity() < 1 || !hero.belongings.getAllItems(Item.class).contains(item)
+                || !hero.belongings.backpack.items.contains(item)) {
+            // Consuming a nested item also rewrites its parent Bag bundle; reject pre-effect.
             hero.rejectUnsupportedMultiplayerWorldAction();
             return BLOCKED;
         }

@@ -13,6 +13,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Shopkeeper;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
@@ -460,6 +461,32 @@ public final class SPDLevelSnapshot {
     }
 
     /** Serializes the same native combat/inventory state contract for a remote hero replica. */
+    private static String nativeItemContainerId(Bag container, Item target, String containerId) {
+        if (container == null || target == null) return null;
+        for (Item item : container.items) {
+            if (item == target) return containerId;
+            if (item instanceof Bag) {
+                String nested = nativeItemContainerId((Bag)item, target, item.multiplayerItemId());
+                if (nested != null) return nested;
+            }
+        }
+        return null;
+    }
+
+    /** Identifies the exact native Belongings slot or owning Bag for every flattened inventory row. */
+    private static String nativeItemContainerId(
+            com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero, Item item) {
+        if (hero == null || hero.belongings == null || item == null) return "";
+        if (hero.belongings.weapon == item) return "WEAPON";
+        if (hero.belongings.armor == item) return "ARMOR";
+        if (hero.belongings.artifact == item) return "ARTIFACT";
+        if (hero.belongings.misc == item) return "MISC";
+        if (hero.belongings.ring == item) return "RING";
+        if (hero.belongings.secondWep == item) return "SECOND_WEP";
+        String parent = nativeItemContainerId(hero.belongings.backpack, item, "BACKPACK");
+        return parent == null ? "" : parent;
+    }
+
     public static String currentHeroStateJson(com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero hero) {
         if (hero == null) return "";
         Bundle heroState = new Bundle();
@@ -494,9 +521,11 @@ public final class SPDLevelSnapshot {
             entry.put("cursedKnown", item.cursedKnown);
             entry.put("stackable", item.stackable);
             entry.put("equipped", item.isEquipped(hero));
+            entry.put("containerId", nativeItemContainerId(hero, item));
             entry.put("serializedBundle", currentItemBundle(item));
             inventoryIndex.add(entry);
         }
+        heroState.put("nativeInventoryTreeVersion", 1);
         heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
         heroState.put("nativeItemEconomyJson", new Json().toJson(nativeItemEconomy));
         if (hero == Dungeon.hero) {

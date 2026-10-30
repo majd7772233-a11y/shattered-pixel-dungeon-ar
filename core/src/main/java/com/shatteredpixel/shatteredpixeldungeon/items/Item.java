@@ -187,6 +187,13 @@ public class Item implements Bundlable {
 				hero.rejectUnsupportedMultiplayerWorldAction();
 				return;
 			}
+            if (trackDrop && ((this instanceof Bag && !((Bag)this).items.isEmpty())
+                    || (hero.belongings.backpack.contains(this)
+                        && !hero.belongings.backpack.items.contains(this) && !isEquipped(hero)))) {
+                // A non-empty container or nested child also rewrites a parent Bag bundle.
+                hero.rejectUnsupportedMultiplayerWorldAction();
+                return;
+            }
 			int dropPos = hero.pos;
 			String itemId = multiplayerItemId();
 			String itemClass = getClass().getName();
@@ -262,7 +269,9 @@ public class Item implements Bundlable {
 				MultiplayerManager manager = MultiplayerManager.getInstance();
 				if (hero == Dungeon.hero && manager.isMultiplayerActive()
 						&& (Dungeon.level == null || Dungeon.branch != 0 || Dungeon.level.locked
-							|| !(this instanceof MissileWeapon))) {
+							|| !(this instanceof MissileWeapon)
+                            || (hero.belongings.backpack.contains(this)
+                                && !hero.belongings.backpack.items.contains(this) && !isEquipped(hero)))) {
 					// Server-side THROW accepts only native missile projectiles. Reject other
 					// throwable items before their native effects can damage the shared world.
 					hero.rejectUnsupportedMultiplayerWorldAction();

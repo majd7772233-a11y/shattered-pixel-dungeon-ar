@@ -102,10 +102,38 @@ public class MultiplayerActionDispatcher {
             com.shatteredpixel.shatteredpixeldungeon.items.Heap heap = Dungeon.level.heaps.get(targetPos);
             com.shatteredpixel.shatteredpixeldungeon.items.Item item = heap == null ? null : heap.peek();
             if (item == null) return;
+            // Native SPD may automatically store a picked-up item inside a special Bag, or move
+            // existing backpack items into a new Bag. Reject these compound mutations pre-effect.
+            if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag) {
+                com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag bag =
+                        (com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag)item;
+                boolean transfersExistingItems = !bag.items.isEmpty();
+                if (!transfersExistingItems) {
+                    for (com.shatteredpixel.shatteredpixeldungeon.items.Item existing : hero.belongings.backpack.items) {
+                        if (existing != item && bag.canHold(existing)) {
+                            transfersExistingItems = true;
+                            break;
+                        }
+                    }
+                }
+                if (transfersExistingItems) {
+                    hero.rejectUnsupportedMultiplayerWorldAction();
+                    return;
+                }
+            } else {
+                for (com.shatteredpixel.shatteredpixeldungeon.items.Item existing : hero.belongings.backpack.items) {
+                    if (existing instanceof com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag
+                            && ((com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag)existing).canHold(item)) {
+                        hero.rejectUnsupportedMultiplayerWorldAction();
+                        return;
+                    }
+                }
+            }
             com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
             String transactionDetails = "{\"heapId\":" + json.toJson(heap.multiplayerHeapId())
                     + ",\"itemId\":" + json.toJson(item.multiplayerItemId())
                     + ",\"itemClass\":" + json.toJson(item.getClass().getName())
+                    + ",\"itemBundle\":" + json.toJson(com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot.currentItemBundle(item))
                     + ",\"expectedQuantity\":" + item.quantity()
                     + ",\"stackable\":" + item.stackable + "}";
             details = "{\"from\":" + currentPos + ",\"to\":" + targetPos

@@ -26,6 +26,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LostInventory;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Belongings;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndQuickBag;
@@ -82,6 +83,29 @@ public class Bag extends Item implements Iterable<Item> {
 	
 	@Override
 	public boolean collect( Bag container ) {
+
+        // In multiplayer a Bag.collect() can implicitly move existing items out of the
+        // backpack, rewriting container ownership and running bag-specific charge effects.
+        // Admit only an empty bag that cannot absorb any existing direct-backpack item.
+        if (!Belongings.bundleRestoring && Dungeon.hero != null && container == Dungeon.hero.belongings.backpack
+                && container.owner == Dungeon.hero
+                && com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager
+                    .getInstance().isMultiplayerActive()
+                && !container.items.contains(this)) {
+            boolean wouldTransferItems = !items.isEmpty();
+            if (!wouldTransferItems) {
+                for (Item existing : container.items) {
+                    if (existing != this && canHold(existing)) {
+                        wouldTransferItems = true;
+                        break;
+                    }
+                }
+            }
+            if (wouldTransferItems) {
+                Dungeon.hero.rejectUnsupportedMultiplayerWorldAction();
+                return false;
+            }
+        }
 
 		grabItems(container);
 
