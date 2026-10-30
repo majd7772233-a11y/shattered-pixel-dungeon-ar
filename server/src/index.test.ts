@@ -1680,17 +1680,37 @@ describe("Native pickup inventory transaction validation", () => {
 
 describe("Native equipment, quickslot, and chest transactions", () => {
   const cls = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger";
-  const item = (itemId:string, className=cls, quantity=1, equipped=false, bundle?:string) => ({
-    itemId,className,quantity,level:0,cursed:false,cursedKnown:false,stackable:false,equipped,
-    serializedBundle:bundle || "native-bundle-item-id:"+itemId
+  const nativeItem = (id:string,className=cls,opts:Record<string,any>={}) => {
+    const item:any={__className:className,multiplayer_item_id:id,quantity:1,level:0,
+      levelKnown:opts.levelKnown !== false,cursed:false,cursedKnown:opts.cursedKnown === true};
+    if (opts.quickslotpos !== undefined) item.quickslotpos=opts.quickslotpos;
+    if (opts.seal !== undefined) item.seal=opts.seal;
+    return JSON.stringify({item});
+  };
+  const item = (itemId:string,className=cls,quantity=1,equipped=false,bundle?:string,cursedKnown=false) => ({
+    itemId,className,quantity,level:0,cursed:false,cursedKnown,stackable:false,equipped,
+    serializedBundle:bundle || nativeItem(itemId,className,{cursedKnown})
   });
-  const hero = (items:any[], extra:Record<string,any>={}) => ({
-    hp:10,ht:10,pos:9,shielding:0,gold:0,ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,
-    inventoryBundle:"native-inventory-bundle",inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",
-    notesBundle:"native-notes",questStateBundle:"native-quests",...extra
-  });
-  const quickslots=(slot:number,id:string,cls:string,quantity:number,bundle:string) =>
-    JSON.stringify([{slot,itemId:id,className:cls,quantity,serializedBundle:bundle}]);
+  const hero = (items:any[], extra:Record<string,any>={}) => {
+    const payload=(row:any)=>JSON.parse(row.serializedBundle).item;
+    const belongings:any={inventory:items.filter(row=>!row.equipped).map(payload)};
+    const weapon=items.find(row=>row.equipped && row.className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon."));
+    const armor=items.find(row=>row.equipped && row.className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor."));
+    if (weapon) belongings.weapon=payload(weapon);
+    if (armor) belongings.armor=payload(armor);
+    const cooldown=Number(extra.cooldown || 0);
+    const combat:any={...belongings,id:77,time:10+cooldown,class:"ROGUE",subClass:"NONE",STR:10,buffs:[],
+      talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{}};
+    return {
+      hp:10,ht:10,pos:9,shielding:0,gold:0,alchemyEnergy:0,ankhCount:0,blessedAnkhCount:0,
+      ironKeyCount:0,crystalKeyCount:0,wornKeyCount:0,goldenKeyCount:0,cooldown,
+      inventoryBundle:JSON.stringify(belongings),combatBundle:extra.combatBundle || JSON.stringify(combat),
+      inventoryItemsJson:JSON.stringify(items),quickslotsJson:extra.quickslotsJson || "[]",
+      notesBundle:"native-notes",questStateBundle:"native-quests",...extra
+    };
+  };
+  const quickslots=(slot:number,id:string,itemClass:string,quantity:number,bundle:string) =>
+    JSON.stringify([{slot,itemId:id,className:itemClass,quantity,serializedBundle:bundle}]);
   it("validates quickslots against exact inventory rows and rejects duplicate slots or forged IDs",()=>{
     const itemRow=item("stable-dagger-001");
     const valid=hero([itemRow],{quickslotsJson:quickslots(0,itemRow.itemId,itemRow.className,itemRow.quantity,itemRow.serializedBundle)});
@@ -1701,19 +1721,56 @@ describe("Native equipment, quickslot, and chest transactions", () => {
     ]);
     expect(parseNativeQuickslotIndex(valid)).toBeNull();
   });
-  it("accepts a native equipment toggle but rejects added inventory or changed HP",()=>{
+  it("accepts native equip and unequip only with exact belongings, Hero clock, and item bundles",()=>{
     const id="stable-dagger-001";
-    const before=hero([item(id,cls,1,false)]);
-    const after=hero([item(id,cls,1,true)]);
+    const before=hero([item(id,cls,1,false,nativeItem(id,cls))]);
+    const after=hero([item(id,cls,1,true,nativeItem(id,cls,{cursedKnown:true}),true)],{cooldown:1});
     const detail={itemId:id,itemClass:cls,expectedEquipped:true};
-    expect(isValidNativeEquipmentIntent(JSON.stringify(before),
-      {...detail,depth:4,from:9,to:9,targetPos:9,engineActionCost:1},"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(true);
-    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(after),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(true);
-    const slottedBefore=hero([item(id,cls,1,false)],{quickslotsJson:quickslots(0,id,cls,1,"native-bundle-item-id:"+id)});
-    const redirected=hero([item(id,cls,1,true)],{quickslotsJson:quickslots(0,"stable-forged-001","com.example.Forged",1,"native-bundle-item-id:stable-forged-001")});
-    expect(isValidNativeEquipmentMutation(JSON.stringify(slottedBefore),JSON.stringify(redirected),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
-    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true),item("stable-forged-001","com.example.Forged")])),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
-    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([item(id,cls,1,true)],{hp:9})),"EQUIP",detail,{...detail,actionType:"EQUIP"})).toBe(false);
+    const accepted={...detail,actionType:"EQUIP"};
+    const intent={...detail,depth:4,from:9,to:9,targetPos:9,engineActionCost:1};
+    expect(isValidNativeEquipmentIntent(JSON.stringify(before),intent,"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(true);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(after),"EQUIP",detail,accepted)).toBe(true);
+
+    const unequipBefore=hero([item(id,cls,1,true,nativeItem(id,cls,{cursedKnown:true}),true)]);
+    const unequipAfter=hero([item(id,cls,1,false,nativeItem(id,cls,{cursedKnown:true}),true)],{cooldown:1});
+    const unequipDetail={itemId:id,itemClass:cls,expectedEquipped:false};
+    expect(isValidNativeEquipmentMutation(JSON.stringify(unequipBefore),JSON.stringify(unequipAfter),
+      "UNEQUIP",unequipDetail,{...unequipDetail,actionType:"UNEQUIP"})).toBe(true);
+
+    const forgedCombat=JSON.parse(after.combatBundle);
+    forgedCombat.STR++;
+    const forgedHero={...after,combatBundle:JSON.stringify(forgedCombat)};
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(forgedHero),"EQUIP",detail,accepted)).toBe(false);
+    const forgedClock=JSON.parse(after.combatBundle);
+    forgedClock.time+=4;
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify({...after,combatBundle:JSON.stringify(forgedClock)}),
+      "EQUIP",detail,accepted)).toBe(false);
+    const forgedItem=item(id,cls,1,true,nativeItem(id,cls,{cursedKnown:true,seal:{__className:"forged"}}),true);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([forgedItem],{cooldown:1})),
+      "EQUIP",detail,accepted)).toBe(false);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([after.inventoryItemsJson && JSON.parse(after.inventoryItemsJson)[0],item("stable-forged-001","com.example.Forged")],{cooldown:1})),
+      "EQUIP",detail,accepted)).toBe(false);
+  });
+  it("moves the old equipment quickslot to the replacement only when the original engine keeps the same slot",()=>{
+    const oldId="stable-old-dagger-001",newId="stable-new-dagger-001";
+    const oldBefore=item(oldId,cls,1,true,nativeItem(oldId,cls,{cursedKnown:true,quickslotpos:0}),true);
+    const newBefore=item(newId,cls,1,false,nativeItem(newId,cls));
+    const oldAfter=item(oldId,cls,1,false,nativeItem(oldId,cls,{cursedKnown:true}),true);
+    const newAfter=item(newId,cls,1,true,nativeItem(newId,cls,{cursedKnown:true,quickslotpos:0}),true);
+    const before=hero([oldBefore,newBefore],{
+      quickslotsJson:quickslots(0,oldId,cls,1,oldBefore.serializedBundle)
+    });
+    const after=hero([oldAfter,newAfter],{
+      cooldown:1,quickslotsJson:quickslots(0,newId,cls,1,newAfter.serializedBundle)
+    });
+    const detail={itemId:newId,itemClass:cls,expectedEquipped:true};
+    const intent={...detail,depth:4,from:9,to:9,targetPos:9,engineActionCost:1};
+    expect(isValidNativeEquipmentIntent(JSON.stringify(before),intent,"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(true);
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(after),"EQUIP",detail,
+      {...detail,actionType:"EQUIP"})).toBe(true);
+    const wrongSlot={...after,quickslotsJson:quickslots(1,newId,cls,1,newAfter.serializedBundle)};
+    expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(wrongSlot),"EQUIP",detail,
+      {...detail,actionType:"EQUIP"})).toBe(false);
   });
   it("opens one stable chest without losing or creating items and enforces exact key consumption",()=>{
     const contents=[{itemId:"stable-chest-loot-001",className:"com.shatteredpixel.shatteredpixeldungeon.items.PotionOfHealing",
@@ -1732,14 +1789,6 @@ describe("Native equipment, quickslot, and chest transactions", () => {
     expect(isValidNativeChestHeapMutation([oldHeap],[newHeap],10,details,accepted,JSON.stringify(before),JSON.stringify(unspent))).toBe(false);
   });
 });
-
-
-
-
-
-
-
-
 
 
 describe("Native inventory economic value index", () => {
