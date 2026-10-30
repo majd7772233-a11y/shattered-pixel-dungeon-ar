@@ -273,6 +273,122 @@ export function parseNativeQuickslotIndex(heroValue: any): any[] | null {
 }
 
 /** Equipment intents must identify the exact owned item and the authenticated hero's current cell. */
+function nativeEquipmentBundleItem(value: any): any | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  if (value.item && typeof value.item === "object" && !Array.isArray(value.item)) return value.item;
+  return value;
+}
+
+function nativeEquipmentRowItem(row: any): any | null {
+  if (!row || typeof row.serializedBundle !== "string") return null;
+  let root: any;
+  try { root = JSON.parse(row.serializedBundle); } catch (_) { return null; }
+  const item = nativeEquipmentBundleItem(root);
+  if (!item || String(item.__className || "") !== String(row.className || "")
+      || String(item.multiplayer_item_id || "") !== String(row.itemId || "")) return null;
+  if (typeof item.cursedKnown !== "boolean" || item.cursedKnown !== (row.cursedKnown === true)) return null;
+  return item;
+}
+
+function nativeEquipmentPayloadId(value: any): string {
+  const item = nativeEquipmentBundleItem(value);
+  return item ? String(item.multiplayer_item_id || "") : "";
+}
+
+function nativeEquipmentComparableItem(value: any): any {
+  const item = nativeEquipmentBundleItem(value);
+  if (!item) return null;
+  const copy: any = {...item};
+  delete copy.quickslotpos;
+  delete copy.cursedKnown;
+  return copy;
+}
+
+function nativeEquipmentPayloadMatchesRow(payload: any, row: any): boolean {
+  const item = nativeEquipmentBundleItem(payload), expected = nativeEquipmentRowItem(row);
+  return !!item && !!expected && String(item.multiplayer_item_id || "") === String(row.itemId)
+    && String(item.__className || "") === String(row.className)
+    && sameNativeItemValue(nativeEquipmentComparableItem(item), nativeEquipmentComparableItem(expected))
+    && item.cursedKnown === (row.cursedKnown === true);
+}
+
+function nativeEquipmentRowBundleTransitionMatches(before: any, after: any, allowCurseKnowledge: boolean): boolean {
+  const oldItem = nativeEquipmentRowItem(before), newItem = nativeEquipmentRowItem(after);
+  if (!oldItem || !newItem || String(before.itemId) !== String(after.itemId)
+      || String(before.className) !== String(after.className)
+      || String(oldItem.multiplayer_item_id) !== String(newItem.multiplayer_item_id)
+      || (before.cursedKnown === true && after.cursedKnown !== true)
+      || (!allowCurseKnowledge && before.cursedKnown !== after.cursedKnown)) return false;
+  return sameNativeItemValue(nativeEquipmentComparableItem(oldItem), nativeEquipmentComparableItem(newItem));
+}
+
+function nativeEquipmentQuickslotPositionMatches(row: any, slots: any[]): boolean {
+  const item = nativeEquipmentRowItem(row);
+  if (!item) return false;
+  const slot = slots.find((entry: any) => String(entry.itemId) === String(row.itemId));
+  if (!slot) return !Object.prototype.hasOwnProperty.call(item, "quickslotpos");
+  return Number(item.quickslotpos) === Number(slot.slot);
+}
+
+function nativeEquipmentTalentPoints(combat: any, talent: string): number {
+  if (!combat || typeof combat !== "object") return 0;
+  let points = 0;
+  for (let tier = 1; tier <= 4; tier++) {
+    const values = combat["talents_tier_" + tier];
+    if (values && typeof values === "object" && !Array.isArray(values)) {
+      const value = values[talent];
+      if (value !== undefined) points = Math.max(points, Number(value) || 0);
+    }
+  }
+  return points;
+}
+
+/** Only the native equipment actions whose side effects are fully represented by the current protocol are admitted. */
+function isSupportedNativeEquipmentIntent(hero: any, item: any, action: string): boolean {
+  const className = String(item?.className || "");
+  const combat = parseNativeBundleObject(hero?.combatBundle);
+  const belongings = parseNativeBundleObject(hero?.inventoryBundle);
+  const decoded = nativeEquipmentRowItem(item);
+  if (!combat || !belongings || !decoded || !Array.isArray(belongings.inventory)) return false;
+  const weapon = className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon.");
+  const armor = className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor.");
+  if (!weapon && !armor) return false;
+  if (weapon && (className.endsWith(".MagesStaff") || String(combat.subClass || "") === "CHAMPION"
+      || (className.includes(".items.weapon.melee.") && String(combat.class || "") === "DUELIST"))) return false;
+  if (armor && (/(Warrior|Rogue|Mage|Huntress|Duelist|Cleric)Armor$/.test(className)
+      || decoded.seal != null)) return false;
+  if (action === "EQUIP") {
+    if (weapon && nativeEquipmentTalentPoints(combat, "SWIFT_EQUIP") > 0) return false;
+    if (weapon && nativeEquipmentTalentPoints(combat, "ADVENTURERS_INTUITION") === 2 && decoded.levelKnown !== true) return false;
+    if (armor && nativeEquipmentTalentPoints(combat, "VETERANS_INTUITION") === 2 && decoded.levelKnown !== true) return false;
+    if (String(combat.class || "") !== "CLERIC"
+        && nativeEquipmentTalentPoints(combat, "HOLY_INTUITION") > 0
+        && item.cursed === true && item.cursedKnown !== true) return false;
+    if (armor && String(combat.class || "") === "WARRIOR") {
+      const oldArmor = parseNativeInventoryIndex(hero).filter((candidate: any) => candidate.equipped === true
+        && String(candidate.className || "").startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor."));
+      if (oldArmor.length > 1) return false;
+      if (oldArmor.length === 1) {
+        const oldData = nativeEquipmentRowItem(oldArmor[0]);
+        if (!oldData || oldData.seal != null) return false;
+      }
+    }
+    // The standard equip code first detaches the selected item from the backpack. Restrict
+    // this protocol to direct backpack entries so a nested-bag transfer cannot drop old gear.
+    const id = String(item.itemId || "");
+    const direct = belongings.inventory.filter((entry: any) => nativeEquipmentPayloadId(entry) === id);
+    if (direct.length !== 1) return false;
+  } else if (action === "UNEQUIP") {
+    const backpack = belongings.inventory;
+    const bagCount = backpack.filter((entry: any) =>
+      nativeEquipmentPayloadId(entry) && String(nativeEquipmentBundleItem(entry)?.__className || "")
+        .startsWith("com.shatteredpixel.shatteredpixeldungeon.items.bags.")).length;
+    const capacity = Math.max(0, 20 + bagCount - (belongings.second_wep ? 1 : 0));
+    if (backpack.length >= capacity) return false;
+  }
+  return true;
+}
+
 export function isValidNativeEquipmentIntent(heroStateValue: unknown, dataValue: unknown, actionValue: unknown,
   currentDepthValue: unknown, player: any): boolean {
   const data: any = dataValue, action = String(actionValue || ""), depth = Number(currentDepthValue);
@@ -291,7 +407,110 @@ export function isValidNativeEquipmentIntent(heroStateValue: unknown, dataValue:
   if (!inventory || !parseNativeQuickslotIndex(hero)) return false;
   const target = inventory.filter((item: any) => String(item.itemId) === data.itemId);
   return target.length === 1 && String(target[0].className) === data.itemClass
-    && target[0].equipped === (action !== "EQUIP");
+    && target[0].equipped === (action !== "EQUIP")
+    && isSupportedNativeEquipmentIntent(hero, target[0], action);
+}
+
+/** A native equipment snapshot may only move one exact item between its typed Hero slot and backpack. */
+function isValidNativeEquipmentBelongingsMutation(previous: any, next: any, before: any[], after: any[],
+  action: string, itemId: string, itemClass: string): boolean {
+  const oldBelongings = parseNativeBundleObject(previous?.inventoryBundle);
+  const newBelongings = parseNativeBundleObject(next?.inventoryBundle);
+  if (!oldBelongings || !newBelongings || !Array.isArray(oldBelongings.inventory)
+      || !Array.isArray(newBelongings.inventory)) return false;
+  const slot = itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon.") ? "weapon"
+    : itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor.") ? "armor" : "";
+  if (!slot) return false;
+  for (const field of ["weapon", "armor", "artifact", "misc", "ring", "second_wep"]) {
+    if (field !== slot && !sameNativeItemValue(oldBelongings[field], newBelongings[field])) return false;
+  }
+  const oldTarget = before.find(row => String(row.itemId) === itemId);
+  const newTarget = after.find(row => String(row.itemId) === itemId);
+  if (!oldTarget || !newTarget) return false;
+  const oldEquipped = before.filter(row => row.equipped === true && row.className.startsWith(
+    "com.shatteredpixel.shatteredpixeldungeon.items." + (slot === "weapon" ? "weapon." : "armor.")));
+  if (oldEquipped.length > 1) return false;
+  const replaced = action === "EQUIP" ? oldEquipped.find(row => String(row.itemId) !== itemId) || null : null;
+  const priorSlotId = nativeEquipmentPayloadId(oldBelongings[slot]);
+  const nextSlotId = nativeEquipmentPayloadId(newBelongings[slot]);
+  if (action === "EQUIP") {
+    if (oldTarget.equipped !== false || newTarget.equipped !== true || nextSlotId !== itemId
+        || priorSlotId !== (replaced ? String(replaced.itemId) : "")) return false;
+  } else {
+    if (oldTarget.equipped !== true || newTarget.equipped !== false || priorSlotId !== itemId
+        || nextSlotId !== "") return false;
+  }
+
+  const oldRootItems = oldBelongings.inventory.map(nativeEquipmentBundleItem);
+  const newRootItems = newBelongings.inventory.map(nativeEquipmentBundleItem);
+  if (oldRootItems.some((item: any) => !item || !nativeEquipmentPayloadId(item))
+      || newRootItems.some((item: any) => !item || !nativeEquipmentPayloadId(item))) return false;
+  const oldIds = oldRootItems.map(nativeEquipmentPayloadId);
+  const newIds = newRootItems.map(nativeEquipmentPayloadId);
+  if (new Set(oldIds).size !== oldIds.length || new Set(newIds).size !== newIds.length) return false;
+  const oldDirectTarget = oldIds.filter(id => id === itemId).length;
+  if (action === "EQUIP" ? oldDirectTarget !== 1 : oldDirectTarget !== 0) return false;
+
+  const expected = oldRootItems.slice();
+  if (action === "EQUIP") {
+    expected.splice(expected.findIndex(item => nativeEquipmentPayloadId(item) === itemId), 1);
+    if (replaced) {
+      const row = after.find(candidate => String(candidate.itemId) === String(replaced.itemId));
+      const item = nativeEquipmentRowItem(row);
+      if (!item || row.equipped !== false) return false;
+      expected.push(item);
+    }
+  } else {
+    const item = nativeEquipmentRowItem(newTarget);
+    if (!item) return false;
+    expected.push(item);
+  }
+  if (expected.length !== newRootItems.length) return false;
+  const beforeById = new Map<string, any>(before.map(row => [String(row.itemId), row]));
+  const afterById = new Map<string, any>(after.map(row => [String(row.itemId), row]));
+  for (let index = 0; index < expected.length; index++) {
+    const expectedId = nativeEquipmentPayloadId(expected[index]);
+    const actualId = nativeEquipmentPayloadId(newRootItems[index]);
+    if (expectedId !== actualId) return false;
+    const row = afterById.get(actualId);
+    if (!row || row.equipped !== false || !nativeEquipmentPayloadMatchesRow(newRootItems[index], row)) return false;
+  }
+  for (const payload of oldRootItems) {
+    const id = nativeEquipmentPayloadId(payload), row = beforeById.get(id);
+    if (!row || row.equipped !== false || !nativeEquipmentPayloadMatchesRow(payload, row)) return false;
+  }
+  return true;
+}
+
+function isValidNativeEquipmentCombatBundleMutation(previous: any, next: any): boolean {
+  const beforeCombat = parseNativeBundleObject(previous?.combatBundle);
+  const afterCombat = parseNativeBundleObject(next?.combatBundle);
+  const beforeBelongings = parseNativeBundleObject(previous?.inventoryBundle);
+  const afterBelongings = parseNativeBundleObject(next?.inventoryBundle);
+  const beforeCooldown = Number(previous?.cooldown), afterCooldown = Number(next?.cooldown);
+  const beforeTime = Number(beforeCombat?.time), afterTime = Number(afterCombat?.time);
+  if (!beforeCombat || !afterCombat || !beforeBelongings || !afterBelongings
+      || !Number.isFinite(beforeCooldown) || !Number.isFinite(afterCooldown)
+      || !Number.isFinite(beforeTime) || !Number.isFinite(afterTime)
+      || afterCooldown < beforeCooldown - 0.06 || afterTime < beforeTime - 0.06
+      || Math.abs((afterTime - beforeTime) - (afterCooldown - beforeCooldown)) > 0.06) return false;
+  const belongingsKeys = new Set<string>([...Object.keys(beforeBelongings), ...Object.keys(afterBelongings)]);
+  const extract = (bundle: any) => {
+    const result: any = {};
+    for (const key of belongingsKeys) {
+      if (Object.prototype.hasOwnProperty.call(bundle, key)) result[key] = bundle[key];
+    }
+    return result;
+  };
+  if (!sameNativeItemValue(extract(beforeCombat), beforeBelongings)
+      || !sameNativeItemValue(extract(afterCombat), afterBelongings)) return false;
+  const withoutBelongingsAndTime = (value: any) => {
+    const copy: any = {...value};
+    for (const key of belongingsKeys) delete copy[key];
+    delete copy.time;
+    return copy;
+  };
+  return sameNativeItemValue(withoutBelongingsAndTime(beforeCombat), withoutBelongingsAndTime(afterCombat));
 }
 
 /** Checks native equip/unequip output without allowing any item, quantity, Gold, HP or shield forgery. */
@@ -305,9 +524,12 @@ export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue
       || accepted.expectedEquipped !== details.expectedEquipped || details.expectedEquipped !== (action === "EQUIP")
       || previous.hp !== next.hp || previous.ht !== next.ht || previous.pos !== next.pos
       || previous.shielding !== next.shielding || previous.gold !== next.gold
+      || previous.alchemyEnergy !== next.alchemyEnergy || previous.ankhCount !== next.ankhCount
+      || previous.blessedAnkhCount !== next.blessedAnkhCount
       || previous.ironKeyCount !== next.ironKeyCount || previous.crystalKeyCount !== next.crystalKeyCount
       || previous.wornKeyCount !== next.wornKeyCount || previous.goldenKeyCount !== next.goldenKeyCount
-      || previous.notesBundle !== next.notesBundle || previous.questStateBundle !== next.questStateBundle) return false;
+      || previous.notesBundle !== next.notesBundle || previous.questStateBundle !== next.questStateBundle
+      || !isValidNativeEquipmentCombatBundleMutation(previous, next)) return false;
   const before = parseNativeInventoryIndex(previous), after = parseNativeInventoryIndex(next);
   const beforeSlots = parseNativeQuickslotIndex(previous), afterSlots = parseNativeQuickslotIndex(next);
   if (!before || !after || !beforeSlots || !afterSlots || before.length !== after.length
@@ -315,7 +537,7 @@ export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue
   const beforeMap = new Map<string, any>(before.map((item: any) => [String(item.itemId), item]));
   const afterMap = new Map<string, any>(after.map((item: any) => [String(item.itemId), item]));
   if (beforeMap.size !== afterMap.size) return false;
-  let targetFound = false, priorEquipmentUnequipped = 0;
+  let targetFound = false, priorEquipmentUnequipped = 0, replacedItemId = "";
   for (const old of before) {
     const current = afterMap.get(String(old.itemId));
     if (!current) return false;
@@ -326,51 +548,54 @@ export function isValidNativeEquipmentMutation(previousValue: unknown, nextValue
           || !sameNativeItemValue(itemValueWithout(old, ["equipped", "cursedKnown", "serializedBundle"]),
             itemValueWithout(current, ["equipped", "cursedKnown", "serializedBundle"]))
           || old.cursed !== current.cursed
-          || (old.cursedKnown && !current.cursedKnown)) return false;
+          || (old.cursedKnown && !current.cursedKnown)
+          || !nativeEquipmentRowBundleTransitionMatches(old, current, true)) return false;
       targetFound = true;
     } else {
       if (!sameNativeItemValue(itemValueWithout(old, ["equipped"]), itemValueWithout(current, ["equipped"]))) return false;
       if (old.equipped !== current.equipped) {
-        if (action !== "EQUIP" || old.equipped !== true || current.equipped !== false) return false;
+        if (action !== "EQUIP" || old.equipped !== true || current.equipped !== false
+            || old.className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon.")
+              !== String(details.itemClass).startsWith("com.shatteredpixel.shatteredpixeldungeon.items.weapon.")
+            || old.className.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor.")
+              !== String(details.itemClass).startsWith("com.shatteredpixel.shatteredpixeldungeon.items.armor.")
+            || !nativeEquipmentRowBundleTransitionMatches(old, current, false)) return false;
         priorEquipmentUnequipped++;
-      }
+        replacedItemId = String(old.itemId);
+      } else if (String(old.serializedBundle) !== String(current.serializedBundle)
+          || old.cursedKnown !== current.cursedKnown) return false;
     }
   }
   if (!targetFound || priorEquipmentUnequipped > 1) return false;
+  for (const row of before) if (!nativeEquipmentQuickslotPositionMatches(row, beforeSlots)) return false;
+  for (const row of after) if (!nativeEquipmentQuickslotPositionMatches(row, afterSlots)) return false;
 
-  // Equipment actions may refresh native item bundles, but they must not silently redirect
-  // quickslots or change their quantities/classes. A bundle may change only for an item whose
-  // equipped state actually changed in this accepted transaction.
   const beforeSlotsByIndex = new Map<number, any>(beforeSlots.map((slot: any) => [Number(slot.slot), slot]));
   const afterSlotsByIndex = new Map<number, any>(afterSlots.map((slot: any) => [Number(slot.slot), slot]));
   if (beforeSlotsByIndex.size !== afterSlotsByIndex.size) return false;
+  const targetHadSlot = beforeSlots.some((slot: any) => String(slot.itemId) === String(details.itemId));
+  const transferredSlot = action === "EQUIP" && !targetHadSlot && replacedItemId
+    ? beforeSlots.find((slot: any) => String(slot.itemId) === replacedItemId) || null : null;
+  if (!targetHadSlot && action === "EQUIP" && replacedItemId
+      && beforeSlots.some((slot: any) => String(slot.itemId) === replacedItemId) && !transferredSlot) return false;
   for (const [slotIndex, oldSlot] of beforeSlotsByIndex) {
     const current = afterSlotsByIndex.get(slotIndex);
-    if (!current || String(oldSlot.itemId) !== String(current.itemId)
-        || String(oldSlot.className) !== String(current.className)
-        || Number(oldSlot.quantity) !== Number(current.quantity)) return false;
-    const oldItem = beforeMap.get(String(oldSlot.itemId)), currentItem = afterMap.get(String(current.itemId));
-    if (!oldItem || !currentItem || String(oldSlot.className) !== String(oldItem.className)
-        || String(current.className) !== String(currentItem.className)
-        || Number(oldSlot.quantity) !== Number(oldItem.quantity)
+    if (!current) return false;
+    const expectedId = transferredSlot && Number(transferredSlot.slot) === slotIndex
+      ? String(details.itemId) : String(oldSlot.itemId);
+    if (String(current.itemId) !== expectedId) return false;
+    const currentItem = afterMap.get(expectedId);
+    const oldItem = beforeMap.get(String(oldSlot.itemId));
+    if (!currentItem || !oldItem || String(current.className) !== String(currentItem.className)
         || Number(current.quantity) !== Number(currentItem.quantity)
-        || String(oldSlot.serializedBundle) !== String(oldItem.serializedBundle)
-        || String(current.serializedBundle) !== String(currentItem.serializedBundle)) {
-      // Inventory snapshots and slots serialize the same referenced item object. Only an item
-      // whose equipped state changed may refresh that bundle; no other metadata may change.
-      if (!oldItem || !currentItem
-          || oldItem.equipped === currentItem.equipped
-          || String(oldSlot.itemId) !== String(oldItem.itemId)
-          || String(current.itemId) !== String(currentItem.itemId)
-          || String(oldSlot.className) !== String(oldItem.className)
-          || String(current.className) !== String(currentItem.className)
-          || Number(oldSlot.quantity) !== Number(oldItem.quantity)
-          || Number(current.quantity) !== Number(currentItem.quantity)
-          || (String(oldSlot.serializedBundle) !== String(oldItem.serializedBundle))
-          || (String(current.serializedBundle) !== String(currentItem.serializedBundle))) return false;
-    }
+        || !nativeEquipmentPayloadMatchesRow({item: nativeEquipmentBundleItem(JSON.parse(current.serializedBundle))}, currentItem)) return false;
+    if (expectedId === String(details.itemId)) {
+      if (String(current.className) !== String(details.itemClass)) return false;
+    } else if (String(current.className) !== String(oldSlot.className)
+        || Number(current.quantity) !== Number(oldSlot.quantity)) return false;
   }
-  return true;
+  return isValidNativeEquipmentBelongingsMutation(previous, next, before, after, action,
+    String(details.itemId), String(details.itemClass));
 }
 
 /** Chest opening must preserve the same heap/items and consume only the proper key counter. */
