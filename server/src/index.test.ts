@@ -1751,6 +1751,60 @@ describe("Native equipment, quickslot, and chest transactions", () => {
     expect(isValidNativeEquipmentMutation(JSON.stringify(before),JSON.stringify(hero([after.inventoryItemsJson && JSON.parse(after.inventoryItemsJson)[0],item("stable-forged-001","com.example.Forged")],{cooldown:1})),
       "EQUIP",detail,accepted)).toBe(false);
   });
+  it("rejects nested-bag, identification, Duelist-buff, sealed-armor, and full-capacity equipment mutations before admission",()=>{
+    const intentFor=(itemId:string,itemClass:string,action="EQUIP")=>({
+      itemId,itemClass,expectedEquipped:action==="EQUIP",depth:4,from:9,to:9,targetPos:9,engineActionCost:1
+    });
+    const withTalent=(state:any,tier:number,talent:string,points:number,className?:string)=>{
+      const combat=JSON.parse(state.combatBundle);
+      combat["talents_tier_"+tier][talent]=points;
+      if(className) combat.class=className;
+      return {...state,combatBundle:JSON.stringify(combat)};
+    };
+    const talentWeapon=item("stable-adventurer-talent-001");
+    const adventurer=withTalent(hero([talentWeapon]),2,"ADVENTURERS_INTUITION",2);
+    expect(isValidNativeEquipmentIntent(JSON.stringify(adventurer),
+      intentFor(talentWeapon.itemId,talentWeapon.className),"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+
+    const armorClass="com.shatteredpixel.shatteredpixeldungeon.items.armor.LeatherArmor";
+    const veteranArmor=item("stable-veteran-talent-001",armorClass,1,false,nativeItem("stable-veteran-talent-001",armorClass));
+    const veteran=withTalent(hero([veteranArmor]),2,"VETERANS_INTUITION",2);
+    expect(isValidNativeEquipmentIntent(JSON.stringify(veteran),
+      intentFor(veteranArmor.itemId,armorClass),"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+
+    const oldDuelist=item("stable-duelist-old-001",cls,1,true,nativeItem("stable-duelist-old-001",cls),true);
+    const rangedClass="com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.Shuriken";
+    const newRanged=item("stable-duelist-new-001",rangedClass);
+    const duelist=withTalent(hero([oldDuelist,newRanged]),1,"SWIFT_EQUIP",0,"DUELIST");
+    const duelistCombat=JSON.parse(duelist.combatBundle); duelistCombat.subClass="NONE";
+    duelist.combatBundle=JSON.stringify(duelistCombat);
+    expect(isValidNativeEquipmentIntent(JSON.stringify(duelist),
+      intentFor(newRanged.itemId,rangedClass),"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+
+    const oldArmorClass="com.shatteredpixel.shatteredpixeldungeon.items.armor.LeatherArmor";
+    const newArmorClass="com.shatteredpixel.shatteredpixeldungeon.items.armor.MailArmor";
+    const oldArmor=item("stable-sealed-old-armor-001",oldArmorClass,1,true,
+      nativeItem("stable-sealed-old-armor-001",oldArmorClass,{cursedKnown:true,seal:{__className:"BrokenSeal"}}),true);
+    const newArmor=item("stable-sealed-new-armor-001",newArmorClass);
+    const sealed=hero([oldArmor,newArmor]);
+    expect(isValidNativeEquipmentIntent(JSON.stringify(sealed),
+      intentFor(newArmor.itemId,newArmorClass),"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+
+    const fullInventory=Array.from({length:20},(_,i)=>item("stable-capacity-item-"+String(i).padStart(3,"0")));
+    const equipped=item("stable-capacity-equipped-001",cls,1,true,nativeItem("stable-capacity-equipped-001",cls,{cursedKnown:true}),true);
+    const full=hero([equipped,...fullInventory]);
+    expect(isValidNativeEquipmentIntent(JSON.stringify(full),
+      intentFor(equipped.itemId,cls,"UNEQUIP"),"UNEQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+
+    const nestedTarget=item("stable-nested-gear-001");
+    const nested=hero([nestedTarget]);
+    nested.inventoryBundle=JSON.stringify({inventory:[{
+      __className:"com.shatteredpixel.shatteredpixeldungeon.items.bags.SeedPouch",
+      multiplayer_item_id:"stable-nested-bag-001",items:[JSON.parse(nestedTarget.serializedBundle).item]
+    }]});
+    expect(isValidNativeEquipmentIntent(JSON.stringify(nested),
+      intentFor(nestedTarget.itemId,cls),"EQUIP",4,{pos:9,state:"ALIVE"})).toBe(false);
+  });
   it("moves the old equipment quickslot to the replacement only when the original engine keeps the same slot",()=>{
     const oldId="stable-old-dagger-001",newId="stable-new-dagger-001";
     const oldBefore=item(oldId,cls,1,true,nativeItem(oldId,cls,{cursedKnown:true,quickslotpos:0}),true);
