@@ -3141,6 +3141,14 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
     if (!combat || nativeEquipmentTalentPoints(combat, "THIEFS_INTUITION") === 2) return false;
   }
   if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack") return false;
+  const nativeDartPrefix = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.";
+  if (itemClass.startsWith(nativeDartPrefix) && !itemClass.endsWith(".Dart")) {
+    if (typeof trustedHeroStateValue !== "string") return false;
+    let trustedHero: any;
+    try { trustedHero = JSON.parse(trustedHeroStateValue); } catch (_) { return false; }
+    const inventory = parseNativeInventoryIndex(trustedHero);
+    if (!inventory || inventory.some((row: any) => String(row.className) === itemClass)) return false;
+  }
   if (itemClass.toLowerCase().includes("bag")) {
     const bundleRoot = parseNativeBundleObject(data.itemBundle);
     const bagItem = nativeEquipmentBundleItem(bundleRoot);
