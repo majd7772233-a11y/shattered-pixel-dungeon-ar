@@ -3140,6 +3140,7 @@ export function isValidNativePickupIntent(level: any, dataValue: unknown, curren
     const combat = parseNativeBundleObject(trustedHero?.combatBundle);
     if (!combat || nativeEquipmentTalentPoints(combat, "THIEFS_INTUITION") === 2) return false;
   }
+  if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack") return false;
   if (itemClass.toLowerCase().includes("bag")) {
     const bundleRoot = parseNativeBundleObject(data.itemBundle);
     const bagItem = nativeEquipmentBundleItem(bundleRoot);
