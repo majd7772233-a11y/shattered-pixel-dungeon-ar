@@ -1470,6 +1470,50 @@ export function isValidNativeAbilityMutation(previousValue: unknown, nextValue: 
   return changedArmorRows===1;
 }
 
+/** Parses the original native Item wrapper used by SPDLevelSnapshot.currentItemBundle(). */
+function nativeBuyItemBundle(value: unknown): any | null {
+  const root = parseNativeBundleObject(value);
+  return root && root.item && typeof root.item === "object" && !Array.isArray(root.item) ? root : null;
+}
+
+/** The only permitted bundle difference when collecting a new item is its quickslot index. */
+function nativeBuyBundleMatchesIgnoringQuickslot(sourceValue: unknown, resultValue: unknown): boolean {
+  const source = nativeBuyItemBundle(sourceValue), result = nativeBuyItemBundle(resultValue);
+  if (!source || !result) return false;
+  delete source.item.quickslotpos;
+  delete result.item.quickslotpos;
+  return sameNativeItemValue(source, result);
+}
+
+/** A merge is safe only when every serialized native property other than ID, quantity and quickslot agrees. */
+function nativeBuyBundleMergeCompatible(sourceValue: unknown, targetValue: unknown): boolean {
+  const source = nativeBuyItemBundle(sourceValue), target = nativeBuyItemBundle(targetValue);
+  if (!source || !target) return false;
+  for (const key of ["multiplayer_item_id", "quantity", "quickslotpos"]) {
+    delete source.item[key];
+    delete target.item[key];
+  }
+  return sameNativeItemValue(source, target);
+}
+
+/** Returns true when a talent is active, false when absent, or null for an incomplete talent bundle. */
+function nativeHeroHasTalent(hero: any, talentName: string, minimumRank: number): boolean | null {
+  const combat = parseNativeBundleObject(hero && hero.combatBundle);
+  if (!combat) return null;
+  for (let tierNumber = 1; tierNumber <= 4; tierNumber++) {
+    const tier = combat["talents_tier_" + tierNumber];
+    if (!tier || typeof tier !== "object" || Array.isArray(tier)) return null;
+    const points = tier[talentName] === undefined ? 0 : Number(tier[talentName]);
+    if (!Number.isInteger(points) || points < 0 || points > 2) return null;
+    if (points >= minimumRank) return true;
+  }
+  const replacements = combat.replacements;
+  if (!replacements || typeof replacements !== "object" || Array.isArray(replacements)) return null;
+  if (Object.entries(replacements).some(([from, to]) =>
+      String(from) === talentName || String(to) === talentName)) return true;
+  return false;
+}
+
 /** The buy quote must match native pricing on the exact single-item FOR_SALE heap. */
 export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDepthValue: unknown,
   playerIdValue: unknown, player: any, heroStateValue: unknown): boolean {
@@ -1489,6 +1533,7 @@ export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDe
       || typeof data.stackable !== "boolean" || !Number.isInteger(price) || price < 0 || price > 10000000
       || !Number.isInteger(data.itemLevel) || data.itemLevel < -100 || data.itemLevel > 10000
       || typeof data.cursed !== "boolean" || typeof data.cursedKnown !== "boolean"
+      || typeof data.itemBundle !== "string" || data.itemBundle.length < 1 || data.itemBundle.length > 200000
       || typeof data.acquiredByInventory !== "boolean" || !Number.isFinite(data.engineActionCost)
       || data.engineActionCost < 0 || data.engineActionCost > 10) return false;
   const matches = level.heaps.filter((heap: any) => String(heap?.heapId || "") === heapId);
@@ -1499,14 +1544,27 @@ export function isValidNativeBuyIntent(level: any, dataValue: unknown, currentDe
   if (String(item?.itemId || "") !== itemId || String(item?.className || "") !== itemClass
       || Number(item?.quantity) !== quantity || item?.stackable !== data.stackable || item?.shopPrice !== price
       || Number(item?.level) !== data.itemLevel || item?.cursed !== data.cursed || item?.cursedKnown !== data.cursedKnown
-      || typeof item?.serializedBundle !== "string" || !item.serializedBundle.includes(itemId)) return false;
+      || typeof item?.serializedBundle !== "string" || item.serializedBundle !== data.itemBundle
+      || !item.serializedBundle.includes(itemId)) return false;
+  const sourceBundle = nativeBuyItemBundle(data.itemBundle);
+  if (!sourceBundle || String(sourceBundle.item.__className || "") !== itemClass
+      || String(sourceBundle.item.multiplayer_item_id || "") !== itemId
+      || Number(sourceBundle.item.quantity) !== quantity) return false;
+  // Bag/Wand collection performs nested ownership or charge mutations outside a BUY transaction.
+  if (itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.bags.")
+      || itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.wands.")) return false;
   if (data.acquiredByInventory && resultHeapId !== "") return false;
   if (!data.acquiredByInventory && (resultHeapId.length < 8 || resultHeapId.length > 80 || resultItemId !== itemId)) return false;
   let hero: any;
   try { hero = JSON.parse(heroStateValue); } catch (_) { return false; }
-  return Number(hero?.pos) === pos && Number.isInteger(hero?.gold) && hero.gold >= price
-    && Number.isInteger(hero?.hp) && hero.hp > 0
-    && !!parseNativeInventoryIndex(hero) && !!parseNativeQuickslotIndex(hero);
+  if (Number(hero?.pos) !== pos || !Number.isInteger(hero?.gold) || hero.gold < price
+      || !Number.isInteger(hero?.hp) || hero.hp <= 0
+      || !parseNativeInventoryIndex(hero) || !parseNativeQuickslotIndex(hero)) return false;
+  if (itemClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.items.rings.")) {
+    const thiefIntuition = nativeHeroHasTalent(hero, "THIEFS_INTUITION", 2);
+    if (thiefIntuition !== false) return false;
+  }
+  return true;
 }
 
 /** Deducts precisely the native sale price and adds/merges the exact bought item, or retains inventory if full. */
