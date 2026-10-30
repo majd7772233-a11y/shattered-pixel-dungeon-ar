@@ -21,6 +21,17 @@ public class MultiplayerActionDispatcher {
                 "com.shatteredpixel.shatteredpixeldungeon.items.rings.") || thievesIntuitionPoints != 2;
     }
 
+    /** A LostBackpack restores equipment, HP and buffs; that compound pickup is not a plain inventory add. */
+    public static boolean supportsNativeLostBackpackPickup(Class<?> itemClass) {
+        return itemClass != null
+                && !com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack.class.isAssignableFrom(itemClass);
+    }
+
+    /** Merging a TippedDart creates a second regular Dart, potentially in a deferred floor Actor. */
+    public static boolean supportsNativeTippedDartPickup(boolean hasSimilarStack) {
+        return !hasSimilarStack;
+    }
+
     public static void onHeroPerformAction(HeroAction action) {
         Hero hero = Dungeon.hero;
         onHeroPerformAction(action, hero == null ? 0f : hero.cooldown(),
@@ -128,6 +139,23 @@ public class MultiplayerActionDispatcher {
                     hero.pointsInTalent(com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent.THIEFS_INTUITION))) {
                 hero.rejectUnsupportedMultiplayerWorldAction();
                 return;
+            }
+            if (!supportsNativeLostBackpackPickup(item.getClass())) {
+                hero.rejectUnsupportedMultiplayerWorldAction();
+                return;
+            }
+            if (item instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.darts.TippedDart) {
+                boolean hasSimilarStack = false;
+                for (com.shatteredpixel.shatteredpixeldungeon.items.Item existing : hero.belongings.backpack.items) {
+                    if (item.isSimilar(existing)) {
+                        hasSimilarStack = true;
+                        break;
+                    }
+                }
+                if (!supportsNativeTippedDartPickup(hasSimilarStack)) {
+                    hero.rejectUnsupportedMultiplayerWorldAction();
+                    return;
+                }
             }
             // Native SPD may automatically store a picked-up item inside a special Bag, or move
             // existing backpack items into a new Bag. Reject these compound mutations pre-effect.
