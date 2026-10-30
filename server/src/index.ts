@@ -1243,12 +1243,13 @@ export function mergeNativeItemStatusState(previousValue: unknown, reportedValue
   actionValue: unknown, itemClassValue: unknown): {potionStatusBundle:string,scrollStatusBundle:string} | null {
   let previous: any, reported: any;
   try {
-    previous = JSON.parse(String(previousValue || ""));
-    reported = JSON.parse(String(reportedValue || ""));
+    previous = typeof previousValue === "string" ? JSON.parse(previousValue) : previousValue;
+    reported = typeof reportedValue === "string" ? JSON.parse(reportedValue) : reportedValue;
   } catch (_) { return null; }
+  if (!previous || typeof previous !== "object" || Array.isArray(previous)
+      || !reported || typeof reported !== "object" || Array.isArray(reported)) return null;
   const action = String(actionValue || ""), itemClass = String(itemClassValue || "");
-  if (!previous || !reported || typeof reported.potionStatusBundle !== "string"
-      || typeof reported.scrollStatusBundle !== "string"
+  if (typeof reported.potionStatusBundle !== "string" || typeof reported.scrollStatusBundle !== "string"
       || !isValidNativeItemStatusMutation(previous,reported,action,itemClass)) return null;
   return {
     potionStatusBundle: reported.potionStatusBundle,
