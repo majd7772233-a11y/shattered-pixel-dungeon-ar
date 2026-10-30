@@ -245,6 +245,16 @@ public class WorldSnapshot {
         if (Dungeon.level != null && nativePos >= 0 && nativePos < Dungeon.level.length()) {
             hero.pos = nativePos;
         }
+        // Potion/Scroll handlers are static run-global state. Reconcile them before native
+        // inventory item bundles are restored so remote Hero replicas share the same labels.
+        Bundle potionStatus = readBundle(heroState.getString("potionStatusBundle"));
+        if (potionStatus != null) {
+            com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.restoreMultiplayerStatusBundle(potionStatus);
+        }
+        Bundle scrollStatus = readBundle(heroState.getString("scrollStatusBundle"));
+        if (scrollStatus != null) {
+            com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.restoreMultiplayerStatusBundle(scrollStatus);
+        }
         Bundle nativeHero = readBundle(heroState.getString("combatBundle"));
         if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
         Bundle inventory = readBundle(heroState.getString("inventoryBundle"));
