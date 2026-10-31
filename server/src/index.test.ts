@@ -2439,6 +2439,22 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify({...after,hp:11}),tick(cls,70))).toBe(false);
   });
+  it("accepts only native FlavourBuff timer expiry and rejects early or side-effecting removal",()=>{
+    const safe=["Chill","Cripple","Slow","Speed","Weakness"];
+    for (const name of safe) {
+      const cls=buffs+name;
+      const previous=stateWithBuff(cls,120,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
+      const before=stateWithBuff(cls,120,9,{}, {cooldown:1,buffCooldown_0:0,hp:10});
+      const expired:any={...before,buffCount:0};
+      delete expired.buff_0;
+      delete expired.buffCooldown_0;
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(expired),tick(cls,120))).toBe(true);
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+        JSON.stringify({...expired,hp:9}),tick(cls,120))).toBe(false);
+      const notDue=stateWithBuff(cls,120,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(notDue),tick(cls,120))).toBe(false);
+    }
+  });
   it("validates Barrier decay only as one shield point or unchanged shielding",()=>{
     const cls=buffs+"Barrier";
     const previous=stateWithBuff(cls,50,9,{shielding:5,partialLostShield:0.7},{cooldown:2,buffCooldown_0:1,hp:10,shielding:5});

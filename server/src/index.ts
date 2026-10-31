@@ -3816,7 +3816,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const expirable = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness"
   ]);
   for (const [key,row] of oldRows) {
     const current = preRows.get(key);
@@ -3837,7 +3842,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
         after.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)))) return false;
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness"
   ]);
   if (simpleExpiry.has(buffClass)) {
     return !result && source.time <= before.clock + 0.06

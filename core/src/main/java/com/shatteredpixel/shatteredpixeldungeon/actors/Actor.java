@@ -389,9 +389,22 @@ public abstract class Actor implements Bundlable {
 					current = null;
 				} else {
 					NativeHeroBuffTickPublisher.TickCapture heroBuffTick =
-                            NativeHeroBuffTickPublisher.capture(acting);
-                    doNext = acting.act();
-                    if (heroBuffTick != null) NativeHeroBuffTickPublisher.publish(heroBuffTick);
+
+					        NativeHeroBuffTickPublisher.capture(acting);
+
+					try {
+
+					    doNext = acting.act();
+
+					} catch (RuntimeException | Error actorFailure) {
+
+					    NativeHeroBuffTickPublisher.abort(heroBuffTick);
+
+					    throw actorFailure;
+
+					}
+
+					if (heroBuffTick != null) NativeHeroBuffTickPublisher.publish(heroBuffTick);
                     if (doNext) {
                         if (shouldPublishMultiplayerSharedActorResult(acting)) {
                             MultiplayerManager.getInstance().publishNativeWorldActorResult(acting);

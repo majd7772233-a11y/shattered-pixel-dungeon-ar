@@ -213,6 +213,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mob));
         Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(blob));
         Assert.assertTrue(Actor.shouldSkipMultiplayerSharedActor(mobBuff));
+        RemoteHero remoteHero = new RemoteHero();
+        Buff remoteHeroBuff = new Buff();
+        remoteHeroBuff.target = remoteHero;
+        Assert.assertTrue("Remote Hero Buffs must not be simulated locally",
+                Actor.shouldSkipMultiplayerSharedActor(remoteHeroBuff));
         Assert.assertFalse("A local Hero turn must remain local", Actor.shouldSkipMultiplayerSharedActor(hero));
         Assert.assertTrue(Actor.isMultiplayerSharedActor(mob));
         Assert.assertTrue(Actor.isMultiplayerSharedActor(blob));

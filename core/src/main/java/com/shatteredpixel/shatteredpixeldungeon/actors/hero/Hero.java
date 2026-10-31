@@ -2243,11 +2243,13 @@ public class Hero extends Char {
 					+ ",\"blessedAnkhCountBefore\":" + blessedAnkhCountBefore
 					+ ",\"blessedAnkhCountAfter\":" + blessedAnkhCountAfter
 					+ ",\"heroStateJson\":" + new com.badlogic.gdx.utils.Json().toJson(SPDLevelSnapshot.currentHeroStateJson(this)) + "}";
-			MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
+			String revivalRequestId = MultiplayerManager.getInstance().sendAction(NetworkActionType.REVIVE, revival);
+			NativeHeroBuffTickPublisher.refreshCaptureBaselineAfterRevive(this, revivalRequestId);
 		}
 
 		if (!revivedByBlessedAnkh && !nativeAttackInProgress && this == Dungeon.hero && !(src instanceof Mob)
-				&& MultiplayerManager.getInstance().isMultiplayerActive() && targetCombatStateChanged) {
+				&& MultiplayerManager.getInstance().isMultiplayerActive() && targetCombatStateChanged
+				&& (!NativeHeroBuffTickPublisher.isCapturingPeriodicHeroDamage(this) || !isAlive())) {
 			String state = HP <= 0 ? "DEAD" : "ALIVE";
 			String environmentDamage = "{\"sourceType\":\"ENVIRONMENT\""
 					+ ",\"sourceClass\":" + new com.badlogic.gdx.utils.Json().toJson(src.getClass().getName())
