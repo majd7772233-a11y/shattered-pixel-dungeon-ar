@@ -28,6 +28,12 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop;
+import com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey;
+import com.shatteredpixel.shatteredpixeldungeon.items.quest.CorpseDust;
+import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
+import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify;
+import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Level;
 import com.shatteredpixel.shatteredpixeldungeon.levels.Terrain;
 import com.shatteredpixel.shatteredpixeldungeon.levels.traps.Trap;
@@ -809,6 +815,69 @@ public class NativeCombatRuntimeIntegrationTest {
         snapshot.heaps.clear();
         snapshot.heaps.add(heapRow);
 
+        Heap remainsHeap = new Heap();
+        remainsHeap.setMultiplayerHeapId("stable-remains-heap-0001");
+        remainsHeap.pos = heapPos + 1;
+        remainsHeap.type = Heap.Type.REMAINS;
+        Dewdrop dew = new Dewdrop();
+        dew.quantity(2);
+        remainsHeap.items.addLast(dew);
+        remainsHeap.items.addLast(new IronKey(Dungeon.depth));
+        remainsHeap.items.addLast(new CorpseDust());
+        Map<String, Object> remainsRow = new HashMap<>();
+        remainsRow.put("heapId", remainsHeap.multiplayerHeapId());
+        remainsRow.put("pos", remainsHeap.pos);
+        remainsRow.put("type", remainsHeap.type.name());
+        remainsRow.put("seen", false);
+        remainsRow.put("haunted", false);
+        remainsRow.put("hidden", false);
+        remainsRow.put("autoExplored", false);
+        ArrayList<Map<String, Object>> remainsItems = new ArrayList<>();
+        for (Item item : remainsHeap.items) {
+            Bundle itemBundle = new Bundle();
+            itemBundle.put("item", item);
+            Map<String, Object> itemRow = new HashMap<>();
+            itemRow.put("itemId", item.multiplayerItemId());
+            itemRow.put("className", item.getClass().getName());
+            itemRow.put("quantity", item.quantity());
+            itemRow.put("level", item.level());
+            itemRow.put("cursed", item.cursed);
+            itemRow.put("cursedKnown", item.cursedKnown);
+            itemRow.put("stackable", item.stackable);
+            itemRow.put("serializedBundle", itemBundle.toString());
+            remainsItems.add(itemRow);
+        }
+        remainsRow.put("items", remainsItems);
+        snapshot.heaps.add(remainsRow);
+
+        Heap skeletonHeap = new Heap();
+        skeletonHeap.setMultiplayerHeapId("stable-skeleton-heap-0001");
+        skeletonHeap.pos = heapPos + 2;
+        skeletonHeap.type = Heap.Type.SKELETON;
+        Item skeletonItem = new Item();
+        skeletonHeap.items.addLast(skeletonItem);
+        Map<String, Object> skeletonRow = new HashMap<>();
+        skeletonRow.put("heapId", skeletonHeap.multiplayerHeapId());
+        skeletonRow.put("pos", skeletonHeap.pos);
+        skeletonRow.put("type", skeletonHeap.type.name());
+        skeletonRow.put("seen", true);
+        skeletonRow.put("haunted", false);
+        skeletonRow.put("hidden", false);
+        skeletonRow.put("autoExplored", false);
+        Bundle skeletonItemBundle = new Bundle();
+        skeletonItemBundle.put("item", skeletonItem);
+        Map<String, Object> skeletonItemRow = new HashMap<>();
+        skeletonItemRow.put("itemId", skeletonItem.multiplayerItemId());
+        skeletonItemRow.put("className", skeletonItem.getClass().getName());
+        skeletonItemRow.put("quantity", skeletonItem.quantity());
+        skeletonItemRow.put("level", skeletonItem.level());
+        skeletonItemRow.put("cursed", skeletonItem.cursed);
+        skeletonItemRow.put("cursedKnown", skeletonItem.cursedKnown);
+        skeletonItemRow.put("stackable", skeletonItem.stackable);
+        skeletonItemRow.put("serializedBundle", skeletonItemBundle.toString());
+        skeletonRow.put("items", java.util.Collections.singletonList(skeletonItemRow));
+        snapshot.heaps.add(skeletonRow);
+
         FrostTrap authoritativeTrap = new FrostTrap();
         authoritativeTrap.pos = trapPos;
         authoritativeTrap.visible = true;
@@ -889,6 +958,19 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue("Native heap item order must survive reconstruction",
                 restoredHeap.items.getLast().getClass() == Item.class);
 
+        Heap restoredRemains = level.heaps.get(heapPos + 1);
+        Assert.assertNotNull("Remains heap must survive a full snapshot", restoredRemains);
+        Assert.assertEquals(Heap.Type.REMAINS, restoredRemains.type);
+        Assert.assertEquals(3, restoredRemains.items.size());
+        Assert.assertTrue(restoredRemains.items.get(0) instanceof Dewdrop);
+        Assert.assertEquals(2, restoredRemains.items.get(0).quantity());
+        Assert.assertTrue(restoredRemains.items.get(1) instanceof IronKey);
+        Assert.assertTrue(restoredRemains.items.get(2) instanceof CorpseDust);
+        Heap restoredSkeleton = level.heaps.get(heapPos + 2);
+        Assert.assertNotNull("Skeleton/bones heap must survive a full snapshot", restoredSkeleton);
+        Assert.assertEquals(Heap.Type.SKELETON, restoredSkeleton.type);
+        Assert.assertEquals(1, restoredSkeleton.items.size());
+
         Trap restoredTrap = level.traps.get(trapPos);
         Assert.assertTrue(restoredTrap instanceof FrostTrap);
         Assert.assertFalse(restoredTrap.active);
@@ -914,7 +996,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertTrue("A second apply must not duplicate native heaps/traps/plants/blobs",
                 WorldSnapshot.restoreWorld(snapshot));
-        Assert.assertEquals(1, level.heaps.keyArray().length);
+        Assert.assertEquals(3, level.heaps.keyArray().length);
         Assert.assertEquals(1, level.traps.keyArray().length);
         Assert.assertEquals(1, level.plants.keyArray().length);
         Assert.assertEquals(1, level.blobs.size());
@@ -978,6 +1060,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Statistics.enemiesSlain = 9;
         Statistics.ankhsUsed = 2;
         Dungeon.LimitedDrops.UPGRADE_SCROLLS.count = 2;
+        Bundle catalogState = new Bundle();
+        catalogState.put("catalog_classes", new Class[]{PotionOfHealing.class});
+        catalogState.put("catalog_seen", new boolean[]{true});
+        catalogState.put("catalog_uses", new int[]{2});
+        Catalog.restoreMultiplayer(catalogState);
 
         Item carriedStack = new Item();
         carriedStack.stackable = true;
@@ -1005,6 +1092,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Statistics.enemiesSlain = 0;
         Statistics.ankhsUsed = 0;
         Dungeon.LimitedDrops.UPGRADE_SCROLLS.count = 0;
+        Bundle staleCatalogState = new Bundle();
+        staleCatalogState.put("catalog_classes", new Class[]{PotionOfHealing.class, ScrollOfIdentify.class});
+        staleCatalogState.put("catalog_seen", new boolean[]{true, true});
+        staleCatalogState.put("catalog_uses", new int[]{2, 1});
+        Catalog.restoreMultiplayer(staleCatalogState);
         Dungeon.chapters.clear();
         Dungeon.generatedLevels.clear();
         Dungeon.droppedItems = new SparseArray<>();
@@ -1018,6 +1110,11 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(9, Statistics.enemiesSlain);
         Assert.assertEquals(2, Statistics.ankhsUsed);
         Assert.assertEquals(2, Dungeon.LimitedDrops.UPGRADE_SCROLLS.count);
+        Assert.assertTrue(Catalog.isSeen(PotionOfHealing.class));
+        Assert.assertEquals(2, Catalog.useCount(PotionOfHealing.class));
+        Assert.assertFalse("A stale prior-run item must not remain identified",
+                Catalog.isSeen(ScrollOfIdentify.class));
+        Assert.assertEquals(0, Catalog.useCount(ScrollOfIdentify.class));
         Assert.assertTrue(Dungeon.chapters.contains(2));
         Assert.assertTrue(Dungeon.generatedLevels.contains(1));
         Assert.assertEquals(1, Dungeon.droppedItems.get(3).size());

@@ -6668,7 +6668,7 @@ export class MatchRoom {
             // The defender-authority client also simulates the attacker's native Hero instance.
             // Persist its post-attack state (cooldowns, procs, inventory and reactive damage) so
             // the attacker cannot keep its separate optimistic RNG result.
-            const mergedAttackerState = this.reconcileCombatAttackerState(pending, payload.heroStateJson);
+            let mergedAttackerState: string | null = null;
             const levelPublisherRow = this.sql.exec(
               "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
             const secondaryMobAuthority = String(levelPublisherRow?.value || "") === session.playerId;
@@ -6687,6 +6687,15 @@ export class MatchRoom {
               .filter((delta: any) => Number(delta.hpAfter) === 0)
               .map((delta: any) => Number(delta.posAfter));
             const secondaryHasDeaths = secondaryDeathPositions.length > 0;
+            mergedAttackerState = this.reconcileCombatAttackerState(
+              pending, payload.heroStateJson, secondaryHasDeaths && secondaryMobAuthority);
+            const rewardIds = secondaryHasDeaths && secondaryMobAuthority
+              ? nativeMobKillRewardIds(this.currentDepth, "", 1, secondaryMobPayload?.deltas || [])
+              : [];
+            const existingRewardIds = rewardIds == null ? [] : rewardIds.filter(rewardId =>
+              this.sql.exec("SELECT reward_id FROM native_mob_reward_claims WHERE reward_id = ?", rewardId).toArray().length > 0);
+            const rewardsUnclaimed = rewardIds != null
+              && areNativeMobRewardClaimsAvailable(rewardIds, existingRewardIds);
             const pvpProjectileTarget = Number(data.projectileMutation?.targetPos);
             const secondaryLootPositions = data.projectileOutcome === "HEAP"
               ? [...secondaryDeathPositions, ...(Number.isInteger(pvpProjectileTarget) ? [pvpProjectileTarget] : [])]
@@ -6722,7 +6731,7 @@ export class MatchRoom {
               && shieldBefore === Number(trusted?.shielding) && targetBuffsValid
               && isValidNativeCombatBuffs(data.targetBuffs)
               && isValidNativeHeroStateJson(String(data.targetHeroStateJson || ""), { hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter })
-              && mergedState !== null && mergedAttackerState !== null && hpDeltaValid
+              && mergedState !== null && mergedAttackerState !== null && hpDeltaValid && rewardsUnclaimed
               && Number.isInteger(hpAfter) && hpAfter >= 0 && Number.isInteger(htAfter) && htAfter >= 1 && hpAfter <= htAfter
               && Number.isInteger(posAfter) && posAfter >= 0 && posAfter < levelSize
               && Number.isInteger(shieldAfter) && shieldAfter >= 0 && shieldAfter <= 100000
@@ -6795,6 +6804,10 @@ export class MatchRoom {
                 combatLevel.heaps = data.projectileHeaps;
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   `levelSnapshot:${this.currentDepth}`, JSON.stringify(combatLevel));
+              }
+              for (const rewardId of rewardIds || []) {
+                this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
+                  rewardId, attackerId, String(msg.requestId || ""), this.currentDepth);
               }
               this.clearPendingCombat(pending);
               eventType = "PLAYER_ATTACKED";
