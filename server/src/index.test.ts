@@ -3584,7 +3584,7 @@ describe("Native item consumption transaction validation", () => {
     const before=JSON.stringify(hero([row("native-healing-001",potion)]));
     const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:healing,left:30,percent:0.25,flat:0,healing_limited:false}}),
+      buff_1:JSON.stringify({buff:{__className:healing,left:22,percent:0.25,flat:0,healing_limited:false}}),
       buffCooldown_1:0
     }));
     const d=intent("native-healing-001"),accepted={...d,actionType:"USE_ITEM"};
@@ -3606,14 +3606,14 @@ describe("Native item consumption transaction validation", () => {
     const before=JSON.stringify(hero([row("native-healing-vial-potion-001",potion),vialRow]));
     const after=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:healing,left:34,percent:0.25,flat:0,healing_limited:true}}),
+      buff_1:JSON.stringify({buff:{__className:healing,left:25,percent:0.25,flat:0,healing_limited:true}}),
       buffCooldown_1:0
     }));
     const d=intent("native-healing-vial-potion-001"),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     const inflated=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
       buff_0:defaultHungerBundle,buffCooldown_0:0,
-      buff_1:JSON.stringify({buff:{__className:healing,left:35,percent:0.25,flat:0,healing_limited:true}}),
+      buff_1:JSON.stringify({buff:{__className:healing,left:26,percent:0.25,flat:0,healing_limited:true}}),
       buffCooldown_1:0
     }));
     expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
