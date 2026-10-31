@@ -4842,7 +4842,9 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
       && (state?.runProgressBundle === undefined
         || (typeof state.runProgressBundle === "string" && state.runProgressBundle.length > 0
           && state.runProgressBundle.length <= 200000))
-      && ["potionStatusBundle", "scrollStatusBundle", "notesBundle", "questStateBundle"].every((key) =>
+      && ["potionStatusBundle", "scrollStatusBundle"].every((key) =>
+        state?.[key] === undefined || (typeof state[key] === "string" && state[key].length <= 200000))
+      && ["notesBundle", "questStateBundle"].every((key) =>
         state?.[key] === undefined || (typeof state[key] === "string"
           && state[key].length > 0 && state[key].length <= 200000))
       && ["ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"].every((key) =>
@@ -4891,10 +4893,13 @@ preserveInventory = true, preserveRunProgress = true): string | null {
   }
   if (inventoryAccepted) {
     for (const key of ["inventoryBundle", "nativeInventoryTreeVersion", "inventoryItemsJson",
-      "nativeItemEconomyJson", "quickslotsJson", "ankhCount", "blessedAnkhCount",
-      "gold", "alchemyEnergy"]) {
+      "nativeItemEconomyJson", "quickslotsJson", "gold", "alchemyEnergy"]) {
       if (reported[key] !== undefined) merged[key] = reported[key];
     }
+  }
+  if (blessedAnkhConsumed) {
+    merged.ankhCount = reported.ankhCount;
+    merged.blessedAnkhCount = reported.blessedAnkhCount;
   }
   if (runProgressAccepted) {
     for (const key of ["runProgressBundle", "potionStatusBundle", "scrollStatusBundle",
