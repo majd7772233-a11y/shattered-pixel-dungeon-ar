@@ -3826,7 +3826,14 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Adrenaline",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo"
   ]);
   for (const [key,row] of oldRows) {
     const current = preRows.get(key);

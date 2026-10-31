@@ -2440,7 +2440,8 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify({...after,hp:11}),tick(cls,70))).toBe(false);
   });
   it("accepts only native FlavourBuff timer expiry and rejects early or side-effecting removal",()=>{
-    const safe=["Chill","Cripple","Slow","Speed","Weakness","Recharging"];
+    const safe=["Chill","Cripple","Slow","Speed","Weakness","Recharging",
+      "Adrenaline","Bless","Daze","Charm","Terror","Stamina","Vertigo"];
     for (const name of safe) {
       const cls=buffs+name;
       const previous=stateWithBuff(cls,120,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
