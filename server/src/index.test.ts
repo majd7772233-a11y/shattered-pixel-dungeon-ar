@@ -3018,7 +3018,9 @@ describe("Native item consumption transaction validation", () => {
     PotionOfHaste_label:"AMBER",PotionOfHaste_known:true,
     PotionOfInvisibility_label:"TEAL",PotionOfInvisibility_known:true,
     PotionOfLevitation_label:"SILVER",PotionOfLevitation_known:true,
-    PotionOfStrength_label:"GOLD",PotionOfStrength_known:true
+    PotionOfStrength_label:"GOLD",PotionOfStrength_known:true,
+    PotionOfPurity_label:"PURPLE",PotionOfPurity_known:true,
+    PotionOfStamina_label:"IVORY",PotionOfStamina_known:true
   });
   const defaultScrollStatus = () => JSON.stringify({
     ScrollOfRecharging_label:"KAUNAN",ScrollOfRecharging_known:true,
@@ -3061,6 +3063,12 @@ describe("Native item consumption transaction validation", () => {
       "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat","EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-chargrilled-meat-001",
         "com.shatteredpixel.shatteredpixeldungeon.items.food.ChargrilledMeat",1,true)])))).toBe(true);
+    const purity="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity";
+    const stamina="com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina";
+    expect(isValidNativeUseItemIntent(level,intent("native-purity-001",purity),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-purity-001",purity)])))).toBe(true);
+    expect(isValidNativeUseItemIntent(level,intent("native-stamina-001",stamina),4,
+      "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-stamina-001",stamina)])))).toBe(true);
     expect(isValidNativeUseItemIntent(level,intent("native-mystery-meat-001",
       "com.shatteredpixel.shatteredpixeldungeon.items.food.MysteryMeat","EAT",1,true),4,
       "player-001",{pos:9,state:"ALIVE"},JSON.stringify(hero([row("native-mystery-meat-001",
@@ -3348,6 +3356,37 @@ describe("Native item consumption transaction validation", () => {
       buff_1:JSON.stringify({buff:{__className:hasteBuff,time:55,id:52}}),buffCooldown_1:45
     }));
     expect(isValidNativeUseItemMutation(before,overlong,d,accepted)).toBe(false);
+  });
+
+  it("accepts PotionOfPurity and PotionOfStamina only with their native timed buffs",()=>{
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const purity="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity";
+    const stamina="com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina";
+    const blobImmunity="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity";
+    const staminaBuff="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina";
+    const beforeFor=(id:string,cls:string)=>JSON.stringify(hero([row(id,cls)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    }));
+    const afterFor=(buff:string,id:number,duration:number)=>JSON.stringify(hero([],{
+      inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:buff,time:10+duration,id}}),buffCooldown_1:duration
+    }));
+    for (const [itemClass,buffClass,id,duration] of [
+      [purity,blobImmunity,71,20],
+      [stamina,staminaBuff,72,100]
+    ] as Array<[string,string,number,number]>) {
+      const before=beforeFor("native-consumable-"+id,itemClass);
+      const after=afterFor(buffClass,id,duration);
+      const d=intent("native-consumable-"+id,itemClass),accepted={...d,actionType:"USE_ITEM"};
+      expect(isValidNativeUseItemIntent(level,d,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+      expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+      const inflated=afterFor(buffClass,id,duration+1);
+      expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
+    }
   });
   it("accepts Invisibility and Levitation only for their native single-buff effects",()=>{
     const invisibility="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility";

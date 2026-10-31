@@ -54,6 +54,8 @@ public final class NativeItemUse {
                 || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility")
                 || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation")
                 || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength")
+                || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity")
+                || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina")
                 || cls.equals("com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding");
         }
         if ("EAT".equals(action)) {

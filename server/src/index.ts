@@ -761,6 +761,12 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength") {
     allowed = new Set();
   } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity") {
+    allowed = new Set([base + "BlobImmunity"]);
+  } else if (action === "DRINK"
+      && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina") {
+    allowed = new Set([base + "Stamina"]);
+  } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
     allowed = new Set([base + "Barrier", base + "Poison"]);
   } else if (action === "READ"
@@ -781,7 +787,9 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   const timedPotionBuff: Record<string, string> = {
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste": base + "Haste",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility": base + "Invisibility",
-    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": base + "Levitation"
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": base + "Levitation",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity": base + "BlobImmunity",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina": base + "Stamina"
   };
   const timedBuffName = timedPotionBuff[itemClass] || (rechargingScrollRead ? base + "Recharging" : "");
   if ((action === "DRINK" && !!timedPotionBuff[itemClass]) || rechargingScrollRead) {
@@ -797,7 +805,15 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     const heroTime = Number(nativeHeroBundle?.time), heroCooldown = Number(next.cooldown);
     const actorClock = heroTime - heroCooldown;
     const expectedCooldown = Math.max(0, Number(nextData.time) - actorClock);
-    const maximumCooldown = rechargingScrollRead ? oldCooldown + 30 : Math.max(oldCooldown, 20);
+    const nativePotionDuration: Record<string, number> = {
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste": 20,
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility": 20,
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": 20,
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity": 20,
+      "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina": 100
+    };
+    const maximumCooldown = rechargingScrollRead ? oldCooldown + 30
+      : Math.max(oldCooldown, nativePotionDuration[itemClass] || 20);
     if (!Number.isFinite(nextCooldown) || nextCooldown < 0
         || nextCooldown > maximumCooldown + 0.05
         || !Number.isFinite(heroTime) || !Number.isFinite(heroCooldown) || heroCooldown < 0
@@ -1279,6 +1295,8 @@ export function isValidNativeUseItemIntent(level: any, dataValue: unknown, depth
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity",
+    "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina",
     "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
   ].includes(cls);
   const supportedFood = itemAction === "EAT" && [
