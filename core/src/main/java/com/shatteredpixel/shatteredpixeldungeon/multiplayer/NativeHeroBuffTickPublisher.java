@@ -63,7 +63,12 @@ public final class NativeHeroBuffTickPublisher {
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina".equals(name)
-                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo".equals(name);
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HeroDisguise".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable".equals(name);
     }
 
     private static float actorClock(String stateJson) {

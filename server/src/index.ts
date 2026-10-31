@@ -3833,7 +3833,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HeroDisguise",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable"
   ]);
   for (const [key,row] of oldRows) {
     const current = preRows.get(key);
@@ -3902,7 +3907,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vertigo",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HeroDisguise",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable"
   ]);
   if (simpleExpiry.has(buffClass)) {
     return !result && source.time <= before.clock + 0.06
