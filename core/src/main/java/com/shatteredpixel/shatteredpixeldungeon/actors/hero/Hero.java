@@ -26,6 +26,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Badges;
 import com.shatteredpixel.shatteredpixeldungeon.Bones;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeHeroBuffTickPublisher;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatAuthorityPolicy;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerActionDispatcher;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.RemotePlayer;
