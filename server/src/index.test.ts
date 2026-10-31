@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -3806,5 +3806,65 @@ describe("Native inventory container ownership and safe Bag pickup", () => {
     expect(isValidNativeInventoryBundleIndex(valid,[{...scrollRow,containerId:"ORPHAN-BAG"}])).toBe(false);
     expect(isValidNativeInventoryBundleIndex(valid,[{...scrollRow,containerId:undefined}])).toBe(false);
     expect(isValidNativeInventoryBundleIndex({...valid,inventoryBundle:JSON.stringify({inventory:[]})},[scrollRow])).toBe(false);
+  });
+});
+
+
+describe("Native run-progress persistence and exactly-once reward identity", () => {
+  const heroState = (runProgressBundle: string) => JSON.stringify({
+    hp: 20, ht: 20, pos: 12, shielding: 0, cooldown: 1, buffCount: 0,
+    combatBundle: "trusted-native-combat", inventoryBundle: "trusted-native-inventory",
+    runProgressBundle
+  });
+
+  it("binds opaque run progress to the trusted Hero pre-state", () => {
+    const before = heroState("native-run-state-before");
+    expect(hasMatchingNativeHeroStateSnapshot(heroState("native-run-state-before"), before)).toBe(true);
+    expect(hasMatchingNativeHeroStateSnapshot(heroState("native-run-state-after"), before)).toBe(false);
+  });
+
+  it("preserves run progress during ordinary reconciliation and accepts a validated native reward state", () => {
+    const before = heroState("trusted-run-progress");
+    const after = heroState("native-kill-run-progress");
+    const kept = mergeNativeHeroState(before, after,
+      { hp: 20, ht: 20, pos: 12, shielding: 0 }, "[]");
+    const accepted = mergeNativeHeroState(before, after,
+      { hp: 20, ht: 20, pos: 12, shielding: 0 }, "[]", false, false, false, false);
+    expect(JSON.parse(String(kept)).runProgressBundle).toBe("trusted-run-progress");
+    expect(JSON.parse(String(accepted)).runProgressBundle).toBe("native-kill-run-progress");
+  });
+
+  it("rejects an oversized or non-string opaque native run bundle", () => {
+    const valid = JSON.parse(heroState("bounded-native-run-state"));
+    expect(isValidNativeHeroStateJson(JSON.stringify(valid),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(true);
+    expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, runProgressBundle: 8 }),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
+    expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, runProgressBundle: "x".repeat(200001) }),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
+  });
+
+  it("creates stable receipts for direct and secondary Mob deaths only", () => {
+    const rewards = nativeMobKillRewardIds(6, "native-mob-target-0001", 0, [
+      { entityId: "native-mob-secondary-01", hpAfter: 0 },
+      { entityId: "native-mob-survivor-01", hpAfter: 4 }
+    ]);
+    expect(rewards).toEqual([
+      "mob-kill:6:native-mob-target-0001",
+      "mob-kill:6:native-mob-secondary-01"
+    ]);
+    expect(nativeMobKillRewardIds(6, "native-mob-target-0001", 4, [])).toEqual([]);
+    expect(nativeMobKillRewardIds(6, "native-mob-target-0001", 0, [
+      { entityId: "native-mob-target-0001", hpAfter: 0 }
+    ])).toBeNull();
+  });
+
+  it("rejects replayed stable reward receipts even when a request ID changes", () => {
+    const first = nativeMobKillRewardIds(3, "native-mob-stable-0001", 0, []);
+    expect(areNativeMobRewardClaimsAvailable(first, [])).toBe(true);
+    expect(areNativeMobRewardClaimsAvailable(first, first)).toBe(false);
+    expect(areNativeMobRewardClaimsAvailable(first, ["another-reward"])).toBe(true);
+    expect(areNativeMobRewardClaimsAvailable(["same-reward", "same-reward"], [])).toBe(false);
+    expect(areNativeMobRewardClaimsAvailable(null, [])).toBe(false);
   });
 });

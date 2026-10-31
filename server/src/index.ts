@@ -4638,6 +4638,39 @@ export function isValidNativeDamageAccounting(
   return expected >= 0 && Number(effectiveDamage) === expected;
 }
 
+/** Stable reward identity prevents the same native Mob death paying out under a new request ID. */
+export function nativeMobKillRewardIds(depthValue: unknown, targetEntityIdValue: unknown,
+  targetHpValue: unknown, secondaryDeltasValue: unknown): string[] | null {
+  const depth = Number(depthValue), targetHp = Number(targetHpValue);
+  if (!Number.isInteger(depth) || depth < 1 || depth > 100
+      || !Number.isInteger(targetHp) || targetHp < 0
+      || !Array.isArray(secondaryDeltasValue) || secondaryDeltasValue.length > 512) return null;
+  const ids: string[] = [];
+  const add = (entityIdValue: unknown) => {
+    const entityId = String(entityIdValue || "");
+    if (!/^[A-Za-z0-9._:-]{8,80}$/.test(entityId) || ids.includes(entityId)) return false;
+    ids.push(entityId);
+    return true;
+  };
+  if (targetHp === 0 && !add(targetEntityIdValue)) return null;
+  for (const delta of secondaryDeltasValue) {
+    if (Number(delta?.hpAfter) === 0 && !add(delta?.entityId)) return null;
+  }
+  return ids.map(entityId => "mob-kill:" + depth + ":" + entityId);
+}
+
+export function areNativeMobRewardClaimsAvailable(rewardIdsValue: unknown, existingRewardIdsValue: unknown): boolean {
+  if (!Array.isArray(rewardIdsValue) || !Array.isArray(existingRewardIdsValue)) return false;
+  const requested = new Set<string>();
+  for (const rewardIdValue of rewardIdsValue) {
+    const rewardId = String(rewardIdValue || "");
+    if (rewardId.length < 1 || rewardId.length > 128 || requested.has(rewardId)) return false;
+    requested.add(rewardId);
+  }
+  const existing = new Set<string>(existingRewardIdsValue.map(value => String(value)));
+  return [...requested].every(rewardId => !existing.has(rewardId));
+}
+
 export function isValidNativeCombatRequestId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{8,80}$/.test(value);
 }
@@ -4806,6 +4839,9 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
       && typeof state?.inventoryBundle === "string" && state.inventoryBundle.length > 0
       && (state?.alchemyEnergy === undefined || (Number.isInteger(state.alchemyEnergy)
         && state.alchemyEnergy >= 0 && state.alchemyEnergy <= 1000000))
+      && (state?.runProgressBundle === undefined
+        || (typeof state.runProgressBundle === "string" && state.runProgressBundle.length > 0
+          && state.runProgressBundle.length <= 200000))
       && Number.isInteger(state?.buffCount) && state.buffCount >= 0 && state.buffCount <= 256;
   } catch (_) { return false; }
 }
@@ -4813,7 +4849,7 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
 export function mergeNativeHeroState(previousValue: unknown, reportedValue: unknown, expected: {
   hp: number; ht: number; pos: number; shielding: number;
 }, targetBuffsValue: unknown, allowBlessedAnkhConsumption = false, preserveCooldown = true,
-preserveInventory = true): string | null {
+preserveInventory = true, preserveRunProgress = true): string | null {
   if (typeof previousValue !== "string" || typeof reportedValue !== "string"
     || typeof targetBuffsValue !== "string") return null;
   let previous: any, reported: any, buffs: any;
@@ -4834,6 +4870,8 @@ preserveInventory = true): string | null {
   const merged: any = {
     ...previous,
     inventoryBundle: (blessedAnkhConsumed || !preserveInventory) ? reported.inventoryBundle : previous.inventoryBundle,
+    runProgressBundle: (!preserveRunProgress && typeof reported.runProgressBundle === "string")
+      ? reported.runProgressBundle : previous.runProgressBundle,
     ...(blessedAnkhConsumed ? {
       ankhCount: reported.ankhCount,
       blessedAnkhCount: reported.blessedAnkhCount
@@ -4901,7 +4939,7 @@ export function mergeNativeCombatAttackerState(
   if (buffs == null) return null;
   return mergeNativeHeroState(trustedValue, afterValue, {
     hp: Number(after.hp), ht: Number(after.ht), pos: Number(after.pos), shielding: Number(after.shielding)
-  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false);
+  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, !allowNativeMaxHpIncrease);
 }
 
 export function isValidNativeCombatBuffs(value: unknown): boolean {
@@ -4995,6 +5033,9 @@ export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, autho
     if (Number(reported[key]) !== Number(authoritative[key])) return false;
   }
   if (!hasMatchingNativeHeroEquipmentState(JSON.stringify(reported), authoritative)) return false;
+  if ((reported.runProgressBundle !== undefined || authoritative.runProgressBundle !== undefined)
+      && (typeof reported.runProgressBundle !== "string"
+        || reported.runProgressBundle !== authoritative.runProgressBundle)) return false;
   if ((reported.alchemyEnergy !== undefined || authoritative.alchemyEnergy !== undefined)
       && (!Number.isInteger(reported.alchemyEnergy) || reported.alchemyEnergy !== authoritative.alchemyEnergy)) return false;
   if (!Number.isFinite(Number(reported.cooldown)) || Number(reported.cooldown) !== Number(authoritative.cooldown)) return false;
@@ -5580,6 +5621,13 @@ export class MatchRoom {
         player_id TEXT,
         sequence INTEGER,
         result_json TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS native_mob_reward_claims (
+        reward_id TEXT PRIMARY KEY,
+        player_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        depth INTEGER NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS events (
@@ -6219,7 +6267,11 @@ export class MatchRoom {
           const merged = mergeNativeHeroState(String(trustedHeroRow.value), String(level.heroStateJson), {
             hp: Number(reportedHero.hp), ht: Number(playerRow.ht), pos: mutationExpectedPos,
             shielding: Number(reportedHero.shielding)
-          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false, mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY" && mutationAction !== "BUYBACK" && mutationAction !== "SELL" && mutationAction !== "USE_ITEM" && mutationAction !== "THROW" && mutationAction !== "ALCHEMY" && mutationAction !== "USE_ABILITY");
+          }, nativeBuffSnapshotFromHeroState(String(level.heroStateJson)), false, false,
+            mutationAction !== "PICKUP" && mutationAction !== "DROP" && mutationAction !== "BUY"
+              && mutationAction !== "BUYBACK" && mutationAction !== "SELL" && mutationAction !== "USE_ITEM"
+              && mutationAction !== "THROW" && mutationAction !== "ALCHEMY" && mutationAction !== "USE_ABILITY",
+            mutationAction === "MOVE");
           if (merged == null) {
             if ((mutationAction === "PICKUP" || mutationAction === "BUY" || mutationAction === "BUYBACK") && mutationDetails) this.sql.exec(
               "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
@@ -6605,9 +6657,10 @@ export class MatchRoom {
             const targetBuffsValid = hasMatchingNativeHeroBuffSnapshot(data.targetBuffsBefore, trustedState);
             const hpDeltaValid = isValidNativeHpTransition(hpBefore, hpAfter, damage)
               || (hpAfter > hpBefore && hasValidBlessedAnkhConsumption(trustedState, data.targetHeroStateJson));
+            const blessedTargetRevival = hasValidBlessedAnkhConsumption(trustedState, data.targetHeroStateJson);
             const mergedState = mergeNativeHeroState(trustedState, String(data.targetHeroStateJson || ""), {
               hp: hpAfter, ht: htAfter, pos: posAfter, shielding: shieldAfter
-            }, String(data.targetBuffs || ""), true);
+            }, String(data.targetBuffs || ""), true, true, true, !blessedTargetRevival);
             // The defender-authority client also simulates the attacker's native Hero instance.
             // Persist its post-attack state (cooldowns, procs, inventory and reactive damage) so
             // the attacker cannot keep its separate optimistic RNG result.
@@ -6797,12 +6850,18 @@ export class MatchRoom {
                 levelSnapshot?.heaps, data, targetPos, allDeaths, levelSize);
               const mergedAttackerState = this.reconcileCombatAttackerState(
                 authorityPending, payload.heroStateJson, allDeaths.length > 0);
+              const rewardIds = nativeMobKillRewardIds(this.currentDepth, data.targetEntityId,
+                targetHp, secondaryMobPayload?.deltas || []);
+              const existingRewardIds = rewardIds == null ? [] : rewardIds.filter(rewardId =>
+                this.sql.exec("SELECT reward_id FROM native_mob_reward_claims WHERE reward_id = ?", rewardId).toArray().length > 0);
+              const rewardsUnclaimed = rewardIds != null
+                && areNativeMobRewardClaimsAvailable(rewardIds, existingRewardIds);
               const targetBuffPreStateMatches = !!savedMob && hasMatchingNativeBuffSnapshot(data.targetBuffsBefore, savedMob.buffs);
               const targetShieldPreStateMatches = !!savedMob && hasMatchingNativeMobShieldSnapshot(data.targetShieldBefore, data.targetShieldAfter, savedMob.shielding);
               const targetMobBundleValid = targetHp <= 0 || isValidNativeMobBundle(data.targetMobBundleAfter);
               const authorityValid = !!authorityPending && String(authorityPending.requestId) === String(data.combatRequestId)
                 && String(authorityPending.authorityId) === session.playerId && String(publisherRow?.value || "") === session.playerId
-                && mergedAttackerState !== null
+                && mergedAttackerState !== null && rewardsUnclaimed
                 && authorityPending.targetType === "MOB" && Number(authorityPending.depth) === this.currentDepth
                 && attackerId === String(data.attackerId) && String(authorityPending.targetEntityId) === String(data.targetEntityId)
                 && Number(authorityPending.attackerPos) === attackerPos && Number(authorityPending.targetPos) === targetPos
@@ -6869,6 +6928,12 @@ export class MatchRoom {
                   Number(attackerAfter.hp), Number(attackerAfter.ht), Number(attackerAfter.pos), attackerStatus, String(authorityPending.attackerId));
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + String(authorityPending.attackerId), mergedAttackerState as string);
+                // This stable receipt is independent of the request UUID: re-sending a kill under
+                // a new request ID cannot award the same native Mob twice.
+                for (const rewardId of rewardIds) {
+                  this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
+                    rewardId, String(authorityPending.attackerId), String(msg.requestId || ""), this.currentDepth);
+                }
                 this.clearPendingCombat(authorityPending);
                 eventType = "PLAYER_ATTACKED";
                 actionResultPayload = {
@@ -6881,6 +6946,7 @@ export class MatchRoom {
                   hit: data.engineHit === true, damage, targetHp, targetHt,
                   attackKind: data.attackKind, engineDistance: distance, engineActionCost: nativeCost, targetBuffs: data.targetBuffs,
                   attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
+                  rewardIds,
                   secondaryMobDeltas: secondaryMobPayload,
                   projectileOutcome: data.projectileOutcome,
                   projectileResultItemId: data.projectileMutation?.resultItemId,
@@ -7396,7 +7462,7 @@ export class MatchRoom {
 
             const mergedJson = (blessedRevival || unblessedRevival)
               ? mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
-                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false)
+                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false, false)
               : null;
             const validRevival = (blessedRevival || unblessedRevival) && mergedJson != null;
             if (validRevival) {
