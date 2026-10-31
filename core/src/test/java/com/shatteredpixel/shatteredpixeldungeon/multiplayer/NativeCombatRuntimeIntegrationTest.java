@@ -31,6 +31,9 @@ import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop;
 import com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey;
 import com.shatteredpixel.shatteredpixeldungeon.items.quest.CorpseDust;
+import com.shatteredpixel.shatteredpixeldungeon.items.bags.ScrollHolder;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger;
+import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
 import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
@@ -820,7 +823,6 @@ public class NativeCombatRuntimeIntegrationTest {
         remainsHeap.pos = heapPos + 1;
         remainsHeap.type = Heap.Type.REMAINS;
         Dewdrop dew = new Dewdrop();
-        dew.quantity(2);
         remainsHeap.items.addLast(dew);
         remainsHeap.items.addLast(new IronKey(Dungeon.depth));
         remainsHeap.items.addLast(new CorpseDust());
@@ -963,7 +965,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(Heap.Type.REMAINS, restoredRemains.type);
         Assert.assertEquals(3, restoredRemains.items.size());
         Assert.assertTrue(restoredRemains.items.get(0) instanceof Dewdrop);
-        Assert.assertEquals(2, restoredRemains.items.get(0).quantity());
+        Assert.assertEquals(1, restoredRemains.items.get(0).quantity());
         Assert.assertTrue(restoredRemains.items.get(1) instanceof IronKey);
         Assert.assertTrue(restoredRemains.items.get(2) instanceof CorpseDust);
         Heap restoredSkeleton = level.heaps.get(heapPos + 2);
@@ -1073,6 +1075,27 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.belongings.backpack.items.add(carriedStack);
         Dungeon.quickslot.setSlot(0, carriedStack);
 
+        Dagger equippedWeapon = new Dagger();
+        equippedWeapon.setMultiplayerItemId("phase8-equipped-dagger-0001");
+        equippedWeapon.level(2);
+        equippedWeapon.levelKnown = true;
+        equippedWeapon.cursed = true;
+        equippedWeapon.cursedKnown = true;
+        hero.belongings.weapon = equippedWeapon;
+
+        Scroll.initLabels();
+        ScrollHolder scrollHolder = new ScrollHolder();
+        scrollHolder.setMultiplayerItemId("phase8-scroll-holder-0001");
+        ScrollOfIdentify nestedScroll = new ScrollOfIdentify();
+        nestedScroll.setMultiplayerItemId("phase8-nested-scroll-0001");
+        scrollHolder.items.add(nestedScroll);
+        hero.belongings.backpack.items.add(scrollHolder);
+        Dungeon.quickslot.setSlot(1, nestedScroll);
+
+        CorpseDust questItem = new CorpseDust();
+        questItem.setMultiplayerItemId("phase8-corpse-dust-0001");
+        hero.belongings.backpack.items.add(questItem);
+
         Item pendingDrop = new Item();
         pendingDrop.setMultiplayerItemId("phase8-pending-drop-0001");
         ArrayList<Item> pendingDrops = new ArrayList<>();
@@ -1086,6 +1109,12 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue(MultiplayerRunProgress.isValid(runProgress.asString()));
         Assert.assertTrue("Run progress is bounded before transport",
                 runProgress.asString().length() <= MultiplayerRunProgress.MAX_ENCODED_LENGTH);
+        String quickslotsJson = encodedRoot.getString("quickslotsJson");
+        System.out.println("PHASE8_QUICKSLOTS_JSON=" + quickslotsJson);
+        JsonValue quickslotArray = new JsonReader().parse(quickslotsJson);
+        Assert.assertEquals("The snapshot contains exactly the two native quickslot references", 2, quickslotArray.size);
+        Assert.assertNotNull(quickslotArray.get(0).get("serializedBundle"));
+        Assert.assertNotNull(quickslotArray.get(1).get("serializedBundle"));
 
         // Simulate reconnect after live static data and local native objects have been lost.
         Statistics.goldCollected = 0;
@@ -1101,6 +1130,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.generatedLevels.clear();
         Dungeon.droppedItems = new SparseArray<>();
         hero.belongings.backpack.items.clear();
+        hero.belongings.weapon = null;
         Dungeon.quickslot.reset();
 
         WorldSnapshot.restoreRemoteHeroState(hero, encodedHero);
@@ -1134,6 +1164,28 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(4, restoredStack.quantity());
         Assert.assertSame("Quickslots must point at the restored owned instance",
                 restoredStack, Dungeon.quickslot.getItem(0));
+        Assert.assertNotNull("The native equipped weapon must be restored", hero.belongings.weapon);
+        Assert.assertEquals("phase8-equipped-dagger-0001", hero.belongings.weapon.multiplayerItemId());
+        Assert.assertEquals(2, hero.belongings.weapon.level());
+        Assert.assertTrue(hero.belongings.weapon.cursed);
+        Assert.assertTrue(hero.belongings.weapon.cursedKnown);
+
+        ScrollHolder restoredHolder = null;
+        CorpseDust restoredQuestItem = null;
+        for (Item item : hero.belongings.backpack.items) {
+            if (item instanceof ScrollHolder) restoredHolder = (ScrollHolder)item;
+            if (item instanceof CorpseDust) restoredQuestItem = (CorpseDust)item;
+        }
+        Assert.assertNotNull("Nested inventory containers must be restored", restoredHolder);
+        Assert.assertEquals("phase8-scroll-holder-0001", restoredHolder.multiplayerItemId());
+        Assert.assertEquals(1, restoredHolder.items.size());
+        Item restoredNestedScroll = restoredHolder.items.get(0);
+        Assert.assertTrue(restoredNestedScroll instanceof ScrollOfIdentify);
+        Assert.assertEquals("phase8-nested-scroll-0001", restoredNestedScroll.multiplayerItemId());
+        Assert.assertSame("Quickslots must rebind to the nested restored item",
+                restoredNestedScroll, Dungeon.quickslot.getItem(1));
+        Assert.assertNotNull("Quest items must remain in the player's inventory", restoredQuestItem);
+        Assert.assertEquals("phase8-corpse-dust-0001", restoredQuestItem.multiplayerItemId());
     }
 
     @Test
