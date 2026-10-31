@@ -183,7 +183,10 @@ public class WorldSnapshot {
             if (slotValue == null || !slotValue.isNumber() || idValue == null || !idValue.isString()
                     || classValue == null || !classValue.isString() || quantityValue == null || !quantityValue.isNumber()
                     || bundleValue == null || !bundleValue.isString()) {
-                throw new IllegalStateException("Incomplete native quickslot entry");
+                throw new IllegalStateException("Incomplete native quickslot entry"
+                        + " [slot=" + jsonFieldType(slotValue) + ", itemId=" + jsonFieldType(idValue)
+                        + ", className=" + jsonFieldType(classValue) + ", quantity=" + jsonFieldType(quantityValue)
+                        + ", serializedBundle=" + jsonFieldType(bundleValue) + "]");
             }
             int slot = slotValue.asInt(), quantity = quantityValue.asInt();
             String id = idValue.asString(), className = classValue.asString(), bundleText = bundleValue.asString();
@@ -205,6 +208,16 @@ public class WorldSnapshot {
             result.add(new QuickSlotRestoreEntry(slot, id, className, decoded));
         }
         return result;
+    }
+
+    private static String jsonFieldType(JsonValue value) {
+        if (value == null) return "missing";
+        if (value.isString()) return "string";
+        if (value.isNumber()) return "number";
+        if (value.isBoolean()) return "boolean";
+        if (value.isObject()) return "object";
+        if (value.isArray()) return "array";
+        return "other";
     }
 
     /** Rebind slots to restored inventory objects, retaining only real zero-quantity placeholders. */
