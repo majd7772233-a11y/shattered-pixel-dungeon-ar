@@ -4938,9 +4938,12 @@ export function mergeNativeCombatAttackerState(
     || after.shielding < 0 || after.shielding > 100000) return null;
   const buffs = nativeBuffSnapshotFromHeroState(afterValue);
   if (buffs == null) return null;
+  // Run-scoped rewards (statistics, catalog usage and generation counters) can change
+  // after any accepted native attack, not only a lethal one. The authority's exact pre-state
+  // is bound above; keep the separate max-HP increase gate tied only to kill outcomes.
   return mergeNativeHeroState(trustedValue, afterValue, {
     hp: Number(after.hp), ht: Number(after.ht), pos: Number(after.pos), shielding: Number(after.shielding)
-  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, !allowNativeMaxHpIncrease);
+  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, false);
 }
 
 export function isValidNativeCombatBuffs(value: unknown): boolean {
@@ -7293,7 +7296,7 @@ export class MatchRoom {
             const mergedDamagedHeroStateJson = mergeNativeHeroState(previousHeroRow?.value,
               payload.heroStateJson,
               { hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter) },
-              data?.targetBuffs, ankhRescue);
+              data?.targetBuffs, ankhRescue, true, true, !ankhRescue);
             const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
               && (sourceDistance <= 1
                 ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
