@@ -304,16 +304,30 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 **Priority:** P0 · **Dependencies:** phases 5–7 and Phase 1 snapshot infrastructure.
 
 ### Work items
-- [ ] Persist each player's complete native Hero/inventory state at the appropriate accepted mutation points, not only when an unrelated generic action happens to carry a Hero blob.
-- [ ] Preserve exact item bundles and runtime properties: quantities, cursed knowledge, upgrades, enchantments, glyphs, unique IDs, container contents, equipment, quickslots and item-specific state.
-- [ ] Verify disconnect/reconnect and full resync restore the same inventory and Hero state without constructor defaults, lost items or duplicate instances.
-- [ ] Cover death/boss/special-heap drops, remains, bones, dew, keys, quest items, Lost Backpack behavior, quest progress, kill rewards and statistics under replay and snapshot restoration.
-- [ ] Add persistence/reconnect tests for inventories that differ by equipment, container contents, unique items, partial stacks, quest items and reward/drop events.
+- [x] Persist each player's complete native Hero/inventory state at the appropriate accepted mutation points, not only when an unrelated generic action happens to carry a Hero blob.
+- [x] Preserve exact item bundles and runtime properties: quantities, cursed knowledge, upgrades, enchantments, glyphs, unique IDs, container contents, equipment, quickslots and item-specific state.
+- [x] Verify disconnect/reconnect and full resync restore the same inventory and Hero state without constructor defaults, lost items or duplicate instances.
+- [x] Cover death/boss/special-heap drops, remains, bones, dew, keys, quest items, Lost Backpack behavior, quest progress, kill rewards and statistics under replay and snapshot restoration.
+- [x] Add persistence/reconnect tests for inventories that differ by equipment, container contents, unique items, partial stacks, quest items and reward/drop events.
 
 ### Acceptance criteria
-- Inventory state survives disconnect, full restore and repeated snapshot application byte-for-byte or by equivalent native semantic state.
-- A death, drop, quest or kill reward is applied at most once, including after reconnect.
-- Any bundle the server cannot interpret remains bounded and is validated by the native client before being applied.
+- [x] Inventory state survives disconnect, full restore and repeated snapshot application byte-for-byte or by equivalent native semantic state.
+- [x] A death, drop, quest or kill reward is applied at most once, including after reconnect.
+- [x] Any bundle the server cannot interpret remains bounded and is validated by the native client before being applied.
+
+### Completion record — 2026-10-31
+
+**Status: COMPLETE for implementation and automated acceptance.** Tested code head: `e36bc8030755050e3eae3d45ccab4db1040a65f5`.
+
+- Added versioned native run-progress persistence for statistics, catalog discovery/use counts, local badges, generator decks, limited drops, special/secret-room generation state, ring identification state, chapters, generated floors, pending dropped-item collections and quickslot placeholders.
+- Kept native Hero/Belongings bundles and stable item IDs as the source of truth. Restoration now preserves the serialized nested-container tree and stack ownership instead of executing normal pickup auto-packing, stack merging or pickup side effects. Equipment, partial stacks, nested bags, cursed knowledge, quickslots and zero-quantity placeholders are regression-tested.
+- Persisted the accepted native Hero progression, inventory indexes, notes/key counts, potion/scroll identification and NPC quest state only through validated mutation/combat/Ankh result paths. Pre-action matching prevents a client from smuggling new journal, quest or identification state into an unaccepted intent; malformed native bundles are bounded and rejected before world mutation.
+- Added stable per-depth/per-Mob reward receipts in `native_mob_reward_claims`; replayed kills remain rejected even when submitted with a different request ID. Existing item/chest claim identities continue to protect pickups and rewards.
+- Snapshot tests cover remains/skeleton heaps, dew, keys, quest items, LostBackpack after Ankh resurrection, ordered heap contents, native inventory trees, repeated full-world application and rejection-before-apply for malformed run/journal data. NPC quest restore also clears stale inactive quest/reward flags.
+- Multiplayer intentionally does not run the single-player final-death `Hero.reallyDie()/Bones.leave()` path for an individual co-op death, because that path deletes the local run and writes a device-global Bones file. Existing skeleton/remains heaps are persisted as world heaps; the multiplayer death/revival flow persists the LostBackpack heap instead.
+- Exact-head GitHub Actions [run 41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed: backend typecheck and **472/472** Vitest tests, Java tests, and Android `assembleDebug` (`BUILD SUCCESSFUL`).
+
+Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23. Phase 9 has not been started.
 
 ## Phase 9 — Native Buffs, Consumable Effects and Timed State
 
