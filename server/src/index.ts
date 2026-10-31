@@ -4842,6 +4842,11 @@ export function isValidNativeHeroStateJson(value: unknown, expected: {
       && (state?.runProgressBundle === undefined
         || (typeof state.runProgressBundle === "string" && state.runProgressBundle.length > 0
           && state.runProgressBundle.length <= 200000))
+      && ["potionStatusBundle", "scrollStatusBundle", "notesBundle", "questStateBundle"].every((key) =>
+        state?.[key] === undefined || (typeof state[key] === "string"
+          && state[key].length > 0 && state[key].length <= 200000))
+      && ["ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"].every((key) =>
+        state?.[key] === undefined || (Number.isInteger(state[key]) && state[key] >= 0 && state[key] <= 100000))
       && Number.isInteger(state?.buffCount) && state.buffCount >= 0 && state.buffCount <= 256;
   } catch (_) { return false; }
 }
@@ -4867,16 +4872,10 @@ preserveInventory = true, preserveRunProgress = true): string | null {
       || Number(reported[`buffCooldown_${i}`]) !== Number(buffs[i]?.cooldown)) return null;
   }
   const blessedAnkhConsumed = allowBlessedAnkhConsumption && hasValidBlessedAnkhConsumption(previous, reported);
+  const inventoryAccepted = blessedAnkhConsumed || !preserveInventory;
+  const runProgressAccepted = previous.runProgressBundle === undefined || !preserveRunProgress;
   const merged: any = {
     ...previous,
-    inventoryBundle: (blessedAnkhConsumed || !preserveInventory) ? reported.inventoryBundle : previous.inventoryBundle,
-    runProgressBundle: (typeof reported.runProgressBundle === "string"
-        && (previous.runProgressBundle === undefined || !preserveRunProgress))
-      ? reported.runProgressBundle : previous.runProgressBundle,
-    ...(blessedAnkhConsumed ? {
-      ankhCount: reported.ankhCount,
-      blessedAnkhCount: reported.blessedAnkhCount
-    } : {}),
     hp: expected.hp,
     ht: expected.ht,
     pos: expected.pos,
@@ -4889,6 +4888,20 @@ preserveInventory = true, preserveRunProgress = true): string | null {
   };
   for (const key of Object.keys(merged)) {
     if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete merged[key];
+  }
+  if (inventoryAccepted) {
+    for (const key of ["inventoryBundle", "nativeInventoryTreeVersion", "inventoryItemsJson",
+      "nativeItemEconomyJson", "quickslotsJson", "ankhCount", "blessedAnkhCount",
+      "gold", "alchemyEnergy"]) {
+      if (reported[key] !== undefined) merged[key] = reported[key];
+    }
+  }
+  if (runProgressAccepted) {
+    for (const key of ["runProgressBundle", "potionStatusBundle", "scrollStatusBundle",
+      "notesBundle", "questStateBundle", "ironKeyCount", "crystalKeyCount",
+      "wornKeyCount", "goldenKeyCount"]) {
+      if (reported[key] !== undefined) merged[key] = reported[key];
+    }
   }
   for (let i = 0; i < buffs.length; i++) {
     merged[`buff_${i}`] = reported[`buff_${i}`];
@@ -4943,7 +4956,7 @@ export function mergeNativeCombatAttackerState(
   // is bound above; keep the separate max-HP increase gate tied only to kill outcomes.
   return mergeNativeHeroState(trustedValue, afterValue, {
     hp: Number(after.hp), ht: Number(after.ht), pos: Number(after.pos), shielding: Number(after.shielding)
-  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, false);
+  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, false, false);
 }
 
 export function isValidNativeCombatBuffs(value: unknown): boolean {
@@ -6299,12 +6312,20 @@ export class MatchRoom {
           }
           const mergedHero: any = JSON.parse(merged);
           mergedHero.cooldown = reportedHero.cooldown;
-          if (mutationAction === "UNLOCK" || mutationAction === "OPEN_CHEST" || mutationAction === "INTERACT" || mutationAction === "PICKUP") {
+          if (["MOVE", "UNLOCK", "OPEN_CHEST", "INTERACT", "PICKUP"].includes(mutationAction)) {
             for (const field of ["notesBundle", "ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
-              mergedHero[field] = reportedHero[field];
+              if (reportedHero[field] !== undefined) mergedHero[field] = reportedHero[field];
             }
           }
-          if (mutationAction === "INTERACT" || mutationAction === "PICKUP") mergedHero.questStateBundle = reportedHero.questStateBundle;
+          if (reportedHero.questStateBundle !== undefined && mutationAction !== "MOVE") {
+            mergedHero.questStateBundle = reportedHero.questStateBundle;
+          }
+          if (reportedHero.potionStatusBundle !== undefined && mutationAction === "USE_ITEM") {
+            mergedHero.potionStatusBundle = reportedHero.potionStatusBundle;
+          }
+          if (reportedHero.scrollStatusBundle !== undefined && mutationAction === "USE_ITEM") {
+            mergedHero.scrollStatusBundle = reportedHero.scrollStatusBundle;
+          }
           if (mutationAction === "USE_ITEM") {
             const itemStatus = mergeNativeItemStatusState(trustedHeroRow.value, level.heroStateJson,
               String(mutationDetails?.itemAction || ""), String(mutationDetails?.itemClass || ""));
@@ -7296,7 +7317,7 @@ export class MatchRoom {
             const mergedDamagedHeroStateJson = mergeNativeHeroState(previousHeroRow?.value,
               payload.heroStateJson,
               { hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter) },
-              data?.targetBuffs, ankhRescue, true, true, !ankhRescue);
+              data?.targetBuffs, ankhRescue, true, !ankhRescue, !ankhRescue, ankhRescue);
             const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
               && (sourceDistance <= 1
                 ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
@@ -7481,7 +7502,7 @@ export class MatchRoom {
 
             const mergedJson = (blessedRevival || unblessedRevival)
               ? mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
-                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false, false)
+                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false, false, false)
               : null;
             const validRevival = (blessedRevival || unblessedRevival) && mergedJson != null;
             if (validRevival) {
