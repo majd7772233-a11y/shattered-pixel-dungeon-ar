@@ -4956,7 +4956,7 @@ export function mergeNativeCombatAttackerState(
   // is bound above; keep the separate max-HP increase gate tied only to kill outcomes.
   return mergeNativeHeroState(trustedValue, afterValue, {
     hp: Number(after.hp), ht: Number(after.ht), pos: Number(after.pos), shielding: Number(after.shielding)
-  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, false, false);
+  }, buffs, hasValidBlessedAnkhConsumption(trusted, after), false, false, false);
 }
 
 export function isValidNativeCombatBuffs(value: unknown): boolean {
@@ -7317,7 +7317,7 @@ export class MatchRoom {
             const mergedDamagedHeroStateJson = mergeNativeHeroState(previousHeroRow?.value,
               payload.heroStateJson,
               { hp: Number(hp), ht: Number(ht), pos: Number(targetPosAfter), shielding: Number(targetShieldAfter) },
-              data?.targetBuffs, ankhRescue, true, !ankhRescue, !ankhRescue, ankhRescue);
+              data?.targetBuffs, ankhRescue, true, !ankhRescue, !ankhRescue);
             const geometryValid = data?.sourceAttackKind === (sourceDistance <= 1 ? "MELEE" : "RANGED")
               && (sourceDistance <= 1
                 ? this.isMeleeAdjacent(sourcePos, Number(targetPosBefore), this.currentDepth)
@@ -7502,7 +7502,7 @@ export class MatchRoom {
 
             const mergedJson = (blessedRevival || unblessedRevival)
               ? mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
-                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false, false, false)
+                { hp, ht, pos, shielding: shieldAfter }, targetBuffs, blessedRevival, false, false, false)
               : null;
             const validRevival = (blessedRevival || unblessedRevival) && mergedJson != null;
             if (validRevival) {
