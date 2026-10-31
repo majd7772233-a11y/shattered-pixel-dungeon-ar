@@ -318,6 +318,18 @@ public class Item implements Bundlable {
 
 		ArrayList<Item> items = container.items;
 
+        // Bundle restoration must preserve the serialized owner/container tree exactly.
+        // Normal collection searches nested Bags, merges similar stacks and triggers pickup
+        // rewards/knowledge; all of those are gameplay effects and must not run while loading
+        // an already-authoritative inventory snapshot.
+        if (Belongings.bundleRestoring) {
+            if (!items.contains(this)) {
+                items.add(this);
+                Collections.sort(items, itemComparator);
+            }
+            return true;
+        }
+
 		if (items.contains( this )) {
 			return true;
 		}
