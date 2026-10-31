@@ -537,6 +537,9 @@ public final class SPDLevelSnapshot {
         if (hero == Dungeon.hero) {
             heroState.put("gold", Dungeon.gold);
             heroState.put("alchemyEnergy", Dungeon.energy);
+            // Statistics, generator decks, limited drops, identification catalog and local
+            // badges are run-scoped native state. Keep them with this player's durable Hero.
+            heroState.put("runProgressBundle", MultiplayerRunProgress.store());
             List<Map<String, Object>> quickslotIndex = new ArrayList<>();
             if (Dungeon.quickslot != null) {
                 for (int slot = 0; slot < QuickSlot.SIZE; slot++) {

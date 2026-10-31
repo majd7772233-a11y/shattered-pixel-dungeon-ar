@@ -257,6 +257,9 @@ public class WorldSnapshot {
             if (scrollStatus != null) {
                 com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.restoreMultiplayerStatusBundle(scrollStatus);
             }
+            if (heroState.contains("runProgressBundle")) {
+                MultiplayerRunProgress.restore(heroState.getString("runProgressBundle"));
+            }
         }
         Bundle nativeHero = readBundle(heroState.getString("combatBundle"));
         if (nativeHero != null) hero.restoreMultiplayerCombatState(nativeHero);
@@ -471,6 +474,10 @@ public class WorldSnapshot {
                 if (combat == null || combat.isEmpty() || readBundle(combat) == null
                         || inventory == null || inventory.isEmpty() || readBundle(inventory) == null
                         || !state.contains("buffCount")) return rejectValidation("validator-check-19");
+                if (state.contains("runProgressBundle")
+                        && !MultiplayerRunProgress.isValid(state.getString("runProgressBundle"))) {
+                    return rejectValidation("validator-check-37");
+                }
                 int heroBuffCount = state.getInt("buffCount");
                 if (heroBuffCount < 0 || heroBuffCount > 256) return rejectValidation("validator-check-20");
                 for (int i = 0; i < heroBuffCount; i++) {

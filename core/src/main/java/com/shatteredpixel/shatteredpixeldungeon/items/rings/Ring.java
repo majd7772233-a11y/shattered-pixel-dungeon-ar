@@ -86,7 +86,20 @@ public class Ring extends KindofMisc {
 	}
 	
 	public static void save( Bundle bundle ) {
-		handler.save( bundle );
+		if (handler != null) handler.save( bundle );
+	}
+
+	/** Serialized run-global ring labels and identification state for multiplayer persistence. */
+	public static String multiplayerStatusBundle() {
+		if (handler == null) return "";
+		Bundle bundle = new Bundle();
+		handler.save(bundle);
+		return bundle.toString();
+	}
+
+	/** Restores the native run-global ring status handler without touching another Hero replica. */
+	public static void restoreMultiplayerStatusBundle(Bundle bundle) {
+		if (bundle != null && !bundle.isNull()) restore(bundle);
 	}
 
 	public static void saveSelectively( Bundle bundle, ArrayList<Item> items ) {
