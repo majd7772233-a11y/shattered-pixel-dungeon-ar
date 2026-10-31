@@ -494,13 +494,23 @@ public class WorldSnapshot {
                 // These native run-state bundles are applied after combat and inventory.
                 // Reject malformed values during preflight so a bad journal/quest payload can
                 // never leave a partially restored Hero or overwrite the prior good snapshot.
-                for (String key : new String[]{"potionStatusBundle", "scrollStatusBundle",
-                        "notesBundle", "questStateBundle"}) {
+                for (String key : new String[]{"potionStatusBundle", "scrollStatusBundle"}) {
+                    if (state.contains(key)) {
+                        String encoded = state.getString(key);
+                        // A fresh run has no ItemStatusHandler until its first relevant item is seen.
+                        // The native serializer represents that valid, uninitialized state as "".
+                        if (encoded == null || encoded.length() > 200000
+                                || (!encoded.isEmpty() && readBundle(encoded) == null)) {
+                            return rejectValidation("validator-check-38");
+                        }
+                    }
+                }
+                for (String key : new String[]{"notesBundle", "questStateBundle"}) {
                     if (state.contains(key)) {
                         String encoded = state.getString(key);
                         if (encoded == null || encoded.isEmpty() || encoded.length() > 200000
                                 || readBundle(encoded) == null) {
-                            return rejectValidation("validator-check-38");
+                            return rejectValidation("validator-check-39");
                         }
                     }
                 }
