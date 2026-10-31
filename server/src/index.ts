@@ -3845,22 +3845,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const before = nativeHeroBuffTickState(beforeValue);
   const after = nativeHeroBuffTickState(afterValue);
   const data:any = dataValue;
-  const debugDread = data?.buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread";
-  if (debugDread) console.log("DREAD_DIAG_INITIAL", {
-    previous:!!previous,before:!!before,after:!!after,
-    previousClock:previous?.clock,beforeClock:before?.clock,afterClock:after?.clock,
-    actorClockBefore:data?.actorClockBefore,
-    stablePreviousBefore:!!previous && !!before && sameNativeItemValue(
-      nativeHeroBuffTickStableState(previous.state),nativeHeroBuffTickStableState(before.state)),
-    stableBeforeAfter:!!before && !!after && sameNativeItemValue(
-      nativeHeroBuffTickStableState(before.state),nativeHeroBuffTickStableState(after.state)),
-    hp:[previous?.state?.hp,before?.state?.hp,after?.state?.hp],
-    ht:[previous?.state?.ht,before?.state?.ht,after?.state?.ht],
-    shield:[previous?.state?.shielding,before?.state?.shielding,after?.state?.shielding],
-    rows: [previous?.rows,before?.rows,after?.rows].map(rows=>rows?.map((row:any)=>({
-      className:row.className,id:row.id,time:row.time,cooldown:row.cooldown,data:row.data,bundle:row.bundle
-    })))
-  });
   if (!previous || !before || !after || !data || typeof data !== "object"
       || typeof data.buffClass !== "string" || !Number.isInteger(data.buffId) || data.buffId < 0
       || !Number.isFinite(data.actorClockBefore)
@@ -3944,13 +3928,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const afterOtherRows = new Map(after.rows
     .filter(row=>row.className+"#"+row.id!==key)
     .map(row=>[row.className+"#"+row.id,row]));
-  if (debugDread) console.log("DREAD_DIAG_ROWS", {
-    source:source?.data,prior:prior?.data,result:result?.data,
-    sourceTime:source?.time,priorTime:prior?.time,resultTime:result?.time,
-    beforeClock:before.clock,previousBundle:prior?.bundle,sourceBundle:source?.bundle,
-    beforeOther:Array.from(beforeOtherRows.values()).map((row:any)=>({className:row.className,id:row.id,bundle:row.bundle,cooldown:row.cooldown})),
-    afterOther:Array.from(afterOtherRows.values()).map((row:any)=>({className:row.className,id:row.id,bundle:row.bundle,cooldown:row.cooldown}))
-  });
   if (!source || !prior || source.bundle !== prior.bundle
       || before.state.inventoryBundle !== after.state.inventoryBundle) return false;
   // Char.damage() natively removes Frost and MagicalSleep before resolving resistance
@@ -4109,7 +4086,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
         || !Number.isFinite(percent) || percent < 0 || percent > 1
         || !Number.isInteger(flat) || flat < 0 || flat > 100000
         || typeof oldData.healing_limited !== "boolean") return false;
-    if (typeof oldData.healing_limited !== "boolean") return false;
     const computed = Math.max(1,Math.min(left,Math.round(left*percent)+flat));
     const vialCap = oldData.healing_limited ? nativeVialOfBloodMaxHealPerTurn(before.state) : ht;
     if (vialCap === null) return false;
