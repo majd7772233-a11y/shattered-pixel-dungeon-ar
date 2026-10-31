@@ -26,10 +26,14 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Ghost;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Imp;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Wandmaker;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Blacksmith;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
+import com.shatteredpixel.shatteredpixeldungeon.items.LostBackpack;
 import com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop;
 import com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey;
 import com.shatteredpixel.shatteredpixeldungeon.items.quest.CorpseDust;
@@ -105,6 +109,9 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.seed = 123456L;
         Notes.reset();
         Ghost.Quest.reset();
+        Wandmaker.Quest.reset();
+        Blacksmith.Quest.reset();
+        Imp.Quest.reset();
         Dungeon.hero = null;
         Dungeon.level = null;
 
@@ -883,6 +890,35 @@ public class NativeCombatRuntimeIntegrationTest {
         skeletonRow.put("items", java.util.Collections.singletonList(skeletonItemRow));
         snapshot.heaps.add(skeletonRow);
 
+        Heap lostBackpackHeap = new Heap();
+        lostBackpackHeap.setMultiplayerHeapId("phase8-lost-backpack-heap-0001");
+        lostBackpackHeap.pos = heapPos + 3;
+        lostBackpackHeap.type = Heap.Type.HEAP;
+        LostBackpack lostBackpack = new LostBackpack();
+        lostBackpack.setMultiplayerItemId("phase8-lost-backpack-item-0001");
+        lostBackpackHeap.items.addLast(lostBackpack);
+        Bundle lostBackpackBundle = new Bundle();
+        lostBackpackBundle.put("item", lostBackpack);
+        Map<String, Object> lostBackpackItemRow = new HashMap<>();
+        lostBackpackItemRow.put("itemId", lostBackpack.multiplayerItemId());
+        lostBackpackItemRow.put("className", lostBackpack.getClass().getName());
+        lostBackpackItemRow.put("quantity", lostBackpack.quantity());
+        lostBackpackItemRow.put("level", lostBackpack.level());
+        lostBackpackItemRow.put("cursed", lostBackpack.cursed);
+        lostBackpackItemRow.put("cursedKnown", lostBackpack.cursedKnown);
+        lostBackpackItemRow.put("stackable", lostBackpack.stackable);
+        lostBackpackItemRow.put("serializedBundle", lostBackpackBundle.toString());
+        Map<String, Object> lostBackpackRow = new HashMap<>();
+        lostBackpackRow.put("heapId", lostBackpackHeap.multiplayerHeapId());
+        lostBackpackRow.put("pos", lostBackpackHeap.pos);
+        lostBackpackRow.put("type", lostBackpackHeap.type.name());
+        lostBackpackRow.put("seen", true);
+        lostBackpackRow.put("haunted", false);
+        lostBackpackRow.put("hidden", false);
+        lostBackpackRow.put("autoExplored", false);
+        lostBackpackRow.put("items", java.util.Collections.singletonList(lostBackpackItemRow));
+        snapshot.heaps.add(lostBackpackRow);
+
         FrostTrap authoritativeTrap = new FrostTrap();
         authoritativeTrap.pos = trapPos;
         authoritativeTrap.visible = true;
@@ -975,6 +1011,14 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull("Skeleton/bones heap must survive a full snapshot", restoredSkeleton);
         Assert.assertEquals(Heap.Type.SKELETON, restoredSkeleton.type);
         Assert.assertEquals(1, restoredSkeleton.items.size());
+        Heap restoredLostBackpackHeap = level.heaps.get(heapPos + 3);
+        Assert.assertNotNull("The post-Ankh LostBackpack heap must survive resynchronization",
+                restoredLostBackpackHeap);
+        Assert.assertEquals(Heap.Type.HEAP, restoredLostBackpackHeap.type);
+        Assert.assertEquals(1, restoredLostBackpackHeap.items.size());
+        Assert.assertTrue(restoredLostBackpackHeap.items.getFirst() instanceof LostBackpack);
+        Assert.assertEquals("phase8-lost-backpack-item-0001",
+                restoredLostBackpackHeap.items.getFirst().multiplayerItemId());
 
         Trap restoredTrap = level.traps.get(trapPos);
         Assert.assertTrue(restoredTrap instanceof FrostTrap);
@@ -1001,11 +1045,15 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertTrue("A second apply must not duplicate native heaps/traps/plants/blobs",
                 WorldSnapshot.restoreWorld(snapshot));
-        Assert.assertEquals(3, level.heaps.keyArray().length);
+        Assert.assertEquals(4, level.heaps.keyArray().length);
         Assert.assertEquals(1, level.traps.keyArray().length);
         Assert.assertEquals(1, level.plants.keyArray().length);
         Assert.assertEquals(1, level.blobs.size());
         Assert.assertEquals(2, level.heaps.get(heapPos).items.size());
+        Assert.assertEquals(1, level.heaps.get(heapPos + 3).items.size());
+        Assert.assertTrue(level.heaps.get(heapPos + 3).items.getFirst() instanceof LostBackpack);
+        Assert.assertEquals("phase8-lost-backpack-item-0001",
+                level.heaps.get(heapPos + 3).items.getFirst().multiplayerItemId());
         Assert.assertTrue(level.heaps.get(heapPos).items.getFirst() instanceof Ankh);
         Assert.assertTrue(level.heaps.get(heapPos).items.getLast().getClass() == Item.class);
         Blob restoredFireAgain = level.blobs.get(Fire.class);
@@ -1065,6 +1113,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Bundle ghostQuestState = new Bundle();
         ghostQuestState.put("sadGhost", ghostQuestNode);
         Ghost.Quest.restoreFromBundle(ghostQuestState);
+        Imp.Quest.reset();
 
         // These static native SPD systems affect future run rewards and item generation.
         Ring.initGems();
@@ -1138,6 +1187,16 @@ public class NativeCombatRuntimeIntegrationTest {
                 encodedRoot.getString("questStateBundle").length() > 0);
         Assert.assertTrue("Run progress is bounded before transport",
                 runProgress.asString().length() <= MultiplayerRunProgress.MAX_ENCODED_LENGTH);
+        Bundle staleImpNode = new Bundle();
+        staleImpNode.put("spawned", true);
+        staleImpNode.put("alternative", true);
+        staleImpNode.put("given", true);
+        staleImpNode.put("completed", true);
+        Bundle staleImpState = new Bundle();
+        staleImpState.put("demon", staleImpNode);
+        Imp.Quest.restoreFromBundle(staleImpState);
+        Assert.assertTrue(Imp.Quest.isCompleted());
+
         String quickslotsJson = encodedRoot.getString("quickslotsJson");
         System.out.println("PHASE8_QUICKSLOTS_JSON=" + quickslotsJson);
         JsonValue quickslotArray = new JsonReader().parse(quickslotsJson);
@@ -1188,6 +1247,9 @@ public class NativeCombatRuntimeIntegrationTest {
                 Notes.contains(Notes.Landmark.GHOST, Dungeon.depth));
         Assert.assertTrue("NPC quest completion flags must survive reconnect and repeated resync",
                 Ghost.Quest.processed());
+        Assert.assertFalse("A quest absent from the saved run must not remain completed after restore",
+                Imp.Quest.isCompleted());
+        Assert.assertNull("A stale unearned Imp reward must not survive resynchronization", Imp.Quest.reward);
 
         int carriedCount = 0;
         Item restoredStack = null;
