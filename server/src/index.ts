@@ -3978,23 +3978,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     // MagicalSleep.attachTo() immediately detaches itself when a Hero is already at full HP.
     return hpBefore === ht && additions.length === 0;
   }
-  if (buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread") {
-    const left = Number(oldData.left), object = Number(oldData.object);
-    if (!Number.isInteger(left) || left < 1 || left > 100000
-        || !Number.isInteger(object) || object < 0
-        || !Number.isFinite(Number(source.time)) || source.time > before.clock + 0.06
-        || hpAfter !== hpBefore || shieldAfter !== shieldBefore) return false;
-    if (left === 1) return !result;
-    if (!result || !isSameTimeTick(0.9,1.1)
-        || Number(newData.left) !== left-1 || Number(newData.object) !== object) return false;
-    const oldFields={...oldData}, newFields={...newData};
-    for (const fields of [oldFields,newFields]) {
-      delete fields.__className;
-      delete fields.id;
-      delete fields.time;
-    }
-    return sameNativeItemValue(oldFields,newFields);
-  }
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
@@ -4033,6 +4016,23 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const className = buffClass;
   const timeDelta = result ? result.time-source.time : null;
   const isSameTimeTick = (min:number,max:number) => result != null && timeDelta! >= min && timeDelta! <= max;
+  if (buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread") {
+    const left = Number(oldData.left), object = Number(oldData.object);
+    if (!Number.isInteger(left) || left < 1 || left > 100000
+        || !Number.isInteger(object) || object < 0
+        || !Number.isFinite(Number(source.time)) || source.time > before.clock + 0.06
+        || hpAfter !== hpBefore || shieldAfter !== shieldBefore) return false;
+    if (left === 1) return !result;
+    if (!result || !isSameTimeTick(0.9,1.1)
+        || Number(newData.left) !== left-1 || Number(newData.object) !== object) return false;
+    const oldFields={...oldData}, newFields={...newData};
+    for (const fields of [oldFields,newFields]) {
+      delete fields.__className;
+      delete fields.id;
+      delete fields.time;
+    }
+    return sameNativeItemValue(oldFields,newFields);
+  }
   const hasWellFed = before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed");
   const near = (a:number,b:number,tolerance=0.03) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a-b)<=tolerance;
 
