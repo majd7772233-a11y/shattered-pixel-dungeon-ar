@@ -28,7 +28,6 @@ public final class NativeHeroBuffTickPublisher {
         private final int buffId;
         private final int depth;
         private final int heroPos;
-        private final float actorClockBefore;
 
         private TickCapture(Hero hero, String beforeState, String buffClass, int buffId,
                             int depth, int heroPos, float actorClockBefore) {
