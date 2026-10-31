@@ -1,6 +1,6 @@
 # Multiplayer Continuation Checkpoint
 
-> **Superseded on 2026-10-30.** This file is retained as historical Phase 1/2 technical context only. Its older phase-status statements are not current instructions. The active continuation checkpoint is in `GPT.md`, and the authoritative phase map/status is in `ROADMAP.md`. Current status: Phases 1–7 are complete for implementation and automated acceptance; Phase 8 is next. Latest tested Phase 7 code SHA: `744b78cebfae17609dd2b7d43e9d19bd42774056` (CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed).
+> **Superseded on 2026-10-31.** This file is retained as historical Phase 1/2 technical context only. Its older technical/status notes are not active instructions. The active continuation checkpoint is in `GPT.md`, and the authoritative phase map/status is in `ROADMAP.md`. Current implementation status: Phases 1–8 are complete for automated acceptance; Phase 9 is next. Latest tested Phase 8 code SHA: `e36bc8030755050e3eae3d45ccab4db1040a65f5` (CI [41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed).
 
 Updated: 2026-10-21 (UTC)
 
@@ -41,3 +41,15 @@ Implementation and automated CI acceptance remain complete, as documented in `RO
 ## User execution rule
 
 When asked to finish a stage, directly implement and test the missing work, fix red tests, and verify the final code commit in CI. Do not report a stage as completed based only on a plan, a source review, or a successful older commit.
+
+
+## 2026-10-31 — Phase 8 completion checkpoint
+
+- Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`.
+- Working branch: `multiplayer-framework-core-14118577486727081892`. Do not switch to or merge into `master` as part of continuation.
+- Tested code head: `e36bc8030755050e3eae3d45ccab4db1040a65f5`.
+- Exact-head CI: [41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) — success. Backend typecheck and 472/472 Vitest tests passed; Java tests and Android Debug APK compilation passed.
+- Phase 8 added/restored native run-progress bundles, exact inventory tree semantics, trusted journal/quest/item-knowledge reconciliation, stable exactly-once Mob reward receipts, Ankh/ LostBackpack heap coverage, bounds checks and NPC inactive-quest resets. Detailed acceptance notes are in `ROADMAP.md` and `GPT.md`.
+- Multiplayer individual death intentionally does not call single-player `Hero.reallyDie()/Bones.leave()`; that would delete the local run. Existing remains/skeleton heaps and LostBackpack are kept in the multiplayer world snapshot.
+- Physical two-device testing and deployed Worker end-to-end verification remain release checks in Phases 22 and 23; they are not claimed as passed.
+- **Next phase: Phase 9 — Native Buffs, Consumable Effects and Timed State.** Re-read its full acceptance criteria in `ROADMAP.md` before implementation.
