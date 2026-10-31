@@ -165,6 +165,7 @@ public class Imp extends NPC {
 		
 		public static void reset() {
 			spawned = false;
+			alternative = false;
 			given = false;
 			completed = false;
 
@@ -206,6 +207,8 @@ public class Imp extends NPC {
 				given = node.getBoolean( GIVEN );
 				completed = node.getBoolean( COMPLETED );
 				reward = (Ring)node.get( REWARD );
+			} else {
+				reset();
 			}
 		}
 
