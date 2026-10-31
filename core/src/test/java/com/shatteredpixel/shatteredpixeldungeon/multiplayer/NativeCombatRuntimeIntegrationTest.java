@@ -962,6 +962,8 @@ public class NativeCombatRuntimeIntegrationTest {
 
     @Test
     public void localHeroSnapshotRestoresRunProgressDroppedItemsAndInventoryIdempotently() {
+        // Reset process-global slots because headless JVM tests share one native QuickSlot.
+        Dungeon.quickslot.reset();
         // These static native SPD systems affect future run rewards and item generation.
         Ring.initGems();
         SpecialRoom.initForRun();

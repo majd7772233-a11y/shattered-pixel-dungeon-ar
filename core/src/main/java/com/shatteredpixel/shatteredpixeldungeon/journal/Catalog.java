@@ -402,6 +402,14 @@ public enum Catalog {
 	 * also makes headless native restoration depend on a local filesystem.
 	 */
 	public static void restoreMultiplayer( Bundle bundle ){
+		// Unlike the old local-save migration, multiplayer must converge to this exact
+		// sender state rather than retaining entries learned by a previous local run.
+		for (Catalog cat : values()) {
+			for (Class<?> item : cat.items()) {
+				cat.seen.put(item, false);
+				cat.useCount.put(item, 0);
+			}
+		}
 		restore(bundle, false);
 	}
 
