@@ -139,22 +139,23 @@ public final class SPDLevelSnapshot {
     public static final class InventoryItemData {
         public String itemId = "";
         public String className = "";
-        public int quantity;
-        public int level;
-        public boolean cursed;
-        public boolean cursedKnown;
-        public boolean stackable;
-        public boolean equipped;
+        public Integer quantity;
+        public Integer level;
+        public Boolean cursed;
+        public Boolean cursedKnown;
+        public Boolean stackable;
+        public Boolean equipped;
         public String containerId = "";
         public String serializedBundle = "";
     }
 
     /** Typed wire record for the quickslot-to-inventory references. */
     public static final class QuickSlotData {
-        public int slot;
+        // Boxed so slot zero and empty placeholder quantities are not omitted by prototype-aware JSON writers.
+        public Integer slot;
         public String itemId = "";
         public String className = "";
-        public int quantity;
+        public Integer quantity;
         public String serializedBundle = "";
     }
 
@@ -162,10 +163,10 @@ public final class SPDLevelSnapshot {
     public static final class ItemEconomyData {
         public String itemId = "";
         public String className = "";
-        public int quantity;
-        public int nativeValue;
-        public int nativeUnitValue;
-        public boolean nativeSellable;
+        public Integer quantity;
+        public Integer nativeValue;
+        public Integer nativeUnitValue;
+        public Boolean nativeSellable;
     }
 
     public static final class HeapData {
@@ -580,10 +581,10 @@ public final class SPDLevelSnapshot {
                     Item quickItem = Dungeon.quickslot.getItem(slot);
                     if (quickItem == null) continue;
                     QuickSlotData entry = new QuickSlotData();
-                    entry.slot = slot;
+                    entry.slot = Integer.valueOf(slot);
                     entry.itemId = quickItem.multiplayerItemId();
                     entry.className = quickItem.getClass().getName();
-                    entry.quantity = quickItem.quantity();
+                    entry.quantity = Integer.valueOf(quickItem.quantity());
                     entry.serializedBundle = currentItemBundle(quickItem);
                     quickslotIndex.add(entry);
                 }
