@@ -107,12 +107,18 @@ public class Bag extends Item implements Iterable<Item> {
             }
         }
 
-		grabItems(container);
+        // Restoring a native inventory bundle must preserve the serialized container tree.
+        // The normal pickup path intentionally packs loose backpack items into a newly acquired
+        // Bag, but doing that while Bundle recursively restores a nested Bag moves siblings into
+        // it and makes repeated full-world snapshots change inventory ownership.
+        if (!Belongings.bundleRestoring) {
+            grabItems(container);
 
-		//if there are any quickslot placeholders that match items in this bag, assign them
-		for (Item item : items) {
-			Dungeon.quickslot.replacePlaceholder(item);
-		}
+            //if there are any quickslot placeholders that match items in this bag, assign them
+            for (Item item : items) {
+                Dungeon.quickslot.replacePlaceholder(item);
+            }
+        }
 
 		if (super.collect( container )) {
 			
