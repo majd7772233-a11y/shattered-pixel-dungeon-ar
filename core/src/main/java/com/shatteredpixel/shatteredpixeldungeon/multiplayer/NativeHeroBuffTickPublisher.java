@@ -55,7 +55,8 @@ public final class NativeHeroBuffTickPublisher {
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed".equals(name)
-                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness".equals(name);
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging".equals(name);
     }
 
     private static float actorClock(String stateJson) {

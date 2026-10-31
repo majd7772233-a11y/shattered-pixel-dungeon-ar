@@ -3825,7 +3825,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging"
   ]);
   for (const [key,row] of oldRows) {
     const current = preRows.get(key);
@@ -3886,7 +3887,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Speed",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging"
   ]);
   if (simpleExpiry.has(buffClass)) {
     return !result && source.time <= before.clock + 0.06

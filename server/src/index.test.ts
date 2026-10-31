@@ -2440,7 +2440,7 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify({...after,hp:11}),tick(cls,70))).toBe(false);
   });
   it("accepts only native FlavourBuff timer expiry and rejects early or side-effecting removal",()=>{
-    const safe=["Chill","Cripple","Slow","Speed","Weakness"];
+    const safe=["Chill","Cripple","Slow","Speed","Weakness","Recharging"];
     for (const name of safe) {
       const cls=buffs+name;
       const previous=stateWithBuff(cls,120,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
@@ -2469,9 +2469,12 @@ describe("Native Hero Buff tick reconciliation", () => {
     const wandCharger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
     const warriorRow=JSON.stringify({buff:{__className:warriorShield,id:81,time:12,shielding:4}});
     const chargerRow=JSON.stringify({buff:{__className:wandCharger,id:82,time:14,scalingFactor:0.875}});
+    const recharging="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging";
+    const rechargingRow=JSON.stringify({buff:{__className:recharging,id:89,time:9}});
     const previous=stateWithBuff(haste,70,9,{},{
-      cooldown:2,buffCooldown_0:1,buffCount:3,
-      buff_1:warriorRow,buffCooldown_1:4,buff_2:chargerRow,buffCooldown_2:6
+      cooldown:2,buffCooldown_0:1,buffCount:4,
+      buff_1:warriorRow,buffCooldown_1:4,buff_2:chargerRow,buffCooldown_2:6,
+      buff_3:rechargingRow,buffCooldown_3:1
     });
     const before=stateWithBuff(haste,70,9,{},{
       cooldown:1,buffCooldown_0:0,buffCount:3,
