@@ -3834,6 +3834,43 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(JSON.parse(String(accepted)).runProgressBundle).toBe("native-kill-run-progress");
   });
 
+  it("persists attacker-owned run rewards after an accepted nonlethal native attack", () => {
+    const before = heroState("trusted-run-progress");
+    const after = JSON.parse(before);
+    after.cooldown = 2;
+    after.runProgressBundle = "native-progress-after-nonlethal-attack";
+    const merged = mergeNativeCombatAttackerState(before, before, JSON.stringify(after), {
+      hp: 20, ht: 20, pos: 12, state: "ALIVE"
+    }, false);
+    expect(merged).not.toBeNull();
+    expect(JSON.parse(String(merged)).runProgressBundle)
+      .toBe("native-progress-after-nonlethal-attack");
+  });
+
+  it("commits run-scoped Ankh use statistics with a validated blessed rescue", () => {
+    const before = JSON.parse(heroState("run-before-ankh"));
+    before.hp = 2;
+    before.ankhCount = 1;
+    before.blessedAnkhCount = 1;
+    before.inventoryBundle = "inventory-before-ankh";
+    const after = {
+      ...before,
+      hp: 5,
+      inventoryBundle: "inventory-after-ankh",
+      ankhCount: 0,
+      blessedAnkhCount: 0,
+      runProgressBundle: "run-after-ankh"
+    };
+    const merged = mergeNativeHeroState(JSON.stringify(before), JSON.stringify(after),
+      { hp: 5, ht: 20, pos: 12, shielding: 0 }, "[]", true, true, true, false);
+    expect(merged).not.toBeNull();
+    const saved = JSON.parse(String(merged));
+    expect(saved.inventoryBundle).toBe("inventory-after-ankh");
+    expect(saved.ankhCount).toBe(0);
+    expect(saved.blessedAnkhCount).toBe(0);
+    expect(saved.runProgressBundle).toBe("run-after-ankh");
+  });
+
   it("rejects an oversized or non-string opaque native run bundle", () => {
     const valid = JSON.parse(heroState("bounded-native-run-state"));
     expect(isValidNativeHeroStateJson(JSON.stringify(valid),
