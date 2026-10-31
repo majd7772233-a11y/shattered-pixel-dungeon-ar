@@ -303,6 +303,9 @@ public abstract class Actor implements Bundlable {
         // Do not let a destination Hero issue another action while the server is waiting
         // for every living peer's native destination floor and Hero state.
         if (manager.isFloorTransitionPending() && actor == Dungeon.hero) return true;
+        // Remote Hero Buffs are presentation replicas; their owner publishes the native tick.
+        if (actor instanceof Buff && ((Buff) actor).target
+                instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero) return true;
         return isMultiplayerSharedActor(actor) && !manager.isLevelPublisher();
     }
 
