@@ -103,6 +103,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.depth = 1;
         Dungeon.branch = 0;
         Dungeon.seed = 123456L;
+        Notes.reset();
+        Ghost.Quest.reset();
         Dungeon.hero = null;
         Dungeon.level = null;
 
