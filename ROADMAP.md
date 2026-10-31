@@ -29,8 +29,8 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 5 | Stable item identity and pickup claims | Complete for implementation and automated acceptance |
 | 6 | Drops, partial stacks and floor heaps | Complete for implementation and automated acceptance |
 | 7 | Inventory actions and item economy | Complete for implementation and automated acceptance |
-| 8 | Inventory persistence, restoration and exactly-once rewards | Open |
-| 9 | Native buffs and timed effects | Open |
+| 8 | Inventory persistence, restoration and exactly-once rewards | Complete for implementation and automated acceptance |
+| 9 | Native buffs and timed effects | In progress — partial implementation; acceptance open |
 | 10 | Canonical protocol schema and one typed event path | Open |
 | 11 | Event ordering, replay protection and resynchronization | Open |
 | 12 | Durable recovery, reconnect and authority handoff | Open |
@@ -64,7 +64,19 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 ## Current Verified Status
 
-### Active continuation checkpoint — 2026-10-29 (new-conversation handoff)
+### Active continuation checkpoint — 2026-10-31
+
+- **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`.
+- **Working branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless the user asks.
+- **Latest tested gameplay code/test SHA:** `d1c2f180f29846ce16d20c010a38805754b9b70f`. Exact-SHA CI [41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476) passed Backend typecheck/tests and Android JVM tests/debug APK compilation.
+- **Phase 8:** complete for implementation and automated acceptance on `e36bc8030755050e3eae3d45ccab4db1040a65f5`; [CI 41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed 472/472 Vitest tests, Java tests and Android debug APK compilation.
+- **Phase 9:** in progress, not complete. All work items and acceptance criteria remain unchecked. Current implementation/verification commits: `4f383d560d728c25a9894dc80e498f8954732098` ([CI 41240321050](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240321050)) and `d1c2f180f29846ce16d20c010a38805754b9b70f` ([CI 41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476)); both exact-SHA workflows passed.
+- The current code parses native nested Hero Buff classes from the wider SPD package while keeping non-source rows immutable. It narrowly permits Frost/MagicalSleep removal during an effective-damage Hunger/Poison tick, rejects Poison while LifeLink is active, and refuses background Levitation expiry because native detach occupies the Hero's tile.
+- Still open: Wand.Charger/Recharging with exact per-wand charge and scheduler validation; BrokenSeal.WarriorShield, Blocking.BlockBuff and Berserk tick behavior; other damage side effects and linked/dead targets; broader consumable-effect lifetimes; concurrent ticks, exact-once/replay, expiry boundaries and reconnect/resync timing.
+- **Next action:** complete the Wand.Charger/Recharging audit against native wand, RingOfEnergy, Regeneration and inventory bundles. Do not accept a charge tick until the server can bind it to one owned wand and validate the native formula and complete before/after item delta.
+- No deployed Worker end-to-end smoke test or physical-device multiplayer match was performed; these remain Phases 22 and 23.
+
+### Historical checkpoint — 2026-10-29 (superseded)
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`.
 - **Working branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless the user asks.
@@ -297,7 +309,7 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 - Tested gameplay SHA: `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-HEAD CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed schema, backend and Android jobs.
 - No deployed Worker end-to-end smoke test or physical two-device match was run. Those remain Phase 22 and Phase 23.
-- **Next whole phase:** Phase 8 — Inventory Persistence, Restoration and Exactly-Once Rewards.
+- **Next whole phase:** Phase 9 — Native Buffs, Consumable Effects and Timed State.
 
 ## Phase 8 — Inventory Persistence, Restoration and Exactly-Once Rewards
 
@@ -327,7 +339,7 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Multiplayer intentionally does not run the single-player final-death `Hero.reallyDie()/Bones.leave()` path for an individual co-op death, because that path deletes the local run and writes a device-global Bones file. Existing skeleton/remains heaps are persisted as world heaps; the multiplayer death/revival flow persists the LostBackpack heap instead.
 - Exact-head GitHub Actions [run 41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed: backend typecheck and **472/472** Vitest tests, Java tests, and Android `assembleDebug` (`BUILD SUCCESSFUL`).
 
-Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23. Phase 9 has not been started.
+Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23. Phase 9 is now in progress but remains open; its work items and acceptance criteria below are intentionally unchecked.
 
 ## Phase 9 — Native Buffs, Consumable Effects and Timed State
 
@@ -341,6 +353,17 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 - [ ] Add tests for concurrent effects, expiry boundaries, shields/DOTs, death during an effect, reconnect before/after expiry, duplicated tick messages and malformed effect deltas.
 
 ### Acceptance criteria
+
+### Progress checkpoint — 2026-10-31 (Phase 9 remains OPEN)
+
+- Exact tested gameplay code/test SHA: `d1c2f180f29846ce16d20c010a38805754b9b70f`. Exact-SHA CI [41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476) passed Backend typecheck/tests and Android JVM tests/debug APK compilation.
+- Nested native Hero Buff classes outside `actors.buffs` are now parseable in server tick snapshots (including `BrokenSeal.WarriorShield`, `Blocking.BlockBuff` and `Wand.Charger`). Their non-source rows remain immutable; this does **not** enable those classes as changing tick sources.
+- Hunger/Poison validation now recognizes only the proved `Char.damage()` removals of `Frost` and `MagicalSleep` during an effective-damage tick. It rejects new/unrelated Buff rows and keeps all other existing rows unchanged. Poison with `LifeLink` is rejected until a multi-target result records the linked character's state.
+- `Levitation` was removed from background-expiry admission: its native `detach()` invokes `Level.occupyCell()`, which can cause tile/trap/world interactions that a Hero-only buff event does not carry.
+- **Still required:** implement and test per-wand `Wand.Charger` `curCharges`/`partialCharge` deltas with native `RingOfEnergy`, `Regeneration`, `Recharging` and actor-order rules; validate other shield actors individually (not with Barrier rules); cover more native periodic effects and potion/scroll durations; and add concurrent-effect, expiry-boundary, death, replay/duplicate, reconnect and resync tests. Fail closed when an effect changes other actors or world state not represented in the result.
+- Commits [4f383d5](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/4f383d560d728c25a9894dc80e498f8954732098) and [d1c2f18](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/commit/d1c2f180f29846ce16d20c010a38805754b9b70f) both passed exact-SHA CI. No deployed Worker or physical-device verification was performed; those remain Phases 22/23.
+
+
 - Effects use original SPD gameplay and agree across clients on active state, tick result, duration and expiry.
 - Replaying a tick or restoring the same snapshot does not duplicate damage/healing or extend/restart an effect.
 - Removed actors/effects are safely cleaned up with no hidden scheduler corruption.
