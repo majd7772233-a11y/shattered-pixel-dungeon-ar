@@ -31,9 +31,8 @@ import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.items.Dewdrop;
 import com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey;
 import com.shatteredpixel.shatteredpixeldungeon.items.quest.CorpseDust;
-import com.shatteredpixel.shatteredpixeldungeon.items.bags.ScrollHolder;
+import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger;
-import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
 import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
@@ -1083,14 +1082,13 @@ public class NativeCombatRuntimeIntegrationTest {
         equippedWeapon.cursedKnown = true;
         hero.belongings.weapon = equippedWeapon;
 
-        Scroll.initLabels();
-        ScrollHolder scrollHolder = new ScrollHolder();
-        scrollHolder.setMultiplayerItemId("phase8-scroll-holder-0001");
-        ScrollOfIdentify nestedScroll = new ScrollOfIdentify();
-        nestedScroll.setMultiplayerItemId("phase8-nested-scroll-0001");
-        scrollHolder.items.add(nestedScroll);
-        hero.belongings.backpack.items.add(scrollHolder);
-        Dungeon.quickslot.setSlot(1, nestedScroll);
+        Bag nestedBag = new Bag();
+        nestedBag.setMultiplayerItemId("phase8-nested-bag-0001");
+        Item nestedBagItem = new Item();
+        nestedBagItem.setMultiplayerItemId("phase8-nested-item-0001");
+        nestedBag.items.add(nestedBagItem);
+        hero.belongings.backpack.items.add(nestedBag);
+        Dungeon.quickslot.setSlot(1, nestedBagItem);
 
         CorpseDust questItem = new CorpseDust();
         questItem.setMultiplayerItemId("phase8-corpse-dust-0001");
@@ -1170,20 +1168,21 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue(hero.belongings.weapon.cursed);
         Assert.assertTrue(hero.belongings.weapon.cursedKnown);
 
-        ScrollHolder restoredHolder = null;
+        Bag restoredNestedBag = null;
         CorpseDust restoredQuestItem = null;
         for (Item item : hero.belongings.backpack.items) {
-            if (item instanceof ScrollHolder) restoredHolder = (ScrollHolder)item;
+            if (item instanceof Bag && !(item instanceof com.shatteredpixel.shatteredpixeldungeon.actors.hero.Belongings.Backpack)) {
+                restoredNestedBag = (Bag)item;
+            }
             if (item instanceof CorpseDust) restoredQuestItem = (CorpseDust)item;
         }
-        Assert.assertNotNull("Nested inventory containers must be restored", restoredHolder);
-        Assert.assertEquals("phase8-scroll-holder-0001", restoredHolder.multiplayerItemId());
-        Assert.assertEquals(1, restoredHolder.items.size());
-        Item restoredNestedScroll = restoredHolder.items.get(0);
-        Assert.assertTrue(restoredNestedScroll instanceof ScrollOfIdentify);
-        Assert.assertEquals("phase8-nested-scroll-0001", restoredNestedScroll.multiplayerItemId());
+        Assert.assertNotNull("Nested inventory containers must be restored", restoredNestedBag);
+        Assert.assertEquals("phase8-nested-bag-0001", restoredNestedBag.multiplayerItemId());
+        Assert.assertEquals(1, restoredNestedBag.items.size());
+        Item restoredNestedItem = restoredNestedBag.items.get(0);
+        Assert.assertEquals("phase8-nested-item-0001", restoredNestedItem.multiplayerItemId());
         Assert.assertSame("Quickslots must rebind to the nested restored item",
-                restoredNestedScroll, Dungeon.quickslot.getItem(1));
+                restoredNestedItem, Dungeon.quickslot.getItem(1));
         Assert.assertNotNull("Quest items must remain in the player's inventory", restoredQuestItem);
         Assert.assertEquals("phase8-corpse-dust-0001", restoredQuestItem.multiplayerItemId());
     }
