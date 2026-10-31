@@ -1197,7 +1197,9 @@ const NATIVE_SUPPORTED_POTION_STATUS_CLASS: Record<string,string> = {
   "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation": "PotionOfLevitation",
   "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfStrength": "PotionOfStrength",
   // Native ExoticPotion.setKnown() marks the regular base Potion class.
-  "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding": "PotionOfHealing"
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity": "PotionOfPurity",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding": "PotionOfHealing",
+  "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina": "PotionOfHaste"
 };
 const NATIVE_SUPPORTED_SCROLL_STATUS_CLASS: Record<string,string> = {
   "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging": "ScrollOfRecharging"

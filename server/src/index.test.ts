@@ -3174,6 +3174,50 @@ describe("Native item consumption transaction validation", () => {
     }));
     expect(isValidNativeUseItemMutation(beforePotion,forgedPotion,potionData,{...potionData,actionType:"USE_ITEM"})).toBe(false);
 
+    const purity="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfPurity";
+    const stamina="com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfStamina";
+    const exoticStatus=(purityKnown:boolean,hasteKnown:boolean)=>JSON.stringify({
+      PotionOfPurity_label:"VIOLET",PotionOfPurity_known:purityKnown,
+      PotionOfHaste_label:"AMBER",PotionOfHaste_known:hasteKnown,
+      PotionOfHealing_label:"CRIMSON",PotionOfHealing_known:true,
+      PotionOfStrength_label:"GOLD",PotionOfStrength_known:true
+    });
+    const statusBase={
+      potionStatusBundle:exoticStatus(false,false),
+      scrollStatusBundle:defaultScrollStatus()
+    };
+    const purityKnown={
+      ...statusBase,
+      potionStatusBundle:exoticStatus(true,false)
+    };
+    expect(isValidNativeItemStatusMutation(statusBase,purityKnown,"DRINK",purity)).toBe(true);
+    expect(mergeNativeItemStatusState(statusBase,purityKnown,"DRINK",purity)).toEqual({
+      potionStatusBundle:exoticStatus(true,false),scrollStatusBundle:defaultScrollStatus()
+    });
+    const wrongPurityTarget={
+      ...statusBase,
+      potionStatusBundle:exoticStatus(false,true)
+    };
+    expect(isValidNativeItemStatusMutation(statusBase,wrongPurityTarget,"DRINK",purity)).toBe(false);
+
+    // Exotic PotionOfStamina identifies its regular base PotionOfHaste class.
+    const staminaKnown={
+      ...statusBase,
+      potionStatusBundle:exoticStatus(false,true)
+    };
+    expect(isValidNativeItemStatusMutation(statusBase,staminaKnown,"DRINK",stamina)).toBe(true);
+    expect(mergeNativeItemStatusState(statusBase,staminaKnown,"DRINK",stamina)).toEqual({
+      potionStatusBundle:exoticStatus(false,true),scrollStatusBundle:defaultScrollStatus()
+    });
+    const wrongStaminaTarget={
+      ...statusBase,
+      potionStatusBundle:JSON.stringify({
+        ...JSON.parse(exoticStatus(false,false)),
+        PotionOfStamina_label:"IVORY",PotionOfStamina_known:true
+      })
+    };
+    expect(isValidNativeItemStatusMutation(statusBase,wrongStaminaTarget,"DRINK",stamina)).toBe(false);
+
     const beforeScroll=JSON.stringify(hero([row("native-status-scroll-001",scroll,1,true)],{
       cooldown:0,scrollStatusBundle:scrollState(false),
       combatBundle:JSON.stringify({time:10,STR:10,inventory:"inventory-before",items:"inventory-before",buffs:[],
