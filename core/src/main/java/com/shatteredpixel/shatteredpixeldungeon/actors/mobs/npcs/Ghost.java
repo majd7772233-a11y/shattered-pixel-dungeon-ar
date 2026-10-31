@@ -231,7 +231,11 @@ public class Ghost extends NPC {
 		
 		public static void reset() {
 			spawned = false;
-			
+			type = 0;
+			given = false;
+			processed = false;
+			depth = 0;
+
 			weapon = null;
 			armor = null;
 			enchant = null;
