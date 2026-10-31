@@ -431,3 +431,15 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - Final audit fixes: blocked pickup effects that would desynchronize run-global Ring knowledge; blocked unsupported potion side effects before consumption; rejected LostBackpack's multi-system restore callback; and rejected tipped-dart merging when it would spawn extra ordinary darts. Java and backend regressions cover each boundary.
 - Exact tested gameplay SHA `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-HEAD CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed schema validation, backend build, 456 Vitest executions, Android JVM tests and debug APK compilation.
 - Phase 7 is **COMPLETE for implementation and automated acceptance**. Phase 8 is next. No deployed Worker end-to-end smoke test or physical two-device match was run; those remain Phases 22 and 23.
+
+
+### 2026-10-31 — Phase 8 inventory persistence, restoration and exactly-once rewards completed
+
+- Completed Phase 8 on `multiplayer-framework-core-14118577486727081892`; exact tested gameplay commit: `e36bc8030755050e3eae3d45ccab4db1040a65f5`.
+- Added bounded, versioned `MultiplayerRunProgress` capture/restore for native statistics, catalog state, local badges, generator decks, limited drops, special/secret-room state, ring knowledge, chapters, generated floors, pending floor drops and quickslot placeholders. Hero/inventory bundles retain exact nested ownership, item IDs, partial stacks, equipment and quickslots; restore bypasses normal pickup auto-packing/stack merging.
+- Closed accepted-state persistence gaps for native combat results, Ankh consumption/revival and validated world mutations. Trusted pre-state matching binds notes, key counts, quests and Potion/Scroll identification so unaccepted intents cannot rewrite them. Native bundles are bounded and preflighted before any world mutation.
+- Added stable per-depth/Mob kill-reward receipts; the same kill cannot be claimed again under a different request ID. Inventory/drop/heap/quest/statistics regression coverage includes full snapshot reapplication, nested containers, remains/skeleton heaps, dew, keys, quest items and LostBackpack after Ankh revival. Inactive NPC quests now clear stale flags/rewards during restore.
+- Exact-head CI [41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed backend typecheck, **472/472** Vitest tests, Java tests and Android Debug APK compilation (`BUILD SUCCESSFUL`).
+- Scope note: individual co-op death intentionally does not invoke the single-player `Hero.reallyDie()/Bones.leave()` final-run path; that would delete a local run and write a device-global Bones file. Multiplayer persists existing skeleton/remains heaps and the authoritative LostBackpack heap instead. Physical two-device and deployed Worker end-to-end checks remain Phases 22/23.
+- Phase 8 is **COMPLETE for implementation and automated acceptance**. Next: **Phase 9 — Native Buffs, Consumable Effects and Timed State**. Do not infer Phase 9 completion from Phase 8's Hero/run-state persistence.
+
