@@ -25,6 +25,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Talent;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Ghost;
+import com.shatteredpixel.shatteredpixeldungeon.journal.Notes;
 import com.shatteredpixel.shatteredpixeldungeon.items.Ankh;
 import com.shatteredpixel.shatteredpixeldungeon.items.Heap;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
@@ -1049,6 +1051,19 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.startSession("phase8-run-progress-reconnect", "phase8-run-progress-player", new TestTransport());
         // Reset process-global slots because headless JVM tests share one native QuickSlot.
         Dungeon.quickslot.reset();
+
+        Notes.reset();
+        Assert.assertTrue(Notes.add(Notes.Landmark.GHOST, Dungeon.depth));
+        Bundle ghostQuestNode = new Bundle();
+        ghostQuestNode.put("spawned", true);
+        ghostQuestNode.put("type", 1);
+        ghostQuestNode.put("given", true);
+        ghostQuestNode.put("depth", Dungeon.depth);
+        ghostQuestNode.put("processed", true);
+        Bundle ghostQuestState = new Bundle();
+        ghostQuestState.put("sadGhost", ghostQuestNode);
+        Ghost.Quest.restoreFromBundle(ghostQuestState);
+
         // These static native SPD systems affect future run rewards and item generation.
         Ring.initGems();
         SpecialRoom.initForRun();
@@ -1115,6 +1130,10 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue runProgress = encodedRoot.get("runProgressBundle");
         Assert.assertNotNull("The local Hero snapshot must include native run progress", runProgress);
         Assert.assertTrue(MultiplayerRunProgress.isValid(runProgress.asString()));
+        Assert.assertTrue("The native journal must be part of the saved Hero state",
+                encodedRoot.getString("notesBundle").length() > 0);
+        Assert.assertTrue("The native NPC quest flags must be part of the saved Hero state",
+                encodedRoot.getString("questStateBundle").length() > 0);
         Assert.assertTrue("Run progress is bounded before transport",
                 runProgress.asString().length() <= MultiplayerRunProgress.MAX_ENCODED_LENGTH);
         String quickslotsJson = encodedRoot.getString("quickslotsJson");
@@ -1138,6 +1157,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Dungeon.chapters.clear();
         Dungeon.generatedLevels.clear();
         Dungeon.droppedItems = new SparseArray<>();
+        Notes.reset();
+        Ghost.Quest.reset();
         hero.belongings.backpack.items.clear();
         hero.belongings.weapon = null;
         Dungeon.quickslot.reset();
@@ -1161,6 +1182,10 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(1, Dungeon.droppedItems.get(3).size());
         Assert.assertEquals("phase8-pending-drop-0001",
                 Dungeon.droppedItems.get(3).get(0).multiplayerItemId());
+        Assert.assertTrue("The journal must be restored from the authoritative snapshot",
+                Notes.contains(Notes.Landmark.GHOST, Dungeon.depth));
+        Assert.assertTrue("NPC quest completion flags must survive reconnect and repeated resync",
+                Ghost.Quest.processed());
 
         int carriedCount = 0;
         Item restoredStack = null;
@@ -1243,6 +1268,22 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertFalse("An invalid run-progress bundle must fail snapshot preflight",
                 WorldSnapshot.validateForRestore(snapshot));
         Assert.assertFalse("A malformed run must not partially mutate the live world",
+                WorldSnapshot.restoreWorld(snapshot));
+        Bundle invalidJournalState = new Bundle();
+        invalidJournalState.put("combatBundle", combat.toString());
+        invalidJournalState.put("inventoryBundle", inventory.toString());
+        invalidJournalState.put("hp", hero.HP);
+        invalidJournalState.put("ht", hero.HT);
+        invalidJournalState.put("pos", hero.pos);
+        invalidJournalState.put("shielding", hero.shielding());
+        invalidJournalState.put("cooldown", Math.max(0f, hero.cooldown()));
+        invalidJournalState.put("buffCount", 0);
+        invalidJournalState.put("runProgressBundle", MultiplayerRunProgress.store());
+        invalidJournalState.put("notesBundle", "not-a-native-bundle");
+        snapshot.playerStateJson.put(manager.getLocalPlayerId(), invalidJournalState.toString());
+        Assert.assertFalse("Malformed native journal data must fail preflight",
+                WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertFalse("Malformed journal data must not be partially applied",
                 WorldSnapshot.restoreWorld(snapshot));
         Assert.assertTrue("The live Mob must remain after preflight rejection", level.mobs.contains(liveMob));
         Assert.assertSame(liveMob, Actor.findById(liveMob.id()));
