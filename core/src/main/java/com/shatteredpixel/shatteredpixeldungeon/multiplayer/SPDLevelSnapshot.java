@@ -135,6 +135,39 @@ public final class SPDLevelSnapshot {
         public String serializedBundle = "";
     }
 
+    /** Typed wire record: generic Map<String,Object> values are type-wrapped by libGDX Json. */
+    public static final class InventoryItemData {
+        public String itemId = "";
+        public String className = "";
+        public int quantity;
+        public int level;
+        public boolean cursed;
+        public boolean cursedKnown;
+        public boolean stackable;
+        public boolean equipped;
+        public String containerId = "";
+        public String serializedBundle = "";
+    }
+
+    /** Typed wire record for the quickslot-to-inventory references. */
+    public static final class QuickSlotData {
+        public int slot;
+        public String itemId = "";
+        public String className = "";
+        public int quantity;
+        public String serializedBundle = "";
+    }
+
+    /** Typed wire record for item economy validation. */
+    public static final class ItemEconomyData {
+        public String itemId = "";
+        public String className = "";
+        public int quantity;
+        public int nativeValue;
+        public int nativeUnitValue;
+        public boolean nativeSellable;
+    }
+
     public static final class HeapData {
         public String heapId = "";
         public int pos;
@@ -502,59 +535,61 @@ public final class SPDLevelSnapshot {
                 com.shatteredpixel.shatteredpixeldungeon.items.potions.Potion.multiplayerStatusBundle());
         heroState.put("scrollStatusBundle",
                 com.shatteredpixel.shatteredpixeldungeon.items.scrolls.Scroll.multiplayerStatusBundle());
-        List<Map<String, Object>> inventoryIndex = new ArrayList<>();
-        List<Map<String, Object>> nativeItemEconomy = new ArrayList<>();
+        List<InventoryItemData> inventoryIndex = new ArrayList<>();
+        List<ItemEconomyData> nativeItemEconomy = new ArrayList<>();
         for (Item item : hero.belongings.getAllItems(Item.class)) {
             if (item == null || item.quantity() <= 0) continue;
-            Map<String, Object> economyEntry = new HashMap<>();
-            economyEntry.put("itemId", item.multiplayerItemId());
-            economyEntry.put("className", item.getClass().getName());
-            economyEntry.put("quantity", item.quantity());
-            economyEntry.put("nativeValue", item.value());
-            economyEntry.put("nativeUnitValue", nativeUnitValue(item));
-            economyEntry.put("nativeSellable", item.value() > 0 && item.value() <= 10000000
+            ItemEconomyData economyEntry = new ItemEconomyData();
+            economyEntry.itemId = item.multiplayerItemId();
+            economyEntry.className = item.getClass().getName();
+            economyEntry.quantity = item.quantity();
+            economyEntry.nativeValue = item.value();
+            economyEntry.nativeUnitValue = nativeUnitValue(item);
+            economyEntry.nativeSellable = item.value() > 0 && item.value() <= 10000000
                     && Shopkeeper.canSell(item) && !item.isEquipped(hero)
                     && hero.belongings.backpack.items.contains(item)
                     && !(item instanceof MissileWeapon && item.isUpgradable())
-                    && (item.quantity() == 1 || nativeUnitValue(item) >= 0));
+                    && (item.quantity() == 1 || nativeUnitValue(item) >= 0);
             nativeItemEconomy.add(economyEntry);
-            Map<String, Object> entry = new HashMap<>();
-            entry.put("itemId", item.multiplayerItemId());
-            entry.put("className", item.getClass().getName());
-            entry.put("quantity", item.quantity());
-            entry.put("level", item.level());
-            entry.put("cursed", item.cursed);
-            entry.put("cursedKnown", item.cursedKnown);
-            entry.put("stackable", item.stackable);
-            entry.put("equipped", item.isEquipped(hero));
-            entry.put("containerId", nativeItemContainerId(hero, item));
-            entry.put("serializedBundle", currentItemBundle(item));
+            InventoryItemData entry = new InventoryItemData();
+            entry.itemId = item.multiplayerItemId();
+            entry.className = item.getClass().getName();
+            entry.quantity = item.quantity();
+            entry.level = item.level();
+            entry.cursed = item.cursed;
+            entry.cursedKnown = item.cursedKnown;
+            entry.stackable = item.stackable;
+            entry.equipped = item.isEquipped(hero);
+            entry.containerId = nativeItemContainerId(hero, item);
+            entry.serializedBundle = currentItemBundle(item);
             inventoryIndex.add(entry);
         }
+        Json wireJson = new Json();
         heroState.put("nativeInventoryTreeVersion", 1);
-        heroState.put("inventoryItemsJson", new Json().toJson(inventoryIndex));
-        heroState.put("nativeItemEconomyJson", new Json().toJson(nativeItemEconomy));
+        heroState.put("inventoryItemsJson", wireJson.toJson(inventoryIndex, ArrayList.class, InventoryItemData.class));
+        heroState.put("nativeItemEconomyJson", wireJson.toJson(nativeItemEconomy, ArrayList.class, ItemEconomyData.class));
         if (hero == Dungeon.hero) {
             heroState.put("gold", Dungeon.gold);
             heroState.put("alchemyEnergy", Dungeon.energy);
             // Statistics, generator decks, limited drops, identification catalog and local
             // badges are run-scoped native state. Keep them with this player's durable Hero.
             heroState.put("runProgressBundle", MultiplayerRunProgress.store());
-            List<Map<String, Object>> quickslotIndex = new ArrayList<>();
+            List<QuickSlotData> quickslotIndex = new ArrayList<>();
             if (Dungeon.quickslot != null) {
                 for (int slot = 0; slot < QuickSlot.SIZE; slot++) {
                     Item quickItem = Dungeon.quickslot.getItem(slot);
                     if (quickItem == null) continue;
-                    Map<String, Object> entry = new HashMap<>();
-                    entry.put("slot", slot);
-                    entry.put("itemId", quickItem.multiplayerItemId());
-                    entry.put("className", quickItem.getClass().getName());
-                    entry.put("quantity", quickItem.quantity());
-                    entry.put("serializedBundle", currentItemBundle(quickItem));
+                    QuickSlotData entry = new QuickSlotData();
+                    entry.slot = slot;
+                    entry.itemId = quickItem.multiplayerItemId();
+                    entry.className = quickItem.getClass().getName();
+                    entry.quantity = quickItem.quantity();
+                    entry.serializedBundle = currentItemBundle(quickItem);
                     quickslotIndex.add(entry);
                 }
             }
-            heroState.put("quickslotsJson", new Json().toJson(quickslotIndex));
+            heroState.put("quickslotsJson",
+                    wireJson.toJson(quickslotIndex, ArrayList.class, QuickSlotData.class));
         }
         heroState.put("hp", hero.HP);
         heroState.put("ht", hero.HT);
