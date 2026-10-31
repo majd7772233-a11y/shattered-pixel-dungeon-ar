@@ -877,17 +877,25 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
       base + "Blindness", base + "Drowsy", base + "Slow", base + "Vertigo"];
     for (const name of removed) if ((after.get(name) || []).length !== 0) return false;
     const healing = after.get(base + "Healing") || [];
-    if (healing.length > 1) return false;
+    const oldHealing = before.get(base + "Healing") || [];
+    if (healing.length > 1 || oldHealing.length > 1) return false;
     if (healing.length === 1) {
-      const current = healing[0].data;
-      const old = (before.get(base + "Healing") || [])[0]?.data;
-      const maxLeft = Math.max(Number(old?.left || 0), Math.floor(0.8 * Number(previous.ht) + 14));
-      const maxPercent = Math.max(Number(old?.percent || 0), 0.25);
-      const maxFlat = Math.max(Number(old?.flat || 0), 0);
-      if (!Number.isFinite(Number(current.left)) || Number(current.left) < 0 || Number(current.left) > maxLeft
-          || !Number.isFinite(Number(current.percent)) || Number(current.percent) < 0 || Number(current.percent) > maxPercent
-          || !Number.isFinite(Number(current.flat)) || Number(current.flat) < 0 || Number(current.flat) > maxFlat
-          || typeof current.healing_limited !== "boolean") return false;
+      const current = healing[0].data, old = oldHealing[0]?.data;
+      const vialLevel = nativeVialOfBloodLevel(previous);
+      const hpTotal = Number(previous.ht);
+      const oldLeft = Number(old?.left ?? 0), oldPercent = Number(old?.percent ?? 0), oldFlat = Number(old?.flat ?? 0);
+      if (vialLevel === null || !Number.isInteger(hpTotal) || hpTotal < 1 || hpTotal > 100000
+          || !Number.isFinite(oldLeft) || oldLeft < 0 || oldLeft > 100000
+          || !Number.isFinite(oldPercent) || oldPercent < 0 || oldPercent > 1
+          || !Number.isFinite(oldFlat) || oldFlat < 0 || oldFlat > 100000) return false;
+      const baseAmount = Math.trunc(0.8 * hpTotal + 14);
+      const unscaledAmount = Math.max(oldLeft,baseAmount);
+      const expectedLeft = vialLevel === -1 ? unscaledAmount
+        : Math.round(unscaledAmount * (1 + 0.125 * (vialLevel + 1)));
+      const expectedPercent = Math.max(oldPercent,0.25), expectedFlat = Math.max(oldFlat,0);
+      if (Number(current.left) !== expectedLeft
+          || Number(current.percent) !== expectedPercent || Number(current.flat) !== expectedFlat
+          || current.healing_limited !== (vialLevel !== -1)) return false;
     }
   }
 
@@ -3801,6 +3809,35 @@ function nativeHeroBuffTickRowsByKey(rows: NativeHeroBuffTickRow[]): Map<string,
   return new Map(rows.map(row=>[row.className+"#"+row.id,row]));
 }
 
+/** Reads VialOfBlood from the authoritative pre/post Hero inventory snapshot. */
+function nativeVialOfBloodLevel(heroValue: any): number | null {
+  const inventory = parseNativeInventoryIndex(heroValue);
+  if (!inventory) return null;
+  const className = "com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
+  const rows = inventory.filter((row:any) => String(row.className) === className);
+  if (rows.length > 1) return null;
+  if (rows.length === 0) return -1;
+  const row = rows[0], decoded = nativeItemBundleData(row);
+  if (!decoded || row.quantity !== 1 || !Number.isInteger(row.level) || row.level < 0 || row.level > 3
+      || String(decoded.item.__className || "") !== className
+      || String(decoded.item.multiplayer_item_id || "") !== String(row.itemId)
+      || Number(decoded.item.quantity) !== 1 || Number(decoded.item.level) !== Number(row.level)) return null;
+  return Number(row.level);
+}
+
+function nativeVialOfBloodMaxHealPerTurn(heroValue: any): number | null {
+  const level = nativeVialOfBloodLevel(heroValue), ht = Number(heroValue?.ht);
+  if (level === null || !Number.isInteger(ht) || ht < 1 || ht > 100000) return null;
+  if (level === -1) return ht;
+  switch (level) {
+    case 0: return 4 + Math.round(0.15 * ht);
+    case 1: return 3 + Math.round(0.10 * ht);
+    case 2: return 2 + Math.round(0.07 * ht);
+    case 3: return 1 + Math.round(0.05 * ht);
+    default: return null;
+  }
+}
+
 /** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
 export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
   afterValue: unknown, dataValue: unknown): boolean {
@@ -4047,9 +4084,13 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
         || !Number.isFinite(percent) || percent < 0 || percent > 1
         || !Number.isInteger(flat) || flat < 0 || flat > 100000
         || typeof oldData.healing_limited !== "boolean") return false;
+    if (typeof oldData.healing_limited !== "boolean") return false;
     const computed = Math.max(1,Math.min(left,Math.round(left*percent)+flat));
+    const vialCap = oldData.healing_limited ? nativeVialOfBloodMaxHealPerTurn(before.state) : ht;
+    if (vialCap === null) return false;
+    const maximumTick = Math.min(computed,vialCap);
     const tick = result ? left-Number(newData.left) : left;
-    if (!Number.isInteger(tick) || tick < 1 || tick > computed
+    if (!Number.isInteger(tick) || tick < 1 || tick > maximumTick
         || (result && (!isSameTimeTick(0.9,1.1)
           || Number(newData.left)!==left-tick
           || Number(newData.percent)!==percent || Number(newData.flat)!==flat
