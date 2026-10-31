@@ -4031,6 +4031,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       delete fields.__className;
       delete fields.id;
       delete fields.time;
+      delete fields.left;
     }
     return sameNativeItemValue(oldFields,newFields);
   }
