@@ -491,6 +491,19 @@ public class WorldSnapshot {
                         && !MultiplayerRunProgress.isValid(state.getString("runProgressBundle"))) {
                     return rejectValidation("validator-check-37");
                 }
+                // These native run-state bundles are applied after combat and inventory.
+                // Reject malformed values during preflight so a bad journal/quest payload can
+                // never leave a partially restored Hero or overwrite the prior good snapshot.
+                for (String key : new String[]{"potionStatusBundle", "scrollStatusBundle",
+                        "notesBundle", "questStateBundle"}) {
+                    if (state.contains(key)) {
+                        String encoded = state.getString(key);
+                        if (encoded == null || encoded.isEmpty() || encoded.length() > 200000
+                                || readBundle(encoded) == null) {
+                            return rejectValidation("validator-check-38");
+                        }
+                    }
+                }
                 int heroBuffCount = state.getInt("buffCount");
                 if (heroBuffCount < 0 || heroBuffCount > 256) return rejectValidation("validator-check-20");
                 for (int i = 0; i < heroBuffCount; i++) {
