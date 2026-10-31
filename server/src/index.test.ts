@@ -2463,6 +2463,89 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(after),tick(cls,50))).toBe(true);
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify({...after,shielding:2}),tick(cls,50))).toBe(false);
   });
+  it("keeps native nested Hero Buff rows immutable while another supported timer expires",()=>{
+    const haste=buffs+"Haste";
+    const warriorShield="com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+    const wandCharger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+    const warriorRow=JSON.stringify({buff:{__className:warriorShield,id:81,time:12,shielding:4}});
+    const chargerRow=JSON.stringify({buff:{__className:wandCharger,id:82,time:14,scalingFactor:0.875}});
+    const previous=stateWithBuff(haste,70,9,{},{
+      cooldown:2,buffCooldown_0:1,buffCount:3,
+      buff_1:warriorRow,buffCooldown_1:4,buff_2:chargerRow,buffCooldown_2:6
+    });
+    const before=stateWithBuff(haste,70,9,{},{
+      cooldown:1,buffCooldown_0:0,buffCount:3,
+      buff_1:warriorRow,buffCooldown_1:3,buff_2:chargerRow,buffCooldown_2:5
+    });
+    const expired:any={...before,buffCount:2,buff_0:warriorRow,buffCooldown_0:3,
+      buff_1:chargerRow,buffCooldown_1:5};
+    delete expired.buff_2;
+    delete expired.buffCooldown_2;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(expired),tick(haste,70))).toBe(true);
+    const forged={...expired,buff_0:JSON.stringify({buff:{
+      __className:warriorShield,id:81,time:12,shielding:400
+    }})};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forged),tick(haste,70))).toBe(false);
+  });
+  it("allows only native Frost and MagicalSleep removal during a damaging Poison tick",()=>{
+    const poison=buffs+"Poison", frost=buffs+"Frost", sleep=buffs+"MagicalSleep";
+    const frostRow=JSON.stringify({buff:{__className:frost,id:83,time:12}});
+    const sleepRow=JSON.stringify({buff:{__className:sleep,id:84,time:13}});
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,buffCount:3,
+      buff_1:frostRow,buffCooldown_1:4,buff_2:sleepRow,buffCooldown_2:5
+    });
+    const before=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:3,
+      buff_1:frostRow,buffCooldown_1:3,buff_2:sleepRow,buffCooldown_2:4
+    });
+    const after=stateWithBuff(poison,44,10,{left:8},{
+      cooldown:1,buffCooldown_0:1,hp:9
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(true);
+    const forged={...after,buffCount:2,
+      buff_1:JSON.stringify({buff:{__className:buffs+"Haste",id:99,time:20}}),
+      buffCooldown_1:11};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forged),tick(poison,44))).toBe(false);
+  });
+  it("allows Hunger's native starvation damage to remove only Frost and MagicalSleep",()=>{
+    const hunger=buffs+"Hunger", frost=buffs+"Frost", sleep=buffs+"MagicalSleep";
+    const frostRow=JSON.stringify({buff:{__className:frost,id:85,time:12}});
+    const sleepRow=JSON.stringify({buff:{__className:sleep,id:86,time:13}});
+    const previous=stateWithBuff(hunger,12,9,{level:450,partialDamage:0.99},{
+      cooldown:2,buffCooldown_0:1,buffCount:3,
+      buff_1:frostRow,buffCooldown_1:4,buff_2:sleepRow,buffCooldown_2:5
+    });
+    const before=stateWithBuff(hunger,12,9,{level:450,partialDamage:0.99},{
+      cooldown:1,buffCooldown_0:0,buffCount:3,
+      buff_1:frostRow,buffCooldown_1:3,buff_2:sleepRow,buffCooldown_2:4
+    });
+    const after=stateWithBuff(hunger,12,10,{level:450,partialDamage:0.01},{
+      cooldown:1,buffCooldown_0:1,hp:9
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(hunger,12))).toBe(true);
+  });
+  it("rejects Poison ticks with LifeLink until the linked target is included in the result",()=>{
+    const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
+    const lifeLinkRow=JSON.stringify({buff:{__className:lifeLink,id:87,time:14,object:321}});
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:lifeLinkRow,buffCooldown_1:6
+    });
+    const before=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:lifeLinkRow,buffCooldown_1:5
+    });
+    const after=stateWithBuff(poison,44,10,{left:8},{
+      cooldown:1,buffCooldown_0:1,hp:9,buffCount:2,buff_1:lifeLinkRow,buffCooldown_1:5
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(false);
+  });
+
 });
 
 describe("Native alchemy transaction validation", () => {

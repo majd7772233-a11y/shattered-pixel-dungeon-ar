@@ -3740,8 +3740,13 @@ function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:N
     const bundle = state["buff_"+i], cooldown = Number(state["buffCooldown_"+i]);
     const root = parseNativeBundleObject(bundle), data = root && root.buff;
     const className = String(data?.__className || ""), id = Number(data?.id), time = Number(data?.time);
+    // Native Hero Buffs are not all declared in actors.buffs: some are package-nested
+    // classes beside their owning items/spells (for example BrokenSeal.WarriorShield,
+    // Blocking.BlockBuff and Wand.Charger). Keep those rows parseable and immutable unless
+    // the exact ticking class has a dedicated validator below.
     if (typeof bundle !== "string" || bundle.length < 1 || bundle.length > 200000
-        || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.")
+        || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.")
+        || className.length > 240 || !/^[A-Za-z_$][A-Za-z0-9_.$]*$/.test(className)
         || !Number.isInteger(id) || id < 0 || !Number.isFinite(time)
         || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
         || Math.abs(cooldown - Math.max(0,time-clock)) > 0.06) return null;
@@ -3835,11 +3840,46 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
 
   const buffClass = data.buffClass, buffId = Number(data.buffId), key = buffClass+"#"+buffId;
   const source = preRows.get(key), prior = oldRows.get(key), result = afterRows.get(key);
+  const hpBefore = Number(before.state.hp), hpAfter = Number(after.state.hp);
+  const shieldBefore = Number(before.state.shielding), shieldAfter = Number(after.state.shielding);
+  const damageTickClass = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hunger",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
+  ]);
+  const damageSideEffectRemovals = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Frost",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep"
+  ]);
+  const allowDamageSideEffectRemoval = damageTickClass.has(buffClass)
+    && (hpAfter < hpBefore || shieldAfter < shieldBefore);
+  const beforeOtherRows = new Map(before.rows
+    .filter(row=>row.className+"#"+row.id!==key)
+    .map(row=>[row.className+"#"+row.id,row]));
+  const afterOtherRows = new Map(after.rows
+    .filter(row=>row.className+"#"+row.id!==key)
+    .map(row=>[row.className+"#"+row.id,row]));
   if (!source || !prior || source.bundle !== prior.bundle
-      || before.state.inventoryBundle !== after.state.inventoryBundle
-      || !sameNativeItemValue(
-        before.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)),
-        after.rows.filter(row=>row.className+"#"+row.id!==key).map(row=>({key:row.className+"#"+row.id,bundle:row.bundle,cooldown:row.cooldown})).sort((a,b)=>a.key.localeCompare(b.key)))) return false;
+      || before.state.inventoryBundle !== after.state.inventoryBundle) return false;
+  // Char.damage() natively removes Frost and MagicalSleep before resolving resistance
+  // and shields. Permit only these two removals during a damage-producing Hunger/Poison
+  // tick; every other pre-existing buff must remain byte-for-byte and cooldown-identical.
+  for (const [otherKey,row] of beforeOtherRows) {
+    const next = afterOtherRows.get(otherKey);
+    if (next) {
+      if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) return false;
+    } else if (!allowDamageSideEffectRemoval || !damageSideEffectRemovals.has(row.className)) {
+      return false;
+    }
+  }
+  for (const [otherKey] of afterOtherRows) if (!beforeOtherRows.has(otherKey)) return false;
+
+  // Poison invokes Char.damage() with Poison as the source, which can damage a linked
+  // character through LifeLink. That second target is not in this single-Hero result,
+  // so refuse this path until it has a multi-target native result contract.
+  if (buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
+      && before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink")) {
+    return false;
+  }
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
@@ -3861,8 +3901,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier"
   ].includes(buffClass)) return false;
-  const hpBefore = Number(before.state.hp), hpAfter = Number(after.state.hp), ht = Number(before.state.ht);
-  const shieldBefore = Number(before.state.shielding), shieldAfter = Number(after.state.shielding);
+  const ht = Number(before.state.ht);
   const oldData = source.data, newData = result?.data;
   const className = buffClass;
   const timeDelta = result ? result.time-source.time : null;
