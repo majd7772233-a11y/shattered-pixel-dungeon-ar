@@ -4010,7 +4010,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.WellFed",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier"
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread"
   ].includes(buffClass)) return false;
   const oldData = source.data, newData = result?.data;
   const className = buffClass;
