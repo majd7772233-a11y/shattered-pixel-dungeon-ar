@@ -3895,6 +3895,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   // Char.damage() natively removes Frost and MagicalSleep before resolving resistance
   // and shields. Permit only these two removals during a damage-producing Hunger/Poison
   // tick; every other pre-existing buff must remain byte-for-byte and cooldown-identical.
+  const drowsyTick = buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy";
+  const magicalSleepClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep";
   for (const [otherKey,row] of beforeOtherRows) {
     const next = afterOtherRows.get(otherKey);
     if (next) {
@@ -3903,7 +3905,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       return false;
     }
   }
-  for (const [otherKey] of afterOtherRows) if (!beforeOtherRows.has(otherKey)) return false;
+  for (const [otherKey,row] of afterOtherRows) {
+    if (!beforeOtherRows.has(otherKey) && (!drowsyTick || row.className !== magicalSleepClass)) return false;
+  }
 
   // Poison invokes Char.damage() with Poison as the source, which can damage a linked
   // character through LifeLink. That second target is not in this single-Hero result,
@@ -3911,6 +3915,30 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   if (buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
       && before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink")) {
     return false;
+  }
+  if (drowsyTick) {
+    const sourceDue = source.time <= before.clock + 0.06;
+    const existingMagicalSleep = beforeOtherRows.size > 0
+      && Array.from(beforeOtherRows.values()).some(row=>row.className === magicalSleepClass);
+    if (result || !sourceDue || existingMagicalSleep
+        || hpAfter !== hpBefore || shieldAfter !== shieldBefore) return false;
+    const additions = Array.from(afterOtherRows.entries())
+      .filter(([otherKey])=>!beforeOtherRows.has(otherKey))
+      .map(([,row])=>row);
+    if (hpBefore < ht) {
+      if (additions.length !== 1) return false;
+      const sleep = additions[0], sleepData = sleep.data;
+      const sleepKeys = Object.keys(sleepData).sort();
+      if (sleep.className !== magicalSleepClass
+          || sleepKeys.join(",") !== "__className,id,time"
+          || !Number.isInteger(sleep.id) || sleep.id < 0
+          || !Number.isFinite(Number(sleepData.time))
+          || Math.abs(Number(sleepData.time) - before.clock) > 0.06
+          || !Number.isFinite(Number(sleep.cooldown)) || Math.abs(Number(sleep.cooldown)) > 0.06) return false;
+      return true;
+    }
+    // MagicalSleep.attachTo() immediately detaches itself when a Hero is already at full HP.
+    return hpBefore === ht && additions.length === 0;
   }
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",

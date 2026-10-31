@@ -2428,6 +2428,37 @@ describe("Native Hero Buff tick reconciliation", () => {
     const forged={...after,buffCount:2,buff_1:JSON.stringify({buff:{__className:buffs+"Haste",id:87,time:13}}),buffCooldown_1:4};
     expect(isValidNativeHeroBuffTick(JSON.stringify(old),JSON.stringify(before),JSON.stringify(forged),tick(healing,31))).toBe(false);
   });
+  it("turns an expiring Drowsy buff into native MagicalSleep when the Hero is not at full HP",()=>{
+    const drowsy=buffs+"Drowsy", sleep=buffs+"MagicalSleep";
+    const previous=stateWithBuff(drowsy,130,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(drowsy,130,9,{}, {cooldown:1,buffCooldown_0:0,hp:10});
+    const sleeping={...before,buffCount:1,
+      buff_0:JSON.stringify({buff:{__className:sleep,id:131,time:9}}),
+      buffCooldown_0:0};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(sleeping),tick(drowsy,130))).toBe(true);
+    const forged={...sleeping,buff_0:JSON.stringify({buff:{
+      __className:sleep,id:131,time:20,unexpected:true
+    }})};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forged),tick(drowsy,130))).toBe(false);
+    const early=stateWithBuff(drowsy,130,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(sleeping),tick(drowsy,130))).toBe(false);
+  });
+  it("allows Drowsy to expire without MagicalSleep only when the Hero is already at full HP",()=>{
+    const drowsy=buffs+"Drowsy";
+    const previous=stateWithBuff(drowsy,132,9,{}, {cooldown:2,buffCooldown_0:1,hp:20});
+    const before=stateWithBuff(drowsy,132,9,{}, {cooldown:1,buffCooldown_0:0,hp:20});
+    const expired:any={...before,buffCount:0};
+    delete expired.buff_0;
+    delete expired.buffCooldown_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(expired),tick(drowsy,132))).toBe(true);
+    const missingSleep=stateWithBuff(drowsy,132,9,{}, {cooldown:1,buffCooldown_0:0,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(missingSleep),
+      JSON.stringify(expired),tick(drowsy,132))).toBe(false);
+  });
   it("accepts Haste expiration only when due and with no HP/shield side effects",()=>{
     const cls=buffs+"Haste";
     const previous=stateWithBuff(cls,70,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
