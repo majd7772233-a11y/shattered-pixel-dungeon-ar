@@ -3814,6 +3814,11 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
   const heroState = (runProgressBundle: string) => JSON.stringify({
     hp: 20, ht: 20, pos: 12, shielding: 0, cooldown: 1, buffCount: 0,
     combatBundle: "trusted-native-combat", inventoryBundle: "trusted-native-inventory",
+    nativeInventoryTreeVersion: 1, inventoryItemsJson: "[]", nativeItemEconomyJson: "[]",
+    quickslotsJson: "[]", ankhCount: 1, blessedAnkhCount: 0, gold: 50, alchemyEnergy: 4,
+    potionStatusBundle: "native-potions-before", scrollStatusBundle: "native-scrolls-before",
+    notesBundle: "native-notes-before", questStateBundle: "native-quests-before",
+    ironKeyCount: 0, crystalKeyCount: 0, wornKeyCount: 0, goldenKeyCount: 0,
     runProgressBundle
   });
 
@@ -3834,17 +3839,37 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(JSON.parse(String(accepted)).runProgressBundle).toBe("native-kill-run-progress");
   });
 
-  it("persists attacker-owned run rewards after an accepted nonlethal native attack", () => {
+  it("persists attacker-owned rewards, quest and inventory indexes after an accepted native attack", () => {
     const before = heroState("trusted-run-progress");
     const after = JSON.parse(before);
     after.cooldown = 2;
+    after.inventoryBundle = "native-inventory-after-throw";
+    after.inventoryItemsJson = '[{"itemId":"thrown-stack","quantity":2}]';
+    after.nativeItemEconomyJson = '[{"itemId":"thrown-stack","quantity":2}]';
+    after.quickslotsJson = '[{"slot":0,"itemId":"thrown-stack"}]';
+    after.ankhCount = 1;
+    after.blessedAnkhCount = 0;
     after.runProgressBundle = "native-progress-after-nonlethal-attack";
+    after.potionStatusBundle = "native-potions-after-attack";
+    after.scrollStatusBundle = "native-scrolls-after-attack";
+    after.notesBundle = "native-notes-after-attack";
+    after.questStateBundle = "native-quests-after-attack";
+    after.ironKeyCount = 1;
     const merged = mergeNativeCombatAttackerState(before, before, JSON.stringify(after), {
       hp: 20, ht: 20, pos: 12, state: "ALIVE"
     }, false);
     expect(merged).not.toBeNull();
-    expect(JSON.parse(String(merged)).runProgressBundle)
-      .toBe("native-progress-after-nonlethal-attack");
+    const saved = JSON.parse(String(merged));
+    expect(saved.runProgressBundle).toBe("native-progress-after-nonlethal-attack");
+    expect(saved.questStateBundle).toBe("native-quests-after-attack");
+    expect(saved.notesBundle).toBe("native-notes-after-attack");
+    expect(saved.potionStatusBundle).toBe("native-potions-after-attack");
+    expect(saved.scrollStatusBundle).toBe("native-scrolls-after-attack");
+    expect(saved.inventoryBundle).toBe("native-inventory-after-throw");
+    expect(saved.inventoryItemsJson).toBe(after.inventoryItemsJson);
+    expect(saved.nativeItemEconomyJson).toBe(after.nativeItemEconomyJson);
+    expect(saved.quickslotsJson).toBe(after.quickslotsJson);
+    expect(saved.ironKeyCount).toBe(1);
   });
 
   it("commits run-scoped Ankh use statistics with a validated blessed rescue", () => {
@@ -3857,9 +3882,13 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
       ...before,
       hp: 5,
       inventoryBundle: "inventory-after-ankh",
+      inventoryItemsJson: "[]",
+      quickslotsJson: "[]",
       ankhCount: 0,
       blessedAnkhCount: 0,
-      runProgressBundle: "run-after-ankh"
+      runProgressBundle: "run-after-ankh",
+      notesBundle: "notes-after-ankh",
+      questStateBundle: "quests-after-ankh"
     };
     const merged = mergeNativeHeroState(JSON.stringify(before), JSON.stringify(after),
       { hp: 5, ht: 20, pos: 12, shielding: 0 }, "[]", true, true, true, false);
@@ -3868,7 +3897,11 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(saved.inventoryBundle).toBe("inventory-after-ankh");
     expect(saved.ankhCount).toBe(0);
     expect(saved.blessedAnkhCount).toBe(0);
+    expect(saved.inventoryItemsJson).toBe("[]");
+    expect(saved.quickslotsJson).toBe("[]");
     expect(saved.runProgressBundle).toBe("run-after-ankh");
+    expect(saved.notesBundle).toBe("notes-after-ankh");
+    expect(saved.questStateBundle).toBe("quests-after-ankh");
   });
 
   it("rejects an oversized or non-string opaque native run bundle", () => {
@@ -3878,6 +3911,12 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, runProgressBundle: 8 }),
       { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
     expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, runProgressBundle: "x".repeat(200001) }),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
+    expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, questStateBundle: 8 }),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
+    expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, notesBundle: "x".repeat(200001) }),
+      { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
+    expect(isValidNativeHeroStateJson(JSON.stringify({ ...valid, ironKeyCount: -1 }),
       { hp: 20, ht: 20, pos: 12, shielding: 0 })).toBe(false);
   });
 
