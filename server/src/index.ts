@@ -5056,6 +5056,13 @@ export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, autho
   if (authoritative.runProgressBundle === undefined && reported.runProgressBundle !== undefined
       && (typeof reported.runProgressBundle !== "string" || reported.runProgressBundle.length < 1
         || reported.runProgressBundle.length > 200000)) return false;
+  // These fields are part of the trusted pre-action state. A mutation intent cannot rewrite
+  // quest progress, journal discoveries, key counts or identification knowledge before its
+  // action has been accepted and the authoritative post-state is validated.
+  for (const key of ["potionStatusBundle", "scrollStatusBundle", "notesBundle", "questStateBundle",
+    "ironKeyCount", "crystalKeyCount", "wornKeyCount", "goldenKeyCount"]) {
+    if (reported[key] !== authoritative[key]) return false;
+  }
   if ((reported.alchemyEnergy !== undefined || authoritative.alchemyEnergy !== undefined)
       && (!Number.isInteger(reported.alchemyEnergy) || reported.alchemyEnergy !== authoritative.alchemyEnergy)) return false;
   if (!Number.isFinite(Number(reported.cooldown)) || Number(reported.cooldown) !== Number(authoritative.cooldown)) return false;
