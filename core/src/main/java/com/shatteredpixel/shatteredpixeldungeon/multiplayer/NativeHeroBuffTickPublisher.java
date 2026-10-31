@@ -69,7 +69,8 @@ public final class NativeHeroBuffTickPublisher {
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable".equals(name)
-                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy".equals(name);
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread".equals(name);
     }
 
     private static float actorClock(String stateJson) {

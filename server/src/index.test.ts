@@ -2460,6 +2460,51 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(missingSleep),
       JSON.stringify(expired),tick(drowsy,132))).toBe(false);
   });
+  it("validates Dread countdown ticks and its final one-turn expiry",()=>{
+    const dread=buffs+"Dread";
+    const previous=stateWithBuff(dread,140,9,{left:3,object:321},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    const before=stateWithBuff(dread,140,9,{left:3,object:321},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const after=stateWithBuff(dread,140,10,{left:2,object:321},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(dread,140))).toBe(true);
+    const forged=stateWithBuff(dread,140,10,{left:1,object:999},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forged),tick(dread,140))).toBe(false);
+
+    const finalPrevious=stateWithBuff(dread,141,9,{left:1,object:321},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    const finalBefore=stateWithBuff(dread,141,9,{left:1,object:321},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const expired:any={...finalBefore,buffCount:0};
+    delete expired.buff_0;
+    delete expired.buffCooldown_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(finalPrevious),JSON.stringify(finalBefore),
+      JSON.stringify(expired),tick(dread,141))).toBe(true);
+  });
+  it("rejects Dread countdown ticks before their native actor deadline",()=>{
+    const dread=buffs+"Dread";
+    const previous=stateWithBuff(dread,142,10,{left:3,object:321},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    const before=stateWithBuff(dread,142,10,{left:3,object:321},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    const forged=stateWithBuff(dread,142,11,{left:2,object:321},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forged),tick(dread,142))).toBe(false);
+  });
   it("accepts Haste expiration only when due and with no HP/shield side effects",()=>{
     const cls=buffs+"Haste";
     const previous=stateWithBuff(cls,70,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
