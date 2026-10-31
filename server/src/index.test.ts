@@ -2450,6 +2450,56 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(overCap),tick(healing,91))).toBe(false);
   });
+
+  it("validates all VialOfBlood levels against their exact PotionOfHealing multiplier",()=>{
+    const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
+    const vial="com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
+    for (const [level,expectedLeft] of [[1,28],[2,30],[3,33]] as Array<[number,number]>) {
+      const vialId="native-vial-healing-level-"+level;
+      const vialBundle=JSON.stringify({item:{__className:vial,multiplayer_item_id:vialId,
+        quantity:1,level,cursed:false,cursedKnown:true}});
+      const vialRow={itemId:vialId,className:vial,quantity:1,level,cursed:false,cursedKnown:true,
+        stackable:false,equipped:false,serializedBundle:vialBundle};
+      const before=JSON.stringify(hero([row("native-healing-potion-level-"+level,potion),vialRow]));
+      const after=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
+        buff_0:defaultHungerBundle,buffCooldown_0:0,
+        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft,percent:0.25,flat:0,healing_limited:true}}),
+        buffCooldown_1:0
+      }));
+      const d=intent("native-healing-potion-level-"+level),accepted={...d,actionType:"USE_ITEM"};
+      expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+      const inflated=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
+        buff_0:defaultHungerBundle,buffCooldown_0:0,
+        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft+1,percent:0.25,flat:0,healing_limited:true}}),
+        buffCooldown_1:0
+      }));
+      expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
+    }
+  });
+
+  it("enforces VialOfBlood healing-per-turn caps at levels +1 through +3",()=>{
+    const healing=buffs+"Healing";
+    const vial="com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
+    for (const [level,cap] of [[1,5],[2,3],[3,2]] as Array<[number,number]>) {
+      const vialId="native-vial-tick-level-"+level;
+      const vialBundle=JSON.stringify({item:{__className:vial,multiplayer_item_id:vialId,
+        quantity:1,level,cursed:false,cursedKnown:true}});
+      const inventoryItemsJson=JSON.stringify([{itemId:vialId,className:vial,quantity:1,level,
+        cursed:false,cursedKnown:true,stackable:false,equipped:false,serializedBundle:vialBundle}]);
+      const previous=stateWithBuff(healing,200+level,9,{left:100,percent:0.25,flat:0,healing_limited:true},
+        {cooldown:2,buffCooldown_0:1,hp:10,inventoryItemsJson});
+      const before=stateWithBuff(healing,200+level,9,{left:100,percent:0.25,flat:0,healing_limited:true},
+        {cooldown:1,buffCooldown_0:0,hp:10,inventoryItemsJson});
+      const accepted=stateWithBuff(healing,200+level,10,{left:100-cap,percent:0.25,flat:0,healing_limited:true},
+        {cooldown:1,buffCooldown_0:1,hp:10+cap,inventoryItemsJson});
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+        JSON.stringify(accepted),tick(healing,200+level))).toBe(true);
+      const overCap=stateWithBuff(healing,200+level,10,{left:99-cap,percent:0.25,flat:0,healing_limited:true},
+        {cooldown:1,buffCooldown_0:1,hp:11+cap,inventoryItemsJson});
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+        JSON.stringify(overCap),tick(healing,200+level))).toBe(false);
+    }
+  });
   it("turns an expiring Drowsy buff into native MagicalSleep when the Hero is not at full HP",()=>{
     const drowsy=buffs+"Drowsy", sleep=buffs+"MagicalSleep";
     const previous=stateWithBuff(drowsy,130,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
