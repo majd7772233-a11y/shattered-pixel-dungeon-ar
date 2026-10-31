@@ -888,7 +888,7 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
           || !Number.isFinite(oldLeft) || oldLeft < 0 || oldLeft > 100000
           || !Number.isFinite(oldPercent) || oldPercent < 0 || oldPercent > 1
           || !Number.isFinite(oldFlat) || oldFlat < 0 || oldFlat > 100000) return false;
-      const baseAmount = Math.trunc(0.8 * hpTotal + 14);
+      const baseAmount = Math.trunc(Math.fround(Math.fround(0.8 * hpTotal) + 14));
       const unscaledAmount = Math.max(oldLeft,baseAmount);
       const expectedLeft = vialLevel === -1 ? unscaledAmount
         : Math.round(unscaledAmount * (1 + 0.125 * (vialLevel + 1)));
@@ -3830,10 +3830,10 @@ function nativeVialOfBloodMaxHealPerTurn(heroValue: any): number | null {
   if (level === null || !Number.isInteger(ht) || ht < 1 || ht > 100000) return null;
   if (level === -1) return ht;
   switch (level) {
-    case 0: return 4 + Math.round(0.15 * ht);
-    case 1: return 3 + Math.round(0.10 * ht);
-    case 2: return 2 + Math.round(0.07 * ht);
-    case 3: return 1 + Math.round(0.05 * ht);
+    case 0: return 4 + Math.round(Math.fround(0.15 * ht));
+    case 1: return 3 + Math.round(Math.fround(0.10 * ht));
+    case 2: return 2 + Math.round(Math.fround(0.07 * ht));
+    case 3: return 1 + Math.round(Math.fround(0.05 * ht));
     default: return null;
   }
 }
