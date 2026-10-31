@@ -2451,32 +2451,6 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(overCap),tick(healing,91))).toBe(false);
   });
 
-  it("validates all VialOfBlood levels against their exact PotionOfHealing multiplier",()=>{
-    const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
-    const vial="com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
-    for (const [level,expectedLeft] of [[1,28],[2,30],[3,33]] as Array<[number,number]>) {
-      const vialId="native-vial-healing-level-"+level;
-      const vialBundle=JSON.stringify({item:{__className:vial,multiplayer_item_id:vialId,
-        quantity:1,level,cursed:false,cursedKnown:true}});
-      const vialRow={itemId:vialId,className:vial,quantity:1,level,cursed:false,cursedKnown:true,
-        stackable:false,equipped:false,serializedBundle:vialBundle};
-      const before=JSON.stringify(hero([row("native-healing-potion-level-"+level,potion),vialRow]));
-      const after=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
-        buff_0:defaultHungerBundle,buffCooldown_0:0,
-        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft,percent:0.25,flat:0,healing_limited:true}}),
-        buffCooldown_1:0
-      }));
-      const d=intent("native-healing-potion-level-"+level),accepted={...d,actionType:"USE_ITEM"};
-      expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
-      const inflated=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
-        buff_0:defaultHungerBundle,buffCooldown_0:0,
-        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft+1,percent:0.25,flat:0,healing_limited:true}}),
-        buffCooldown_1:0
-      }));
-      expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
-    }
-  });
-
   it("enforces VialOfBlood healing-per-turn caps at levels +1 through +3",()=>{
     const healing=buffs+"Healing";
     const vial="com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
@@ -3629,6 +3603,32 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemIntent(level,intent("native-levitation-rooted-001",levitation),4,
       "player-001",{pos:9,state:"ALIVE"},rooted)).toBe(false);
   });
+  it("validates all VialOfBlood levels against their exact PotionOfHealing multiplier",()=>{
+    const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
+    const vial="com.shatteredpixel.shatteredpixeldungeon.items.trinkets.VialOfBlood";
+    for (const [level,expectedLeft] of [[1,28],[2,30],[3,33]] as Array<[number,number]>) {
+      const vialId="native-vial-healing-level-"+level;
+      const vialBundle=JSON.stringify({item:{__className:vial,multiplayer_item_id:vialId,
+        quantity:1,level,cursed:false,cursedKnown:true}});
+      const vialRow={itemId:vialId,className:vial,quantity:1,level,cursed:false,cursedKnown:true,
+        stackable:false,equipped:false,serializedBundle:vialBundle};
+      const before=JSON.stringify(hero([row("native-healing-potion-level-"+level,potion),vialRow]));
+      const after=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
+        buff_0:defaultHungerBundle,buffCooldown_0:0,
+        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft,percent:0.25,flat:0,healing_limited:true}}),
+        buffCooldown_1:0
+      }));
+      const d=intent("native-healing-potion-level-"+level),accepted={...d,actionType:"USE_ITEM"};
+      expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+      const inflated=JSON.stringify(hero([vialRow],{inventoryBundle:"inventory-after",buffCount:2,
+        buff_0:defaultHungerBundle,buffCooldown_0:0,
+        buff_1:JSON.stringify({buff:{__className:healing,left:expectedLeft+1,percent:0.25,flat:0,healing_limited:true}}),
+        buffCooldown_1:0
+      }));
+      expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
+    }
+  });
+
   it("validates PotionOfHealing's native Healing buff and rejects unrelated combat bundle edits",()=>{
     const healing="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing";
     const before=JSON.stringify(hero([row("native-healing-001",potion)]));
