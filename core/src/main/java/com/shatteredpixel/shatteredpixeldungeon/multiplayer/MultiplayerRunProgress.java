@@ -142,6 +142,7 @@ public final class MultiplayerRunProgress {
                     || !state.contains(DROPPED_ITEMS_PREFIX + depth)) return false;
             Collection<?> items = state.getCollection(DROPPED_ITEMS_PREFIX + depth);
             if (items == null || items.size() > 512) return false;
+            for (Object item : items) if (!(item instanceof Item)) return false;
         }
         return true;
     }

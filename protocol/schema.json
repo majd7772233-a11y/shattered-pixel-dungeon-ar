@@ -1725,7 +1725,8 @@
         "heroStateJson": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200000
+          "maxLength": 200000,
+          "description": "Opaque native SPD Hero Bundle. The local player's state may include a bounded runProgressBundle (statistics, catalog, badges, generator decks, limited drops, room-generation state and pending drops); the server stores it without decoding, and the native client preflights it before restoration."
         }
       }
     },
@@ -2045,7 +2046,8 @@
         "heroStateJson": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 200000
+          "maxLength": 200000,
+          "description": "Opaque native SPD Hero Bundle. The local player's state may include a bounded runProgressBundle (statistics, catalog, badges, generator decks, limited drops, room-generation state and pending drops); the server stores it without decoding, and the native client preflights it before restoration."
         }
       }
     },

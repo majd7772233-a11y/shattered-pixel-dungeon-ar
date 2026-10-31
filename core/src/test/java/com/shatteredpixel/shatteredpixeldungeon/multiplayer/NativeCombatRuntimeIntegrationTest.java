@@ -7,6 +7,10 @@ import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+import com.shatteredpixel.shatteredpixeldungeon.Statistics;
+import com.shatteredpixel.shatteredpixeldungeon.items.rings.Ring;
+import com.shatteredpixel.shatteredpixeldungeon.levels.rooms.secret.SecretRoom;
+import com.shatteredpixel.shatteredpixeldungeon.levels.rooms.special.SpecialRoom;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
@@ -954,6 +958,91 @@ public class NativeCombatRuntimeIntegrationTest {
                 hero.buff(Haste.class));
         WorldSnapshot.restoreRemoteHeroState(hero, expiredHeroState);
         Assert.assertNull("Repeated restoration of the expired state remains idempotent", hero.buff(Haste.class));
+    }
+
+    @Test
+    public void localHeroSnapshotRestoresRunProgressDroppedItemsAndInventoryIdempotently() {
+        // These static native SPD systems affect future run rewards and item generation.
+        Ring.initGems();
+        SpecialRoom.initForRun();
+        SecretRoom.initForRun();
+        Dungeon.chapters = new HashSet<>();
+        Dungeon.chapters.add(2);
+        Dungeon.generatedLevels.clear();
+        Dungeon.generatedLevels.add(1);
+        Dungeon.droppedItems = new SparseArray<>();
+
+        Statistics.goldCollected = 37;
+        Statistics.enemiesSlain = 9;
+        Statistics.ankhsUsed = 2;
+        Dungeon.LimitedDrops.UPGRADE_SCROLLS.count = 2;
+
+        Item carriedStack = new Item();
+        carriedStack.stackable = true;
+        carriedStack.quantity(4);
+        carriedStack.setMultiplayerItemId("phase8-carried-stack-0001");
+        hero.belongings.backpack.items.add(carriedStack);
+        Dungeon.quickslot.setSlot(0, carriedStack);
+
+        Item pendingDrop = new Item();
+        pendingDrop.setMultiplayerItemId("phase8-pending-drop-0001");
+        ArrayList<Item> pendingDrops = new ArrayList<>();
+        pendingDrops.add(pendingDrop);
+        Dungeon.droppedItems.put(3, pendingDrops);
+
+        String encodedHero = SPDLevelSnapshot.currentHeroStateJson();
+        JsonValue encodedRoot = new JsonReader().parse(encodedHero);
+        JsonValue runProgress = encodedRoot.get("runProgressBundle");
+        Assert.assertNotNull("The local Hero snapshot must include native run progress", runProgress);
+        Assert.assertTrue(MultiplayerRunProgress.isValid(runProgress.asString()));
+        Assert.assertTrue("Run progress is bounded before transport",
+                runProgress.asString().length() <= MultiplayerRunProgress.MAX_ENCODED_LENGTH);
+
+        // Simulate reconnect after live static data and local native objects have been lost.
+        Statistics.goldCollected = 0;
+        Statistics.enemiesSlain = 0;
+        Statistics.ankhsUsed = 0;
+        Dungeon.LimitedDrops.UPGRADE_SCROLLS.count = 0;
+        Dungeon.chapters.clear();
+        Dungeon.generatedLevels.clear();
+        Dungeon.droppedItems = new SparseArray<>();
+        hero.belongings.backpack.items.clear();
+        Dungeon.quickslot.reset();
+
+        WorldSnapshot.restoreRemoteHeroState(hero, encodedHero);
+        WorldSnapshot.restoreRemoteHeroState(hero, encodedHero);
+
+        Assert.assertEquals("Statistics are restored exactly, not incremented twice", 37, Statistics.goldCollected);
+        Assert.assertEquals(9, Statistics.enemiesSlain);
+        Assert.assertEquals(2, Statistics.ankhsUsed);
+        Assert.assertEquals(2, Dungeon.LimitedDrops.UPGRADE_SCROLLS.count);
+        Assert.assertTrue(Dungeon.chapters.contains(2));
+        Assert.assertTrue(Dungeon.generatedLevels.contains(1));
+        Assert.assertEquals(1, Dungeon.droppedItems.get(3).size());
+        Assert.assertEquals("phase8-pending-drop-0001",
+                Dungeon.droppedItems.get(3).get(0).multiplayerItemId());
+
+        int carriedCount = 0;
+        Item restoredStack = null;
+        for (Item item : hero.belongings.getAllItems(Item.class)) {
+            if ("phase8-carried-stack-0001".equals(item.multiplayerItemId())) {
+                carriedCount++;
+                restoredStack = item;
+            }
+        }
+        Assert.assertEquals("Repeated restoration must not duplicate a carried item", 1, carriedCount);
+        Assert.assertNotNull(restoredStack);
+        Assert.assertEquals(4, restoredStack.quantity());
+        Assert.assertSame("Quickslots must point at the restored owned instance",
+                restoredStack, Dungeon.quickslot.getItem(0));
+    }
+
+    @Test
+    public void runProgressBundleRejectsMalformedOrUnboundedNativeDataBeforeRestore() {
+        Assert.assertFalse(MultiplayerRunProgress.isValid(""));
+        Assert.assertFalse(MultiplayerRunProgress.isValid("not-a-native-bundle"));
+        Assert.assertFalse(MultiplayerRunProgress.isValid(
+                "x".repeat(MultiplayerRunProgress.MAX_ENCODED_LENGTH + 1)));
     }
 
     @Test
