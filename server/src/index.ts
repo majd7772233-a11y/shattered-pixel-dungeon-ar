@@ -3821,7 +3821,6 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const expirable = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
-    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Levitation",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Cripple",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Slow",

@@ -2546,6 +2546,23 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(poison,44))).toBe(false);
   });
 
+  it("rejects background Levitation expiry because native detach occupies the Hero cell",()=>{
+    const hunger=buffs+"Hunger";
+    const levitation=buffs+"Levitation";
+    const levitationRow=JSON.stringify({buff:{__className:levitation,id:88,time:9}});
+    const previous=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:levitationRow,buffCooldown_1:1
+    });
+    const before=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+      cooldown:1,buffCooldown_0:0,buffCount:1
+    });
+    const after=stateWithBuff(hunger,12,10,{level:201,partialDamage:0},{
+      cooldown:1,buffCooldown_0:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(hunger,12))).toBe(false);
+  });
+
 });
 
 describe("Native alchemy transaction validation", () => {
