@@ -2442,8 +2442,9 @@ describe("Native Hero Buff tick reconciliation", () => {
     }})};
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(forged),tick(drowsy,130))).toBe(false);
-    const early=stateWithBuff(drowsy,130,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
-    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+    const earlyPrevious=stateWithBuff(drowsy,130,10,{}, {cooldown:2,buffCooldown_0:1,hp:10});
+    const earlyBefore=stateWithBuff(drowsy,130,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(earlyPrevious),JSON.stringify(earlyBefore),
       JSON.stringify(sleeping),tick(drowsy,130))).toBe(false);
   });
   it("allows Drowsy to expire without MagicalSleep only when the Hero is already at full HP",()=>{
