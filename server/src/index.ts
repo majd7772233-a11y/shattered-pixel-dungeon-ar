@@ -4870,7 +4870,8 @@ preserveInventory = true, preserveRunProgress = true): string | null {
   const merged: any = {
     ...previous,
     inventoryBundle: (blessedAnkhConsumed || !preserveInventory) ? reported.inventoryBundle : previous.inventoryBundle,
-    runProgressBundle: (!preserveRunProgress && typeof reported.runProgressBundle === "string")
+    runProgressBundle: (typeof reported.runProgressBundle === "string"
+        && (previous.runProgressBundle === undefined || !preserveRunProgress))
       ? reported.runProgressBundle : previous.runProgressBundle,
     ...(blessedAnkhConsumed ? {
       ankhCount: reported.ankhCount,
@@ -5033,9 +5034,12 @@ export function hasMatchingNativeHeroStateSnapshot(reportedValue: unknown, autho
     if (Number(reported[key]) !== Number(authoritative[key])) return false;
   }
   if (!hasMatchingNativeHeroEquipmentState(JSON.stringify(reported), authoritative)) return false;
-  if ((reported.runProgressBundle !== undefined || authoritative.runProgressBundle !== undefined)
+  if (authoritative.runProgressBundle !== undefined
       && (typeof reported.runProgressBundle !== "string"
         || reported.runProgressBundle !== authoritative.runProgressBundle)) return false;
+  if (authoritative.runProgressBundle === undefined && reported.runProgressBundle !== undefined
+      && (typeof reported.runProgressBundle !== "string" || reported.runProgressBundle.length < 1
+        || reported.runProgressBundle.length > 200000)) return false;
   if ((reported.alchemyEnergy !== undefined || authoritative.alchemyEnergy !== undefined)
       && (!Number.isInteger(reported.alchemyEnergy) || reported.alchemyEnergy !== authoritative.alchemyEnergy)) return false;
   if (!Number.isFinite(Number(reported.cooldown)) || Number(reported.cooldown) !== Number(authoritative.cooldown)) return false;
@@ -6946,7 +6950,6 @@ export class MatchRoom {
                   hit: data.engineHit === true, damage, targetHp, targetHt,
                   attackKind: data.attackKind, engineDistance: distance, engineActionCost: nativeCost, targetBuffs: data.targetBuffs,
                   attackerStateJson: mergedAttackerState, attackerState: attackerStatus,
-                  rewardIds,
                   secondaryMobDeltas: secondaryMobPayload,
                   projectileOutcome: data.projectileOutcome,
                   projectileResultItemId: data.projectileMutation?.resultItemId,

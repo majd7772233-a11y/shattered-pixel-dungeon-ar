@@ -153,7 +153,7 @@ public final class MultiplayerRunProgress {
         Bundle state = read(encoded);
 
         Statistics.restoreFromBundle(state.getBundle(STATISTICS));
-        Catalog.restore(state.getBundle(CATALOG));
+        Catalog.restoreMultiplayer(state.getBundle(CATALOG));
         Badges.loadLocal(state.getBundle(BADGES));
         Generator.restoreFromBundle(state.getBundle(GENERATOR));
         Dungeon.LimitedDrops.restore(state.getBundle(LIMITED_DROPS));

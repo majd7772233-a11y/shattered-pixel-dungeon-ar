@@ -393,13 +393,27 @@ public enum Catalog {
 	private static final String CATALOG_ITEMS = "catalog_items";
 	
 	public static void restore( Bundle bundle ){
+		restore(bundle, true);
+	}
 
-		//old logic for pre-v2.5 catalog-specific badges
-		Badges.loadGlobal();
-		for (Catalog cat : values()){
-			if (Badges.isUnlocked(catalogBadges.get(cat))){
-				for (Class<?> item : cat.items()){
-					cat.seen.put(item, true);
+	/**
+	 * Restores the run-local catalog state embedded in a multiplayer Hero snapshot.
+	 * The sender's legacy global-badge file must not be read on another device, and doing so
+	 * also makes headless native restoration depend on a local filesystem.
+	 */
+	public static void restoreMultiplayer( Bundle bundle ){
+		restore(bundle, false);
+	}
+
+	private static void restore( Bundle bundle, boolean includeLegacyGlobalBadges ){
+		if (includeLegacyGlobalBadges) {
+			//old logic for pre-v2.5 catalog-specific badges
+			Badges.loadGlobal();
+			for (Catalog cat : values()){
+				if (Badges.isUnlocked(catalogBadges.get(cat))){
+					for (Class<?> item : cat.items()){
+						cat.seen.put(item, true);
+					}
 				}
 			}
 		}
@@ -412,12 +426,15 @@ public enum Catalog {
 				}
 			}
 		}
-		//end of old logic
 
 		if (bundle.contains(CATALOG_CLASSES)){
 			Class<?>[] classes = bundle.getClassArray(CATALOG_CLASSES);
 			boolean[] seen = bundle.getBooleanArray(CATALOG_SEEN);
 			int[] uses = bundle.getIntArray(CATALOG_USES);
+			if (classes == null || seen == null || uses == null
+					|| classes.length != seen.length || classes.length != uses.length) {
+				throw new IllegalArgumentException("Invalid native catalog state");
+			}
 
 			for (int i = 0; i < classes.length; i++){
 				for (Catalog cat : values()) {
@@ -426,10 +443,8 @@ public enum Catalog {
 						cat.useCount.put(classes[i], uses[i]);
 					}
 				}
-
 			}
 		}
-
 	}
 	
 }
