@@ -1045,6 +1045,8 @@ public class NativeCombatRuntimeIntegrationTest {
 
     @Test
     public void localHeroSnapshotRestoresRunProgressDroppedItemsAndInventoryIdempotently() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("phase8-run-progress-reconnect", "phase8-run-progress-player", new TestTransport());
         // Reset process-global slots because headless JVM tests share one native QuickSlot.
         Dungeon.quickslot.reset();
         // These static native SPD systems affect future run rewards and item generation.
@@ -1090,6 +1092,13 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.belongings.backpack.items.add(nestedBag);
         Dungeon.quickslot.setSlot(1, nestedBagItem);
 
+        // Zero-quantity quickslot placeholders are part of the run state too; they must not
+        // become phantom owned items or disappear after reconnect.
+        Item emptyPlaceholder = new Item();
+        emptyPlaceholder.quantity(0);
+        emptyPlaceholder.setMultiplayerItemId("phase8-quickslot-placeholder-0001");
+        Dungeon.quickslot.setSlot(2, emptyPlaceholder);
+
         CorpseDust questItem = new CorpseDust();
         questItem.setMultiplayerItemId("phase8-corpse-dust-0001");
         hero.belongings.backpack.items.add(questItem);
@@ -1100,7 +1109,8 @@ public class NativeCombatRuntimeIntegrationTest {
         pendingDrops.add(pendingDrop);
         Dungeon.droppedItems.put(3, pendingDrops);
 
-        String encodedHero = SPDLevelSnapshot.currentHeroStateJson();
+        WorldSnapshot authoritativeSnapshot = makeSnapshotWithMob(1L, null, null);
+        String encodedHero = authoritativeSnapshot.playerStateJson.get(manager.getLocalPlayerId());
         JsonValue encodedRoot = new JsonReader().parse(encodedHero);
         JsonValue runProgress = encodedRoot.get("runProgressBundle");
         Assert.assertNotNull("The local Hero snapshot must include native run progress", runProgress);
@@ -1110,9 +1120,10 @@ public class NativeCombatRuntimeIntegrationTest {
         String quickslotsJson = encodedRoot.getString("quickslotsJson");
         System.out.println("PHASE8_QUICKSLOTS_JSON=" + quickslotsJson);
         JsonValue quickslotArray = new JsonReader().parse(quickslotsJson);
-        Assert.assertEquals("The snapshot contains exactly the two native quickslot references", 2, quickslotArray.size);
+        Assert.assertEquals("The snapshot contains all three native quickslot references", 3, quickslotArray.size);
         Assert.assertNotNull(quickslotArray.get(0).get("serializedBundle"));
         Assert.assertNotNull(quickslotArray.get(1).get("serializedBundle"));
+        Assert.assertEquals(0, quickslotArray.get(2).getInt("quantity"));
 
         // Simulate reconnect after live static data and local native objects have been lost.
         Statistics.goldCollected = 0;
@@ -1131,8 +1142,10 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.belongings.weapon = null;
         Dungeon.quickslot.reset();
 
-        WorldSnapshot.restoreRemoteHeroState(hero, encodedHero);
-        WorldSnapshot.restoreRemoteHeroState(hero, encodedHero);
+        Assert.assertTrue("The authoritative full-world snapshot must restore",
+                WorldSnapshot.restoreWorld(authoritativeSnapshot));
+        Assert.assertTrue("Reapplying the same full-world snapshot must remain idempotent",
+                WorldSnapshot.restoreWorld(authoritativeSnapshot));
 
         Assert.assertEquals("Statistics are restored exactly, not incremented twice", 37, Statistics.goldCollected);
         Assert.assertEquals(9, Statistics.enemiesSlain);
@@ -1183,6 +1196,10 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals("phase8-nested-item-0001", restoredNestedItem.multiplayerItemId());
         Assert.assertSame("Quickslots must rebind to the nested restored item",
                 restoredNestedItem, Dungeon.quickslot.getItem(1));
+        Item restoredPlaceholder = Dungeon.quickslot.getItem(2);
+        Assert.assertNotNull("Empty quickslot placeholders must survive reconnect", restoredPlaceholder);
+        Assert.assertEquals("phase8-quickslot-placeholder-0001", restoredPlaceholder.multiplayerItemId());
+        Assert.assertEquals(0, restoredPlaceholder.quantity());
         Assert.assertNotNull("Quest items must remain in the player's inventory", restoredQuestItem);
         Assert.assertEquals("phase8-corpse-dust-0001", restoredQuestItem.multiplayerItemId());
     }
@@ -1193,6 +1210,35 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertFalse(MultiplayerRunProgress.isValid("not-a-native-bundle"));
         Assert.assertFalse(MultiplayerRunProgress.isValid(
                 "x".repeat(MultiplayerRunProgress.MAX_ENCODED_LENGTH + 1)));
+
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("phase8-invalid-run-state", "phase8-invalid-run-state-player", new TestTransport());
+        Rat liveMob = addRat(hero.pos + 1, 7);
+        WorldSnapshot snapshot = makeSnapshotWithMob(2L, null, null);
+
+        Bundle combat = new Bundle();
+        hero.storeInBundle(combat);
+        Bundle inventory = new Bundle();
+        hero.belongings.storeInBundle(inventory);
+        Bundle invalidHeroState = new Bundle();
+        invalidHeroState.put("combatBundle", combat.toString());
+        invalidHeroState.put("inventoryBundle", inventory.toString());
+        invalidHeroState.put("hp", hero.HP);
+        invalidHeroState.put("ht", hero.HT);
+        invalidHeroState.put("pos", hero.pos);
+        invalidHeroState.put("shielding", hero.shielding());
+        invalidHeroState.put("cooldown", Math.max(0f, hero.cooldown()));
+        invalidHeroState.put("buffCount", 0);
+        invalidHeroState.put("runProgressBundle", "not-a-native-bundle");
+        snapshot.playerStateJson.put(manager.getLocalPlayerId(), invalidHeroState.toString());
+
+        Assert.assertFalse("An invalid run-progress bundle must fail snapshot preflight",
+                WorldSnapshot.validateForRestore(snapshot));
+        Assert.assertFalse("A malformed run must not partially mutate the live world",
+                WorldSnapshot.restoreWorld(snapshot));
+        Assert.assertTrue("The live Mob must remain after preflight rejection", level.mobs.contains(liveMob));
+        Assert.assertSame(liveMob, Actor.findById(liveMob.id()));
+        Assert.assertEquals(20, hero.HP);
     }
 
     @Test
