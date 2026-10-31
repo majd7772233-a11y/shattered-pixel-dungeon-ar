@@ -1191,7 +1191,15 @@ public class NativeCombatRuntimeIntegrationTest {
         }
         Assert.assertNotNull("Nested inventory containers must be restored", restoredNestedBag);
         Assert.assertEquals("phase8-nested-bag-0001", restoredNestedBag.multiplayerItemId());
-        Assert.assertEquals(1, restoredNestedBag.items.size());
+        StringBuilder nestedItemsDiagnostic = new StringBuilder();
+        for (Item item : restoredNestedBag.items) {
+            if (nestedItemsDiagnostic.length() > 0) nestedItemsDiagnostic.append(" | ");
+            nestedItemsDiagnostic.append(item.getClass().getName()).append("#")
+                    .append(item.multiplayerItemId()).append(" x").append(item.quantity());
+        }
+        System.out.println("PHASE8_NESTED_BAG_ITEMS=" + nestedItemsDiagnostic);
+        Assert.assertEquals("Nested bag contents must match its exact native bundle: " + nestedItemsDiagnostic,
+                1, restoredNestedBag.items.size());
         Item restoredNestedItem = restoredNestedBag.items.get(0);
         Assert.assertEquals("phase8-nested-item-0001", restoredNestedItem.multiplayerItemId());
         Assert.assertSame("Quickslots must rebind to the nested restored item",
