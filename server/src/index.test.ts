@@ -3828,6 +3828,23 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(hasMatchingNativeHeroStateSnapshot(heroState("native-run-state-after"), before)).toBe(false);
   });
 
+  it("rejects journal, quest and item-knowledge changes in an unaccepted pre-action state", () => {
+    const before = heroState("trusted-run-progress");
+    const base = JSON.parse(before);
+    expect(hasMatchingNativeHeroStateSnapshot(JSON.stringify({
+      ...base, notesBundle: "forged-notes-before-acceptance"
+    }), before)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot(JSON.stringify({
+      ...base, questStateBundle: "forged-quest-before-acceptance"
+    }), before)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot(JSON.stringify({
+      ...base, potionStatusBundle: "forged-potions-before-acceptance"
+    }), before)).toBe(false);
+    expect(hasMatchingNativeHeroStateSnapshot(JSON.stringify({
+      ...base, ironKeyCount: 99
+    }), before)).toBe(false);
+  });
+
   it("preserves run progress during ordinary reconciliation and accepts a validated native reward state", () => {
     const before = heroState("trusted-run-progress");
     const after = heroState("native-kill-run-progress");
