@@ -231,6 +231,8 @@ public class Wandmaker extends NPC {
 		public static void reset() {
 			spawned = false;
 			type = 0;
+			given = false;
+			questRoomSpawned = false;
 
 			wand1 = null;
 			wand2 = null;
