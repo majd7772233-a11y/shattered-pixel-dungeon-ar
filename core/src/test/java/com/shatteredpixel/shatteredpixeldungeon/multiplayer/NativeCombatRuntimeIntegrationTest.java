@@ -19,6 +19,9 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.FrostImbue;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
@@ -152,6 +155,25 @@ public class NativeCombatRuntimeIntegrationTest {
         // without emitting a network action, while still exercising the native capture gate.
         NativeHeroBuffTickPublisher.publish(capture);
         level.locked = false;
+    }
+
+    @Test
+    public void nativeHeroBuffTickPublisherCapturesAuditedFlavourExpiryActors() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-audited-flavour-expiry", "client-publisher", new TestTransport());
+
+        Buff[] effects = new Buff[] {
+                Buff.affect(hero, Foresight.class, Foresight.DURATION),
+                Buff.affect(hero, Invulnerability.class, Invulnerability.DURATION),
+                Buff.affect(hero, FrostImbue.class, FrostImbue.DURATION)
+        };
+        for (Buff effect : effects) {
+            Assert.assertNotNull("The native effect fixture must attach", effect);
+            NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(effect);
+            Assert.assertNotNull("Only source-audited FlavourBuff expiry actors may be published", capture);
+            // No-op publish clears the capture guard; applying the effects happened before capture.
+            NativeHeroBuffTickPublisher.publish(capture);
+        }
     }
 
     @Test

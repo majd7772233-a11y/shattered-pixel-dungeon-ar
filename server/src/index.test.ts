@@ -326,7 +326,7 @@ describe('Native level snapshot contract', () => {
 
 
   it("accepts only inert native Foresight and Invulnerability Mob expirations and rejects Amok",()=>{
-    for (const effect of ["Foresight","Invulnerability"]) {
+    for (const effect of ["Foresight","Invulnerability","FrostImbue"]) {
       const fixture=makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs."+effect);
       expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,
         fixture.heroState)).toBe(true);
@@ -3151,7 +3151,8 @@ describe("Native Hero Buff tick reconciliation", () => {
   });
   it("accepts only native FlavourBuff timer expiry and rejects early or side-effecting removal",()=>{
     const safe=["Chill","Cripple","Slow","Speed","Weakness","Recharging",
-      "Adrenaline","Bless","Daze","Charm","Terror","Stamina","Vertigo",
+      "Adrenaline","Bless","Daze","Foresight","Invulnerability","FrostImbue",
+      "Charm","Terror","Stamina","Vertigo",
       "BlobImmunity","HeroDisguise","Hex","Sleep","Vulnerable"];
     for (const name of safe) {
       const cls=buffs+name;
