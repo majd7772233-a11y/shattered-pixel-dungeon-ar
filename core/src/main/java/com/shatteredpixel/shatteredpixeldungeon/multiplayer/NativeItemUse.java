@@ -1,6 +1,7 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.badlogic.gdx.utils.Json;
+import com.shatteredpixel.shatteredpixeldungeon.Challenges;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
@@ -110,7 +111,22 @@ public final class NativeItemUse {
             com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass heroSubClass,
             boolean protectiveShadows, boolean rooted, boolean liquidWillpower,
             boolean liquidNature, boolean liquidAgility) {
+        return supportsNativePotionUseState(itemClass, heroSubClass, protectiveShadows, rooted,
+                liquidWillpower, liquidNature, liquidAgility, false);
+    }
+
+    public static boolean supportsNativePotionUseState(String itemClass,
+            com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass heroSubClass,
+            boolean protectiveShadows, boolean rooted, boolean liquidWillpower,
+            boolean liquidNature, boolean liquidAgility, boolean noHealingChallenge) {
         if (liquidWillpower || liquidNature || liquidAgility) return false;
+        if (noHealingChallenge
+                && ("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing".equals(itemClass)
+                || "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding".equals(itemClass))) {
+            // Both native apply() methods call PotionOfHealing.pharmacophobiaProc() under NO_HEALING.
+            // The bounded use-item contract intentionally does not admit that Poison transaction yet.
+            return false;
+        }
         if ("com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility".equals(itemClass)) {
             return heroSubClass != com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.ASSASSIN
                     && !protectiveShadows;
@@ -127,7 +143,7 @@ public final class NativeItemUse {
                 hero.subClass, hero.hasTalent(Talent.PROTECTIVE_SHADOWS),
                 hero.buff(com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Roots.class) != null,
                 hero.hasTalent(Talent.LIQUID_WILLPOWER), hero.hasTalent(Talent.LIQUID_NATURE),
-                hero.hasTalent(Talent.LIQUID_AGILITY));
+                hero.hasTalent(Talent.LIQUID_AGILITY), Dungeon.isChallenged(Challenges.NO_HEALING));
     }
 
     /** Reject unsupported use before any local-only item effect can be applied. */

@@ -540,6 +540,11 @@ describe('Native level snapshot contract', () => {
       malformedRemoteGraph.heroState)).toBe(false);
   });
 
+  it("rejects Mob Terror expiry until its native FLEEING AI-state callback is validated",()=>{
+    const terror = makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror");
+    expect(isValidNativeWorldTurnSnapshot(terror.previous,terror.next,0,1,terror.heroState)).toBe(false);
+  });
+
   it("rejects Mob Poison/LifeLink, early ticks, source retention and unrelated Mob changes",()=>{
     const poison = makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison");
     expect(isValidNativeWorldTurnSnapshot(poison.previous,poison.next,0,1,poison.heroState)).toBe(false);
@@ -4566,6 +4571,73 @@ describe("Native item consumption transaction validation", () => {
       expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
     }
   });
+  it("validates PotionOfShielding against the exact native Barrier shield and rejects poison fallbacks",()=>{
+    const shieldingPotion="com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding";
+    const barrierClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier";
+    const poisonClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+    const level={depth:4,branch:0,locked:false,heaps:[]};
+    const beforeFor=(id:string,oldBarrier:any=null,oldShielding=0)=>JSON.stringify(hero(
+      [row(id,shieldingPotion)],{
+        ht:20,shielding:oldShielding,cooldown:0,
+        combatBundle:JSON.stringify({time:10,STR:10,items:"inventory-before",
+          talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+        ...(oldBarrier?{
+          buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+          buff_1:JSON.stringify({buff:oldBarrier}),buffCooldown_1:0
+        }:{})
+      }));
+    const afterFor=(id:string,barrier:any,aggregateShield:number)=>JSON.stringify(hero([],{
+      ht:20,shielding:aggregateShield,inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:barrier}),buffCooldown_1:0
+    }));
+    const id="native-shielding-potion-001";
+    const d=intent(id,shieldingPotion),accepted={...d,actionType:"USE_ITEM"};
+    const before=beforeFor(id);
+    const newBarrier={__className:barrierClass,id:81,time:10,shielding:22,partial_lost_shield:0};
+    const after=afterFor(id,newBarrier,22);
+    expect(isValidNativeUseItemIntent(level,d,4,"player-001",{pos:9,state:"ALIVE"},before)).toBe(true);
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
+
+    const inflated=afterFor(id,{...newBarrier,shielding:23},23);
+    expect(isValidNativeUseItemMutation(before,inflated,d,accepted)).toBe(false);
+    const missing=JSON.stringify(hero([],{ht:20,shielding:0,inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    }));
+    expect(isValidNativeUseItemMutation(before,missing,d,accepted)).toBe(false);
+
+    const oldBarrier={__className:barrierClass,id:82,time:10,shielding:10,partial_lost_shield:0.4};
+    const beforeExisting=beforeFor("native-shielding-potion-002",oldBarrier,10);
+    const afterExisting=afterFor("native-shielding-potion-002",
+      {...oldBarrier,shielding:22,partial_lost_shield:0},22);
+    const existingIntent=intent("native-shielding-potion-002",shieldingPotion);
+    expect(isValidNativeUseItemMutation(beforeExisting,afterExisting,existingIntent,
+      {...existingIntent,actionType:"USE_ITEM"})).toBe(true);
+
+    const badPartial=afterFor("native-shielding-potion-002",
+      {...oldBarrier,shielding:22,partial_lost_shield:0.2},22);
+    expect(isValidNativeUseItemMutation(beforeExisting,badPartial,existingIntent,
+      {...existingIntent,actionType:"USE_ITEM"})).toBe(false);
+
+    const strongerBarrier={...oldBarrier,shielding:30,partial_lost_shield:0.4};
+    const beforeStronger=beforeFor("native-shielding-potion-003",strongerBarrier,30);
+    const afterStronger=afterFor("native-shielding-potion-003",strongerBarrier,30);
+    const strongerIntent=intent("native-shielding-potion-003",shieldingPotion);
+    expect(isValidNativeUseItemMutation(beforeStronger,afterStronger,strongerIntent,
+      {...strongerIntent,actionType:"USE_ITEM"})).toBe(true);
+
+    const poisonFallback=JSON.stringify(hero([],{ht:20,shielding:0,inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,items:"inventory-after",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{__className:poisonClass,id:83,time:10,left:9}}),buffCooldown_1:0
+    }));
+    expect(isValidNativeUseItemMutation(before,poisonFallback,d,accepted)).toBe(false);
+  });
+
   it("accepts Invisibility and Levitation only for their native single-buff effects",()=>{
     const invisibility="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfInvisibility";
     const levitation="com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfLevitation";
@@ -4654,6 +4726,25 @@ describe("Native item consumption transaction validation", () => {
       combatBundle:JSON.stringify({STR:10,items:"inventory-after",attackSkill:999})
     }));
     expect(isValidNativeUseItemMutation(before,forged,d,accepted)).toBe(false);
+  });
+
+  it("rejects the NO_HEALING PotionOfHealing poison fallback instead of accepting a missing Healing buff",()=>{
+    const id="native-healing-no-heal-challenge-001";
+    const before=JSON.stringify(hero([row(id,potion)],{
+      cooldown:0,combatBundle:JSON.stringify({time:10,STR:10,lvl:4,items:"inventory-before",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}})
+    }));
+    const after=JSON.stringify(hero([],{inventoryBundle:"inventory-after",cooldown:1,
+      combatBundle:JSON.stringify({time:11,STR:10,lvl:4,items:"inventory-after",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},replacements:{}}),
+      buffCount:2,buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{
+        __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+        id:91,time:10,left:6
+      }}),buffCooldown_1:0
+    }));
+    const d=intent(id),accepted={...d,actionType:"USE_ITEM"};
+    expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(false);
   });
 
   it("applies the exact VialOfBlood multiplier to PotionOfHealing and rejects inflated or missing native flags",()=>{

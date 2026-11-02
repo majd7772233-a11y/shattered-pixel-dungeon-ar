@@ -768,7 +768,7 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     allowed = new Set([base + "Stamina"]);
   } else if (action === "DRINK"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
-    allowed = new Set([base + "Barrier", base + "Poison"]);
+    allowed = new Set([base + "Barrier"]);
   } else if (action === "READ"
       && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfRecharging") {
     allowed = new Set([base + "Recharging"]);
@@ -878,8 +878,9 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
     for (const name of removed) if ((after.get(name) || []).length !== 0) return false;
     const healing = after.get(base + "Healing") || [];
     const oldHealing = before.get(base + "Healing") || [];
-    if (healing.length > 1 || oldHealing.length > 1) return false;
-    if (healing.length === 1) {
+    const poison = after.get(base + "Poison") || [];
+    if (healing.length !== 1 || oldHealing.length > 1 || poison.length !== 0) return false;
+    {
       const current = healing[0].data, old = oldHealing[0]?.data;
       const vialLevel = nativeVialOfBloodLevel(previous);
       const hpTotal = Number(previous.ht);
@@ -902,34 +903,55 @@ function isValidNativeUseItemBuffMutation(previous: any, next: any, action: stri
   if (itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding"
       && action === "DRINK") {
     const name = base + "Barrier", barriers = after.get(name) || [], oldBarriers = before.get(name) || [];
-    const poisonName = base + "Poison", poisons = after.get(poisonName) || [], oldPoisons = before.get(poisonName) || [];
-    if (barriers.length > 1 || poisons.length > 1) return false;
-    const oldShielding = Number(oldBarriers[0]?.data?.shielding || 0);
-    const nextShielding = Number(barriers[0]?.data?.shielding || 0);
-    const expected = Math.floor(0.6 * Number(previous.ht) + 10);
-    if (barriers.length === 1) {
-      if (!Number.isInteger(nextShielding) || nextShielding < 0
-          || nextShielding > Math.max(oldShielding, expected)
-          || Number(next.shielding) !== Number(previous.shielding) + nextShielding - oldShielding) return false;
-    } else if (Number(next.shielding) !== Number(previous.shielding)) return false;
-    const barrierChanged = !sameNativeItemValue(
-      (oldBarriers).map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
-      barriers.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})));
-    const poisonChanged = !sameNativeItemValue(
-      oldPoisons.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})),
-      poisons.map((row: any) => ({serializedBundle:row.serializedBundle,cooldown:row.cooldown})));
-    if (barrierChanged && poisonChanged) return false;
-  }
+    if (barriers.length !== 1 || oldBarriers.length > 1) return false;
 
-  if (action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing"
-      || action === "DRINK" && itemClass === "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding") {
-    const poison = after.get(base + "Poison") || [], oldPoison = before.get(base + "Poison") || [];
-    if (poison.length > 1) return false;
-    if (poison.length === 1) {
-      const left = Number(poison[0].data.left), oldLeft = Number(oldPoison[0]?.data?.left || 0);
-      if (!Number.isFinite(left) || left < 0 || left > Math.max(oldLeft, 30)) return false;
+    const oldRow = oldBarriers[0] || null, nextRow = barriers[0];
+    const oldData = oldRow?.data || null, nextData = nextRow.data;
+    const oldShielding = oldData ? Number(oldData.shielding) : 0;
+    const nextShielding = Number(nextData.shielding);
+    const hitPoints = Number(previous.ht);
+    if (!Number.isInteger(hitPoints) || hitPoints < 1 || hitPoints > 100000
+        || !Number.isInteger(oldShielding) || oldShielding < 0 || oldShielding > 100000) return false;
+
+    // Mirror PotionOfShielding.apply() -> Barrier.setShield(), including Java float arithmetic.
+    const expected = Math.trunc(Math.fround(Math.fround(Math.fround(0.6) * hitPoints) + 10));
+    const expectedShielding = Math.max(oldShielding, expected);
+    if (!Number.isInteger(nextShielding) || nextShielding !== expectedShielding
+        || Number(next.shielding) !== Number(previous.shielding) + expectedShielding - oldShielding) return false;
+
+    const oldPartial = oldData ? Number(oldData.partial_lost_shield ?? 0) : 0;
+    const nextPartial = Number(nextData.partial_lost_shield ?? 0);
+    const expectedPartial = oldShielding <= expected ? 0 : oldPartial;
+    if (!Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1
+        || !Number.isFinite(nextPartial) || nextPartial !== expectedPartial) return false;
+
+    if (oldData) {
+      const stable = (value:any) => {
+        const copy = {...value};
+        delete copy.shielding;
+        delete copy.partial_lost_shield;
+        return copy;
+      };
+      if (Number(nextData.id) !== Number(oldData.id)
+          || Number(nextData.time) !== Number(oldData.time)
+          || Number(nextRow.cooldown) !== Number(oldRow.cooldown)
+          || !sameNativeItemValue(stable(oldData),stable(nextData))) return false;
+    } else {
+      const fields = Object.keys(nextData).sort();
+      if (fields.join(",") !== "__className,id,partial_lost_shield,shielding,time"
+          || String(nextData.__className) !== name
+          || !Number.isInteger(nextData.id) || Number(nextData.id) < 1
+          || !Number.isFinite(Number(nextData.time))
+          || !Number.isFinite(Number(nextRow.cooldown)) || Number(nextRow.cooldown) < 0) return false;
+      let combat:any;
+      try { combat = JSON.parse(String(next.combatBundle || "")); } catch (_) { return false; }
+      const actorClock = Number(combat?.time) - Number(next.cooldown);
+      if (!Number.isFinite(actorClock)
+          || Math.abs(Number(nextData.time)-actorClock)>0.06
+          || Math.abs(Number(nextRow.cooldown))>0.06) return false;
     }
   }
+
   return true;
 }
 
@@ -5294,7 +5316,7 @@ const NATIVE_MOB_SAFE_FLAVOUR_EXPIRY = new Set([
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
-  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
+  // Terror removal can change a fleeing Mob to HUNTING/WANDERING; it needs a separate AI-state contract.
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex",

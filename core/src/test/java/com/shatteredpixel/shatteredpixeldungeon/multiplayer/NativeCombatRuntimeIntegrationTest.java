@@ -182,6 +182,23 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void noHealingChallengeRejectsHealingAndShieldingPotionsBeforeTheirPoisonFallback() {
+        String healing = "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing";
+        String shielding = "com.shatteredpixel.shatteredpixeldungeon.items.potions.exotic.PotionOfShielding";
+        Assert.assertTrue(NativeItemUse.supportsNativePotionUseState(healing, hero.subClass,
+                false, false, false, false, false));
+        Assert.assertTrue(NativeItemUse.supportsNativePotionUseState(shielding, hero.subClass,
+                false, false, false, false, false));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(healing, hero.subClass,
+                false, false, false, false, false, true));
+        Assert.assertFalse(NativeItemUse.supportsNativePotionUseState(shielding, hero.subClass,
+                false, false, false, false, false, true));
+        Assert.assertTrue(NativeItemUse.supportsNativePotionUseState(
+                "com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHaste", hero.subClass,
+                false, false, false, false, false, true));
+    }
+
+    @Test
     public void remoteHeroRestoreDoesNotTouchLocalPotionAndScrollKnowledgeHandlers() {
         // Keep this a headless-safe regression: touching Potion/Scroll classes initializes
         // ItemSpriteSheet textures, but restoring a remote Hero must not touch those static
