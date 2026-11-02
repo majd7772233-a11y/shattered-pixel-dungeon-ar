@@ -5371,9 +5371,15 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const beforeHeroIds = nativeMobBuffHeroActorIds(trustedHeroStateValue);
   const afterHeroIds = nativeMobBuffHeroActorIds(next.heroStateJson);
   if (!beforeMetadata || !afterMetadata || !beforeBlobs || !afterBlobs
-      || !beforeHeroIds || !afterHeroIds
-      || !nativeMobBuffActorIds(previousMobs,beforeHeroIds,beforeRemoteHeroIds,beforeBlobs,beforeMetadata)
-      || !nativeMobBuffActorIds(nextMobs,afterHeroIds,afterRemoteHeroIds,afterBlobs,afterMetadata)
+      || !beforeHeroIds || !afterHeroIds) return false;
+  const beforeActorIds = nativeMobBuffActorIds(
+    previousMobs,beforeHeroIds,beforeRemoteHeroIds,beforeBlobs,beforeMetadata);
+  const afterActorIds = nativeMobBuffActorIds(
+    nextMobs,afterHeroIds,afterRemoteHeroIds,afterBlobs,afterMetadata);
+  // The source must be present in the trusted pre-state and permanently absent after expiry.
+  // Actor IDs are monotonic within one native scheduler; another surviving Actor cannot inherit
+  // the just-detached Buff's ID in the same accepted turn.
+  if (!beforeActorIds || !afterActorIds || !beforeActorIds.has(actorId) || afterActorIds.has(actorId)
       || !sameNativeItemValue([...beforeHeroIds].sort((a,b)=>a-b),[...afterHeroIds].sort((a,b)=>a-b))) return false;
 
   for (const key of ["schemaVersion","branch","depth","width","height","entrancePos","exitPos","seed",

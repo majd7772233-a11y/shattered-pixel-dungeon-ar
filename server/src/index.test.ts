@@ -459,6 +459,19 @@ describe('Native level snapshot contract', () => {
   });
 
 
+
+  it("does not let a surviving Mob inherit the just-expired Mob Buff Actor ID",()=>{
+    const fixture = makeNativeMobBuffTurn();
+    const mob = fixture.next.mobs[0];
+    const mobBundle = JSON.parse(mob.serializedBundle);
+    mob.mobId = fixture.next.nativeWorldActorId;
+    mobBundle.mob.id = fixture.next.nativeWorldActorId;
+    mob.serializedBundle = JSON.stringify(mobBundle);
+    fixture.next.nativeMobActorId = fixture.next.nativeWorldActorId;
+    expect(isValidNativeWorldTurnSnapshot(
+      fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(false);
+  });
+
   it("keeps independent Hero buffs intact while a Mob FlavourBuff expires",()=>{
     const fixture = makeNativeMobBuffTurn();
     const heroBuff = {__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",id:22,time:9};
