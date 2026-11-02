@@ -2930,6 +2930,49 @@ describe("Native Hero Buff tick reconciliation", () => {
   });
 
 
+
+  it("keeps Hunger damage local even when the Hero has a native LifeLink",()=>{
+    const hunger=buffs+"Hunger", lifeLink=buffs+"LifeLink";
+    const linkRow=JSON.stringify({buff:{__className:lifeLink,id:88,time:14,object:321}});
+    const previous=stateWithBuff(hunger,12,9,{level:450,partialDamage:0.99},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:6
+    });
+    const before=stateWithBuff(hunger,12,9,{level:450,partialDamage:0.99},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:5
+    });
+    const after=stateWithBuff(hunger,12,10,{level:450,partialDamage:0.01},{
+      cooldown:1,buffCooldown_0:1,hp:9,buffCount:2,buff_1:linkRow,buffCooldown_1:5
+    });
+    // Char.damage() explicitly excludes Hunger from LifeLink fan-out.
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(hunger,12))).toBe(true);
+  });
+
+  it("rejects Poison damage that triggers Charm.recover() or Terror.recover() side effects",()=>{
+    const poison=buffs+"Poison";
+    for (const sideEffectClass of ["Charm","Terror"]) {
+      const className=buffs+sideEffectClass;
+      const sideEffectRow=JSON.stringify({buff:{
+        __className:className,id:89,time:14,object:321,
+        ...(sideEffectClass==="Charm" ? {ignore_allies:false} : {})
+      }});
+      const previous=stateWithBuff(poison,44,9,{left:9},{
+        cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:sideEffectRow,buffCooldown_1:6
+      });
+      const before=stateWithBuff(poison,44,9,{left:9},{
+        cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:sideEffectRow,buffCooldown_1:5
+      });
+      // On native Hero damage, both recover callbacks shorten their own timer by five
+      // turns and detach when the remaining cooldown is five or less. A single-Hero
+      // Poison result cannot silently omit that second Buff mutation.
+      const after=stateWithBuff(poison,44,10,{left:8},{
+        cooldown:1,buffCooldown_0:1,hp:9
+      });
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+        JSON.stringify(after),tick(poison,44))).toBe(false);
+    }
+  });
+
   it("validates Wand.Charger against its exact owned Wand, native scale, and charge formula",()=>{
     const charger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
     const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
