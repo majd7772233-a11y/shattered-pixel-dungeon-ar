@@ -162,16 +162,21 @@ public class NativeCombatRuntimeIntegrationTest {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-audited-flavour-expiry", "client-publisher", new TestTransport());
 
+        // Test the publisher's source allowlist without invoking attachTo(): Foresight performs
+        // a scene-backed Hero.search(), while these attach-side effects are not expiry behavior.
         Buff[] effects = new Buff[] {
-                Buff.affect(hero, Foresight.class, Foresight.DURATION),
-                Buff.affect(hero, Invulnerability.class, Invulnerability.DURATION),
-                Buff.affect(hero, FrostImbue.class, FrostImbue.DURATION)
+                new Foresight(),
+                new Invulnerability(),
+                new FrostImbue()
         };
         for (Buff effect : effects) {
-            Assert.assertNotNull("The native effect fixture must attach", effect);
+            Assert.assertNotNull(effect);
+            effect.target = hero;
             NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(effect);
-            Assert.assertNotNull("Only source-audited FlavourBuff expiry actors may be published", capture);
-            // No-op publish clears the capture guard; applying the effects happened before capture.
+            Assert.assertNotNull("Only source-audited native flavour expiry actors may be published",
+                    capture);
+            // This isolated fixture is not attached to the Hero, so publish is a no-op and
+            // reliably releases the publisher's single-event capture guard.
             NativeHeroBuffTickPublisher.publish(capture);
         }
     }
