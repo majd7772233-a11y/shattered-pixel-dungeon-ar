@@ -2674,6 +2674,200 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(poison,44))).toBe(false);
   });
 
+
+  it("validates Wand.Charger against its exact owned Wand, native scale, and charge formula",()=>{
+    const charger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+    const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+    const itemId="wand-charge-native-001";
+    const level={branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+    const make=(charges:number,partial:number,scale=0.875,containerId="BACKPACK",extra:Record<string,any>={})=>{
+      const item={__className:wandClass,multiplayer_item_id:itemId,quantity:1,level:0,
+        curCharges:charges,maxCharges:2,partialCharge:partial,usesLeftToID:10,
+        availableUsesToID:5,curChargeKnown:true};
+      const itemBundle=JSON.stringify({item});
+      const row={itemId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
+        stackable:false,equipped:false,containerId,serializedBundle:itemBundle};
+      const root=containerId==="BACKPACK"
+        ? {inventory:[{item}]}
+        : {inventory:[{item:{__className:"com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster",
+            multiplayer_item_id:containerId,quantity:1,level:0,cursed:false,cursedKnown:true,
+            inventory:[{item}]}}]};
+      const items=containerId==="BACKPACK" ? [row] : [
+        {itemId:containerId,className:"com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster",
+          quantity:1,level:0,cursed:false,cursedKnown:true,stackable:false,equipped:false,
+          containerId:"BACKPACK",serializedBundle:JSON.stringify({item:root.inventory[0].item})},
+        row
+      ];
+      const state=stateWithBuff(charger,301,9,{
+        multiplayer_wand_item_id:itemId,multiplayer_scale_factor:scale
+      },{
+        cooldown:1,buffCooldown_0:0,inventoryBundle:JSON.stringify(root),
+        inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",
+        combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,items:"native-inventory",buffs:[]}),
+        ...extra
+      });
+      return state;
+    };
+    const previous=make(0,0);
+    previous.cooldown=2;
+    previous.buffCooldown_0=1;
+    const before=make(0,0);
+    const expected=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.875,2)))*1);
+    const after=make(0,expected);
+    after.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
+    after.buffCooldown_0=1;
+    const event={...tick(charger,301),wandItemId:itemId};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),event,level)).toBe(true);
+
+    const changedWrongWand=make(0,expected);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(changedWrongWand),{...event,wandItemId:"different-wand-001"},level)).toBe(false);
+    const excessiveCharge=make(1,0);
+    excessiveCharge.buff_0=after.buff_0;
+    excessiveCharge.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(excessiveCharge),event,level)).toBe(false);
+    const holsterId="magical-holster-native-01";
+    const holsterBefore=make(0,0,0.85,holsterId);
+    holsterBefore.cooldown=2;
+    holsterBefore.buffCooldown_0=1;
+    const holsterPre=make(0,0,0.85,holsterId);
+    const holsterPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.85,2)))*1);
+    const holsterAfter=make(0,holsterPartial,0.875,holsterId);
+    holsterAfter.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
+    holsterAfter.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(holsterBefore),JSON.stringify(holsterPre),
+      JSON.stringify(holsterAfter),event,level)).toBe(false);
+  });
+
+  it("applies Recharging and MagicImmune using the native Wand.Charger order",()=>{
+    const charger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+    const recharging=buffs+"Recharging", magicImmune=buffs+"MagicImmune";
+    const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+    const itemId="wand-charge-native-002";
+    const make=(partial:number,includeMagic:boolean)=>{
+      const item={__className:wandClass,multiplayer_item_id:itemId,quantity:1,level:0,
+        curCharges:0,maxCharges:2,partialCharge:partial};
+      const row={itemId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
+        stackable:false,equipped:false,containerId:"BACKPACK",serializedBundle:JSON.stringify({item})};
+      const rows=[
+        {buff:{__className:charger,id:302,time:9,multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}},
+        {buff:{__className:recharging,id:303,time:10}}
+      ];
+      if(includeMagic) rows.push({buff:{__className:magicImmune,id:304,time:10}});
+      const state:any={
+        hp:10,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
+        inventoryBundle:JSON.stringify({inventory:[{item}]}),
+        inventoryItemsJson:JSON.stringify([row]),quickslotsJson:"[]",
+        cooldown:1,combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,buffs:[]}),
+        buffCount:rows.length,
+        buff_0:JSON.stringify(rows[0]),buffCooldown_0:0,
+        buff_1:JSON.stringify(rows[1]),buffCooldown_1:1,
+        ... (includeMagic ? {buff_2:JSON.stringify(rows[2]),buffCooldown_2:1} : {})
+      };
+      return state;
+    };
+    const level={branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+    const previous=make(0,false); previous.cooldown=2; previous.buffCooldown_0=1; previous.buffCooldown_1=2;
+    const before=make(0,false);
+    const after=make(Math.fround(0.25+Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.875,2))))),false);
+    after.buff_0=JSON.stringify({buff:{__className:charger,id:302,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
+    after.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),{...tick(charger,302),wandItemId:itemId},level)).toBe(true);
+
+    const magicBefore=make(0.2,true); magicBefore.cooldown=2;
+    magicBefore.buffCooldown_0=1; magicBefore.buffCooldown_1=2; magicBefore.buffCooldown_2=2;
+    const magicPre=make(0.2,true);
+    const magicAfter=make(0.2,true);
+    magicAfter.buff_0=JSON.stringify({buff:{__className:charger,id:302,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
+    magicAfter.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(magicBefore),JSON.stringify(magicPre),
+      JSON.stringify(magicAfter),{...tick(charger,302),wandItemId:itemId},level)).toBe(true);
+  });
+
+  it("validates Blocking shield decay, its exact expiry and HoldFast side-effect boundary",()=>{
+    const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
+    const previous=stateWithBuff(cls,401,9,{left:1,shielding:4},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:4
+    });
+    const before=stateWithBuff(cls,401,9,{left:1,shielding:4},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:4
+    });
+    const expired:any={...before,buffCount:0,shielding:0};
+    delete expired.buff_0; delete expired.buffCooldown_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(expired),tick(cls,401))).toBe(true);
+
+    const notDue=stateWithBuff(cls,401,9,{left:2,shielding:4},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:4
+    });
+    const oneTurnLater=stateWithBuff(cls,401,10,{left:1,shielding:4},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:4
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(notDue),JSON.stringify(notDue),
+      JSON.stringify(oneTurnLater),tick(cls,401))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...expired,hp:9}),tick(cls,401))).toBe(false);
+  });
+
+  it("validates only shieldless WarriorShield cooldown ticks with known regeneration state",()=>{
+    const cls="com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+    const level={branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+    const make=(cooldown:number,time:number=9)=>stateWithBuff(cls,411,time,{
+      cooldown,turns_since_enemies:2,initial_shield:4,shielding:0
+    },{cooldown:time===9?1:1,buffCooldown_0:Math.max(0,time-9),hp:10,shielding:0});
+    const previous=make(10); previous.cooldown=2; previous.buffCooldown_0=1;
+    const before=make(10);
+    const after=make(9,10);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(cls,411),level)).toBe(true);
+    const vault={...level,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel"};
+    const noRegenAfter=make(10,10);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(before),JSON.stringify(before),
+      JSON.stringify(noRegenAfter),tick(cls,411),vault)).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(cls,411),vault)).toBe(false);
+    const shielded=stateWithBuff(cls,411,9,{cooldown:10,turns_since_enemies:2,initial_shield:4,shielding:3},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:3
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(shielded),JSON.stringify(shielded),
+      JSON.stringify({...after,shielding:0}),tick(cls,411),level)).toBe(false);
+  });
+
+  it("validates deterministic Berserk recovery but rejects random Berserk shield decay",()=>{
+    const cls=buffs+"Berserk";
+    const normal={state:"NORMAL",power:0.5,power_buffer:2,levelrecovery:0,turn_recovery:0,shielding:0};
+    const previous=stateWithBuff(cls,421,9,normal,{cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(cls,421,9,normal,{cooldown:1,buffCooldown_0:0,hp:10});
+    const after=stateWithBuff(cls,421,10,{...normal,power_buffer:1},{cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(cls,421),{branch:0,locked:false,
+        levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"})).toBe(true);
+
+    const decay={...normal,power_buffer:0};
+    const decayBefore=stateWithBuff(cls,422,9,decay,{cooldown:1,buffCooldown_0:0,hp:10});
+    const nextPower=Math.fround(0.5-Math.fround(0.5*0.05)*Math.pow(Math.fround(10/20),2));
+    const decayAfter=stateWithBuff(cls,422,10,{...decay,power:nextPower},{cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(decayBefore),JSON.stringify(decayBefore),
+      JSON.stringify(decayAfter),tick(cls,422),{branch:0,locked:false,
+        levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"})).toBe(true);
+
+    const berserking={...normal,state:"BERSERK",shielding:5};
+    const dangerousBefore=stateWithBuff(cls,423,9,berserking,{cooldown:1,buffCooldown_0:0,hp:10,shielding:5});
+    const dangerousAfter=stateWithBuff(cls,423,10,{...berserking,shielding:4},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:4
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(dangerousBefore),JSON.stringify(dangerousBefore),
+      JSON.stringify(dangerousAfter),tick(cls,423),{branch:0,locked:false,
+        levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"})).toBe(false);
+  });
+
   it("rejects background Levitation expiry because native detach occupies the Hero cell",()=>{
     const hunger=buffs+"Hunger";
     const levitation=buffs+"Levitation";

@@ -3786,25 +3786,6 @@ function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:N
   return {state,clock,rows};
 }
 
-function nativeHeroBuffTickStableState(stateValue: any): any | null {
-  const state = {...stateValue};
-  // These values may change only through the per-buff rules below. Comparing them here
-  // would reject legitimate WellFed/Healing HP gains and Barrier/Poison shield/damage ticks
-  // before their class-specific bounds can be checked.
-  delete state.hp;
-  delete state.shielding;
-  delete state.cooldown;
-  delete state.buffCount;
-  for (const key of Object.keys(state)) if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete state[key];
-  const combat = parseNativeBundleObject(state.combatBundle);
-  if (!combat) return null;
-  // Actor buffs are validated separately. Keep the native hero clock, equipment, class,
-  // talents, and every other combat field intact.
-  delete combat.buffs;
-  state.combatBundle = combat;
-  return state;
-}
-
 function nativeHeroBuffTickRowsByKey(rows: NativeHeroBuffTickRow[]): Map<string,NativeHeroBuffTickRow> {
   return new Map(rows.map(row=>[row.className+"#"+row.id,row]));
 }
@@ -3838,13 +3819,351 @@ function nativeVialOfBloodMaxHealPerTurn(heroValue: any): number | null {
   }
 }
 
+
+const NATIVE_WAND_CHARGER = "com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+const NATIVE_BLOCK_BUFF = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
+const NATIVE_WARRIOR_SHIELD = "com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+const NATIVE_BERSERK_BUFF = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Berserk";
+const NATIVE_WAND_PREFIX = "com.shatteredpixel.shatteredpixeldungeon.items.wands.";
+const NATIVE_RING_OF_ENERGY = "com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfEnergy";
+const NATIVE_ENERGY_BUFF = NATIVE_RING_OF_ENERGY + "$Energy";
+const NATIVE_LOCKED_FLOOR = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LockedFloor";
+const NATIVE_HOLD_FAST = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.HoldFast";
+
+function scrubNativeWandChargeValue(value: any, itemId: string): number {
+  let matches = 0;
+  const visit = (node: any): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const child of node) visit(child); return; }
+    if (String(node.__className || "").startsWith(NATIVE_WAND_PREFIX)
+        && String(node.multiplayer_item_id || "") === itemId) {
+      delete node.curCharges;
+      delete node.partialCharge;
+      matches++;
+    }
+    for (const child of Object.values(node)) visit(child);
+  };
+  visit(value);
+  return matches;
+}
+
+function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""): any | null {
+  const state = {...stateValue};
+  delete state.hp;
+  delete state.shielding;
+  delete state.cooldown;
+  delete state.buffCount;
+  for (const key of Object.keys(state)) if (/^buff_\d+$/.test(key) || /^buffCooldown_\d+$/.test(key)) delete state[key];
+  const combat = parseNativeBundleObject(state.combatBundle);
+  if (!combat) return null;
+  delete combat.buffs;
+  if (ignoredWandItemId) scrubNativeWandChargeValue(combat, ignoredWandItemId);
+  state.combatBundle = combat;
+
+  if (ignoredWandItemId) {
+    const inventoryBundle = parseNativeBundleObject(state.inventoryBundle);
+    if (!inventoryBundle || scrubNativeWandChargeValue(inventoryBundle, ignoredWandItemId) !== 1) return null;
+    state.inventoryBundle = inventoryBundle;
+
+    let inventoryRows: any;
+    try { inventoryRows = JSON.parse(String(state.inventoryItemsJson || "")); } catch (_) { return null; }
+    if (!Array.isArray(inventoryRows)) return null;
+    const targetRows = inventoryRows.filter((row:any) => String(row?.itemId || "") === ignoredWandItemId);
+    if (targetRows.length !== 1) return null;
+    const targetBundle = parseNativeBundleObject(targetRows[0].serializedBundle);
+    if (!targetBundle || scrubNativeWandChargeValue(targetBundle, ignoredWandItemId) !== 1) return null;
+    targetRows[0].serializedBundle = targetBundle;
+    state.inventoryItemsJson = inventoryRows;
+
+    if (state.quickslotsJson !== undefined) {
+      let quickslots: any;
+      try { quickslots = JSON.parse(String(state.quickslotsJson)); } catch (_) { return null; }
+      if (!Array.isArray(quickslots)) return null;
+      const matchingSlots = quickslots.filter((row:any) => String(row?.itemId || "") === ignoredWandItemId);
+      if (matchingSlots.length > 1) return null;
+      for (const slot of matchingSlots) {
+        const slotBundle = parseNativeBundleObject(slot.serializedBundle);
+        if (!slotBundle || scrubNativeWandChargeValue(slotBundle, ignoredWandItemId) !== 1) return null;
+        slot.serializedBundle = slotBundle;
+      }
+      state.quickslotsJson = quickslots;
+    }
+  }
+  return state;
+}
+
+function nativeBuffTickRegenerationOn(level: any, rows: NativeHeroBuffTickRow[]): boolean | null {
+  if (!level || level.branch !== 0 || level.locked !== false
+      || typeof level.levelClass !== "string" || !level.levelClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.levels.")) {
+    return null;
+  }
+  if (level.levelClass === "com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel") return false;
+  const locked = rows.filter(row => row.className === NATIVE_LOCKED_FLOOR);
+  if (locked.length > 1) return null;
+  if (locked.length === 0) return true;
+  const left = Number(locked[0].data.left);
+  return Number.isFinite(left) ? left >= 1 : null;
+}
+
+function nativeWandRingChargeMultiplier(hero: any, inventory: any[], rows: NativeHeroBuffTickRow[]): number | null {
+  const magicImmune = rows.some(row => row.className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune");
+  if (magicImmune) return 1;
+  if (rows.some(row => row.className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Degrade"
+      || row.className === "com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.SpiritForm$SpiritFormBuff")) return null;
+
+  const energyItems = inventory.filter(row => String(row.className) === NATIVE_RING_OF_ENERGY && row.equipped === true);
+  const energyBuffs = rows.filter(row => row.className === NATIVE_ENERGY_BUFF);
+  if (energyItems.length !== energyBuffs.length || energyItems.length > 2) return null;
+
+  const enhanced = rows.some(row => row.className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.EnhancedRings");
+  let bonus = 0;
+  for (const ring of energyItems) {
+    const decoded = nativeItemBundleData(ring);
+    if (!decoded || String(decoded.item.__className || "") !== NATIVE_RING_OF_ENERGY
+        || String(decoded.item.multiplayer_item_id || "") !== String(ring.itemId)
+        || !Number.isInteger(ring.level) || typeof ring.cursed !== "boolean") return null;
+    const buffedLevel = Number(ring.level) + (enhanced ? 1 : 0);
+    bonus += ring.cursed ? Math.min(0, buffedLevel - 2) : buffedLevel + 1;
+  }
+  const multiplier = Math.fround(Math.pow(1.175, bonus));
+  const combat = parseNativeBundleObject(hero.combatBundle);
+  if (!combat) return null;
+  const heroClass = String(combat.class || "");
+  const lightReading = heroClass === "CLERIC" ? 0 : nativeEquipmentTalentPoints(combat, "LIGHT_READING");
+  if (!Number.isInteger(lightReading) || lightReading < 0 || lightReading > 3) return null;
+  if (lightReading === 0) return multiplier;
+  const talentFactor = Math.fround(1 + Math.fround(Math.fround(0.2 * lightReading) / 3));
+  return Math.fround(multiplier * talentFactor);
+}
+
+function nativeWandChargerInventoryDelta(beforeHero: any, afterHero: any, itemId: string): {
+  before: any; after: any; beforeItem: any; afterItem: any; inventory: any[];
+} | null {
+  const beforeInventory = parseNativeInventoryIndex(beforeHero);
+  const afterInventory = parseNativeInventoryIndex(afterHero);
+  if (!beforeInventory || !afterInventory) return null;
+  const oldRows = beforeInventory.filter(row => String(row.itemId) === itemId);
+  const newRows = afterInventory.filter(row => String(row.itemId) === itemId);
+  if (oldRows.length !== 1 || newRows.length !== 1) return null;
+  const oldRow = oldRows[0], newRow = newRows[0];
+  if (!String(oldRow.className || "").startsWith(NATIVE_WAND_PREFIX)
+      || !sameNativeItemValue(itemValueWithout(oldRow, ["serializedBundle"]), itemValueWithout(newRow, ["serializedBundle"]))
+      || !sameNativeItemValue(beforeInventory.filter(row=>String(row.itemId)!==itemId),
+          afterInventory.filter(row=>String(row.itemId)!==itemId))) return null;
+  const oldBundle = nativeItemBundleData(oldRow), newBundle = nativeItemBundleData(newRow);
+  if (!oldBundle || !newBundle
+      || String(oldBundle.item.__className || "") !== String(oldRow.className)
+      || String(newBundle.item.__className || "") !== String(newRow.className)
+      || String(oldBundle.item.multiplayer_item_id || "") !== itemId
+      || String(newBundle.item.multiplayer_item_id || "") !== itemId) return null;
+  const oldItem = oldBundle.item, newItem = newBundle.item;
+  if (!sameNativeItemValue(itemValueWithout(oldBundle.root, ["item"]), itemValueWithout(newBundle.root, ["item"]))
+      || !sameNativeItemValue(itemValueWithout(oldItem, ["curCharges", "partialCharge"]),
+          itemValueWithout(newItem, ["curCharges", "partialCharge"]))) return null;
+  const maxCharges = Number(oldItem.maxCharges), oldCharges = Number(oldItem.curCharges), newCharges = Number(newItem.curCharges);
+  const oldPartial = Number(oldItem.partialCharge), newPartial = Number(newItem.partialCharge);
+  if (!Number.isInteger(maxCharges) || maxCharges < 1 || maxCharges > 10
+      || !Number.isInteger(oldCharges) || oldCharges < 0 || oldCharges > maxCharges
+      || !Number.isInteger(newCharges) || newCharges < 0 || newCharges > maxCharges
+      || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1
+      || !Number.isFinite(newPartial) || newPartial < 0 || newPartial >= 1
+      || (oldCharges === maxCharges && oldPartial !== 0)) return null;
+
+  const oldEconomy = parseNativeItemEconomyIndex(beforeHero), newEconomy = parseNativeItemEconomyIndex(afterHero);
+  if ((oldEconomy === null) !== (newEconomy === null)
+      || (oldEconomy && newEconomy && !sameNativeItemValue(oldEconomy,newEconomy))) return null;
+  const oldSlots = parseNativeQuickslotIndex(beforeHero), newSlots = parseNativeQuickslotIndex(afterHero);
+  if (!oldSlots || !newSlots || oldSlots.length !== newSlots.length) return null;
+  const slotsWithoutWand = (slots:any[]) => slots.filter(row=>String(row.itemId)!==itemId);
+  if (!sameNativeItemValue(slotsWithoutWand(oldSlots),slotsWithoutWand(newSlots))) return null;
+  const oldWandSlots = oldSlots.filter(row=>String(row.itemId)===itemId);
+  const newWandSlots = newSlots.filter(row=>String(row.itemId)===itemId);
+  if (oldWandSlots.length !== newWandSlots.length || oldWandSlots.length > 1) return null;
+  if (oldWandSlots.length === 1
+      && (oldWandSlots[0].slot !== newWandSlots[0].slot
+        || String(newWandSlots[0].serializedBundle) !== String(newRow.serializedBundle))) return null;
+  return {before:oldRow,after:newRow,beforeItem:oldItem,afterItem:newItem,inventory:beforeInventory};
+}
+
+function isValidNativeWandChargerTick(before: any, after: any, source: NativeHeroBuffTickRow,
+  result: NativeHeroBuffTickRow | undefined, data: any, level: any): boolean {
+  const itemId = String(data?.wandItemId || "");
+  if (!result || itemId.length < 8 || itemId.length > 80
+      || String(source.data.multiplayer_wand_item_id || "") !== itemId
+      || !Number.isFinite(Number(source.data.multiplayer_scale_factor))
+      || !Number.isFinite(Number(source.time)) || source.time > before.clock + 0.06
+      || Math.abs(result.time-source.time-1) > 0.1
+      || Number(after.hp) !== Number(before.hp) || Number(after.shielding) !== Number(before.shielding)) return false;
+
+  const delta = nativeWandChargerInventoryDelta(before,after,itemId);
+  if (!delta) return false;
+  const {beforeItem,afterItem,inventory,before:oldRow} = delta;
+  const expectedScale = oldRow.containerId && oldRow.containerId !== "BACKPACK"
+    && inventory.some(row=>String(row.itemId)===String(oldRow.containerId)
+      && String(row.className)==="com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster")
+      ? 0.85 : 0.875;
+  const scale = Number(source.data.multiplayer_scale_factor);
+  if (Math.abs(scale-expectedScale)>0.0001) return false;
+
+  const currentCharges = Number(beforeItem.curCharges), maxCharges = Number(beforeItem.maxCharges);
+  let expectedPartial = Number(beforeItem.partialCharge);
+  let expectedCharges = currentCharges;
+  const magicImmune = before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune");
+  if (currentCharges < maxCharges && !magicImmune) {
+    const regenerationOn = nativeBuffTickRegenerationOn(level,before.rows);
+    if (regenerationOn === null) return false;
+    if (regenerationOn) {
+      const missing = Math.max(0,maxCharges-currentCharges);
+      const turnsToCharge = Math.fround(10 + 40*Math.pow(scale,missing));
+      const ringMultiplier = nativeWandRingChargeMultiplier(before,beforeHeroInventory(before),before.rows);
+      if (ringMultiplier === null) return false;
+      const baseCharge = Math.fround(Math.fround(1/turnsToCharge)*ringMultiplier);
+      expectedPartial = Math.fround(expectedPartial+baseCharge);
+    }
+    for (const recharging of before.rows.filter(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging")) {
+      if (recharging.cooldown > 0) {
+        const remainder = Math.min(1,recharging.cooldown);
+        expectedPartial = Math.fround(expectedPartial+Math.fround(0.25*remainder));
+      }
+    }
+  }
+  while (expectedPartial >= 1 && expectedCharges < maxCharges) {
+    expectedPartial = Math.fround(expectedPartial-1);
+    expectedCharges++;
+  }
+  if (expectedCharges === maxCharges) expectedPartial = 0;
+  return Number(afterItem.curCharges)===expectedCharges
+    && Math.abs(Number(afterItem.partialCharge)-expectedPartial)<=0.001;
+}
+
+function beforeHeroInventory(state: any): any[] {
+  return parseNativeInventoryIndex(state) || [];
+}
+
+function isValidNativeBlockBuffTick(before: any, after: any, source: NativeHeroBuffTickRow,
+  result: NativeHeroBuffTickRow | undefined): {valid:boolean,allowHoldFastRemoval:boolean} {
+  const oldData = source.data, nextData = result?.data;
+  const left = Number(oldData.left), shielding = Number(oldData.shielding);
+  if (!Number.isFinite(left) || left <= 0 || left > 5.01
+      || !Number.isInteger(shielding) || shielding < 0 || shielding > 100000
+      || source.time > before.clock + 0.06) return {valid:false,allowHoldFastRemoval:false};
+  const holdFast = before.rows.filter(row=>row.className===NATIVE_HOLD_FAST);
+  if (holdFast.length > 1) return {valid:false,allowHoldFastRemoval:false};
+  let factor = 1, allowHoldFastRemoval = false;
+  if (holdFast.length === 1) {
+    const holdPos = Number(holdFast[0].data.pos), heroPos = Number(before.state.pos);
+    if (!Number.isInteger(holdPos)) return {valid:false,allowHoldFastRemoval:false};
+    if (holdPos !== heroPos) allowHoldFastRemoval = true;
+    else {
+      const combat = parseNativeBundleObject(before.state.combatBundle);
+      if (!combat) return {valid:false,allowHoldFastRemoval:false};
+      const points = nativeEquipmentTalentPoints(combat,"HOLD_FAST");
+      factor = points===1 ? 0.5 : points===2 ? 0.25 : points===3 ? 0 : 1;
+    }
+  }
+  const expectedLeft = Math.fround(left-factor);
+  const expired = expectedLeft <= 0;
+  const hpStable = Number(after.hp)===Number(before.hp);
+  const expectedShield = expired ? Number(before.shielding)-shielding : Number(before.shielding);
+  if (!hpStable || Number(after.shielding)!==expectedShield) return {valid:false,allowHoldFastRemoval:false};
+  if (expired) {
+    if (result) return {valid:false,allowHoldFastRemoval:false};
+  } else {
+    if (!result || Math.abs(result.time-source.time-1)>0.1
+        || Math.abs(Number(nextData.left)-expectedLeft)>0.001
+        || Number(nextData.shielding)!==shielding) return {valid:false,allowHoldFastRemoval:false};
+    const oldFields={...oldData}, newFields={...nextData};
+    for (const fields of [oldFields,newFields]) {
+      delete fields.__className; delete fields.id; delete fields.time; delete fields.left;
+    }
+    if (!sameNativeItemValue(oldFields,newFields)) return {valid:false,allowHoldFastRemoval:false};
+  }
+  return {valid:true,allowHoldFastRemoval};
+}
+
+function isValidNativeWarriorShieldTick(before: any, after: any, source: NativeHeroBuffTickRow,
+  result: NativeHeroBuffTickRow | undefined, level: any): boolean {
+  const old = source.data, next = result?.data;
+  const shielding = Number(old.shielding), cooldown = Number(old.cooldown);
+  const turnsSinceEnemies = Number(old.turns_since_enemies), initialShield = Number(old.initial_shield);
+  if (shielding !== 0 || !Number.isInteger(cooldown) || cooldown < 2 || cooldown > 100000
+      || !Number.isFinite(turnsSinceEnemies) || turnsSinceEnemies < 0 || turnsSinceEnemies > 100000
+      || !Number.isInteger(initialShield) || initialShield < 0 || initialShield > 100000
+      || source.time > before.clock + 0.06 || !result || Math.abs(result.time-source.time-1)>0.1
+      || Number(after.hp)!==Number(before.hp) || Number(after.shielding)!==Number(before.shielding)) return false;
+  const regenerationOn = nativeBuffTickRegenerationOn(level,before.rows);
+  if (regenerationOn === null) return false;
+  const expectedCooldown = cooldown-(regenerationOn?1:0);
+  if (expectedCooldown <= 0 || Number(next.cooldown)!==expectedCooldown
+      || Number(next.turns_since_enemies)!==turnsSinceEnemies
+      || Number(next.initial_shield)!==initialShield || Number(next.shielding)!==0) return false;
+  const oldFields={...old}, newFields={...next};
+  for (const fields of [oldFields,newFields]) {
+    delete fields.__className; delete fields.id; delete fields.time; delete fields.cooldown;
+  }
+  return sameNativeItemValue(oldFields,newFields);
+}
+
+function isValidNativeBerserkTick(before: any, after: any, source: NativeHeroBuffTickRow,
+  result: NativeHeroBuffTickRow | undefined, level: any): boolean {
+  const old = source.data, next = result?.data;
+  if (Number(old.shielding)!==0 || Number(after.hp)!==Number(before.hp)
+      || Number(after.shielding)!==Number(before.shielding) || source.time>before.clock+0.06) return false;
+  const state = String(old.state || "");
+  let expectedState = state, expectedPower = Number(old.power);
+  let expectedBuffer = Number(old.power_buffer), expectedTurnRecovery = Number(old.turn_recovery);
+  let expectedLevelRecovery = Number(old.levelrecovery);
+  if (!Number.isFinite(expectedPower) || expectedPower < 0 || expectedPower > 2
+      || !Number.isInteger(expectedBuffer) || expectedBuffer < 0 || expectedBuffer > 10
+      || !Number.isInteger(expectedTurnRecovery) || expectedTurnRecovery < 0 || expectedTurnRecovery > 1000
+      || !Number.isFinite(expectedLevelRecovery) || expectedLevelRecovery < 0 || expectedLevelRecovery > 10) return false;
+
+  if (state === "BERSERK") return false; // Random shield decay can kill and mutate other native state.
+  if (state === "NORMAL") {
+    if (expectedBuffer > 0) expectedBuffer--;
+    else {
+      const hp = Number(before.hp), ht = Number(before.ht);
+      if (!Number.isInteger(hp) || !Number.isInteger(ht) || ht < 1) return false;
+      const gate = Math.max(0.1,Math.min(expectedPower,1));
+      const decayProduct = Math.fround(gate*0.05);
+      expectedPower = Math.fround(expectedPower-decayProduct*Math.pow(Math.fround(hp/ht),2));
+    }
+    if (expectedPower <= 0) return !result;
+  } else if (state === "RECOVERING") {
+    const regenerationOn = nativeBuffTickRegenerationOn(level,before.rows);
+    if (regenerationOn === null) return false;
+    if (expectedLevelRecovery === 0 && regenerationOn) {
+      expectedTurnRecovery--;
+      if (expectedTurnRecovery <= 0) {
+        expectedTurnRecovery = 0;
+        expectedState = "NORMAL";
+      }
+    }
+  } else return false;
+
+  if (!result || Math.abs(result.time-source.time-1)>0.1
+      || String(next.state || "")!==expectedState
+      || Math.abs(Number(next.power)-expectedPower)>0.001
+      || Number(next.power_buffer)!==expectedBuffer
+      || Number(next.turn_recovery)!==expectedTurnRecovery
+      || Math.abs(Number(next.levelrecovery)-expectedLevelRecovery)>0.001) return false;
+  const oldFields={...old}, newFields={...next};
+  for (const fields of [oldFields,newFields]) {
+    delete fields.__className; delete fields.id; delete fields.time;
+    delete fields.state; delete fields.power; delete fields.power_buffer;
+    delete fields.turn_recovery; delete fields.levelrecovery;
+  }
+  return sameNativeItemValue(oldFields,newFields);
+}
+
 /** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
 export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
-  afterValue: unknown, dataValue: unknown): boolean {
+  afterValue: unknown, dataValue: unknown, levelValue?: unknown): boolean {
   const previous = nativeHeroBuffTickState(previousValue);
   const before = nativeHeroBuffTickState(beforeValue);
   const after = nativeHeroBuffTickState(afterValue);
   const data:any = dataValue;
+  const level:any = levelValue;
   if (!previous || !before || !after || !data || typeof data !== "object"
       || typeof data.buffClass !== "string" || !Number.isInteger(data.buffId) || data.buffId < 0
       || !Number.isFinite(data.actorClockBefore)
@@ -3852,7 +4171,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       || Math.abs(before.clock-previous.clock) > 10000
       || Math.abs(after.clock-before.clock) > 0.06
       || !sameNativeItemValue(nativeHeroBuffTickStableState(previous.state),nativeHeroBuffTickStableState(before.state))
-      || !sameNativeItemValue(nativeHeroBuffTickStableState(before.state),nativeHeroBuffTickStableState(after.state))
+      || !sameNativeItemValue(
+          nativeHeroBuffTickStableState(before.state, data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : ""),
+          nativeHeroBuffTickStableState(after.state, data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : ""))
       || Number(previous.state.hp) !== Number(before.state.hp)
       || Number(previous.state.ht) !== Number(before.state.ht)
       || Number(previous.state.pos) !== Number(before.state.pos)
@@ -3864,9 +4185,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       || !Number.isInteger(after.state.shielding) || after.state.shielding < 0 || after.state.shielding > 100000
       || previous.state.gold !== before.state.gold || previous.state.alchemyEnergy !== before.state.alchemyEnergy
       || before.state.gold !== after.state.gold || before.state.alchemyEnergy !== after.state.alchemyEnergy
-      || before.state.inventoryBundle !== after.state.inventoryBundle
-      || before.state.inventoryItemsJson !== after.state.inventoryItemsJson
-      || before.state.quickslotsJson !== after.state.quickslotsJson
+      || (data.buffClass!==NATIVE_WAND_CHARGER && (before.state.inventoryBundle !== after.state.inventoryBundle
+        || before.state.inventoryItemsJson !== after.state.inventoryItemsJson
+        || before.state.quickslotsJson !== after.state.quickslotsJson))
       || before.state.ankhCount !== after.state.ankhCount
       || before.state.blessedAnkhCount !== after.state.blessedAnkhCount) return false;
 
@@ -3929,7 +4250,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     .filter(row=>row.className+"#"+row.id!==key)
     .map(row=>[row.className+"#"+row.id,row]));
   if (!source || !prior || source.bundle !== prior.bundle
-      || before.state.inventoryBundle !== after.state.inventoryBundle) return false;
+      || (buffClass!==NATIVE_WAND_CHARGER && before.state.inventoryBundle !== after.state.inventoryBundle)) return false;
   // Char.damage() natively removes Frost and MagicalSleep before resolving resistance
   // and shields. Permit only these two removals during a damage-producing Hunger/Poison
   // tick; every other pre-existing buff must remain byte-for-byte and cooldown-identical.
@@ -3939,6 +4260,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     const next = afterOtherRows.get(otherKey);
     if (next) {
       if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) return false;
+    } else if (buffClass===NATIVE_BLOCK_BUFF && row.className===NATIVE_HOLD_FAST
+        && Number(row.data.pos)!==Number(before.state.pos)) {
+      continue;
     } else if (!allowDamageSideEffectRemoval || !damageSideEffectRemovals.has(row.className)) {
       return false;
     }
@@ -3953,6 +4277,26 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   if (buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
       && before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink")) {
     return false;
+  }
+  if (buffClass===NATIVE_WAND_CHARGER) {
+    return isValidNativeWandChargerTick(before.state,after.state,source,result,data,level);
+  }
+  if (buffClass===NATIVE_BLOCK_BUFF) {
+    const validation = isValidNativeBlockBuffTick(before.state,after.state,source,result);
+    if (!validation.valid) return false;
+    if (validation.allowHoldFastRemoval) {
+      const holdFastBefore = before.rows.filter(row=>row.className===NATIVE_HOLD_FAST);
+      const holdFastAfter = after.rows.filter(row=>row.className===NATIVE_HOLD_FAST);
+      if (holdFastBefore.length!==1 || holdFastAfter.length!==0
+          || Number(holdFastBefore[0].data.pos)===Number(before.state.pos)) return false;
+    }
+    return true;
+  }
+  if (buffClass===NATIVE_WARRIOR_SHIELD) {
+    return isValidNativeWarriorShieldTick(before.state,after.state,source,result,level);
+  }
+  if (buffClass===NATIVE_BERSERK_BUFF) {
+    return isValidNativeBerserkTick(before.state,after.state,source,result,level);
   }
   if (drowsyTick) {
     const sourceDue = source.time <= before.clock + 0.06;
@@ -7310,7 +7654,7 @@ export class MatchRoom {
                   pos: Number(playerRow.pos), shielding: Number(afterHeroState.shielding)
                 })
                 && isValidNativeHeroBuffTick(previousHeroRow.value, data.heroStateBeforeJson,
-                  payload.heroStateJson, data);
+                  payload.heroStateJson, data, levelSnapshot);
               if (validHeroBuffTick) {
                 const storedHeroState = String(payload.heroStateJson);
                 this.sql.exec("UPDATE players SET hp = ? WHERE player_id = ?",

@@ -33,6 +33,8 @@ public final class SPDLevelSnapshot {
     public int schemaVersion = 1;
     public int depth;
     public int branch;
+    /** Concrete native Level subtype, needed for passive-effect rules such as VaultLevel. */
+    public String levelClass = "";
     public int width;
     public int height;
     public int entrancePos;
@@ -230,6 +232,7 @@ public final class SPDLevelSnapshot {
         SPDLevelSnapshot out = new SPDLevelSnapshot();
         out.depth = Dungeon.depth;
         out.branch = Dungeon.branch;
+        out.levelClass = level.getClass().getName();
         out.width = level.width();
         out.height = level.height();
         out.entrancePos = level.entrance();

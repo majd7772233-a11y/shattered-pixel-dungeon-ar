@@ -7,6 +7,7 @@ import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,9 +29,10 @@ public final class NativeHeroBuffTickPublisher {
         private final int buffId;
         private final int depth;
         private final int heroPos;
+        private final String wandItemId;
 
         private TickCapture(Hero hero, String beforeState, String buffClass, int buffId,
-                            int depth, int heroPos, float actorClockBefore) {
+                            int depth, int heroPos, float actorClockBefore, String wandItemId) {
             this.hero = hero;
             this.beforeState = beforeState;
             this.buffClass = buffClass;
@@ -38,6 +40,7 @@ public final class NativeHeroBuffTickPublisher {
             this.depth = depth;
             this.heroPos = heroPos;
             this.actorClockBefore = actorClockBefore;
+            this.wandItemId = wandItemId == null ? "" : wandItemId;
         }
     }
 
@@ -70,7 +73,11 @@ public final class NativeHeroBuffTickPublisher {
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy".equals(name)
-                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread".equals(name);
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Berserk".equals(name);
     }
 
     private static float actorClock(String stateJson) {
@@ -100,6 +107,16 @@ public final class NativeHeroBuffTickPublisher {
         String buffClass = buff.getClass().getName();
         if (!supportedBuffClass(buffClass)) return null;
 
+        String wandItemId = "";
+        if (buff instanceof Wand.Charger) {
+            Wand wand = ((Wand.Charger) buff).wand();
+            if (wand == null || hero.belongings == null
+                    || !hero.belongings.getAllItems(com.shatteredpixel.shatteredpixeldungeon.items.Item.class).contains(wand)) {
+                return null;
+            }
+            wandItemId = ((Wand.Charger) buff).multiplayerWandItemId();
+        }
+
         String before = SPDLevelSnapshot.currentHeroStateJson(hero);
         if (before == null || before.length() < 2) return null;
         float clock = actorClock(before);
@@ -107,7 +124,8 @@ public final class NativeHeroBuffTickPublisher {
             manager.requestResync(manager.getLastSequence());
             return null;
         }
-        activeCapture = new TickCapture(hero, before, buffClass, buff.id(), Dungeon.depth, hero.pos, clock);
+        activeCapture = new TickCapture(hero, before, buffClass, buff.id(), Dungeon.depth,
+                hero.pos, clock, wandItemId);
         return activeCapture;
     }
 
@@ -176,6 +194,7 @@ public final class NativeHeroBuffTickPublisher {
         data.put("buffId", capture.buffId);
         data.put("actorClockBefore", capture.actorClockBefore);
         data.put("heroStateBeforeJson", capture.beforeState);
+        if (!capture.wandItemId.isEmpty()) data.put("wandItemId", capture.wandItemId);
 
         String requestId = manager.sendAction(NetworkActionType.SYNC_HERO_STATE,
                 new Json().toJson(data), after);

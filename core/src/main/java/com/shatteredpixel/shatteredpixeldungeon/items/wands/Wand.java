@@ -865,6 +865,26 @@ public abstract class Wand extends Item {
 			return Wand.this;
 		}
 
+		/** Stable item identity used to bind authoritative charge ticks to this exact Wand. */
+		public String multiplayerWandItemId(){
+			return Wand.this.multiplayerItemId();
+		}
+
+		@Override
+		public void storeInBundle(Bundle bundle){
+			super.storeInBundle(bundle);
+			bundle.put("multiplayer_wand_item_id", Wand.this.multiplayerItemId());
+			bundle.put("multiplayer_scale_factor", scalingFactor);
+		}
+
+		@Override
+		public void restoreFromBundle(Bundle bundle){
+			super.restoreFromBundle(bundle);
+			if (bundle.contains("multiplayer_scale_factor")){
+				scalingFactor = bundle.getFloat("multiplayer_scale_factor");
+			}
+		}
+
 		public void gainCharge(float charge){
 			if (curCharges < maxCharges) {
 				partialCharge += charge;
