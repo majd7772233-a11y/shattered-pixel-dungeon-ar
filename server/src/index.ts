@@ -4646,7 +4646,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     if (result) {
       if (!isSameTimeTick(0.9,1.1) || !near(Number(newData.left),expectedLeft)) return false;
     } else if (expectedLeft>0) return false;
-    const effective = hpBefore+shieldBefore-hpAfter-shieldAfter;
+    // Char.damage() may activate WarriorShield immediately before ShieldBuff.processDamage().
+    // That newly-created shield is available to absorb this same Poison hit, so include the
+    // validated initial_shield in the conservation equation rather than treating it as healing.
+    const activatedShield = nativeWarriorShieldActivation
+      ? Number(warriorShieldAfter?.data.initial_shield) : 0;
+    const effective = hpBefore+shieldBefore+activatedShield-hpAfter-shieldAfter;
     const maxDamage = Math.floor(left/3)+1;
     return Number.isInteger(effective) && effective>=0 && effective<=maxDamage;
   }
