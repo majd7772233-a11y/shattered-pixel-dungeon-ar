@@ -3130,7 +3130,7 @@ describe("Native Hero Buff tick reconciliation", () => {
         ? {inventory:[{item}]}
         : {inventory:[{item:{__className:"com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster",
             multiplayer_item_id:containerId,quantity:1,level:0,cursed:false,cursedKnown:true,
-            inventory:[{item}]}}]};
+            inventory:[item]}}]};
       const items=containerId==="BACKPACK" ? [row] : [
         {itemId:containerId,className:"com.shatteredpixel.shatteredpixeldungeon.items.bags.MagicalHolster",
           quantity:1,level:0,cursed:false,cursedKnown:true,stackable:false,equipped:false,
