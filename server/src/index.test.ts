@@ -3212,7 +3212,7 @@ describe("Native Hero Buff tick reconciliation", () => {
         {itemId:ringId,className:ringClass,quantity:1,level:0,cursed:false,cursedKnown:true,
           stackable:false,equipped:true,containerId:"RING",serializedBundle:JSON.stringify({item:ring})}
       ];
-      const state=stateWithBuff(charger,501,9,{
+      const state:any=stateWithBuff(charger,501,9,{
         multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875
       },{
         cooldown:1,buffCooldown_0:0,nativeInventoryTreeVersion:1,
