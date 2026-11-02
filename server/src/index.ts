@@ -3893,11 +3893,12 @@ function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""):
 }
 
 function nativeBuffTickRegenerationOn(level: any, rows: NativeHeroBuffTickRow[]): boolean | null {
-  if (!level || level.branch !== 0 || level.locked !== false
-      || typeof level.levelClass !== "string" || !level.levelClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.levels.")) {
-    return null;
-  }
-  if (level.levelClass === "com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel") return false;
+  // Match Regeneration.regenOn() exactly: only VaultLevel and LockedFloor affect it.
+  // Dungeon branch and Level.locked are not consulted by the native method.
+  const levelClass = String(level?.levelClass || "");
+  if (!levelClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.levels.")) return null;
+  if (levelClass === "com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel"
+      || levelClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel$")) return false;
   const locked = rows.filter(row => row.className === NATIVE_LOCKED_FLOOR);
   if (locked.length > 1) return null;
   if (locked.length === 0) return true;

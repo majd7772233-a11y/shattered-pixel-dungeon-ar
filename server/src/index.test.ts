@@ -3427,6 +3427,25 @@ describe("Native Hero Buff tick reconciliation", () => {
         branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
       })).toBe(false);
 
+    // Regeneration.regenOn() does not inspect Dungeon.branch or Level.locked.
+    // A non-vault branch with a locked Level still recharges unless LockedFloor blocks it.
+    const branchBefore=make(9,0,9,false,null);
+    const branchPrevious=make(9,0,8,false,null);
+    const branchPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.875,2)))*1);
+    const branchAfter=make(10,branchPartial,9,false,null);
+    branchAfter.buff_0=JSON.stringify({buff:{__className:charger,id:611,time:10,
+      multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875}});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(branchPrevious),JSON.stringify(branchBefore),
+      JSON.stringify(branchAfter),event,{
+        branch:1,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.CavesLevel"
+      })).toBe(true);
+    const missingBranchCharge=make(10,0,9,false,null);
+    missingBranchCharge.buff_0=branchAfter.buff_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(branchPrevious),JSON.stringify(branchBefore),
+      JSON.stringify(missingBranchCharge),event,{
+        branch:1,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.CavesLevel"
+      })).toBe(false);
+
     const vaultBefore=make(9,0,9,false,null);
     const vaultPrevious=make(9,0,8,false,null);
     const vaultAfter=make(10,0,9,false,null);
