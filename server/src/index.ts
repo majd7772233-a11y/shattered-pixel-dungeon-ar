@@ -3847,6 +3847,26 @@ function scrubNativeWandChargeValue(value: any, itemId: string): number {
   return matches;
 }
 
+/**
+ * A Wand nested in MagicalHolster appears in both its own flattened inventory row
+ * and each ancestor Bag's serialized Bundle. During a native Charger tick only
+ * curCharges/partialCharge may change in those repeated representations.
+ */
+function nativeWandStableInventoryRows(heroValue: any, itemId: string): any[] | null {
+  const rows = parseNativeInventoryIndex(heroValue);
+  if (!rows) return null;
+  const targets = rows.filter(row => String(row.itemId) === itemId);
+  if (targets.length !== 1) return null;
+  for (const row of rows) {
+    const bundle = parseNativeBundleObject(row.serializedBundle);
+    if (!bundle) return null;
+    const matches = scrubNativeWandChargeValue(bundle,itemId);
+    if (String(row.itemId) === itemId ? matches !== 1 : matches > 1) return null;
+    row.serializedBundle = bundle;
+  }
+  return rows;
+}
+
 function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""): any | null {
   const state = {...stateValue};
   delete state.hp;
@@ -3865,29 +3885,9 @@ function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""):
     if (!inventoryBundle || scrubNativeWandChargeValue(inventoryBundle, ignoredWandItemId) !== 1) return null;
     state.inventoryBundle = inventoryBundle;
 
-    let inventoryRows: any;
-    try { inventoryRows = JSON.parse(String(state.inventoryItemsJson || "")); } catch (_) { return null; }
-    if (!Array.isArray(inventoryRows)) return null;
-    const targetRows = inventoryRows.filter((row:any) => String(row?.itemId || "") === ignoredWandItemId);
-    if (targetRows.length !== 1) return null;
-    const targetBundle = parseNativeBundleObject(targetRows[0].serializedBundle);
-    if (!targetBundle || scrubNativeWandChargeValue(targetBundle, ignoredWandItemId) !== 1) return null;
-    targetRows[0].serializedBundle = targetBundle;
+    const inventoryRows = nativeWandStableInventoryRows(state,ignoredWandItemId);
+    if (!inventoryRows) return null;
     state.inventoryItemsJson = inventoryRows;
-
-    if (state.quickslotsJson !== undefined) {
-      let quickslots: any;
-      try { quickslots = JSON.parse(String(state.quickslotsJson)); } catch (_) { return null; }
-      if (!Array.isArray(quickslots)) return null;
-      const matchingSlots = quickslots.filter((row:any) => String(row?.itemId || "") === ignoredWandItemId);
-      if (matchingSlots.length > 1) return null;
-      for (const slot of matchingSlots) {
-        const slotBundle = parseNativeBundleObject(slot.serializedBundle);
-        if (!slotBundle || scrubNativeWandChargeValue(slotBundle, ignoredWandItemId) !== 1) return null;
-        slot.serializedBundle = slotBundle;
-      }
-      state.quickslotsJson = quickslots;
-    }
   }
   return state;
 }
@@ -3941,15 +3941,17 @@ function nativeWandChargerInventoryDelta(beforeHero: any, afterHero: any, itemId
 } | null {
   const beforeInventory = parseNativeInventoryIndex(beforeHero);
   const afterInventory = parseNativeInventoryIndex(afterHero);
-  if (!beforeInventory || !afterInventory) return null;
+  const beforeStableInventory = nativeWandStableInventoryRows(beforeHero,itemId);
+  const afterStableInventory = nativeWandStableInventoryRows(afterHero,itemId);
+  if (!beforeInventory || !afterInventory || !beforeStableInventory || !afterStableInventory) return null;
   const oldRows = beforeInventory.filter(row => String(row.itemId) === itemId);
   const newRows = afterInventory.filter(row => String(row.itemId) === itemId);
   if (oldRows.length !== 1 || newRows.length !== 1) return null;
   const oldRow = oldRows[0], newRow = newRows[0];
   if (!String(oldRow.className || "").startsWith(NATIVE_WAND_PREFIX)
       || !sameNativeItemValue(itemValueWithout(oldRow, ["serializedBundle"]), itemValueWithout(newRow, ["serializedBundle"]))
-      || !sameNativeItemValue(beforeInventory.filter(row=>String(row.itemId)!==itemId),
-          afterInventory.filter(row=>String(row.itemId)!==itemId))) return null;
+      || !sameNativeItemValue(beforeStableInventory.filter(row=>String(row.itemId)!==itemId),
+          afterStableInventory.filter(row=>String(row.itemId)!==itemId))) return null;
   const oldBundle = nativeItemBundleData(oldRow), newBundle = nativeItemBundleData(newRow);
   if (!oldBundle || !newBundle
       || String(oldBundle.item.__className || "") !== String(oldRow.className)

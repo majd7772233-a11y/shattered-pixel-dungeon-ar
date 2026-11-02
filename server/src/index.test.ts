@@ -3173,6 +3173,8 @@ describe("Native Hero Buff tick reconciliation", () => {
     holsterBefore.cooldown=2;
     holsterBefore.buffCooldown_0=1;
     const holsterPre=make(0,0,0.85,holsterId);
+    expect(isValidNativeInventoryBundleIndex(
+      holsterPre,JSON.parse(holsterPre.inventoryItemsJson))).toBe(true);
     const holsterPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.85,2)))*1);
     const validHolsterAfter=make(0,holsterPartial,0.85,holsterId);
     validHolsterAfter.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
