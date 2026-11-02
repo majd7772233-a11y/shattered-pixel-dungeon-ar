@@ -19,6 +19,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
@@ -1164,51 +1165,78 @@ public class NativeCombatRuntimeIntegrationTest {
 
 
     @Test
-    public void nativeMobTimedBuffRestorePreservesCooldownAndDoesNotResurrectExpiredEffects() throws Exception {
+    public void nativeMobTimedBuffRestorePreservesConcurrentCooldownsAndDoesNotResurrectExpiredEffects() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-mob-timed-buff-restore", "client-publisher", new TestTransport());
         Rat mob = addRat(hero.pos + 1, 17);
         String entityId = "native-mob-timed-buff-0001";
         manager.registerServerEntityId(mob.id(), entityId);
 
-        Haste active = Buff.affect(mob, Haste.class, Haste.DURATION);
-        Assert.assertNotNull(active);
-        active.restoreMultiplayerCooldown(3.75f);
-        float expectedCooldown = active.cooldown();
+        Haste activeHaste = Buff.affect(mob, Haste.class, Haste.DURATION);
+        Weakness activeWeakness = Buff.affect(mob, Weakness.class, Weakness.DURATION);
+        Assert.assertNotNull(activeHaste);
+        Assert.assertNotNull(activeWeakness);
+        activeHaste.restoreMultiplayerCooldown(3.75f);
+        activeWeakness.restoreMultiplayerCooldown(5.25f);
+        float expectedHasteCooldown = activeHaste.cooldown();
+        float expectedWeaknessCooldown = activeWeakness.cooldown();
         WorldSnapshot activeSnapshot = makeSnapshotWithMob(1L, mob, entityId);
 
-        active.detach();
+        activeHaste.detach();
+        activeWeakness.detach();
         Assert.assertNull(mob.buff(Haste.class));
-        Assert.assertTrue("The authoritative Mob effect must restore from its native bundle and cooldown",
+        Assert.assertNull(mob.buff(Weakness.class));
+        Assert.assertTrue("The authoritative Mob snapshot must restore every concurrent native timed effect",
                 WorldSnapshot.restoreWorld(activeSnapshot));
         Mob restoredMob = findMobByServerId(manager, entityId);
         Assert.assertNotNull(restoredMob);
-        Haste restored = restoredMob.buff(Haste.class);
-        Assert.assertNotNull("A Mob's active timed effect must survive world reconstruction", restored);
-        Assert.assertEquals(expectedCooldown, restored.cooldown(), 0.02f);
-        int count = 0;
-        for (Buff buff : restoredMob.buffs()) if (buff instanceof Haste) count++;
-        Assert.assertEquals("Repeated snapshots must not duplicate the Mob's timed effect", 1, count);
+        Haste restoredHaste = restoredMob.buff(Haste.class);
+        Weakness restoredWeakness = restoredMob.buff(Weakness.class);
+        Assert.assertNotNull("The Mob's Haste effect must survive reconstruction", restoredHaste);
+        Assert.assertNotNull("The Mob's concurrent Weakness effect must survive reconstruction", restoredWeakness);
+        Assert.assertEquals(expectedHasteCooldown, restoredHaste.cooldown(), 0.02f);
+        Assert.assertEquals(expectedWeaknessCooldown, restoredWeakness.cooldown(), 0.02f);
+        int hasteCount = 0, weaknessCount = 0;
+        for (Buff buff : restoredMob.buffs()) {
+            if (buff instanceof Haste) hasteCount++;
+            if (buff instanceof Weakness) weaknessCount++;
+        }
+        Assert.assertEquals("Haste must not be duplicated by full snapshot restoration", 1, hasteCount);
+        Assert.assertEquals("Weakness must not be duplicated by full snapshot restoration", 1, weaknessCount);
 
-        Assert.assertTrue("Reapplying the same Mob snapshot must remain idempotent",
+        Assert.assertTrue("Reapplying the same concurrent snapshot must remain idempotent",
                 WorldSnapshot.restoreWorld(activeSnapshot));
-        Haste restoredAgain = restoredMob.buff(Haste.class);
-        Assert.assertNotNull(restoredAgain);
-        Assert.assertEquals(expectedCooldown, restoredAgain.cooldown(), 0.02f);
-        count = 0;
-        for (Buff buff : restoredMob.buffs()) if (buff instanceof Haste) count++;
-        Assert.assertEquals(1, count);
+        restoredHaste = restoredMob.buff(Haste.class);
+        restoredWeakness = restoredMob.buff(Weakness.class);
+        Assert.assertNotNull(restoredHaste);
+        Assert.assertNotNull(restoredWeakness);
+        Assert.assertEquals(expectedHasteCooldown, restoredHaste.cooldown(), 0.02f);
+        Assert.assertEquals(expectedWeaknessCooldown, restoredWeakness.cooldown(), 0.02f);
+        hasteCount = 0;
+        weaknessCount = 0;
+        for (Buff buff : restoredMob.buffs()) {
+            if (buff instanceof Haste) hasteCount++;
+            if (buff instanceof Weakness) weaknessCount++;
+        }
+        Assert.assertEquals(1, hasteCount);
+        Assert.assertEquals(1, weaknessCount);
 
-        restoredAgain.detach();
+        restoredHaste.detach();
+        restoredWeakness.detach();
         Assert.assertNull(restoredMob.buff(Haste.class));
+        Assert.assertNull(restoredMob.buff(Weakness.class));
         WorldSnapshot expiredSnapshot = makeSnapshotWithMob(2L, restoredMob, entityId);
         Buff.affect(restoredMob, Haste.class, Haste.DURATION);
+        Buff.affect(restoredMob, Weakness.class, Weakness.DURATION);
         Assert.assertNotNull(restoredMob.buff(Haste.class));
-        Assert.assertTrue("A snapshot captured after expiry must remove a stale replica effect",
+        Assert.assertNotNull(restoredMob.buff(Weakness.class));
+        Assert.assertTrue("A snapshot with both effects expired must remove stale local replicas",
                 WorldSnapshot.restoreWorld(expiredSnapshot));
-        Assert.assertNull("An expired Mob effect must not reappear after restore", restoredMob.buff(Haste.class));
+        Assert.assertNull("Expired Haste must not be resurrected", restoredMob.buff(Haste.class));
+        Assert.assertNull("Expired Weakness must not be resurrected", restoredMob.buff(Weakness.class));
         Assert.assertTrue(WorldSnapshot.restoreWorld(expiredSnapshot));
-        Assert.assertNull("Repeated expired snapshots remain idempotent", restoredMob.buff(Haste.class));
+        Assert.assertNull("Repeated restore must keep expired Haste absent", restoredMob.buff(Haste.class));
+        Assert.assertNull("Repeated restore must keep expired Weakness absent", restoredMob.buff(Weakness.class));
     }
 
     @Test

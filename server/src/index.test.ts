@@ -2879,6 +2879,50 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(afterWellFed),tick(wellFed,22))).toBe(false);
   });
 
+
+  it("serializes overlapping timed Hero expiries as separate due, replay-safe native actor events",()=>{
+    const haste=buffs+"Haste", weakness=buffs+"Weakness";
+    const weaknessRow=JSON.stringify({buff:{__className:weakness,id:102,time:10}});
+    const previous=stateWithBuff(haste,101,9,{},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,
+      buff_1:weaknessRow,buffCooldown_1:2,hp:10
+    });
+    const beforeHaste=stateWithBuff(haste,101,9,{},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,
+      buff_1:weaknessRow,buffCooldown_1:1,hp:10
+    });
+    const afterHaste:any={...beforeHaste,buffCount:1,buff_0:weaknessRow,buffCooldown_0:1};
+    delete afterHaste.buff_1;
+    delete afterHaste.buffCooldown_1;
+
+    // Haste is due at actor clock 9. Weakness has one full turn remaining and must survive.
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(beforeHaste),
+      JSON.stringify(afterHaste),tick(haste,101,9))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterHaste),JSON.stringify(afterHaste),
+      JSON.stringify({...afterHaste,buffCount:0}),tick(weakness,102,9))).toBe(false);
+
+    // The native scheduler advances to clock 10 before Weakness itself may expire.
+    const beforeWeakness:any={...afterHaste,cooldown:0,buffCooldown_0:0};
+    const afterWeakness:any={...beforeWeakness,buffCount:0};
+    delete afterWeakness.buff_0;
+    delete afterWeakness.buffCooldown_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterHaste),JSON.stringify(beforeWeakness),
+      JSON.stringify(afterWeakness),tick(weakness,102,10))).toBe(true);
+
+    // Once the second event is committed, neither an old first-tick payload nor a duplicate
+    // of the second source can be replayed against the new trusted pre-state.
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterWeakness),JSON.stringify(beforeHaste),
+      JSON.stringify(afterHaste),tick(haste,101,9))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterWeakness),JSON.stringify(beforeWeakness),
+      JSON.stringify(afterWeakness),tick(weakness,102,10))).toBe(false);
+
+    const earlyWeakness:any={...afterHaste,buffCount:0};
+    delete earlyWeakness.buff_0;
+    delete earlyWeakness.buffCooldown_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterHaste),JSON.stringify(afterHaste),
+      JSON.stringify(earlyWeakness),tick(weakness,102,9))).toBe(false);
+  });
+
   it("accepts Hunger advance within the native clock and rejects forged healing or item deltas",()=>{
     const cls=buffs+"Hunger";
     const previous=stateWithBuff(cls,12,9,{level:200,partialDamage:0},{cooldown:2,buffCooldown_0:1,hp:10});
