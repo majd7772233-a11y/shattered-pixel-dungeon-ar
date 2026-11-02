@@ -4428,9 +4428,16 @@ describe("Native item consumption transaction validation", () => {
     expect(isValidNativeUseItemMutation(alreadyActive,extended,extendedData,extendedAccepted)).toBe(true);
   });
 
-  it("requires exactly one consumed source unit and no unrelated inventory or Gold change",()=>{
+  it("requires the native Healing buff, one consumed source unit and no unrelated inventory or Gold change",()=>{
     const before=JSON.stringify(hero([row("native-potion-001"),row("native-other-001",food)]));
-    const after=JSON.stringify(hero([row("native-other-001",food)],{inventoryBundle:"inventory-after"}));
+    const after=JSON.stringify(hero([row("native-other-001",food)],{
+      inventoryBundle:"inventory-after",buffCount:2,
+      buff_0:defaultHungerBundle,buffCooldown_0:0,
+      buff_1:JSON.stringify({buff:{
+        __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
+        id:52,time:0,left:22,percent:0.25,flat:0,healing_limited:false
+      }}),buffCooldown_1:0
+    }));
     const d=intent("native-potion-001"),accepted={...d,actionType:"USE_ITEM"};
     expect(isValidNativeUseItemMutation(before,after,d,accepted)).toBe(true);
     expect(isValidNativeUseItemMutation(before,before,d,accepted)).toBe(false);
