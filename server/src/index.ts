@@ -4000,6 +4000,16 @@ function isValidNativeWandChargerTick(before: any, after: any, source: NativeHer
       || Number(afterState.hp) !== Number(beforeState.hp)
       || Number(afterState.shielding) !== Number(beforeState.shielding)) return false;
 
+  // Charger ownership and its container-dependent scale are native identity fields,
+  // not tick output. Only Actor.time is allowed to advance on the resulting Buff.
+  const sourceFields={...source.data}, resultFields={...result.data};
+  for (const fields of [sourceFields,resultFields]) {
+    delete fields.__className;
+    delete fields.id;
+    delete fields.time;
+  }
+  if (!result.data || !sameNativeItemValue(sourceFields,resultFields)) return false;
+
   const delta = nativeWandChargerInventoryDelta(beforeState,afterState,itemId);
   if (!delta) return false;
   const {beforeItem,afterItem,inventory,before:oldRow} = delta;
