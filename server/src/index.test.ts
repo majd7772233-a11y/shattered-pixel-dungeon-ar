@@ -2682,7 +2682,7 @@ describe("Native Hero Buff tick reconciliation", () => {
     const level={branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
     const make=(charges:number,partial:number,scale=0.875,containerId="BACKPACK",extra:Record<string,any>={})=>{
       const item={__className:wandClass,multiplayer_item_id:itemId,quantity:1,level:0,
-        curCharges:charges,maxCharges:2,partialCharge:partial,usesLeftToID:10,
+        cursed:false,cursedKnown:true,curCharges:charges,maxCharges:2,partialCharge:partial,usesLeftToID:10,
         availableUsesToID:5,curChargeKnown:true};
       const itemBundle=JSON.stringify({item});
       const row={itemId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
@@ -2701,7 +2701,7 @@ describe("Native Hero Buff tick reconciliation", () => {
       const state=stateWithBuff(charger,301,9,{
         multiplayer_wand_item_id:itemId,multiplayer_scale_factor:scale
       },{
-        cooldown:1,buffCooldown_0:0,inventoryBundle:JSON.stringify(root),
+        cooldown:1,buffCooldown_0:0,nativeInventoryTreeVersion:1,inventoryBundle:JSON.stringify(root),
         inventoryItemsJson:JSON.stringify(items),quickslotsJson:"[]",
         combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,items:"native-inventory",buffs:[]}),
         ...extra
@@ -2750,7 +2750,7 @@ describe("Native Hero Buff tick reconciliation", () => {
     const itemId="wand-charge-native-002";
     const make=(partial:number,includeMagic:boolean)=>{
       const item={__className:wandClass,multiplayer_item_id:itemId,quantity:1,level:0,
-        curCharges:0,maxCharges:2,partialCharge:partial};
+        cursed:false,cursedKnown:true,curCharges:0,maxCharges:2,partialCharge:partial};
       const row={itemId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
         stackable:false,equipped:false,containerId:"BACKPACK",serializedBundle:JSON.stringify({item})};
       const rows=[
@@ -2762,7 +2762,7 @@ describe("Native Hero Buff tick reconciliation", () => {
         hp:10,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
         inventoryBundle:JSON.stringify({inventory:[{item}]}),
         inventoryItemsJson:JSON.stringify([row]),quickslotsJson:"[]",
-        cooldown:1,combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,buffs:[]}),
+        cooldown:1,nativeInventoryTreeVersion:1,combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,buffs:[]}),
         buffCount:rows.length,
         buff_0:JSON.stringify(rows[0]),buffCooldown_0:0,
         buff_1:JSON.stringify(rows[1]),buffCooldown_1:1,

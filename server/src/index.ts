@@ -3988,14 +3988,17 @@ function nativeWandChargerInventoryDelta(beforeHero: any, afterHero: any, itemId
 function isValidNativeWandChargerTick(before: any, after: any, source: NativeHeroBuffTickRow,
   result: NativeHeroBuffTickRow | undefined, data: any, level: any): boolean {
   const itemId = String(data?.wandItemId || "");
-  if (!result || itemId.length < 8 || itemId.length > 80
+  const beforeState = before?.state, afterState = after?.state;
+  if (!beforeState || !afterState || !Array.isArray(before.rows)
+      || !result || itemId.length < 8 || itemId.length > 80
       || String(source.data.multiplayer_wand_item_id || "") !== itemId
       || !Number.isFinite(Number(source.data.multiplayer_scale_factor))
       || !Number.isFinite(Number(source.time)) || source.time > before.clock + 0.06
       || Math.abs(result.time-source.time-1) > 0.1
-      || Number(after.hp) !== Number(before.hp) || Number(after.shielding) !== Number(before.shielding)) return false;
+      || Number(afterState.hp) !== Number(beforeState.hp)
+      || Number(afterState.shielding) !== Number(beforeState.shielding)) return false;
 
-  const delta = nativeWandChargerInventoryDelta(before,after,itemId);
+  const delta = nativeWandChargerInventoryDelta(beforeState,afterState,itemId);
   if (!delta) return false;
   const {beforeItem,afterItem,inventory,before:oldRow} = delta;
   const expectedScale = oldRow.containerId && oldRow.containerId !== "BACKPACK"
@@ -4015,7 +4018,7 @@ function isValidNativeWandChargerTick(before: any, after: any, source: NativeHer
     if (regenerationOn) {
       const missing = Math.max(0,maxCharges-currentCharges);
       const turnsToCharge = Math.fround(10 + 40*Math.pow(scale,missing));
-      const ringMultiplier = nativeWandRingChargeMultiplier(before,beforeHeroInventory(before),before.rows);
+      const ringMultiplier = nativeWandRingChargeMultiplier(beforeState,beforeHeroInventory(beforeState),before.rows);
       if (ringMultiplier === null) return false;
       const baseCharge = Math.fround(Math.fround(1/turnsToCharge)*ringMultiplier);
       expectedPartial = Math.fround(expectedPartial+baseCharge);
@@ -4042,6 +4045,9 @@ function beforeHeroInventory(state: any): any[] {
 
 function isValidNativeBlockBuffTick(before: any, after: any, source: NativeHeroBuffTickRow,
   result: NativeHeroBuffTickRow | undefined): {valid:boolean,allowHoldFastRemoval:boolean} {
+  if (!before?.state || !after?.state || !Array.isArray(before.rows)) {
+    return {valid:false,allowHoldFastRemoval:false};
+  }
   const oldData = source.data, nextData = result?.data;
   const left = Number(oldData.left), shielding = Number(oldData.shielding);
   if (!Number.isFinite(left) || left <= 0 || left > 5.01
@@ -4063,9 +4069,9 @@ function isValidNativeBlockBuffTick(before: any, after: any, source: NativeHeroB
   }
   const expectedLeft = Math.fround(left-factor);
   const expired = expectedLeft <= 0;
-  const hpStable = Number(after.hp)===Number(before.hp);
-  const expectedShield = expired ? Number(before.shielding)-shielding : Number(before.shielding);
-  if (!hpStable || Number(after.shielding)!==expectedShield) return {valid:false,allowHoldFastRemoval:false};
+  const hpStable = Number(after.state.hp)===Number(before.state.hp);
+  const expectedShield = expired ? Number(before.state.shielding)-shielding : Number(before.state.shielding);
+  if (!hpStable || Number(after.state.shielding)!==expectedShield) return {valid:false,allowHoldFastRemoval:false};
   if (expired) {
     if (result) return {valid:false,allowHoldFastRemoval:false};
   } else {
@@ -4084,6 +4090,7 @@ function isValidNativeBlockBuffTick(before: any, after: any, source: NativeHeroB
 function isValidNativeWarriorShieldTick(before: any, after: any, source: NativeHeroBuffTickRow,
   result: NativeHeroBuffTickRow | undefined, level: any): boolean {
   const old = source.data, next = result?.data;
+  if (!before?.state || !after?.state || !Array.isArray(before.rows)) return false;
   const shielding = Number(old.shielding), cooldown = Number(old.cooldown);
   const turnsSinceEnemies = Number(old.turns_since_enemies), initialShield = Number(old.initial_shield);
   if (shielding !== 0 || !Number.isInteger(cooldown) || cooldown < 2 || cooldown > 100000
@@ -4107,8 +4114,9 @@ function isValidNativeWarriorShieldTick(before: any, after: any, source: NativeH
 function isValidNativeBerserkTick(before: any, after: any, source: NativeHeroBuffTickRow,
   result: NativeHeroBuffTickRow | undefined, level: any): boolean {
   const old = source.data, next = result?.data;
-  if (Number(old.shielding)!==0 || Number(after.hp)!==Number(before.hp)
-      || Number(after.shielding)!==Number(before.shielding) || source.time>before.clock+0.06) return false;
+  if (!before?.state || !after?.state || !Array.isArray(before.rows)
+      || Number(old.shielding)!==0 || Number(after.state.hp)!==Number(before.state.hp)
+      || Number(after.state.shielding)!==Number(before.state.shielding) || source.time>before.clock+0.06) return false;
   const state = String(old.state || "");
   let expectedState = state, expectedPower = Number(old.power);
   let expectedBuffer = Number(old.power_buffer), expectedTurnRecovery = Number(old.turn_recovery);
@@ -4122,7 +4130,7 @@ function isValidNativeBerserkTick(before: any, after: any, source: NativeHeroBuf
   if (state === "NORMAL") {
     if (expectedBuffer > 0) expectedBuffer--;
     else {
-      const hp = Number(before.hp), ht = Number(before.ht);
+      const hp = Number(before.state.hp), ht = Number(before.state.ht);
       if (!Number.isInteger(hp) || !Number.isInteger(ht) || ht < 1) return false;
       const gate = Math.max(0.1,Math.min(expectedPower,1));
       const decayProduct = Math.fround(gate*0.05);
@@ -4279,10 +4287,10 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     return false;
   }
   if (buffClass===NATIVE_WAND_CHARGER) {
-    return isValidNativeWandChargerTick(before.state,after.state,source,result,data,level);
+    return isValidNativeWandChargerTick(before,after,source,result,data,level);
   }
   if (buffClass===NATIVE_BLOCK_BUFF) {
-    const validation = isValidNativeBlockBuffTick(before.state,after.state,source,result);
+    const validation = isValidNativeBlockBuffTick(before,after,source,result);
     if (!validation.valid) return false;
     if (validation.allowHoldFastRemoval) {
       const holdFastBefore = before.rows.filter(row=>row.className===NATIVE_HOLD_FAST);
@@ -4293,10 +4301,10 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     return true;
   }
   if (buffClass===NATIVE_WARRIOR_SHIELD) {
-    return isValidNativeWarriorShieldTick(before.state,after.state,source,result,level);
+    return isValidNativeWarriorShieldTick(before,after,source,result,level);
   }
   if (buffClass===NATIVE_BERSERK_BUFF) {
-    return isValidNativeBerserkTick(before.state,after.state,source,result,level);
+    return isValidNativeBerserkTick(before,after,source,result,level);
   }
   if (drowsyTick) {
     const sourceDue = source.time <= before.clock + 0.06;
