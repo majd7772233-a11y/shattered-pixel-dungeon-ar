@@ -2762,6 +2762,62 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify({...after,inventoryBundle:"forged-inventory"}),tick(cls,22))).toBe(false);
   });
+
+  it("rejects a previously accepted Hero Buff tick when replayed against the committed pre-state",()=>{
+    const wellFed=buffs+"WellFed";
+    const previous=stateWithBuff(wellFed,22,9,{left:19},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    const before=stateWithBuff(wellFed,22,9,{left:19},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const after=stateWithBuff(wellFed,22,10,{left:18},{
+      cooldown:1,buffCooldown_0:1,hp:11
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(wellFed,22))).toBe(true);
+
+    // A retry using the same old pre-state but a new request ID must still fail.
+    // The committed Hero HP and Buff clock no longer match the claimed pre-state.
+    expect(isValidNativeHeroBuffTick(JSON.stringify(after),JSON.stringify(before),
+      JSON.stringify(after),tick(wellFed,22))).toBe(false);
+
+    expect(classifyRequestReplay({
+      player_id:"buff-player",sequence:41,result_json:JSON.stringify({status:"ACCEPTED",eventType:"HERO_BUFF_TICKED"})
+    },"buff-player")).toBe("REPLAY");
+    expect(classifyRequestReplay({
+      player_id:"buff-player",sequence:41,result_json:"{}"
+    },"another-player")).toBe("CONFLICT");
+  });
+
+  it("serializes two distinct native Hero Buff ticks without allowing the first effect to be replayed",()=>{
+    const wellFed=buffs+"WellFed", hunger=buffs+"Hunger";
+    const hungerRow=JSON.stringify({buff:{__className:hunger,id:12,time:9,level:200,partialDamage:0}});
+    const previous=stateWithBuff(wellFed,22,9,{left:19},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:hungerRow,buffCooldown_1:1,hp:10
+    });
+    const before=stateWithBuff(wellFed,22,9,{left:19},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:hungerRow,buffCooldown_1:0,hp:10
+    });
+    const afterWellFed=stateWithBuff(wellFed,22,10,{left:18},{
+      cooldown:1,buffCooldown_0:1,buffCount:2,buff_1:hungerRow,buffCooldown_1:0,hp:11
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(afterWellFed),tick(wellFed,22))).toBe(true);
+
+    const nextHunger=stateWithBuff(hunger,12,10,{level:201,partialDamage:0},{
+      cooldown:1,buffCooldown_0:1,buffCount:2,
+      buff_1:JSON.stringify({buff:{__className:wellFed,id:22,time:10,left:18}}),
+      buffCooldown_1:1,hp:11
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterWellFed),JSON.stringify(afterWellFed),
+      JSON.stringify(nextHunger),tick(hunger,12))).toBe(true);
+
+    // Reordering the stale first tick after the second state has committed is rejected.
+    expect(isValidNativeHeroBuffTick(JSON.stringify(nextHunger),JSON.stringify(before),
+      JSON.stringify(afterWellFed),tick(wellFed,22))).toBe(false);
+  });
+
   it("accepts Hunger advance within the native clock and rejects forged healing or item deltas",()=>{
     const cls=buffs+"Hunger";
     const previous=stateWithBuff(cls,12,9,{level:200,partialDamage:0},{cooldown:2,buffCooldown_0:1,hp:10});
