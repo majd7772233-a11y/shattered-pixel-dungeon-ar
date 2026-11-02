@@ -2780,7 +2780,7 @@ describe("Native Hero Buff tick reconciliation", () => {
     const hunger=buffs+"Hunger";
     for (const effect of ["Foresight","Invulnerability"]) {
       const effectClass=buffs+effect;
-      const previous=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+      const previous:any=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
         cooldown:2,buffCooldown_0:1,hp:10
       });
       previous.buffCount=2;
@@ -2796,7 +2796,7 @@ describe("Native Hero Buff tick reconciliation", () => {
         JSON.stringify(after),tick(hunger,12))).toBe(true);
     }
 
-    const unsafe=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+    const unsafe:any=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
       cooldown:2,buffCooldown_0:1,hp:10
     });
     unsafe.buffCount=2;
