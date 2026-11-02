@@ -3316,6 +3316,78 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(magicAfter),{...tick(charger,302),wandItemId:itemId},level)).toBe(true);
   });
 
+
+  it("keeps Recharging remainder active while LockedFloor or VaultLevel stops normal Wand regeneration",()=>{
+    const charger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+    const recharging=buffs+"Recharging", lockedFloor=buffs+"LockedFloor";
+    const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+    const wandId="wand-regen-gates-native-01";
+    const make=(chargerTime:number,partial:number,clock:number,withRecharging:boolean,lockedLeft:number|null)=>{
+      const item={__className:wandClass,multiplayer_item_id:wandId,quantity:1,level:0,
+        cursed:false,cursedKnown:true,curCharges:0,maxCharges:2,partialCharge:partial};
+      const row={itemId:wandId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
+        stackable:false,equipped:false,containerId:"BACKPACK",serializedBundle:JSON.stringify({item})};
+      const extra:any={
+        cooldown:10-clock,buffCooldown_0:Math.max(0,chargerTime-clock),
+        nativeInventoryTreeVersion:1,inventoryBundle:JSON.stringify({inventory:[{item}]}),
+        inventoryItemsJson:JSON.stringify([row]),quickslotsJson:"[]"
+      };
+      let index=1;
+      if(withRecharging){
+        const effect={__className:recharging,id:612,time:9.5};
+        extra["buff_"+index]=JSON.stringify({buff:effect});
+        extra["buffCooldown_"+index]=Math.max(0,9.5-clock);
+        index++;
+      }
+      if(lockedLeft!==null){
+        const effect={__className:lockedFloor,id:613,time:10,left:lockedLeft};
+        extra["buff_"+index]=JSON.stringify({buff:effect});
+        extra["buffCooldown_"+index]=Math.max(0,10-clock);
+        index++;
+      }
+      extra.buffCount=index;
+      return stateWithBuff(charger,611,chargerTime,{
+        multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875
+      },extra);
+    };
+    const event={...tick(charger,611),wandItemId:wandId};
+    const before=make(9,0,9,true,0.5);
+    const previous=make(9,0,8,true,0.5);
+    const lockedPartial=Math.fround(0.25*0.5);
+    const lockedAfter=make(10,lockedPartial,9,true,0.5);
+    lockedAfter.buff_0=JSON.stringify({buff:{__className:charger,id:611,time:10,
+      multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875}});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(lockedAfter),event,{
+        branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
+      })).toBe(true);
+
+    const forgedLockedAfter=make(10,Math.fround(lockedPartial+
+      Math.fround(1/Math.fround(10+40*Math.pow(0.875,2)))),9,true,0.5);
+    forgedLockedAfter.buff_0=lockedAfter.buff_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedLockedAfter),event,{
+        branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
+      })).toBe(false);
+
+    const vaultBefore=make(9,0,9,false,null);
+    const vaultPrevious=make(9,0,8,false,null);
+    const vaultAfter=make(10,0,9,false,null);
+    vaultAfter.buff_0=JSON.stringify({buff:{__className:charger,id:611,time:10,
+      multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875}});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(vaultPrevious),JSON.stringify(vaultBefore),
+      JSON.stringify(vaultAfter),event,{
+        branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel"
+      })).toBe(true);
+
+    const forgedVaultAfter=make(10,Math.fround(1/Math.fround(10+40*Math.pow(0.875,2))),9,false,null);
+    forgedVaultAfter.buff_0=vaultAfter.buff_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(vaultPrevious),JSON.stringify(vaultBefore),
+      JSON.stringify(forgedVaultAfter),event,{
+        branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.VaultLevel"
+      })).toBe(false);
+  });
+
   it("validates Blocking shield decay, its exact expiry and HoldFast side-effect boundary",()=>{
     const cls="com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
     const previous=stateWithBuff(cls,401,9,{left:1,shielding:4},{
