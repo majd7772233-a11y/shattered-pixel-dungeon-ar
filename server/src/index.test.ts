@@ -3174,12 +3174,96 @@ describe("Native Hero Buff tick reconciliation", () => {
     holsterBefore.buffCooldown_0=1;
     const holsterPre=make(0,0,0.85,holsterId);
     const holsterPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.85,2)))*1);
-    const holsterAfter=make(0,holsterPartial,0.875,holsterId);
-    holsterAfter.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
-      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
-    holsterAfter.buffCooldown_0=1;
+    const validHolsterAfter=make(0,holsterPartial,0.85,holsterId);
+    validHolsterAfter.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.85}});
+    validHolsterAfter.buffCooldown_0=1;
+    const holsterEvent={...event,wandItemId:itemId};
     expect(isValidNativeHeroBuffTick(JSON.stringify(holsterBefore),JSON.stringify(holsterPre),
-      JSON.stringify(holsterAfter),event,level)).toBe(false);
+      JSON.stringify(validHolsterAfter),holsterEvent,level)).toBe(true);
+
+    const wrongHolsterAfter=make(0,holsterPartial,0.875,holsterId);
+    wrongHolsterAfter.buff_0=JSON.stringify({buff:{__className:charger,id:301,time:10,
+      multiplayer_wand_item_id:itemId,multiplayer_scale_factor:0.875}});
+    wrongHolsterAfter.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(holsterBefore),JSON.stringify(holsterPre),
+      JSON.stringify(wrongHolsterAfter),holsterEvent,level)).toBe(false);
+  });
+
+
+  it("uses the native equipped RingOfEnergy and EnhancedRings charge multiplier",()=>{
+    const charger="com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
+    const wandClass="com.shatteredpixel.shatteredpixeldungeon.items.wands.WandOfMagicMissile";
+    const ringClass="com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfEnergy";
+    const energyClass=ringClass+"$Energy";
+    const enhancedClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.EnhancedRings";
+    const wandId="wand-energy-charge-native-01", ringId="ring-energy-native-01";
+    const level={branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+    const make=(charges:number,partial:number)=>{
+      const wand={__className:wandClass,multiplayer_item_id:wandId,quantity:1,level:0,
+        cursed:false,cursedKnown:true,curCharges:charges,maxCharges:2,partialCharge:partial,
+        usesLeftToID:10,availableUsesToID:5,curChargeKnown:true};
+      const ring={__className:ringClass,multiplayer_item_id:ringId,quantity:1,level:0,
+        cursed:false,cursedKnown:true};
+      const root={inventory:[{item:wand}],ring:{item:ring}};
+      const inventoryRows=[
+        {itemId:wandId,className:wandClass,quantity:1,level:0,cursed:false,cursedKnown:true,
+          stackable:false,equipped:false,containerId:"BACKPACK",serializedBundle:JSON.stringify({item:wand})},
+        {itemId:ringId,className:ringClass,quantity:1,level:0,cursed:false,cursedKnown:true,
+          stackable:false,equipped:true,containerId:"RING",serializedBundle:JSON.stringify({item:ring})}
+      ];
+      const state=stateWithBuff(charger,501,9,{
+        multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875
+      },{
+        cooldown:1,buffCooldown_0:0,nativeInventoryTreeVersion:1,
+        inventoryBundle:JSON.stringify(root),inventoryItemsJson:JSON.stringify(inventoryRows),
+        quickslotsJson:"[]",
+        combatBundle:JSON.stringify({time:10,class:"ROGUE",STR:10,items:"native-inventory",buffs:[]})
+      });
+      const energy={__className:energyClass,id:502,time:10};
+      const enhanced={__className:enhancedClass,id:503,time:10};
+      state.buffCount=3;
+      state.buff_1=JSON.stringify({buff:energy});
+      state.buffCooldown_1=1;
+      state.buff_2=JSON.stringify({buff:enhanced});
+      state.buffCooldown_2=1;
+      return state;
+    };
+
+    const previous=make(0,0);
+    previous.cooldown=2;
+    previous.buffCooldown_0=1;
+    previous.buffCooldown_1=2;
+    previous.buffCooldown_2=2;
+    const before=make(0,0);
+    const turnsToCharge=Math.fround(10+40*Math.pow(0.875,2));
+    // Ring level 0 contributes +1; EnhancedRings raises its buffed level to +1,
+    // so the native ring bonus is 2 and the multiplier is 1.175^2.
+    const ringMultiplier=Math.fround(Math.pow(1.175,2));
+    const expected=Math.fround(Math.fround(1/turnsToCharge)*ringMultiplier);
+    const after=make(0,expected);
+    after.buff_0=JSON.stringify({buff:{__className:charger,id:501,time:10,
+      multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875}});
+    after.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),{...tick(charger,501),wandItemId:wandId},level)).toBe(true);
+
+    const missingEnergyBuff=JSON.parse(JSON.stringify(before));
+    missingEnergyBuff.buffCount=2;
+    delete missingEnergyBuff.buff_1;
+    delete missingEnergyBuff.buffCooldown_1;
+    const withoutEnergy=JSON.parse(JSON.stringify(after));
+    withoutEnergy.buffCount=2;
+    delete withoutEnergy.buff_1;
+    delete withoutEnergy.buffCooldown_1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(missingEnergyBuff),
+      JSON.stringify(withoutEnergy),{...tick(charger,501),wandItemId:wandId},level)).toBe(false);
+
+    const undercharged=make(0,Math.fround(Math.fround(1/turnsToCharge)*1));
+    undercharged.buff_0=after.buff_0;
+    undercharged.buffCooldown_0=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(undercharged),{...tick(charger,501),wandItemId:wandId},level)).toBe(false);
   });
 
   it("applies Recharging and MagicImmune using the native Wand.Charger order",()=>{
