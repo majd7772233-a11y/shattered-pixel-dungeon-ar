@@ -3775,7 +3775,7 @@ function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:N
     if (typeof bundle !== "string" || bundle.length < 1 || bundle.length > 200000
         || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.")
         || className.length > 240 || !/^[A-Za-z_$][A-Za-z0-9_.$]*$/.test(className)
-        || !Number.isInteger(id) || id < 0 || !Number.isFinite(time)
+        || !Number.isInteger(id) || id < 1 || !Number.isFinite(time)
         || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
         || Math.abs(cooldown - Math.max(0,time-clock)) > 0.06) return null;
     const key = className+"#"+id;
@@ -5105,7 +5105,7 @@ function nativeMobBuffSnapshotMob(mob: any, actorClock: number, checkClock = tru
   const actorId = Number(data?.id), time = Number(data?.time);
   const nestedBuffs = data?.buffs;
   if (!data || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.actors.mobs.")
-      || !Number.isInteger(actorId) || actorId !== Number(mob.mobId)
+      || !Number.isInteger(actorId) || actorId < 1 || !Number.isInteger(mob.mobId) || mob.mobId < 1 || actorId !== Number(mob.mobId)
       || !Number.isFinite(time) || time < 0
       || Number(data.pos) !== Number(mob.pos)
       || Number(data.HP) !== Number(mob.hp) || Number(data.HT) !== Number(mob.ht)
@@ -5117,7 +5117,7 @@ function nativeMobBuffSnapshotMob(mob: any, actorClock: number, checkClock = tru
     const buffClass = String(entry?.__className || ""), id = Number(entry?.id), buffTime = Number(entry?.time);
     const key = buffClass+"#"+id;
     if (!buffClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.")
-        || !Number.isInteger(id) || id < 0 || !Number.isFinite(buffTime)
+        || !Number.isInteger(id) || id < 1 || !Number.isFinite(buffTime)
         || nestedByKey.has(key)) return null;
     nestedByKey.set(key,entry);
   }
@@ -5158,7 +5158,7 @@ function nativeMobBuffHeroStableState(value: unknown, actorClock: number, checkC
     const root = parseNativeBundleObject(bundle), data = root && root.buff;
     const className = String(data?.__className || ""), id = Number(data?.id), time = Number(data?.time);
     const key = className+"#"+id;
-    if (typeof bundle !== "string" || !className || !Number.isInteger(id) || id < 0
+    if (typeof bundle !== "string" || !className || !Number.isInteger(id) || id < 1
         || !Number.isFinite(time) || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
         || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)
         || seen.has(key) || !sameNativeItemValue(combat.buffs[i],data)) return null;
@@ -5172,6 +5172,46 @@ function nativeMobBuffHeroStableState(value: unknown, actorClock: number, checkC
   return stable;
 }
 
+
+function nativeMobBuffHeroActorIds(value: unknown): Set<number> | null {
+  let state:any;
+  try { state = typeof value === "string" ? JSON.parse(value) : value; } catch (_) { return null; }
+  const combat = parseNativeBundleObject(state?.combatBundle);
+  if (!combat) return null;
+  const ids = new Set<number>();
+  const heroId = Number(combat.id);
+  if (!Number.isInteger(heroId) || heroId < 1) return null;
+  ids.add(heroId);
+  if (!Number.isInteger(state.buffCount) || state.buffCount < 0 || state.buffCount > 256) return null;
+  for (let i=0;i<state.buffCount;i++) {
+    const root = parseNativeBundleObject(state["buff_"+i]), data = root && root.buff;
+    const id = Number(data?.id);
+    if (!data || !Number.isInteger(id) || id < 1 || ids.has(id)) return null;
+    ids.add(id);
+  }
+  return ids;
+}
+
+function nativeMobBuffActorIds(mobs: Map<string,{row:any,snapshot:NativeMobBuffSnapshotMob}>,
+  heroIds: Set<number>, blobs: Map<string,any>, metadata: any | null): Set<number> | null {
+  const ids = new Set<number>();
+  const add = (value: unknown): boolean => {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id < 1 || ids.has(id)) return false;
+    ids.add(id);
+    return true;
+  };
+  for (const value of mobs.values()) {
+    if (!add(value.row.mobId)) return null;
+    for (const buff of value.snapshot.buffs.values()) if (!add(buff.id)) return null;
+  }
+  for (const id of heroIds) if (!add(id)) return null;
+  for (const blob of blobs.values()) if (!add(blob.id)) return null;
+  if (metadata && Object.prototype.hasOwnProperty.call(metadata,"respawner")
+      && !add(metadata.respawner?.id)) return null;
+  return ids;
+}
+
 function nativeMobBuffExpiryMetadata(value: unknown, actorClock: number, checkClock = true): any | null {
   const metadata = parseNativeBundleObject(value);
   if (!metadata) return null;
@@ -5182,7 +5222,10 @@ function nativeMobBuffExpiryMetadata(value: unknown, actorClock: number, checkCl
   }
   const respawner = metadata.respawner;
   const time = Number(respawner?.time), cooldown = Number(metadata.respawnerCooldown);
-  if (!respawner || !String(respawner.__className || "").endsWith(".MobSpawner")
+  const respawnerClass = String(respawner?.__className || "");
+  const respawnerId = Number(respawner?.id);
+  if (!respawner || !(respawnerClass.endsWith(".MobSpawner") || respawnerClass.endsWith("$MobSpawner"))
+      || !Number.isInteger(respawnerId) || respawnerId < 1
       || !Number.isFinite(time) || time < 0 || !Number.isFinite(cooldown) || cooldown < 0
       || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)) return null;
   const stable = {...metadata};
@@ -5196,12 +5239,13 @@ function nativeMobBuffExpiryBlobs(level: any, actorClock: number, checkClock = t
   for (const row of level.blobs) {
     const className = String(row?.className || "");
     const root = parseNativeBundleObject(row?.serializedBundle), data = root && root.blob;
-    const cooldown = Number(row?.cooldown), time = Number(data?.time);
+    const cooldown = Number(row?.cooldown), time = Number(data?.time), id = Number(data?.id);
     if (!className || !data || String(data.__className || "") !== className
+        || !Number.isInteger(id) || id < 0
         || !Number.isFinite(time) || time < 0 || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
         || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)
         || blobs.has(className)) return null;
-    blobs.set(className,{bundle:String(row.serializedBundle),data});
+    blobs.set(className,{bundle:String(row.serializedBundle),data,id});
   }
   return blobs;
 }
@@ -5215,10 +5259,10 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const targetActorId = Number(next?.nativeMobActorId);
   const sourceKey = actorClass+"#"+actorId;
   if (!previous || !next || !Array.isArray(previous.mobs) || !Array.isArray(next.mobs)
-      || !Number.isFinite(clock) || clock < 0 || !Number.isInteger(actorId) || actorId < 0
+      || !Number.isFinite(clock) || clock < 0 || !Number.isInteger(actorId) || actorId < 1
       || !NATIVE_MOB_SAFE_FLAVOUR_EXPIRY.has(actorClass)
       || !/^[A-Za-z0-9._:-]{8,80}$/.test(targetEntityId)
-      || !Number.isInteger(targetActorId) || targetActorId < 0
+      || !Number.isInteger(targetActorId) || targetActorId < 1
       || next.nativeWorldActorEntityId !== targetEntityId) return false;
 
   const previousMobs = new Map<string,{row:any,snapshot:NativeMobBuffSnapshotMob}>();
@@ -5285,16 +5329,24 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const afterHero = nativeMobBuffHeroStableState(next.heroStateJson,clock,true);
   if (!beforeHero || !afterHero || !sameNativeItemValue(beforeHero,afterHero)) return false;
 
+  const beforeMetadata = nativeMobBuffExpiryMetadata(previous.nativeLevelMetadataBundle,clock,false);
+  const afterMetadata = nativeMobBuffExpiryMetadata(next.nativeLevelMetadataBundle,clock);
+  const beforeBlobs = nativeMobBuffExpiryBlobs(previous,clock,false);
+  const afterBlobs = nativeMobBuffExpiryBlobs(next,clock);
+  const beforeHeroIds = nativeMobBuffHeroActorIds(trustedHeroStateValue);
+  const afterHeroIds = nativeMobBuffHeroActorIds(next.heroStateJson);
+  if (!beforeMetadata || !afterMetadata || !beforeBlobs || !afterBlobs
+      || !beforeHeroIds || !afterHeroIds
+      || !nativeMobBuffActorIds(previousMobs,beforeHeroIds,beforeBlobs,beforeMetadata)
+      || !nativeMobBuffActorIds(nextMobs,afterHeroIds,afterBlobs,afterMetadata)
+      || !sameNativeItemValue([...beforeHeroIds].sort((a,b)=>a-b),[...afterHeroIds].sort((a,b)=>a-b))) return false;
+
   for (const key of ["schemaVersion","branch","depth","width","height","entrancePos","exitPos","seed",
     "locked","feeling","levelClass","tiles","transitions","heaps","traps","plants","visitedPositions","mappedPositions"]) {
     if (!sameNativeItemValue(previous[key],next[key])) return false;
   }
-  const beforeMetadata = nativeMobBuffExpiryMetadata(previous.nativeLevelMetadataBundle,clock,false);
-  const afterMetadata = nativeMobBuffExpiryMetadata(next.nativeLevelMetadataBundle,clock);
-  if (!beforeMetadata || !afterMetadata || !sameNativeItemValue(beforeMetadata,afterMetadata)) return false;
-  const beforeBlobs = nativeMobBuffExpiryBlobs(previous,clock,false);
-  const afterBlobs = nativeMobBuffExpiryBlobs(next,clock);
-  if (!beforeBlobs || !afterBlobs || beforeBlobs.size!==afterBlobs.size) return false;
+  if (!sameNativeItemValue(beforeMetadata,afterMetadata)
+      || beforeBlobs.size!==afterBlobs.size) return false;
   for (const [className,row] of beforeBlobs) {
     const other = afterBlobs.get(className);
     if (!other || row.bundle!==other.bundle) return false;

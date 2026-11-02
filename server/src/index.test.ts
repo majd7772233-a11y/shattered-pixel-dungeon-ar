@@ -252,7 +252,7 @@ describe('Native level snapshot contract', () => {
     };
     const heroState = (clock:number) => JSON.stringify({
       hp:10,ht:20,pos:9,shielding:0,cooldown:Math.max(0,20-clock),
-      combatBundle:JSON.stringify({time:20,buffs:[],STR:10}),
+      combatBundle:JSON.stringify({id:21,time:20,buffs:[],STR:10}),
       inventoryBundle:JSON.stringify({inventory:[]}),inventoryItemsJson:"[]",quickslotsJson:"[]",
       notesBundle:"{}",questStateBundle:"{}",buffCount:0
     });
@@ -280,6 +280,28 @@ describe('Native level snapshot contract', () => {
   it("accepts one due native Mob FlavourBuff expiry while preserving its Mob, Hero and other world state",()=>{
     const fixture = makeNativeMobBuffTurn();
     expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,1,1,fixture.heroState)).toBe(false);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,
+      {...fixture.next,nativeWorldTurnCounter:2},0,1,fixture.heroState)).toBe(false);
+
+    const atExpiryBoundary = JSON.parse(JSON.stringify(fixture.next));
+    atExpiryBoundary.nativeActorClock = 5.059;
+    atExpiryBoundary.mobs[0].cooldown = 10 - 5.059;
+    atExpiryBoundary.mobs[0].buffs[0].cooldown = 8 - 5.059;
+    const boundaryHero = JSON.parse(atExpiryBoundary.heroStateJson);
+    boundaryHero.cooldown = 20 - 5.059;
+    atExpiryBoundary.heroStateJson = JSON.stringify(boundaryHero);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,atExpiryBoundary,0,1,fixture.heroState)).toBe(true);
+
+    const pastExpiryBoundary = JSON.parse(JSON.stringify(atExpiryBoundary));
+    pastExpiryBoundary.nativeActorClock = 5.061;
+    pastExpiryBoundary.mobs[0].cooldown = 10 - 5.061;
+    pastExpiryBoundary.mobs[0].buffs[0].cooldown = 8 - 5.061;
+    const pastBoundaryHero = JSON.parse(pastExpiryBoundary.heroStateJson);
+    pastBoundaryHero.cooldown = 20 - 5.061;
+    pastExpiryBoundary.heroStateJson = JSON.stringify(pastBoundaryHero);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,pastExpiryBoundary,0,1,fixture.heroState)).toBe(false);
+
     const wrongClock = JSON.parse(JSON.stringify(fixture.next));
     wrongClock.nativeActorClock = 4.9;
     wrongClock.mobs[0].cooldown = 5.1;
@@ -317,6 +339,101 @@ describe('Native level snapshot contract', () => {
     nativeMob.mob.buffs[0].time = 9;
     forgedOtherBuff.mobs[0].serializedBundle = JSON.stringify(nativeMob);
     expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedOtherBuff,0,1,fixture.heroState)).toBe(false);
+  });
+
+
+  it("rejects Mob Buff Actor ID collisions with the Hero, another Mob, Blobs or the level respawner",()=>{
+    const mobCollision = makeNativeMobBuffTurn();
+    const another:any = JSON.parse(JSON.stringify(mobCollision.previous.mobs[0]));
+    another.mobId = 55;
+    another.entityId = "stable-native-mob-0002";
+    another.pos = 12;
+    const mobBundle = JSON.parse(another.serializedBundle);
+    mobBundle.mob.id = 55;
+    mobBundle.mob.pos = 12;
+    mobBundle.mob.buffs = [];
+    another.buffs = [];
+    another.serializedBundle = JSON.stringify(mobBundle);
+    mobCollision.previous.mobs.push(another);
+    mobCollision.next.mobs.push({...another,cooldown:5});
+    expect(isValidNativeWorldTurnSnapshot(mobCollision.previous,mobCollision.next,0,1,mobCollision.heroState)).toBe(false);
+
+    const heroCollision = makeNativeMobBuffTurn();
+    const heroBefore = JSON.parse(heroCollision.previous.heroStateJson);
+    const heroAfter = JSON.parse(heroCollision.next.heroStateJson);
+    const duplicateHeroBuff = {__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",
+      id:55,time:9};
+    heroBefore.buffCount = 1;
+    heroBefore.buff_0 = JSON.stringify({buff:duplicateHeroBuff});
+    heroBefore.buffCooldown_0 = 5;
+    const combatBefore = JSON.parse(heroBefore.combatBundle);
+    combatBefore.buffs = [duplicateHeroBuff];
+    heroBefore.combatBundle = JSON.stringify(combatBefore);
+    heroAfter.buffCount = 1;
+    heroAfter.buff_0 = JSON.stringify({buff:duplicateHeroBuff});
+    heroAfter.buffCooldown_0 = 4;
+    const combatAfter = JSON.parse(heroAfter.combatBundle);
+    combatAfter.buffs = [duplicateHeroBuff];
+    heroAfter.combatBundle = JSON.stringify(combatAfter);
+    heroCollision.previous.heroStateJson = JSON.stringify(heroBefore);
+    heroCollision.next.heroStateJson = JSON.stringify(heroAfter);
+    heroCollision.heroState = JSON.stringify(heroBefore);
+    expect(isValidNativeWorldTurnSnapshot(heroCollision.previous,heroCollision.next,0,1,heroCollision.heroState)).toBe(false);
+
+    const blobCollision = makeNativeMobBuffTurn();
+    const blobClass = "com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire";
+    const blobBundle = JSON.stringify({blob:{__className:blobClass,id:55,time:10}});
+    blobCollision.previous.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:6}];
+    blobCollision.next.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:5}];
+    expect(isValidNativeWorldTurnSnapshot(blobCollision.previous,blobCollision.next,0,1,blobCollision.heroState)).toBe(false);
+
+    const respawnerCollision = makeNativeMobBuffTurn();
+    const respawnerClass = "com.shatteredpixel.shatteredpixeldungeon.levels.Level$MobSpawner";
+    const respawnerBundle = {__className:respawnerClass,id:55,time:10};
+    respawnerCollision.previous.nativeLevelMetadataBundle = JSON.stringify({
+      respawner:respawnerBundle,respawnerCooldown:6
+    });
+    respawnerCollision.next.nativeLevelMetadataBundle = JSON.stringify({
+      respawner:respawnerBundle,respawnerCooldown:5
+    });
+    expect(isValidNativeWorldTurnSnapshot(respawnerCollision.previous,respawnerCollision.next,0,1,respawnerCollision.heroState)).toBe(false);
+  });
+
+
+  it("keeps independent Hero buffs intact while a Mob FlavourBuff expires",()=>{
+    const fixture = makeNativeMobBuffTurn();
+    const heroBuff = {__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",id:22,time:9};
+    const makeHeroState = (clock:number) => {
+      const state = JSON.parse(clock===4 ? fixture.heroState : fixture.next.heroStateJson);
+      state.buffCount = 1;
+      state.buff_0 = JSON.stringify({buff:heroBuff});
+      state.buffCooldown_0 = Math.max(0,9-clock);
+      const combat = JSON.parse(state.combatBundle);
+      combat.buffs = [heroBuff];
+      state.combatBundle = JSON.stringify(combat);
+      return JSON.stringify(state);
+    };
+    fixture.previous.heroStateJson = makeHeroState(4);
+    fixture.next.heroStateJson = makeHeroState(5);
+    fixture.heroState = fixture.previous.heroStateJson;
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
+  });
+
+  it("accepts a valid private Level$MobSpawner metadata clock without treating its class as malformed",()=>{
+    const fixture = makeNativeMobBuffTurn();
+    const respawnerClass = "com.shatteredpixel.shatteredpixeldungeon.levels.Level$MobSpawner";
+    const respawnerBundle = {__className:respawnerClass,id:70,time:10};
+    fixture.previous.nativeLevelMetadataBundle = JSON.stringify({
+      respawner:respawnerBundle,respawnerCooldown:6
+    });
+    fixture.next.nativeLevelMetadataBundle = JSON.stringify({
+      respawner:respawnerBundle,respawnerCooldown:5
+    });
+    const blobClass = "com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire";
+    const blobBundle = JSON.stringify({blob:{__className:blobClass,id:60,time:10}});
+    fixture.previous.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:6}];
+    fixture.next.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:5}];
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
   });
 
   it("rejects Mob Poison/LifeLink, early ticks, source retention and unrelated Mob changes",()=>{
