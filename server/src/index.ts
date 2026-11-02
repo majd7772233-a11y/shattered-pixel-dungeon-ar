@@ -4008,7 +4008,7 @@ function isValidNativeWandChargerTick(before: any, after: any, source: NativeHer
   const currentCharges = Number(beforeItem.curCharges), maxCharges = Number(beforeItem.maxCharges);
   let expectedPartial = Number(beforeItem.partialCharge);
   let expectedCharges = currentCharges;
-  const magicImmune = before.rows.some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune");
+  const magicImmune = before.rows.some((row: NativeHeroBuffTickRow)=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune");
   if (currentCharges < maxCharges && !magicImmune) {
     const regenerationOn = nativeBuffTickRegenerationOn(level,before.rows);
     if (regenerationOn === null) return false;
@@ -4020,7 +4020,7 @@ function isValidNativeWandChargerTick(before: any, after: any, source: NativeHer
       const baseCharge = Math.fround(Math.fround(1/turnsToCharge)*ringMultiplier);
       expectedPartial = Math.fround(expectedPartial+baseCharge);
     }
-    for (const recharging of before.rows.filter(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging")) {
+    for (const recharging of before.rows.filter((row: NativeHeroBuffTickRow)=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Recharging")) {
       if (recharging.cooldown > 0) {
         const remainder = Math.min(1,recharging.cooldown);
         expectedPartial = Math.fround(expectedPartial+Math.fround(0.25*remainder));
@@ -4047,7 +4047,7 @@ function isValidNativeBlockBuffTick(before: any, after: any, source: NativeHeroB
   if (!Number.isFinite(left) || left <= 0 || left > 5.01
       || !Number.isInteger(shielding) || shielding < 0 || shielding > 100000
       || source.time > before.clock + 0.06) return {valid:false,allowHoldFastRemoval:false};
-  const holdFast = before.rows.filter(row=>row.className===NATIVE_HOLD_FAST);
+  const holdFast = before.rows.filter((row: NativeHeroBuffTickRow)=>row.className===NATIVE_HOLD_FAST);
   if (holdFast.length > 1) return {valid:false,allowHoldFastRemoval:false};
   let factor = 1, allowHoldFastRemoval = false;
   if (holdFast.length === 1) {
