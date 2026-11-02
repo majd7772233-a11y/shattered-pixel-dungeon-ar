@@ -4216,6 +4216,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Adrenaline",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Stamina",
@@ -5098,6 +5100,8 @@ type NativeMobBuffSnapshotMob = {data:any,buffs:Map<string,NativeMobBuffRow>};
 
 const NATIVE_MOB_SAFE_FLAVOUR_EXPIRY = new Set([
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",

@@ -275,7 +275,7 @@ describe('Native level snapshot contract', () => {
     const mobClass = "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
     const entityId = "stable-native-mob-0001";
     const targetMobId = 11, buffId = 55;
-    const buffData = {__className:buffClass,id:buffId,time:clockAfter,object:123};
+    const buffData = {__className:buffClass,id:buffId,time:clockAfter};
     const unaffectedData = {__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable",
       id:56,time:8};
     const buffRow = (data:any,clock:number) => ({
@@ -323,6 +323,18 @@ describe('Native level snapshot contract', () => {
     next.mobs = [mobRow(clockAfter,false)];
     return {previous,next,heroState:heroState(clockBefore),buffClass,buffData,unaffectedData,entityId};
   };
+
+
+  it("accepts only inert native Foresight and Invulnerability Mob expirations and rejects Amok",()=>{
+    for (const effect of ["Foresight","Invulnerability"]) {
+      const fixture=makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs."+effect);
+      expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,
+        fixture.heroState)).toBe(true);
+    }
+    const unsafe=makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok");
+    expect(isValidNativeWorldTurnSnapshot(unsafe.previous,unsafe.next,0,1,
+      unsafe.heroState)).toBe(false);
+  });
 
   it("accepts one due native Mob FlavourBuff expiry while preserving its Mob, Hero and other world state",()=>{
     const fixture = makeNativeMobBuffTurn();
@@ -2761,6 +2773,43 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(pOld),JSON.stringify(pBefore),JSON.stringify(pAfter),tick(poison,44))).toBe(true);
     const forged={...after,buffCount:2,buff_1:JSON.stringify({buff:{__className:buffs+"Haste",id:87,time:13}}),buffCooldown_1:4};
     expect(isValidNativeHeroBuffTick(JSON.stringify(old),JSON.stringify(before),JSON.stringify(forged),tick(healing,31))).toBe(false);
+  });
+
+
+  it("allows only inert native Foresight and Invulnerability to expire between Hero actor ticks",()=>{
+    const hunger=buffs+"Hunger";
+    for (const effect of ["Foresight","Invulnerability"]) {
+      const effectClass=buffs+effect;
+      const previous=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+        cooldown:2,buffCooldown_0:1,hp:10
+      });
+      previous.buffCount=2;
+      previous.buff_1=JSON.stringify({buff:{__className:effectClass,id:13,time:8}});
+      previous.buffCooldown_1=0;
+      const before=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+        cooldown:1,buffCooldown_0:0,hp:10
+      });
+      const after=stateWithBuff(hunger,12,10,{level:201,partialDamage:0},{
+        cooldown:1,buffCooldown_0:1,hp:10
+      });
+      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+        JSON.stringify(after),tick(hunger,12))).toBe(true);
+    }
+
+    const unsafe=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    unsafe.buffCount=2;
+    unsafe.buff_1=JSON.stringify({buff:{__className:buffs+"Amok",id:14,time:8}});
+    unsafe.buffCooldown_1=0;
+    const unsafeBefore=stateWithBuff(hunger,12,9,{level:200,partialDamage:0},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const unsafeAfter=stateWithBuff(hunger,12,10,{level:201,partialDamage:0},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(unsafe),JSON.stringify(unsafeBefore),
+      JSON.stringify(unsafeAfter),tick(hunger,12))).toBe(false);
   });
 
   it("enforces VialOfBlood's native per-turn Healing cap and rejects excess healing",()=>{
