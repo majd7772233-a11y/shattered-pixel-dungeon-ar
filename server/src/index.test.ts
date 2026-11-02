@@ -2806,8 +2806,9 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(afterWellFed),tick(wellFed,22))).toBe(true);
 
     const nextHunger:any=JSON.parse(JSON.stringify(afterWellFed));
+    // Native Hunger.act() spends one turn without changing level while WellFed is active.
     nextHunger.buff_1=JSON.stringify({buff:{
-      __className:hunger,id:12,time:10,level:201,partialDamage:0
+      __className:hunger,id:12,time:10,level:200,partialDamage:0
     }});
     nextHunger.buffCooldown_1=1;
     expect(isValidNativeHeroBuffTick(JSON.stringify(afterWellFed),JSON.stringify(afterWellFed),
