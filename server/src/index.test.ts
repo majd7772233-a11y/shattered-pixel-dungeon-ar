@@ -3176,6 +3176,81 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(hunger,12))).toBe(true);
   });
 
+
+  it("validates BrokenSeal WarriorShield activation during a native Poison threshold crossing",()=>{
+    const poison=buffs+"Poison", warriorShield="com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+    const armorClass="com.shatteredpixel.shatteredpixeldungeon.items.armor.PlateArmor";
+    const sealClass="com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal";
+    const armorId="native-armor-item-0001", sealId="native-broken-seal-0001";
+    const armorItem:any={__className:armorClass,multiplayer_item_id:armorId,
+      quantity:1,level:0,cursed:false,cursedKnown:true,
+      seal:{__className:sealClass,multiplayer_item_id:sealId,quantity:1,level:0}};
+    const armorRow:any={itemId:armorId,className:armorClass,quantity:1,level:0,
+      cursed:false,cursedKnown:true,stackable:false,equipped:true,containerId:"ARMOR",
+      serializedBundle:JSON.stringify({item:armorItem})};
+    const inventoryExtra:any={
+      inventoryBundle:JSON.stringify({inventory:[],armor:armorItem}),
+      inventoryItemsJson:JSON.stringify([armorRow]),
+      nativeInventoryTreeVersion:1,
+      combatBundle:JSON.stringify({time:10,STR:10,class:"WARRIOR",
+        talents_tier_1:{},talents_tier_2:{},talents_tier_3:{},talents_tier_4:{},buffs:[]})
+    };
+    const shieldBefore=JSON.stringify({buff:{__className:warriorShield,id:88,time:8,
+      shielding:0,cooldown:0,turns_since_enemies:4.5,initial_shield:0}});
+    const make=(hp:number,shield:number,shieldData:any)=>stateWithBuff(poison,44,9,{left:9},{
+      hp,shielding:shield,buffCount:2,buff_1:JSON.stringify({buff:shieldData}),
+      buffCooldown_1:0,...inventoryExtra
+    });
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:0,buffCount:2,
+      buff_1:shieldBefore,buffCooldown_1:0,...inventoryExtra
+    });
+    const before=make(10,0,{__className:warriorShield,id:88,time:8,
+      shielding:0,cooldown:0,turns_since_enemies:4.5,initial_shield:0});
+    const activated={__className:warriorShield,id:88,time:8,
+      shielding:9,cooldown:150,turns_since_enemies:0,initial_shield:13};
+    const after=make(10,9,activated);
+    after.buff_0=JSON.stringify({buff:{__className:poison,id:44,time:10,left:8}});
+    after.buffCooldown_0=1;
+    after.cooldown=1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(true);
+
+    // The second native trigger condition is HP + existing shields - damage <= HT/2.
+    const secondThresholdPrevious=JSON.parse(JSON.stringify(previous));
+    const secondThresholdBefore=JSON.parse(JSON.stringify(before));
+    secondThresholdPrevious.hp=12;
+    secondThresholdBefore.hp=12;
+    const secondThresholdAfter=JSON.parse(JSON.stringify(after));
+    secondThresholdAfter.hp=12;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(secondThresholdPrevious),JSON.stringify(secondThresholdBefore),
+      JSON.stringify(secondThresholdAfter),tick(poison,44))).toBe(true);
+
+    const forgedShield=JSON.parse(JSON.stringify(after));
+    const forgedRow=JSON.parse(forgedShield.buff_1);
+    forgedRow.buff.initial_shield=12;
+    forgedShield.buff_1=JSON.stringify(forgedRow);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedShield),tick(poison,44))).toBe(false);
+
+    const forgedNonTrigger=JSON.parse(JSON.stringify(after));
+    forgedNonTrigger.hp=15;
+    const highHpPrevious=JSON.parse(JSON.stringify(previous));
+    const highHpBefore=JSON.parse(JSON.stringify(before));
+    highHpPrevious.hp=15;
+    highHpBefore.hp=15;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(highHpPrevious),JSON.stringify(highHpBefore),
+      JSON.stringify(forgedNonTrigger),tick(poison,44))).toBe(false);
+
+    const zeroDamage=JSON.parse(JSON.stringify(after));
+    zeroDamage.shielding=13;
+    const zeroDamageRow=JSON.parse(zeroDamage.buff_1);
+    zeroDamageRow.buff.shielding=13;
+    zeroDamage.buff_1=JSON.stringify(zeroDamageRow);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(zeroDamage),tick(poison,44))).toBe(false);
+  });
+
   it("validates native Charm and Dread callbacks during actual Poison damage",()=>{
     const poison=buffs+"Poison";
     const charm=buffs+"Charm", dread=buffs+"Dread";

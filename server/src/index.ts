@@ -4178,6 +4178,109 @@ function isValidNativeBerserkTick(before: any, after: any, source: NativeHeroBuf
 }
 
 
+
+function nativeWarriorShieldDamageMax(heroState: any): number | null {
+  const combat = parseNativeBundleObject(heroState?.combatBundle);
+  if (!combat) return null;
+  const heroClass = String(combat.class || "");
+  const ironWill = nativeEquipmentTalentPoints(combat,"IRON_WILL");
+  if (!Number.isInteger(ironWill) || ironWill < 0 || ironWill > 3) return null;
+
+  // BrokenSeal.WarriorShield.maxShield() uses Iron Will alone for non-Warriors
+  // who acquired that talent; in that branch the equipped armor is irrelevant.
+  if (heroClass !== "WARRIOR" && ironWill > 0) return ironWill;
+
+  const inventory = parseNativeInventoryIndex(heroState);
+  if (!inventory) return null;
+  const equippedArmor = inventory.filter((row:any) =>
+    row.equipped === true && String(row.containerId || "") === "ARMOR");
+  if (equippedArmor.length > 1) return null;
+  if (equippedArmor.length === 0) return 0;
+
+  const row = equippedArmor[0];
+  const decoded = nativeItemBundleData(row);
+  if (!decoded || !String(row.className || "").startsWith(
+      "com.shatteredpixel.shatteredpixeldungeon.items.armor.")
+      || String(decoded.item.__className || "") !== String(row.className)
+      || String(decoded.item.multiplayer_item_id || "") !== String(row.itemId)) return null;
+
+  // Armor.tier is a constructor property, not a serialized Bundle field. These are
+  // the exact native SPD constructors; do not infer a tier from a client-supplied number.
+  const armorTiers: Record<string,number> = {
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.ClothArmor":1,
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.LeatherArmor":2,
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.MailArmor":3,
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.ScaleArmor":4,
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.PlateArmor":5,
+    "com.shatteredpixel.shatteredpixeldungeon.items.armor.ClassArmor":5
+  };
+  const tier = armorTiers[String(row.className)];
+  if (!Number.isInteger(tier)) return null;
+  const seal = decoded.item.seal;
+  if (seal === undefined || seal === null) return 0;
+  if (!seal || typeof seal !== "object" || Array.isArray(seal)
+      || String(seal.__className || "") !== "com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal"
+      || String(seal.multiplayer_item_id || "").length < 8
+      || String(seal.multiplayer_item_id || "").length > 80) return null;
+  return 3 + 2*tier + ironWill;
+}
+
+/** The native Char.damage() callback may activate WarriorShield before ShieldBuff.processDamage(). */
+function isValidNativeWarriorShieldDamageActivation(
+  beforeState: any, afterState: any,
+  before: NativeHeroBuffTickRow, after: NativeHeroBuffTickRow
+): boolean {
+  if (!beforeState || !afterState || before.className !== NATIVE_WARRIOR_SHIELD
+      || after.className !== NATIVE_WARRIOR_SHIELD || before.id !== after.id
+      || Math.abs(before.time-after.time) > 0.06 || Math.abs(before.cooldown-after.cooldown) > 0.06) return false;
+
+  const maxShield = nativeWarriorShieldDamageMax(beforeState);
+  const oldShield = Number(before.data.shielding), newShield = Number(after.data.shielding);
+  const oldCooldown = Number(before.data.cooldown), newCooldown = Number(after.data.cooldown);
+  const oldInitialShield = Number(before.data.initial_shield), newInitialShield = Number(after.data.initial_shield);
+  const oldTurnsSinceEnemies = Number(before.data.turns_since_enemies);
+  const newTurnsSinceEnemies = Number(after.data.turns_since_enemies);
+  if (maxShield === null || !Number.isInteger(maxShield) || maxShield < 0 || maxShield > 100000
+      || !Number.isInteger(oldShield) || oldShield < 0 || oldShield > 100000
+      || !Number.isInteger(newShield) || newShield < 0 || newShield > oldShield + maxShield
+      || !Number.isInteger(oldCooldown) || oldCooldown < -150 || oldCooldown > 0
+      || !Number.isInteger(newCooldown) || newCooldown !== Math.max(0,oldCooldown+150)
+      || !Number.isInteger(oldInitialShield) || oldInitialShield < 0 || oldInitialShield > 100000
+      || newInitialShield !== maxShield
+      || !Number.isFinite(oldTurnsSinceEnemies) || oldTurnsSinceEnemies < -100 || oldTurnsSinceEnemies > 100000
+      || newTurnsSinceEnemies !== 0) return false;
+
+  const oldFields = {...before.data}, newFields = {...after.data};
+  for (const fields of [oldFields,newFields]) {
+    delete fields.__className;
+    delete fields.id;
+    delete fields.time;
+    delete fields.shielding;
+    delete fields.cooldown;
+    delete fields.initial_shield;
+    delete fields.turns_since_enemies;
+  }
+  if (!sameNativeItemValue(oldFields,newFields)) return false;
+
+  const hpBefore = Number(beforeState.hp), hpAfter = Number(afterState.hp);
+  const ht = Number(beforeState.ht), shieldBefore = Number(beforeState.shielding);
+  const shieldAfter = Number(afterState.shielding);
+  if (!Number.isInteger(hpBefore) || !Number.isInteger(hpAfter) || !Number.isInteger(ht) || ht < 1
+      || !Number.isInteger(shieldBefore) || shieldBefore < oldShield
+      || !Number.isInteger(shieldAfter) || shieldAfter < newShield) return false;
+
+  // Conservation recovers the integer, post-resistance damage passed to
+  // ShieldBuff.processDamage(), including damage absorbed by the newly added shield.
+  const damage = hpBefore + shieldBefore + maxShield - hpAfter - shieldAfter;
+  if (!Number.isInteger(damage) || damage <= 0 || damage > 100000
+      || newShield !== Math.max(0,oldShield+maxShield-damage)
+      // WarriorShield has native shield priority 2. Any other shield that also absorbs
+      // this hit changes its own row and is rejected by the outer immutable-buff check.
+      || shieldBefore-oldShield !== shieldAfter-newShield) return false;
+  const halfHp = Math.floor(ht/2);
+  return hpBefore <= halfHp || hpBefore + shieldBefore - damage <= halfHp;
+}
+
 function isValidNativeDamageRecoveryBuffTransition(
   before: NativeHeroBuffTickRow,
   after: NativeHeroBuffTickRow | undefined
@@ -4315,14 +4418,25 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Frost",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep"
   ]);
-  const allowDamageSideEffectRemoval = damageTickClass.has(buffClass)
-    && (hpAfter < hpBefore || shieldAfter < shieldBefore);
   const beforeOtherRows = new Map(before.rows
     .filter(row=>row.className+"#"+row.id!==key)
     .map(row=>[row.className+"#"+row.id,row]));
   const afterOtherRows = new Map(after.rows
     .filter(row=>row.className+"#"+row.id!==key)
     .map(row=>[row.className+"#"+row.id,row]));
+  const warriorShieldRows = Array.from(beforeOtherRows.values())
+    .filter(row=>row.className===NATIVE_WARRIOR_SHIELD);
+  const warriorShieldBefore = warriorShieldRows.length===1 ? warriorShieldRows[0] : undefined;
+  const warriorShieldAfter = warriorShieldBefore
+    ? afterOtherRows.get(warriorShieldBefore.className+"#"+warriorShieldBefore.id) : undefined;
+  const nativeWarriorShieldActivation = buffClass==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
+    && !!warriorShieldBefore && !!warriorShieldAfter
+    && (warriorShieldBefore.bundle!==warriorShieldAfter.bundle
+      || warriorShieldBefore.cooldown!==warriorShieldAfter.cooldown)
+    && isValidNativeWarriorShieldDamageActivation(before.state,after.state,
+      warriorShieldBefore,warriorShieldAfter);
+  const allowDamageSideEffectRemoval = damageTickClass.has(buffClass)
+    && (hpAfter < hpBefore || shieldAfter < shieldBefore || nativeWarriorShieldActivation);
   if (!source || !prior || source.bundle !== prior.bundle
       || (buffClass!==NATIVE_WAND_CHARGER && before.state.inventoryBundle !== after.state.inventoryBundle)) return false;
   // Char.damage() natively recovers Terror/Dread/Charm and removes Frost/MagicalSleep
@@ -4334,6 +4448,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     const next = afterOtherRows.get(otherKey);
     if (next) {
       if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) {
+        if (row.className===NATIVE_WARRIOR_SHIELD && nativeWarriorShieldActivation) continue;
         if (!allowDamageSideEffectRemoval
             || !isValidNativeDamageRecoveryBuffTransition(row,next)) return false;
       }
