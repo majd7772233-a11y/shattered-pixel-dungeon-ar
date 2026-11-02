@@ -4426,7 +4426,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
         || Number(newData.level)<0 || Number(newData.level)>450
         || Number(oldData.partialDamage)<0 || Number(oldData.partialDamage)>1.5
         || Number(newData.partialDamage)<0 || Number(newData.partialDamage)>1.5) return false;
-    if (hasWellFed) return Number(newData.level)===Number(oldData.level)
+    if (hasWellFed || level?.locked === true) return Number(newData.level)===Number(oldData.level)
       && near(Number(newData.partialDamage),Number(oldData.partialDamage))
       && hpAfter===hpBefore && shieldAfter===shieldBefore;
     if (Number(oldData.level)<450) {
@@ -8000,7 +8000,7 @@ export class MatchRoom {
                 && Number(previousHeroState.pos) === Number(playerRow.pos)
                 && hasCompleteNativeLevelSnapshot(levelSnapshot)
                 && Number(levelSnapshot.depth) === this.currentDepth
-                && Number(levelSnapshot.branch) === 0 && levelSnapshot.locked === false
+                && Number(levelSnapshot.branch) === 0 && typeof levelSnapshot.locked === "boolean"
                 && isValidNativeHeroStateJson(payload.heroStateJson, {
                   hp: Number(afterHeroState.hp), ht: Number(playerRow.ht),
                   pos: Number(playerRow.pos), shielding: Number(afterHeroState.shielding)

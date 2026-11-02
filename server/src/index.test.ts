@@ -2829,6 +2829,36 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify({...after,inventoryItemsJson:"[forged]"}),tick(cls,12))).toBe(false);
   });
+
+  it("keeps native Hunger level and partial damage unchanged while the boss level is locked",()=>{
+    const cls=buffs+"Hunger";
+    const previous=stateWithBuff(cls,75,9,{level:450,partialDamage:0.8},{
+      cooldown:2,buffCooldown_0:1,hp:10
+    });
+    const before=stateWithBuff(cls,75,9,{level:450,partialDamage:0.8},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const after=stateWithBuff(cls,75,10,{level:450,partialDamage:0.8},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    const lockedLevel={branch:0,locked:true,
+      levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(cls,75),lockedLevel)).toBe(true);
+
+    const forgedDamage=JSON.parse(JSON.stringify(after));
+    forgedDamage.hp=9;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedDamage),tick(cls,75),lockedLevel)).toBe(false);
+
+    const forgedHunger=JSON.parse(JSON.stringify(after));
+    forgedHunger.buff_0=JSON.stringify({buff:{
+      __className:cls,id:75,time:10,level:450,partialDamage:0.82
+    }});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedHunger),tick(cls,75),lockedLevel)).toBe(false);
+  });
+
   it("validates bounded Healing and Poison ticks and rejects unrelated buff injection",()=>{
     const healing=buffs+"Healing";
     const old=stateWithBuff(healing,31,9,{left:5,percent:0.2,flat:0,healing_limited:false},{cooldown:2,buffCooldown_0:1,hp:10});
@@ -3427,24 +3457,26 @@ describe("Native Hero Buff tick reconciliation", () => {
         branch:0,locked:false,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
       })).toBe(false);
 
-    // Regeneration.regenOn() does not inspect Dungeon.branch or Level.locked.
-    // A non-vault branch with a locked Level still recharges unless LockedFloor blocks it.
-    const branchBefore=make(9,0,9,false,null);
-    const branchPrevious=make(9,0,8,false,null);
-    const branchPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.875,2)))*1);
-    const branchAfter=make(10,branchPartial,9,false,null);
-    branchAfter.buff_0=JSON.stringify({buff:{__className:charger,id:611,time:10,
+    // A sealed regular level with a still-active LockedFloor continues native wand regeneration.
+    // Level.locked is not itself a Regeneration gate; LockedFloor.regenOn() is.
+    const sealedBefore=make(9,0,9,false,1);
+    const sealedPrevious=make(9,0,8,false,1);
+    const sealedPartial=Math.fround(Math.fround(1/Math.fround(10+40*Math.pow(0.875,2)))*1);
+    const sealedAfter=make(10,sealedPartial,9,false,1);
+    sealedAfter.buff_0=JSON.stringify({buff:{__className:charger,id:611,time:10,
       multiplayer_wand_item_id:wandId,multiplayer_scale_factor:0.875}});
-    expect(isValidNativeHeroBuffTick(JSON.stringify(branchPrevious),JSON.stringify(branchBefore),
-      JSON.stringify(branchAfter),event,{
-        branch:1,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.CavesLevel"
+    expect(isValidNativeHeroBuffTick(JSON.stringify(sealedPrevious),JSON.stringify(sealedBefore),
+      JSON.stringify(sealedAfter),event,{
+        branch:0,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
       })).toBe(true);
-    const missingBranchCharge=make(10,0,9,false,null);
-    missingBranchCharge.buff_0=branchAfter.buff_0;
-    expect(isValidNativeHeroBuffTick(JSON.stringify(branchPrevious),JSON.stringify(branchBefore),
-      JSON.stringify(missingBranchCharge),event,{
-        branch:1,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.CavesLevel"
-      })).toBe(false);
+    const pausedSealedBefore=make(9,0,9,false,0.5);
+    const pausedSealedPrevious=make(9,0,8,false,0.5);
+    const pausedSealedAfter=make(10,0,9,false,0.5);
+    pausedSealedAfter.buff_0=sealedAfter.buff_0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(pausedSealedPrevious),JSON.stringify(pausedSealedBefore),
+      JSON.stringify(pausedSealedAfter),event,{
+        branch:0,locked:true,levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"
+      })).toBe(true);
 
     const vaultBefore=make(9,0,9,false,null);
     const vaultPrevious=make(9,0,8,false,null);

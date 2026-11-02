@@ -103,7 +103,7 @@ public final class NativeHeroBuffTickPublisher {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (hero == null || buff.target != hero || !hero.isAlive()
                 || !manager.isMultiplayerActive() || Dungeon.level == null
-                || Dungeon.branch != 0 || Dungeon.level.locked) return null;
+                || Dungeon.branch != 0) return null;
         String buffClass = buff.getClass().getName();
         if (!supportedBuffClass(buffClass)) return null;
 
@@ -169,7 +169,7 @@ public final class NativeHeroBuffTickPublisher {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (hero == null || hero != Dungeon.hero || !hero.isAlive()
                 || !manager.isMultiplayerActive() || Dungeon.level == null
-                || Dungeon.branch != 0 || Dungeon.level.locked) return;
+                || Dungeon.branch != 0) return;
         if (capture.beforeState == null) {
             manager.requestResync(manager.getLastSequence());
             return;
