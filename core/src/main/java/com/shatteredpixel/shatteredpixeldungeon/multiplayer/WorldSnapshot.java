@@ -79,21 +79,49 @@ public class WorldSnapshot {
     @SuppressWarnings("unchecked")
     private static void restoreMobBuffs(Char mob, Map<String, Object> data) {
         Object raw = data.get("buffs");
-        if (!(raw instanceof List)) return;
-        for (Buff old : new java.util.ArrayList<>(mob.buffs())) old.detach();
+        if (!(raw instanceof List)) {
+            throw new IllegalStateException("Native Mob snapshot is missing its buff collection");
+        }
+
+        List<Buff> preparedBuffs = new ArrayList<>();
+        List<Float> preparedCooldowns = new ArrayList<>();
         for (Object value : (List<?>) raw) {
-            if (!(value instanceof Map)) continue;
+            if (!(value instanceof Map)) {
+                throw new IllegalStateException("Native Mob snapshot contains an invalid buff row");
+            }
             Map<String, Object> buffData = (Map<String, Object>) value;
-            String encoded = String.valueOf(buffData.get("serializedBundle"));
-            Bundle bundle = readBundle(encoded);
-            if (bundle == null) continue;
-            try {
-                Buff buff = (Buff) bundle.get("buff");
-                if (buff != null) {
-                    buff.attachTo(mob);
-                    buff.restoreMultiplayerCooldown(floatNumber(buffData.get("cooldown"), 0f));
+            Object encodedValue = buffData.get("serializedBundle");
+            Object cooldownValue = buffData.get("cooldown");
+            if (!(encodedValue instanceof String) || ((String) encodedValue).isEmpty()
+                    || ((String) encodedValue).length() > 200000
+                    || !(cooldownValue instanceof Number)
+                    || !Float.isFinite(((Number) cooldownValue).floatValue())
+                    || ((Number) cooldownValue).floatValue() < 0f
+                    || ((Number) cooldownValue).floatValue() > 100000f) {
+                throw new IllegalStateException("Native Mob snapshot contains an invalid buff bundle or cooldown");
+            }
+            Bundle bundle = readBundle((String) encodedValue);
+            Object decoded = bundle == null ? null : bundle.get("buff");
+            if (!(decoded instanceof Buff)) {
+                throw new IllegalStateException("Native Mob snapshot bundle did not contain a Buff");
+            }
+            preparedBuffs.add((Buff) decoded);
+            preparedCooldowns.add(((Number) cooldownValue).floatValue());
+        }
+
+        // Decode every effect before detaching anything; the outer snapshot rollback handles
+        // native attachment failures without silently dropping a previously trusted effect.
+        for (Buff old : new java.util.ArrayList<>(mob.buffs())) old.detach();
+        try {
+            for (int i = 0; i < preparedBuffs.size(); i++) {
+                Buff buff = preparedBuffs.get(i);
+                if (!buff.attachTo(mob)) {
+                    throw new IllegalStateException("Native Mob rejected a buff from its authoritative snapshot");
                 }
-            } catch (RuntimeException restoreError) { throw new IllegalStateException("Native snapshot reconciliation failed", restoreError); }
+                buff.restoreMultiplayerCooldown(preparedCooldowns.get(i));
+            }
+        } catch (RuntimeException restoreError) {
+            throw new IllegalStateException("Native snapshot reconciliation failed", restoreError);
         }
     }
 
@@ -125,10 +153,16 @@ public class WorldSnapshot {
         }
         // Prepare every native object before mutating the current state.
         for (Buff old : new java.util.ArrayList<>(character.buffs())) old.detach();
-        for (int i = 0; i < preparedBuffs.size(); i++) {
-            Buff buff = preparedBuffs.get(i);
-            buff.attachTo(character);
-            buff.restoreMultiplayerCooldown(preparedCooldowns.get(i));
+        try {
+            for (int i = 0; i < preparedBuffs.size(); i++) {
+                Buff buff = preparedBuffs.get(i);
+                if (!buff.attachTo(character)) {
+                    throw new IllegalStateException("Native character rejected a buff from its authoritative snapshot");
+                }
+                buff.restoreMultiplayerCooldown(preparedCooldowns.get(i));
+            }
+        } catch (RuntimeException restoreError) {
+            throw new IllegalStateException("Native snapshot reconciliation failed", restoreError);
         }
     }
 

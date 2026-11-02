@@ -5081,6 +5081,227 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   }
   return true;
 }
+
+type NativeMobBuffRow = {className:string,id:number,time:number,cooldown:number,bundle:string,data:any};
+type NativeMobBuffSnapshotMob = {data:any,buffs:Map<string,NativeMobBuffRow>};
+
+const NATIVE_MOB_SAFE_FLAVOUR_EXPIRY = new Set([
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Bless",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Sleep",
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable"
+]);
+
+function nativeMobBuffSnapshotMob(mob: any, actorClock: number, checkClock = true): NativeMobBuffSnapshotMob | null {
+  if (!mob || typeof mob !== "object" || !Array.isArray(mob.buffs) || mob.buffs.length > 256) return null;
+  const root = parseNativeBundleObject(mob.serializedBundle);
+  const data = root && root.mob;
+  const className = String(data?.__className || "");
+  const actorId = Number(data?.id), time = Number(data?.time);
+  const nestedBuffs = data?.buffs;
+  if (!data || !className.startsWith("com.shatteredpixel.shatteredpixeldungeon.actors.mobs.")
+      || !Number.isInteger(actorId) || actorId !== Number(mob.mobId)
+      || !Number.isFinite(time) || time < 0
+      || Number(data.pos) !== Number(mob.pos)
+      || Number(data.HP) !== Number(mob.hp) || Number(data.HT) !== Number(mob.ht)
+      || !Array.isArray(nestedBuffs) || nestedBuffs.length !== mob.buffs.length
+      || !Number.isFinite(Number(mob.cooldown)) || Number(mob.cooldown) < 0
+      || (checkClock && Math.abs(Number(mob.cooldown)-Math.max(0,time-actorClock)) > 0.06)) return null;
+  const nestedByKey = new Map<string,any>();
+  for (const entry of nestedBuffs) {
+    const buffClass = String(entry?.__className || ""), id = Number(entry?.id), buffTime = Number(entry?.time);
+    const key = buffClass+"#"+id;
+    if (!buffClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.")
+        || !Number.isInteger(id) || id < 0 || !Number.isFinite(buffTime)
+        || nestedByKey.has(key)) return null;
+    nestedByKey.set(key,entry);
+  }
+  const buffs = new Map<string,NativeMobBuffRow>();
+  for (const row of mob.buffs) {
+    const bundle = String(row?.serializedBundle || "");
+    const buffRoot = parseNativeBundleObject(bundle), buff = buffRoot && buffRoot.buff;
+    const buffClass = String(buff?.__className || ""), id = Number(buff?.id), buffTime = Number(buff?.time);
+    const cooldown = Number(row?.cooldown), key = buffClass+"#"+id;
+    if (!buff || !bundle || !buffClass.startsWith("com.shatteredpixel.shatteredpixeldungeon.")
+        || !Number.isInteger(id) || id < 0 || !Number.isFinite(buffTime)
+        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
+        || (checkClock && Math.abs(cooldown-Math.max(0,buffTime-actorClock)) > 0.06)
+        || buffs.has(key) || !nestedByKey.has(key)
+        || !sameNativeItemValue(nestedByKey.get(key),buff)) return null;
+    buffs.set(key,{className:buffClass,id,time:buffTime,cooldown,bundle,data:buff});
+  }
+  if (nestedByKey.size !== buffs.size) return null;
+  return {data,buffs};
+}
+
+function nativeMobBuffHeroStableState(value: unknown, actorClock: number, checkClock: boolean): any | null {
+  let state:any;
+  try { state = typeof value === "string" ? JSON.parse(value) : value; } catch (_) { return null; }
+  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+  const combat = parseNativeBundleObject(state.combatBundle);
+  const heroTime = Number(combat?.time), heroCooldown = Number(state.cooldown);
+  if (!combat || !Number.isFinite(heroTime) || !Number.isFinite(heroCooldown)
+      || heroCooldown < 0 || heroCooldown > 100000
+      || (checkClock && Math.abs(heroCooldown-Math.max(0,heroTime-actorClock)) > 0.06)
+      || !Number.isInteger(state.buffCount) || state.buffCount < 0 || state.buffCount > 256
+      || !Array.isArray(combat.buffs) || combat.buffs.length !== state.buffCount) return null;
+
+  const rows:any[] = [];
+  const seen = new Set<string>();
+  for (let i=0;i<state.buffCount;i++) {
+    const bundle = state["buff_"+i], cooldown = Number(state["buffCooldown_"+i]);
+    const root = parseNativeBundleObject(bundle), data = root && root.buff;
+    const className = String(data?.__className || ""), id = Number(data?.id), time = Number(data?.time);
+    const key = className+"#"+id;
+    if (typeof bundle !== "string" || !className || !Number.isInteger(id) || id < 0
+        || !Number.isFinite(time) || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
+        || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)
+        || seen.has(key) || !sameNativeItemValue(combat.buffs[i],data)) return null;
+    seen.add(key);
+    rows.push(data);
+  }
+  const stable = {...state};
+  delete stable.cooldown;
+  for (const key of Object.keys(stable)) if (/^buffCooldown_\d+$/.test(key)) delete stable[key];
+  stable.combatBundle = combat;
+  return stable;
+}
+
+function nativeMobBuffExpiryMetadata(value: unknown, actorClock: number, checkClock = true): any | null {
+  const metadata = parseNativeBundleObject(value);
+  if (!metadata) return null;
+  const hasRespawner = Object.prototype.hasOwnProperty.call(metadata,"respawner");
+  if (!hasRespawner) {
+    if (Object.prototype.hasOwnProperty.call(metadata,"respawnerCooldown")) return null;
+    return metadata;
+  }
+  const respawner = metadata.respawner;
+  const time = Number(respawner?.time), cooldown = Number(metadata.respawnerCooldown);
+  if (!respawner || !String(respawner.__className || "").endsWith(".MobSpawner")
+      || !Number.isFinite(time) || time < 0 || !Number.isFinite(cooldown) || cooldown < 0
+      || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)) return null;
+  const stable = {...metadata};
+  delete stable.respawnerCooldown;
+  return stable;
+}
+
+function nativeMobBuffExpiryBlobs(level: any, actorClock: number, checkClock = true): Map<string,any> | null {
+  if (!level || !Array.isArray(level.blobs) || level.blobs.length > 128) return null;
+  const blobs = new Map<string,any>();
+  for (const row of level.blobs) {
+    const className = String(row?.className || "");
+    const root = parseNativeBundleObject(row?.serializedBundle), data = root && root.blob;
+    const cooldown = Number(row?.cooldown), time = Number(data?.time);
+    if (!className || !data || String(data.__className || "") !== className
+        || !Number.isFinite(time) || time < 0 || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000
+        || (checkClock && Math.abs(cooldown-Math.max(0,time-actorClock)) > 0.06)
+        || blobs.has(className)) return null;
+    blobs.set(className,{bundle:String(row.serializedBundle),data});
+  }
+  return blobs;
+}
+
+/** A MOB_BUFF snapshot may only expire one proven FlavourBuff; its target and all other world state stay intact. */
+export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trustedHeroStateValue: unknown): boolean {
+  const clock = Number(next?.nativeActorClock);
+  const actorClass = String(next?.nativeWorldActorClass || "");
+  const actorId = Number(next?.nativeWorldActorId);
+  const targetEntityId = String(next?.nativeMobEntityId || "");
+  const targetActorId = Number(next?.nativeMobActorId);
+  const sourceKey = actorClass+"#"+actorId;
+  if (!previous || !next || !Array.isArray(previous.mobs) || !Array.isArray(next.mobs)
+      || !Number.isFinite(clock) || clock < 0 || !Number.isInteger(actorId) || actorId < 0
+      || !NATIVE_MOB_SAFE_FLAVOUR_EXPIRY.has(actorClass)
+      || !/^[A-Za-z0-9._:-]{8,80}$/.test(targetEntityId)
+      || !Number.isInteger(targetActorId) || targetActorId < 0
+      || next.nativeWorldActorEntityId !== targetEntityId) return false;
+
+  const previousMobs = new Map<string,{row:any,snapshot:NativeMobBuffSnapshotMob}>();
+  const nextMobs = new Map<string,{row:any,snapshot:NativeMobBuffSnapshotMob}>();
+  for (const row of previous.mobs) {
+    const id = String(row?.entityId || "");
+    const parsed = nativeMobBuffSnapshotMob(row,clock,false);
+    if (!/^[A-Za-z0-9._:-]{8,80}$/.test(id) || previousMobs.has(id) || !parsed) return false;
+    previousMobs.set(id,{row,snapshot:parsed});
+  }
+  for (const row of next.mobs) {
+    const id = String(row?.entityId || "");
+    const parsed = nativeMobBuffSnapshotMob(row,clock);
+    if (!/^[A-Za-z0-9._:-]{8,80}$/.test(id) || nextMobs.has(id) || !parsed) return false;
+    nextMobs.set(id,{row,snapshot:parsed});
+  }
+  if (previousMobs.size !== nextMobs.size || !previousMobs.has(targetEntityId)) return false;
+  // Actor IDs are process-local but globally unique within one scheduler. Reject aliases across
+  // Mob and nested Buff actors before binding the reported source to its one target.
+  for (const collection of [previousMobs,nextMobs]) {
+    const actorIds = new Set<number>();
+    for (const value of collection.values()) {
+      const mobId = Number(value.row.mobId);
+      if (!Number.isInteger(mobId) || mobId < 0 || actorIds.has(mobId)) return false;
+      actorIds.add(mobId);
+      for (const buff of value.snapshot.buffs.values()) {
+        if (actorIds.has(buff.id)) return false;
+        actorIds.add(buff.id);
+      }
+    }
+  }
+  const targetBefore = previousMobs.get(targetEntityId)!;
+  const targetAfter = nextMobs.get(targetEntityId)!;
+  if (Number(targetBefore.row.mobId)!==targetActorId || Number(targetAfter.row.mobId)!==targetActorId) return false;
+  const source = targetBefore.snapshot.buffs.get(sourceKey);
+  if (!source || Math.abs(source.time-clock)>0.06 || targetAfter.snapshot.buffs.has(sourceKey)) return false;
+
+  for (const [entityId,before] of previousMobs) {
+    const after = nextMobs.get(entityId);
+    if (!after) return false;
+    const beforeRow = {...before.row}, afterRow = {...after.row};
+    for (const row of [beforeRow,afterRow]) {
+      delete row.cooldown;
+      delete row.buffs;
+      delete row.serializedBundle;
+    }
+    if (!sameNativeItemValue(beforeRow,afterRow)) return false;
+
+    const beforeMobData = {...before.snapshot.data}, afterMobData = {...after.snapshot.data};
+    delete beforeMobData.buffs;
+    delete afterMobData.buffs;
+    if (!sameNativeItemValue(beforeMobData,afterMobData)) return false;
+
+    const beforeBuffs = before.snapshot.buffs, afterBuffs = after.snapshot.buffs;
+    for (const [key,row] of beforeBuffs) {
+      if (entityId===targetEntityId && key===sourceKey) continue;
+      const nextRow = afterBuffs.get(key);
+      if (!nextRow || row.bundle!==nextRow.bundle) return false;
+    }
+    if (afterBuffs.size !== beforeBuffs.size - (entityId===targetEntityId ? 1 : 0)) return false;
+  }
+
+  const beforeHero = nativeMobBuffHeroStableState(trustedHeroStateValue,clock,false);
+  const afterHero = nativeMobBuffHeroStableState(next.heroStateJson,clock,true);
+  if (!beforeHero || !afterHero || !sameNativeItemValue(beforeHero,afterHero)) return false;
+
+  for (const key of ["schemaVersion","branch","depth","width","height","entrancePos","exitPos","seed",
+    "locked","feeling","levelClass","tiles","transitions","heaps","traps","plants","visitedPositions","mappedPositions"]) {
+    if (!sameNativeItemValue(previous[key],next[key])) return false;
+  }
+  const beforeMetadata = nativeMobBuffExpiryMetadata(previous.nativeLevelMetadataBundle,clock,false);
+  const afterMetadata = nativeMobBuffExpiryMetadata(next.nativeLevelMetadataBundle,clock);
+  if (!beforeMetadata || !afterMetadata || !sameNativeItemValue(beforeMetadata,afterMetadata)) return false;
+  const beforeBlobs = nativeMobBuffExpiryBlobs(previous,clock,false);
+  const afterBlobs = nativeMobBuffExpiryBlobs(next,clock);
+  if (!beforeBlobs || !afterBlobs || beforeBlobs.size!==afterBlobs.size) return false;
+  for (const [className,row] of beforeBlobs) {
+    const other = afterBlobs.get(className);
+    if (!other || row.bundle!==other.bundle) return false;
+  }
+  return true;
+}
+
 /**
  * Accepts only a fresh full snapshot emitted by the native Java Actor scheduler, after validating
  * that its actor existed in the previous authoritative world. TypeScript deliberately does not
@@ -5090,7 +5311,8 @@ export function isValidNativeWorldTurnSnapshot(
   previous: any,
   next: any,
   lastAcceptedTurn: unknown,
-  expectedDepth: number
+  expectedDepth: number,
+  trustedHeroStateValue?: unknown
 ): boolean {
   const last = Number(lastAcceptedTurn);
   if (!previous || !Array.isArray(previous.mobs) || !Array.isArray(previous.blobs)
@@ -5117,6 +5339,7 @@ export function isValidNativeWorldTurnSnapshot(
     const matches = previousMobs.filter(m => String(m?.entityId || "") === mobEntityId);
     if (matches.length !== 1 || Number(matches[0].mobId) !== Number(next.nativeMobActorId)
       || actorEntityId !== mobEntityId || !actorClass.includes(".actors.buffs.")) return false;
+    if (!isValidNativeMobBuffExpiryTurn(previous,next,trustedHeroStateValue)) return false;
   } else if (actorKind === "BLOB") {
     const existed = previous.blobs.some((blob: any) => String(blob?.className || "") === actorClass);
     if (!existed || actorEntityId.length !== 0) return false;
@@ -6940,10 +7163,25 @@ export class MatchRoom {
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));
           return;
         }
-        if (isNativeWorldTurn && !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, this.currentDepth)) {
-          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
-            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_OR_REPLAYED_NATIVE_WORLD_TURN" }) }));
-          return;
+        if (isNativeWorldTurn) {
+          const trustedTurnHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+            "heroState:" + session.playerId).toArray()[0];
+          const turnPlayerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?",
+            session.playerId).toArray()[0];
+          let trustedTurnHero: any = null;
+          try { trustedTurnHero = JSON.parse(String(trustedTurnHeroRow?.value || "")); } catch (_) {}
+          const mobBuffOwnerValid = String(level.nativeWorldActorKind || "") !== "MOB_BUFF"
+            || (!!trustedTurnHero && !!turnPlayerRow && String(turnPlayerRow.state) === "ALIVE"
+              && Number(trustedTurnHero.hp) === Number(turnPlayerRow.hp)
+              && Number(trustedTurnHero.ht) === Number(turnPlayerRow.ht)
+              && Number(trustedTurnHero.pos) === Number(turnPlayerRow.pos));
+          if (!mobBuffOwnerValid
+              || !isValidNativeWorldTurnSnapshot(previousSnapshot, level, storedTurnCounter, this.currentDepth,
+                trustedTurnHeroRow?.value)) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_OR_REPLAYED_NATIVE_WORLD_TURN" }) }));
+            return;
+          }
         }
         if (!isNativeWorldTurn && level.nativeWorldTurnCounter !== undefined) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,

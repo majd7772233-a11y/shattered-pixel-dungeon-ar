@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeMobBuffExpiryTurn, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -221,6 +221,144 @@ describe('Native level snapshot contract', () => {
 
   it("accepts a fresh native Mob turn with a matching stable actor identity", () => {
     expect(isValidNativeWorldTurnSnapshot(previousNativeMobSnapshot(), nextNativeMobTurn(), 0, 1)).toBe(true);
+  });
+
+
+  const makeNativeMobBuffTurn = (buffClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze") => {
+    const clockBefore = 4, clockAfter = 5, mobTime = 10;
+    const mobClass = "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
+    const entityId = "stable-native-mob-0001";
+    const targetMobId = 11, buffId = 55;
+    const buffData = {__className:buffClass,id:buffId,time:clockAfter,object:123};
+    const unaffectedData = {__className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Vulnerable",
+      id:56,time:8};
+    const buffRow = (data:any,clock:number) => ({
+      serializedBundle:JSON.stringify({buff:data}),
+      cooldown:Math.max(0,Number(data.time)-clock)
+    });
+    const mobRow = (clock:number,includeSource:boolean) => {
+      const nested = includeSource ? [buffData,unaffectedData] : [unaffectedData];
+      const buffs = includeSource ? [buffRow(buffData,clock),buffRow(unaffectedData,clock)]
+        : [buffRow(unaffectedData,clock)];
+      const mobBundle = {mob:{__className:mobClass,id:targetMobId,time:mobTime,
+        pos:10,HP:10,HT:10,buffs:nested}};
+      return {
+        mobId:targetMobId,entityId,name:"Rat",pos:10,hp:10,ht:10,shielding:0,
+        serializedBundle:JSON.stringify(mobBundle),buffs,
+        state:"Hunting",defenseSkill:5,baseSpeed:1,effectiveSpeed:1,
+        cooldown:Math.max(0,mobTime-clock),targetCell:-1,targetType:"NONE",
+        targetEntityId:"",enemySeen:false,alerted:false
+      };
+    };
+    const heroState = (clock:number) => JSON.stringify({
+      hp:10,ht:20,pos:9,shielding:0,cooldown:Math.max(0,20-clock),
+      combatBundle:JSON.stringify({time:20,buffs:[],STR:10}),
+      inventoryBundle:JSON.stringify({inventory:[]}),inventoryItemsJson:"[]",quickslotsJson:"[]",
+      notesBundle:"{}",questStateBundle:"{}",buffCount:0
+    });
+    const previous:any = completeSnapshot();
+    previous.levelClass = "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel";
+    previous.nativeLevelMetadataBundle = "{}";
+    previous.heroStateJson = heroState(clockBefore);
+    previous.nativeActorClock = clockBefore;
+    previous.mobs = [mobRow(clockBefore,true)];
+    const next:any = JSON.parse(JSON.stringify(previous));
+    next.nativeWorldTick = true;
+    next.nativeWorldTurnCounter = 1;
+    next.nativeActorClock = clockAfter;
+    next.nativeWorldActorKind = "MOB_BUFF";
+    next.nativeWorldActorId = buffId;
+    next.nativeWorldActorClass = buffClass;
+    next.nativeWorldActorEntityId = entityId;
+    next.nativeMobActorId = targetMobId;
+    next.nativeMobEntityId = entityId;
+    next.heroStateJson = heroState(clockAfter);
+    next.mobs = [mobRow(clockAfter,false)];
+    return {previous,next,heroState:heroState(clockBefore),buffClass,buffData,unaffectedData,entityId};
+  };
+
+  it("accepts one due native Mob FlavourBuff expiry while preserving its Mob, Hero and other world state",()=>{
+    const fixture = makeNativeMobBuffTurn();
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
+    const wrongClock = JSON.parse(JSON.stringify(fixture.next));
+    wrongClock.nativeActorClock = 4.9;
+    wrongClock.mobs[0].cooldown = 5.1;
+    wrongClock.mobs[0].buffs[0].cooldown = 3.1;
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,wrongClock,0,1,fixture.heroState)).toBe(false);
+
+    const forgedHero = JSON.parse(JSON.stringify(fixture.next));
+    const hero = JSON.parse(forgedHero.heroStateJson);
+    hero.hp = 9;
+    forgedHero.heroStateJson = JSON.stringify(hero);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedHero,0,1,fixture.heroState)).toBe(false);
+
+    const forgedMob = JSON.parse(JSON.stringify(fixture.next));
+    forgedMob.mobs[0].hp = 9;
+    const mobBundle = JSON.parse(forgedMob.mobs[0].serializedBundle);
+    mobBundle.mob.HP = 9;
+    forgedMob.mobs[0].serializedBundle = JSON.stringify(mobBundle);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedMob,0,1,fixture.heroState)).toBe(false);
+
+    const forgedTerrain = JSON.parse(JSON.stringify(fixture.next));
+    forgedTerrain.tiles[20].terrain = 4;
+    forgedTerrain.tiles[20].solid = true;
+    forgedTerrain.tiles[20].passable = false;
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedTerrain,0,1,fixture.heroState)).toBe(false);
+
+    const forgedSource = JSON.parse(JSON.stringify(fixture.next));
+    forgedSource.nativeWorldActorId = 999;
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedSource,0,1,fixture.heroState)).toBe(false);
+
+    const forgedOtherBuff = JSON.parse(JSON.stringify(fixture.next));
+    const otherBundle = JSON.parse(forgedOtherBuff.mobs[0].buffs[0].serializedBundle);
+    otherBundle.buff.time = 9;
+    forgedOtherBuff.mobs[0].buffs[0].serializedBundle = JSON.stringify(otherBundle);
+    const nativeMob = JSON.parse(forgedOtherBuff.mobs[0].serializedBundle);
+    nativeMob.mob.buffs[0].time = 9;
+    forgedOtherBuff.mobs[0].serializedBundle = JSON.stringify(nativeMob);
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,forgedOtherBuff,0,1,fixture.heroState)).toBe(false);
+  });
+
+  it("rejects Mob Poison/LifeLink, early ticks, source retention and unrelated Mob changes",()=>{
+    const poison = makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison");
+    expect(isValidNativeWorldTurnSnapshot(poison.previous,poison.next,0,1,poison.heroState)).toBe(false);
+
+    const early = makeNativeMobBuffTurn();
+    early.next.nativeActorClock = 4.5;
+    early.next.mobs[0].cooldown = 5.5;
+    early.next.mobs[0].buffs[0].cooldown = 3.5;
+    expect(isValidNativeWorldTurnSnapshot(early.previous,early.next,0,1,early.heroState)).toBe(false);
+
+    const retained = makeNativeMobBuffTurn();
+    const retainedData = retained.buffData;
+    retained.next.mobs[0].buffs.unshift({
+      serializedBundle:JSON.stringify({buff:retainedData}),cooldown:0
+    });
+    const retainedMob = JSON.parse(retained.next.mobs[0].serializedBundle);
+    retainedMob.mob.buffs.unshift(retainedData);
+    retained.next.mobs[0].serializedBundle = JSON.stringify(retainedMob);
+    expect(isValidNativeWorldTurnSnapshot(retained.previous,retained.next,0,1,retained.heroState)).toBe(false);
+
+    const extraMob = makeNativeMobBuffTurn();
+    const another:any = JSON.parse(JSON.stringify(extraMob.previous.mobs[0]));
+    another.mobId = 12;
+    another.entityId = "stable-native-mob-0002";
+    another.pos = 12;
+    another.buffs = [];
+    const anotherBundle = JSON.parse(another.serializedBundle);
+    anotherBundle.mob.id = 12;
+    anotherBundle.mob.pos = 12;
+    anotherBundle.mob.buffs = [];
+    another.serializedBundle = JSON.stringify(anotherBundle);
+    extraMob.previous.mobs.push(another);
+    const anotherAtNextClock = {...another,cooldown:5,buffs:another.buffs.map((row:any)=>{
+      const data=JSON.parse(row.serializedBundle).buff;
+      return {...row,cooldown:Math.max(0,Number(data.time)-5)};
+    })};
+    extraMob.next.mobs.push(anotherAtNextClock);
+    const tamperedOther = JSON.parse(JSON.stringify(extraMob.next));
+    tamperedOther.mobs[1].state = "Fleeing";
+    expect(isValidNativeWorldTurnSnapshot(extraMob.previous,tamperedOther,0,1,extraMob.heroState)).toBe(false);
   });
 
   it("rejects replayed and skipped counters, foreign actor IDs and mismatched stable identities", () => {

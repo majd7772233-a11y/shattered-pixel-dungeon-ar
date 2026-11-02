@@ -1100,6 +1100,55 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNull("Repeated restoration of the expired state remains idempotent", hero.buff(Haste.class));
     }
 
+
+    @Test
+    public void nativeMobTimedBuffRestorePreservesCooldownAndDoesNotResurrectExpiredEffects() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-mob-timed-buff-restore", "client-publisher", new TestTransport());
+        Rat mob = addRat(hero.pos + 1, 17);
+        String entityId = "native-mob-timed-buff-0001";
+        manager.registerServerEntityId(mob.id(), entityId);
+
+        Haste active = Buff.affect(mob, Haste.class, Haste.DURATION);
+        Assert.assertNotNull(active);
+        active.restoreMultiplayerCooldown(3.75f);
+        float expectedCooldown = active.cooldown();
+        WorldSnapshot activeSnapshot = makeSnapshotWithMob(1L, mob, entityId);
+
+        active.detach();
+        Assert.assertNull(mob.buff(Haste.class));
+        Assert.assertTrue("The authoritative Mob effect must restore from its native bundle and cooldown",
+                WorldSnapshot.restoreWorld(activeSnapshot));
+        Mob restoredMob = findMobByServerId(manager, entityId);
+        Assert.assertNotNull(restoredMob);
+        Haste restored = restoredMob.buff(Haste.class);
+        Assert.assertNotNull("A Mob's active timed effect must survive world reconstruction", restored);
+        Assert.assertEquals(expectedCooldown, restored.cooldown(), 0.02f);
+        int count = 0;
+        for (Buff buff : restoredMob.buffs()) if (buff instanceof Haste) count++;
+        Assert.assertEquals("Repeated snapshots must not duplicate the Mob's timed effect", 1, count);
+
+        Assert.assertTrue("Reapplying the same Mob snapshot must remain idempotent",
+                WorldSnapshot.restoreWorld(activeSnapshot));
+        Haste restoredAgain = restoredMob.buff(Haste.class);
+        Assert.assertNotNull(restoredAgain);
+        Assert.assertEquals(expectedCooldown, restoredAgain.cooldown(), 0.02f);
+        count = 0;
+        for (Buff buff : restoredMob.buffs()) if (buff instanceof Haste) count++;
+        Assert.assertEquals(1, count);
+
+        restoredAgain.detach();
+        Assert.assertNull(restoredMob.buff(Haste.class));
+        WorldSnapshot expiredSnapshot = makeSnapshotWithMob(2L, restoredMob, entityId);
+        Buff.affect(restoredMob, Haste.class, Haste.DURATION);
+        Assert.assertNotNull(restoredMob.buff(Haste.class));
+        Assert.assertTrue("A snapshot captured after expiry must remove a stale replica effect",
+                WorldSnapshot.restoreWorld(expiredSnapshot));
+        Assert.assertNull("An expired Mob effect must not reappear after restore", restoredMob.buff(Haste.class));
+        Assert.assertTrue(WorldSnapshot.restoreWorld(expiredSnapshot));
+        Assert.assertNull("Repeated expired snapshots remain idempotent", restoredMob.buff(Haste.class));
+    }
+
     @Test
     public void localHeroSnapshotRestoresRunProgressDroppedItemsAndInventoryIdempotently() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
