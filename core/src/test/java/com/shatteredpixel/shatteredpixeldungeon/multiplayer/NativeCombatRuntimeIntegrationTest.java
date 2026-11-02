@@ -195,6 +195,34 @@ public class NativeCombatRuntimeIntegrationTest {
                 hero, Dungeon.hero);
     }
 
+
+    @Test
+    public void nativeLevelSnapshotIncludesRemoteHeroAndRemoteBuffActorIds() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("remote-hero-actor-ids", "client-publisher", new TestTransport());
+
+        RemoteHero remoteHero = new RemoteHero();
+        remoteHero.pos = hero.pos + 1;
+        Actor.add(remoteHero);
+        Haste remoteHaste = Buff.affect(remoteHero, Haste.class, Haste.DURATION);
+        Assert.assertNotNull(remoteHaste);
+        RemotePlayer remote = new RemotePlayer("remote-actor-player", "Remote", "WARRIOR");
+        remote.heroInstance = remoteHero;
+        manager.addRemotePlayer(remote);
+
+        JsonValue snapshot = new JsonReader().parse(SPDLevelSnapshot.currentLevelJson());
+        JsonValue ids = snapshot == null ? null : snapshot.get("nativeRemoteHeroActorIds");
+        Assert.assertNotNull("The native level snapshot must expose RemoteHero scheduler IDs", ids);
+        Assert.assertTrue(ids.isArray());
+        boolean foundHero = false, foundBuff = false;
+        for (JsonValue value = ids.child; value != null; value = value.next) {
+            if (value.asInt() == remoteHero.id()) foundHero = true;
+            if (value.asInt() == remoteHaste.id()) foundBuff = true;
+        }
+        Assert.assertTrue("The connected RemoteHero Actor ID must be included", foundHero);
+        Assert.assertTrue("Buffs attached to the RemoteHero must be included too", foundBuff);
+    }
+
     @Test
     public void sharedNativeActorTurnsRunOnlyOnTheLevelPublisher() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();

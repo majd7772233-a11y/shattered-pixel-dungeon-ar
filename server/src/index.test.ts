@@ -261,6 +261,7 @@ describe('Native level snapshot contract', () => {
     previous.nativeLevelMetadataBundle = "{}";
     previous.heroStateJson = heroState(clockBefore);
     previous.nativeActorClock = clockBefore;
+    previous.nativeRemoteHeroActorIds = [];
     previous.mobs = [mobRow(clockBefore,true)];
     const next:any = JSON.parse(JSON.stringify(previous));
     next.nativeWorldTick = true;
@@ -434,6 +435,38 @@ describe('Native level snapshot contract', () => {
     fixture.previous.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:6}];
     fixture.next.blobs = [{className:blobClass,serializedBundle:blobBundle,cooldown:5}];
     expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
+  });
+
+
+  it("includes stable RemoteHero actor identities in the global Mob Buff collision check",()=>{
+    const fixture = makeNativeMobBuffTurn();
+    fixture.previous.nativeRemoteHeroActorIds = [90,91];
+    fixture.next.nativeRemoteHeroActorIds = [91,90];
+    expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,fixture.heroState)).toBe(true);
+
+    const sourceCollision = makeNativeMobBuffTurn();
+    sourceCollision.previous.nativeRemoteHeroActorIds = [55];
+    sourceCollision.next.nativeRemoteHeroActorIds = [55];
+    expect(isValidNativeWorldTurnSnapshot(sourceCollision.previous,sourceCollision.next,0,1,
+      sourceCollision.heroState)).toBe(false);
+
+    const otherBuffCollision = makeNativeMobBuffTurn();
+    otherBuffCollision.previous.nativeRemoteHeroActorIds = [56];
+    otherBuffCollision.next.nativeRemoteHeroActorIds = [56];
+    expect(isValidNativeWorldTurnSnapshot(otherBuffCollision.previous,otherBuffCollision.next,0,1,
+      otherBuffCollision.heroState)).toBe(false);
+
+    const changedRemoteGraph = makeNativeMobBuffTurn();
+    changedRemoteGraph.previous.nativeRemoteHeroActorIds = [90];
+    changedRemoteGraph.next.nativeRemoteHeroActorIds = [92];
+    expect(isValidNativeWorldTurnSnapshot(changedRemoteGraph.previous,changedRemoteGraph.next,0,1,
+      changedRemoteGraph.heroState)).toBe(false);
+
+    const malformedRemoteGraph = makeNativeMobBuffTurn();
+    malformedRemoteGraph.previous.nativeRemoteHeroActorIds = [90,90];
+    malformedRemoteGraph.next.nativeRemoteHeroActorIds = [90,90];
+    expect(isValidNativeWorldTurnSnapshot(malformedRemoteGraph.previous,malformedRemoteGraph.next,0,1,
+      malformedRemoteGraph.heroState)).toBe(false);
   });
 
   it("rejects Mob Poison/LifeLink, early ticks, source retention and unrelated Mob changes",()=>{

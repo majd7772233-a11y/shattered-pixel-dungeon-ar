@@ -5192,8 +5192,21 @@ function nativeMobBuffHeroActorIds(value: unknown): Set<number> | null {
   return ids;
 }
 
+
+function nativeMobBuffRemoteHeroActorIds(level: any): Set<number> | null {
+  const values = level?.nativeRemoteHeroActorIds;
+  if (!Array.isArray(values) || values.length > 8192) return null;
+  const ids = new Set<number>();
+  for (const value of values) {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id < 1 || ids.has(id)) return null;
+    ids.add(id);
+  }
+  return ids;
+}
+
 function nativeMobBuffActorIds(mobs: Map<string,{row:any,snapshot:NativeMobBuffSnapshotMob}>,
-  heroIds: Set<number>, blobs: Map<string,any>, metadata: any | null): Set<number> | null {
+  heroIds: Set<number>, remoteHeroIds: Set<number>, blobs: Map<string,any>, metadata: any | null): Set<number> | null {
   const ids = new Set<number>();
   const add = (value: unknown): boolean => {
     const id = Number(value);
@@ -5206,6 +5219,7 @@ function nativeMobBuffActorIds(mobs: Map<string,{row:any,snapshot:NativeMobBuffS
     for (const buff of value.snapshot.buffs.values()) if (!add(buff.id)) return null;
   }
   for (const id of heroIds) if (!add(id)) return null;
+  for (const id of remoteHeroIds) if (!add(id)) return null;
   for (const blob of blobs.values()) if (!add(blob.id)) return null;
   if (metadata && Object.prototype.hasOwnProperty.call(metadata,"respawner")
       && !add(metadata.respawner?.id)) return null;
@@ -5281,7 +5295,8 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   }
   if (previousMobs.size !== nextMobs.size || !previousMobs.has(targetEntityId)) return false;
   // Actor IDs are process-local but globally unique within one scheduler. Reject aliases across
-  // Mob and nested Buff actors before binding the reported source to its one target.
+  // serialized Mobs/Buffs, the local and remote Heroes, Blobs, and the level respawner before
+  // binding the reported source to its one target.
   for (const collection of [previousMobs,nextMobs]) {
     const actorIds = new Set<number>();
     for (const value of collection.values()) {
@@ -5328,6 +5343,11 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const beforeHero = nativeMobBuffHeroStableState(trustedHeroStateValue,clock,false);
   const afterHero = nativeMobBuffHeroStableState(next.heroStateJson,clock,true);
   if (!beforeHero || !afterHero || !sameNativeItemValue(beforeHero,afterHero)) return false;
+  const beforeRemoteHeroIds = nativeMobBuffRemoteHeroActorIds(previous);
+  const afterRemoteHeroIds = nativeMobBuffRemoteHeroActorIds(next);
+  if (!beforeRemoteHeroIds || !afterRemoteHeroIds
+      || !sameNativeItemValue([...beforeRemoteHeroIds].sort((a,b)=>a-b),
+        [...afterRemoteHeroIds].sort((a,b)=>a-b))) return false;
 
   const beforeMetadata = nativeMobBuffExpiryMetadata(previous.nativeLevelMetadataBundle,clock,false);
   const afterMetadata = nativeMobBuffExpiryMetadata(next.nativeLevelMetadataBundle,clock);
@@ -5337,8 +5357,8 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const afterHeroIds = nativeMobBuffHeroActorIds(next.heroStateJson);
   if (!beforeMetadata || !afterMetadata || !beforeBlobs || !afterBlobs
       || !beforeHeroIds || !afterHeroIds
-      || !nativeMobBuffActorIds(previousMobs,beforeHeroIds,beforeBlobs,beforeMetadata)
-      || !nativeMobBuffActorIds(nextMobs,afterHeroIds,afterBlobs,afterMetadata)
+      || !nativeMobBuffActorIds(previousMobs,beforeHeroIds,beforeRemoteHeroIds,beforeBlobs,beforeMetadata)
+      || !nativeMobBuffActorIds(nextMobs,afterHeroIds,afterRemoteHeroIds,afterBlobs,afterMetadata)
       || !sameNativeItemValue([...beforeHeroIds].sort((a,b)=>a-b),[...afterHeroIds].sort((a,b)=>a-b))) return false;
 
   for (const key of ["schemaVersion","branch","depth","width","height","entrancePos","exitPos","seed",

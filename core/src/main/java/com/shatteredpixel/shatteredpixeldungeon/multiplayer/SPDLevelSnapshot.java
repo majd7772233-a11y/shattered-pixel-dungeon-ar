@@ -54,6 +54,8 @@ public final class SPDLevelSnapshot {
     public List<BlobData> blobs = new ArrayList<>();
     public List<PlantData> plants = new ArrayList<>();
     public String heroStateJson = "";
+    /** Local Actor IDs for connected RemoteHero instances and their Buffs, which are not Mob rows. */
+    public List<Integer> nativeRemoteHeroActorIds = new ArrayList<>();
     /** Marker/counter for a full snapshot emitted after a shared native Actor action. */
     public boolean nativeWorldTick;
     public long nativeWorldTurnCounter;
@@ -390,6 +392,16 @@ public final class SPDLevelSnapshot {
             }
         }
         out.heroStateJson = currentHeroStateJson();
+        // RemoteHero replicas are Actor scheduler members, but their native Actor IDs are
+        // process-local and are not represented by the level's Mob collection. Include their
+        // identities and Buff actor IDs so the server can verify MOB_BUFF source uniqueness.
+        for (RemotePlayer remote : MultiplayerManager.getInstance().getRemotePlayers().values()) {
+            if (remote == null || remote.heroInstance == null) continue;
+            out.nativeRemoteHeroActorIds.add(remote.heroInstance.id());
+            for (Buff buff : remote.heroInstance.buffs()) {
+                if (buff != null) out.nativeRemoteHeroActorIds.add(buff.id());
+            }
+        }
         return new Json().toJson(out);
     }
 
