@@ -170,6 +170,52 @@ describe('Native level snapshot contract', () => {
     expect(hasCompleteNativeLevelSnapshot(completeSnapshot())).toBe(true);
   });
 
+  it("validates optional RemoteHero scheduler IDs before accepting any full snapshot",()=>{
+    const valid:any = completeSnapshot();
+    valid.nativeRemoteHeroActorIds = [7,9];
+    expect(hasCompleteNativeLevelSnapshot(valid)).toBe(true);
+
+    const duplicate:any = completeSnapshot();
+    duplicate.nativeRemoteHeroActorIds = [7,7];
+    expect(hasCompleteNativeLevelSnapshot(duplicate)).toBe(false);
+
+    const zero:any = completeSnapshot();
+    zero.nativeRemoteHeroActorIds = [0];
+    expect(hasCompleteNativeLevelSnapshot(zero)).toBe(false);
+
+    const malformed:any = completeSnapshot();
+    malformed.nativeRemoteHeroActorIds = "7,9";
+    expect(hasCompleteNativeLevelSnapshot(malformed)).toBe(false);
+
+    const oversized:any = completeSnapshot();
+    oversized.nativeRemoteHeroActorIds = Array.from({length:8193},(_,i)=>i+1);
+    expect(hasCompleteNativeLevelSnapshot(oversized)).toBe(false);
+  });
+
+  it("rejects impossible zero native Actor IDs for Mob and shared world turns",()=>{
+    const mobSnapshot:any = completeSnapshot();
+    mobSnapshot.mobs = [{
+      mobId:0,entityId:"stable-native-mob-0001",name:"Rat",pos:10,
+      hp:10,ht:10,shielding:0,state:"Hunting",serializedBundle:"native-rat-bundle",
+      defenseSkill:5,baseSpeed:1,effectiveSpeed:1,cooldown:0,targetCell:-1,
+      targetType:"NONE",targetEntityId:"",enemySeen:false,alerted:false,buffs:[]
+    }];
+    expect(hasCompleteNativeLevelSnapshot(mobSnapshot)).toBe(false);
+
+    const actorTick:any = completeSnapshot();
+    actorTick.nativeWorldTick = true;
+    actorTick.nativeWorldTurnCounter = 1;
+    actorTick.nativeActorClock = 1;
+    actorTick.nativeWorldActorKind = "BLOB";
+    actorTick.nativeWorldActorId = 0;
+    actorTick.nativeWorldActorClass = "com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire";
+    actorTick.nativeWorldActorEntityId = "";
+    actorTick.nativeMobActorId = -1;
+    actorTick.nativeMobEntityId = "";
+    expect(hasCompleteNativeLevelSnapshot(actorTick)).toBe(false);
+  });
+
+
   it('accepts a narrowly scoped movement snapshot only when its native Hero result and action marker are valid', () => {
     const before: any = completeSnapshot();
     const heroState = (pos: number) => JSON.stringify({

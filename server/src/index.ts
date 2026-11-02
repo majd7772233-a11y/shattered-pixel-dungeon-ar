@@ -4930,6 +4930,17 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   const size = level.width * level.height;
   if (level.entrancePos < 0 || level.entrancePos >= size
     || level.exitPos < 0 || level.exitPos >= size) return false;
+  // RemoteHero actors are process-local scheduler members, but their IDs still arrive in every
+  // modern native snapshot. Keep the field optional for legacy non-tick snapshots; when present,
+  // reject malformed, zero, duplicated or oversized Actor identity lists before persistence.
+  if (level.nativeRemoteHeroActorIds !== undefined) {
+    if (!Array.isArray(level.nativeRemoteHeroActorIds) || level.nativeRemoteHeroActorIds.length > 8192) return false;
+    const remoteActorIds = new Set<number>();
+    for (const value of level.nativeRemoteHeroActorIds) {
+      if (!Number.isInteger(value) || value < 1 || remoteActorIds.has(value)) return false;
+      remoteActorIds.add(value);
+    }
+  }
   const arrays = ["tiles", "transitions", "heaps", "traps", "blobs", "plants", "mobs", "visitedPositions", "mappedPositions"];
   if (arrays.some((key) => !Array.isArray(level[key]))) return false;
   if (level.tiles.length !== size || level.transitions.length > 128 || level.heaps.length > size
@@ -5039,7 +5050,7 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   const entityIds = new Set<string>();
   for (const mob of level.mobs) {
     const entityId = mob?.entityId;
-    if (!Number.isInteger(mob?.mobId) || mob.mobId < 0 || mobIds.has(mob.mobId)
+    if (!Number.isInteger(mob?.mobId) || mob.mobId < 1 || mobIds.has(mob.mobId)
       || !inBounds(mob?.pos) || mobPositions.has(mob.pos)
       || !Number.isInteger(mob?.hp) || mob.hp < 0
       || !Number.isInteger(mob?.ht) || mob.ht < 1 || mob.hp > mob.ht
@@ -5068,7 +5079,7 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   if (level.nativeWorldTick === true) {
     if (!Number.isSafeInteger(level.nativeWorldTurnCounter) || level.nativeWorldTurnCounter < 1
       || !Number.isFinite(level.nativeActorClock) || level.nativeActorClock < 0 || level.nativeActorClock > 1e9
-      || !Number.isInteger(level.nativeWorldActorId) || level.nativeWorldActorId < 0
+      || !Number.isInteger(level.nativeWorldActorId) || level.nativeWorldActorId < 1
       || typeof level.nativeWorldActorClass !== "string" || level.nativeWorldActorClass.length < 1
       || level.nativeWorldActorClass.length > 240
       || !["MOB", "MOB_BUFF", "BLOB", "RESPAWNER"].includes(String(level.nativeWorldActorKind))
@@ -5077,7 +5088,7 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
       || !Number.isInteger(level.nativeMobActorId) || level.nativeMobActorId < -1) return false;
     if ((level.nativeWorldActorKind === "MOB" || level.nativeWorldActorKind === "MOB_BUFF")
       && (level.nativeWorldActorEntityId.length < 8 || level.nativeMobEntityId !== level.nativeWorldActorEntityId
-        || level.nativeMobActorId < 0)) return false;
+        || level.nativeMobActorId < 1)) return false;
   }
   return true;
 }
