@@ -4097,7 +4097,7 @@ function isValidNativeWarriorShieldTick(before: any, after: any, source: NativeH
       || !Number.isFinite(turnsSinceEnemies) || turnsSinceEnemies < 0 || turnsSinceEnemies > 100000
       || !Number.isInteger(initialShield) || initialShield < 0 || initialShield > 100000
       || source.time > before.clock + 0.06 || !result || Math.abs(result.time-source.time-1)>0.1
-      || Number(after.hp)!==Number(before.hp) || Number(after.shielding)!==Number(before.shielding)) return false;
+      || Number(after.state.hp)!==Number(before.state.hp) || Number(after.state.shielding)!==Number(before.state.shielding)) return false;
   const regenerationOn = nativeBuffTickRegenerationOn(level,before.rows);
   if (regenerationOn === null) return false;
   const expectedCooldown = cooldown-(regenerationOn?1:0);
