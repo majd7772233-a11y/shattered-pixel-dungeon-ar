@@ -137,6 +137,23 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativeHeroBuffTickCaptureRemainsAvailableOnASealedBossLevel() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-sealed-hero-buff-tick", "client-publisher", new TestTransport());
+        level.locked = true;
+
+        Haste haste = Buff.affect(hero, Haste.class, Haste.DURATION);
+        Assert.assertNotNull(haste);
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(haste);
+        Assert.assertNotNull("A sealed level must not suppress native timed Hero Buff publication", capture);
+
+        // The captured state has not changed. Publishing this no-op capture clears its guard
+        // without emitting a network action, while still exercising the native capture gate.
+        NativeHeroBuffTickPublisher.publish(capture);
+        level.locked = false;
+    }
+
+    @Test
     public void multiplayerFallLandingIsDeterministicAndSkipsNativeHazards() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-fall-landing", "client-publisher", new TestTransport());

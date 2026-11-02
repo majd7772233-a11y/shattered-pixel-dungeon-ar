@@ -3176,29 +3176,55 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(hunger,12))).toBe(true);
   });
 
-  it("rejects Poison damage that triggers Charm.recover() or Terror.recover() side effects",()=>{
+  it("validates native Charm/Terror recovery and Dread shortening during actual Poison damage",()=>{
     const poison=buffs+"Poison";
-    for (const sideEffectClass of ["Charm","Terror"]) {
-      const className=buffs+sideEffectClass;
-      const sideEffectRow=JSON.stringify({buff:{
-        __className:className,id:89,time:14,object:321,
-        ...(sideEffectClass==="Charm" ? {ignore_allies:false} : {})
-      }});
-      const previous=stateWithBuff(poison,44,9,{left:9},{
-        cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:sideEffectRow,buffCooldown_1:6
-      });
-      const before=stateWithBuff(poison,44,9,{left:9},{
-        cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:sideEffectRow,buffCooldown_1:5
-      });
-      // On native Hero damage, both recover callbacks shorten their own timer by five
-      // turns and detach when the remaining cooldown is five or less. A single-Hero
-      // Poison result cannot silently omit that second Buff mutation.
-      const after=stateWithBuff(poison,44,10,{left:8},{
-        cooldown:1,buffCooldown_0:1,hp:9
-      });
-      expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
-        JSON.stringify(after),tick(poison,44))).toBe(false);
-    }
+    const cases=[
+      {name:"Charm",id:89,time:20,object:321,extra:{ignore_allies:false}},
+      {name:"Terror",id:90,time:20,object:321,extra:{}}
+    ];
+    const rows=cases.map(effect=>JSON.stringify({buff:{
+      __className:buffs+effect.name,id:effect.id,time:effect.time,object:effect.object,...effect.extra
+    }}));
+    const dreadRow=JSON.stringify({buff:{__className:buffs+"Dread",id:91,time:20,left:8,object:321}});
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,buffCount:4,
+      buff_1:rows[0],buffCooldown_1:12,
+      buff_2:rows[1],buffCooldown_2:12,
+      buff_3:dreadRow,buffCooldown_3:11
+    });
+    const before=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:4,
+      buff_1:rows[0],buffCooldown_1:11,
+      buff_2:rows[1],buffCooldown_2:11,
+      buff_3:dreadRow,buffCooldown_3:11
+    });
+    const after=stateWithBuff(poison,44,10,{left:8},{
+      cooldown:1,buffCooldown_0:1,hp:9,buffCount:4,
+      buff_1:JSON.stringify({buff:{__className:buffs+"Charm",id:89,time:15,object:321,ignore_allies:false}}),
+      buffCooldown_1:6,
+      buff_2:JSON.stringify({buff:{__className:buffs+"Terror",id:90,time:15,object:321}}),
+      buffCooldown_2:6,
+      buff_3:JSON.stringify({buff:{__className:buffs+"Dread",id:91,time:20,left:3,object:321}}),
+      buffCooldown_3:11
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(true);
+
+    const forgedCharm=JSON.parse(JSON.stringify(after));
+    forgedCharm.buff_1=JSON.stringify({buff:{__className:buffs+"Charm",id:89,time:14,object:321,ignore_allies:false}});
+    forgedCharm.buffCooldown_1=5;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedCharm),tick(poison,44))).toBe(false);
+
+    const forgedDread=JSON.parse(JSON.stringify(after));
+    forgedDread.buff_3=JSON.stringify({buff:{__className:buffs+"Dread",id:91,time:20,left:3,object:999}});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedDread),tick(poison,44))).toBe(false);
+
+    const noDamage=JSON.parse(JSON.stringify(after));
+    noDamage.hp=10;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(noDamage),tick(poison,44))).toBe(false);
   });
 
   it("validates Wand.Charger against its exact owned Wand, native scale, and charge formula",()=>{

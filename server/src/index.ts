@@ -4177,6 +4177,57 @@ function isValidNativeBerserkTick(before: any, after: any, source: NativeHeroBuf
   return sameNativeItemValue(oldFields,newFields);
 }
 
+
+function isValidNativeDamageRecoveryBuffTransition(
+  before: NativeHeroBuffTickRow,
+  after: NativeHeroBuffTickRow | undefined
+): boolean {
+  const charm = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm";
+  const terror = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror";
+  const dread = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread";
+  if (before.className === charm || before.className === terror) {
+    // Char.damage() calls Charm/Terror.recover(), which spends exactly -5 turns and
+    // detaches the effect when its remaining cooldown reaches zero.
+    if (before.cooldown > 0 && before.cooldown <= 0.06) return false;
+    if (before.cooldown <= 5.0) return after === undefined;
+    if (before.cooldown < 5.06 || !after) return false;
+    const expectedTime = before.time - 5;
+    const expectedCooldown = before.cooldown - 5;
+    const oldFields = {...before.data}, newFields = {...after.data};
+    for (const fields of [oldFields,newFields]) {
+      delete fields.__className;
+      delete fields.id;
+      delete fields.time;
+    }
+    return after.className === before.className && after.id === before.id
+      && Math.abs(after.time-expectedTime) <= 0.06
+      && Math.abs(after.cooldown-expectedCooldown) <= 0.06
+      && sameNativeItemValue(oldFields,newFields);
+  }
+  if (before.className === dread) {
+    // Dread.recover() shortens its integer left counter by five without changing Actor.time.
+    const left = Number(before.data.left), object = Number(before.data.object);
+    if (!Number.isInteger(left) || left < 1 || left > 100000
+        || !Number.isInteger(object) || object < 0) return false;
+    const expectedLeft = left - 5;
+    if (expectedLeft <= 0) return after === undefined;
+    if (!after) return false;
+    const oldFields = {...before.data}, newFields = {...after.data};
+    for (const fields of [oldFields,newFields]) {
+      delete fields.__className;
+      delete fields.id;
+      delete fields.left;
+    }
+    return after.className === before.className && after.id === before.id
+      && Math.abs(after.time-before.time) <= 0.06
+      && Math.abs(after.cooldown-before.cooldown) <= 0.06
+      && Number(after.data.left) === expectedLeft
+      && Number(after.data.object) === object
+      && sameNativeItemValue(oldFields,newFields);
+  }
+  return false;
+}
+
 /** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
 export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
   afterValue: unknown, dataValue: unknown, levelValue?: unknown): boolean {
@@ -4274,17 +4325,23 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     .map(row=>[row.className+"#"+row.id,row]));
   if (!source || !prior || source.bundle !== prior.bundle
       || (buffClass!==NATIVE_WAND_CHARGER && before.state.inventoryBundle !== after.state.inventoryBundle)) return false;
-  // Char.damage() natively removes Frost and MagicalSleep before resolving resistance
-  // and shields. Permit only these two removals during a damage-producing Hunger/Poison
-  // tick; every other pre-existing buff must remain byte-for-byte and cooldown-identical.
+  // Char.damage() natively recovers Terror/Dread/Charm and removes Frost/MagicalSleep
+  // before resolving resistance and shields. Admit only their exact callback transitions
+  // during a damage-producing Hunger/Poison tick; all other effects stay immutable.
   const drowsyTick = buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy";
   const magicalSleepClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep";
   for (const [otherKey,row] of beforeOtherRows) {
     const next = afterOtherRows.get(otherKey);
     if (next) {
-      if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) return false;
+      if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) {
+        if (!allowDamageSideEffectRemoval
+            || !isValidNativeDamageRecoveryBuffTransition(row,next)) return false;
+      }
     } else if (buffClass===NATIVE_BLOCK_BUFF && row.className===NATIVE_HOLD_FAST
         && Number(row.data.pos)!==Number(before.state.pos)) {
+      continue;
+    } else if (allowDamageSideEffectRemoval
+        && isValidNativeDamageRecoveryBuffTransition(row,undefined)) {
       continue;
     } else if (!allowDamageSideEffectRemoval || !damageSideEffectRemovals.has(row.className)) {
       return false;
