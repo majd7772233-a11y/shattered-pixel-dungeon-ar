@@ -2805,11 +2805,11 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(afterWellFed),tick(wellFed,22))).toBe(true);
 
-    const nextHunger=stateWithBuff(hunger,12,10,{level:201,partialDamage:0},{
-      cooldown:1,buffCooldown_0:1,buffCount:2,
-      buff_1:JSON.stringify({buff:{__className:wellFed,id:22,time:10,left:18}}),
-      buffCooldown_1:1,hp:11
-    });
+    const nextHunger:any=JSON.parse(JSON.stringify(afterWellFed));
+    nextHunger.buff_1=JSON.stringify({buff:{
+      __className:hunger,id:12,time:10,level:201,partialDamage:0
+    }});
+    nextHunger.buffCooldown_1=1;
     expect(isValidNativeHeroBuffTick(JSON.stringify(afterWellFed),JSON.stringify(afterWellFed),
       JSON.stringify(nextHunger),tick(hunger,12))).toBe(true);
 
