@@ -5316,7 +5316,7 @@ const NATIVE_MOB_SAFE_FLAVOUR_EXPIRY = new Set([
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Daze",
-  // Terror removal can change a fleeing Mob to HUNTING/WANDERING; it needs a separate AI-state contract.
+  "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.BlobImmunity",
   "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Hex",
@@ -5336,6 +5336,15 @@ function nativeMobBuffSnapshotMob(mob: any, actorClock: number, checkClock = tru
       || !Number.isFinite(time) || time < 0
       || Number(data.pos) !== Number(mob.pos)
       || Number(data.HP) !== Number(mob.hp) || Number(data.HT) !== Number(mob.ht)
+      || typeof data.seen !== "boolean" || data.seen !== (mob.enemySeen === true)
+      || !({
+        SLEEPING:"Sleeping", WANDERING:"Wandering", INVESTIGATING:"Investigating",
+        HUNTING:"Hunting", FLEEING:"Fleeing", PASSIVE:"Passive"
+      } as Record<string,string>)[String(data.state || "")]
+      || ({
+        SLEEPING:"Sleeping", WANDERING:"Wandering", INVESTIGATING:"Investigating",
+        HUNTING:"Hunting", FLEEING:"Fleeing", PASSIVE:"Passive"
+      } as Record<string,string>)[String(data.state || "")] !== String(mob.state || "")
       || !Array.isArray(nestedBuffs) || nestedBuffs.length !== mob.buffs.length
       || !Number.isFinite(Number(mob.cooldown)) || Number(mob.cooldown) < 0
       || (checkClock && Math.abs(Number(mob.cooldown)-Math.max(0,time-actorClock)) > 0.06)) return null;
@@ -5542,6 +5551,22 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
   const source = targetBefore.snapshot.buffs.get(sourceKey);
   if (!source || Math.abs(source.time-clock)>0.06 || targetAfter.snapshot.buffs.has(sourceKey)) return false;
 
+  const isTerrorExpiry = actorClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror";
+  let expectedTargetStateTag = String(targetBefore.snapshot.data.state || "");
+  let expectedTargetStateName = String(targetBefore.row.state || "");
+  if (isTerrorExpiry) {
+    const hasDread = Array.from(targetBefore.snapshot.buffs.values())
+      .some(row=>row.className==="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread");
+    if (hasDread) {
+      // Dread normally replaces Terror during attach; keep a defensive native no-transition branch.
+      if (expectedTargetStateTag==="FLEEING") return false;
+    } else if (expectedTargetStateTag==="FLEEING") {
+      const enemySeen = targetBefore.snapshot.data.seen === true;
+      expectedTargetStateTag = enemySeen ? "HUNTING" : "WANDERING";
+      expectedTargetStateName = enemySeen ? "Hunting" : "Wandering";
+    }
+  }
+
   for (const [entityId,before] of previousMobs) {
     const after = nextMobs.get(entityId);
     if (!after) return false;
@@ -5551,11 +5576,22 @@ export function isValidNativeMobBuffExpiryTurn(previous: any, next: any, trusted
       delete row.buffs;
       delete row.serializedBundle;
     }
+    if (isTerrorExpiry && entityId===targetEntityId) {
+      if (String(afterRow.state || "")!==expectedTargetStateName) return false;
+      delete beforeRow.state;
+      delete afterRow.state;
+    }
     if (!sameNativeItemValue(beforeRow,afterRow)) return false;
 
     const beforeMobData = {...before.snapshot.data}, afterMobData = {...after.snapshot.data};
     delete beforeMobData.buffs;
     delete afterMobData.buffs;
+    if (isTerrorExpiry && entityId===targetEntityId) {
+      if (String(afterMobData.state || "")!==expectedTargetStateTag
+          || afterMobData.seen!==beforeMobData.seen) return false;
+      delete beforeMobData.state;
+      delete afterMobData.state;
+    }
     if (!sameNativeItemValue(beforeMobData,afterMobData)) return false;
 
     const beforeBuffs = before.snapshot.buffs, afterBuffs = after.snapshot.buffs;

@@ -282,18 +282,18 @@ describe('Native level snapshot contract', () => {
       serializedBundle:JSON.stringify({buff:data}),
       cooldown:Math.max(0,Number(data.time)-clock)
     });
-    const mobRow = (clock:number,includeSource:boolean) => {
+    const mobRow = (clock:number,includeSource:boolean,stateName="Hunting",stateTag="HUNTING",enemySeen=false) => {
       const nested = includeSource ? [buffData,unaffectedData] : [unaffectedData];
       const buffs = includeSource ? [buffRow(buffData,clock),buffRow(unaffectedData,clock)]
         : [buffRow(unaffectedData,clock)];
       const mobBundle = {mob:{__className:mobClass,id:targetMobId,time:mobTime,
-        pos:10,HP:10,HT:10,buffs:nested}};
+        state:stateTag,seen:enemySeen,pos:10,HP:10,HT:10,buffs:nested}};
       return {
         mobId:targetMobId,entityId,name:"Rat",pos:10,hp:10,ht:10,shielding:0,
         serializedBundle:JSON.stringify(mobBundle),buffs,
-        state:"Hunting",defenseSkill:5,baseSpeed:1,effectiveSpeed:1,
+        state:stateName,defenseSkill:5,baseSpeed:1,effectiveSpeed:1,
         cooldown:Math.max(0,mobTime-clock),targetCell:-1,targetType:"NONE",
-        targetEntityId:"",enemySeen:false,alerted:false
+        targetEntityId:"",enemySeen,alerted:false
       };
     };
     const heroState = (clock:number) => JSON.stringify({
@@ -540,9 +540,64 @@ describe('Native level snapshot contract', () => {
       malformedRemoteGraph.heroState)).toBe(false);
   });
 
-  it("rejects Mob Terror expiry until its native FLEEING AI-state callback is validated",()=>{
-    const terror = makeNativeMobBuffTurn("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror");
-    expect(isValidNativeWorldTurnSnapshot(terror.previous,terror.next,0,1,terror.heroState)).toBe(false);
+  it("validates Mob Terror expiry and the exact FLEEING-to-HUNTING/WANDERING native callback",()=>{
+    const terrorClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror";
+    const mutateAi=(row:any,stateName:string,stateTag:string,enemySeen:boolean)=>{
+      const root=JSON.parse(row.serializedBundle);
+      root.mob.state=stateTag;
+      root.mob.seen=enemySeen;
+      row.serializedBundle=JSON.stringify(root);
+      row.state=stateName;
+      row.enemySeen=enemySeen;
+    };
+
+    for (const [enemySeen,expectedName,expectedTag] of [
+      [true,"Hunting","HUNTING"],
+      [false,"Wandering","WANDERING"]
+    ] as Array<[boolean,string,string]>) {
+      const fixture=makeNativeMobBuffTurn(terrorClass);
+      mutateAi(fixture.previous.mobs[0],"Fleeing","FLEEING",enemySeen);
+      mutateAi(fixture.next.mobs[0],expectedName,expectedTag,enemySeen);
+      expect(isValidNativeWorldTurnSnapshot(fixture.previous,fixture.next,0,1,
+        fixture.heroState)).toBe(true);
+
+      const unrelatedState=JSON.parse(JSON.stringify(fixture.next));
+      mutateAi(unrelatedState.mobs[0],enemySeen?"Wandering":"Hunting",
+        enemySeen?"WANDERING":"HUNTING",enemySeen);
+      expect(isValidNativeWorldTurnSnapshot(fixture.previous,unrelatedState,0,1,
+        fixture.heroState)).toBe(false);
+
+      const changedVisibility=JSON.parse(JSON.stringify(fixture.next));
+      changedVisibility.mobs[0].enemySeen=!enemySeen;
+      const changedBundle=JSON.parse(changedVisibility.mobs[0].serializedBundle);
+      changedBundle.mob.seen=!enemySeen;
+      changedVisibility.mobs[0].serializedBundle=JSON.stringify(changedBundle);
+      expect(isValidNativeWorldTurnSnapshot(fixture.previous,changedVisibility,0,1,
+        fixture.heroState)).toBe(false);
+    }
+
+    const hunting=makeNativeMobBuffTurn(terrorClass);
+    mutateAi(hunting.previous.mobs[0],"Hunting","HUNTING",true);
+    mutateAi(hunting.next.mobs[0],"Hunting","HUNTING",true);
+    expect(isValidNativeWorldTurnSnapshot(hunting.previous,hunting.next,0,1,
+      hunting.heroState)).toBe(true);
+
+    const fleeingDread=makeNativeMobBuffTurn(terrorClass);
+    const dreadClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread";
+    const dreadBefore={__className:dreadClass,id:57,time:12,left:15,object:4};
+    const dreadAfter={...dreadBefore};
+    const addDread=(row:any,data:any,clock:number)=>{
+      const mobRoot=JSON.parse(row.serializedBundle);
+      mobRoot.mob.buffs.push(data);
+      row.serializedBundle=JSON.stringify(mobRoot);
+      row.buffs.push({serializedBundle:JSON.stringify({buff:data}),cooldown:Math.max(0,data.time-clock)});
+    };
+    addDread(fleeingDread.previous.mobs[0],dreadBefore,4);
+    addDread(fleeingDread.next.mobs[0],dreadAfter,5);
+    mutateAi(fleeingDread.previous.mobs[0],"Fleeing","FLEEING",true);
+    mutateAi(fleeingDread.next.mobs[0],"Fleeing","FLEEING",true);
+    expect(isValidNativeWorldTurnSnapshot(fleeingDread.previous,fleeingDread.next,0,1,
+      fleeingDread.heroState)).toBe(false); // Native attach forbids simultaneous Dread + Terror.
   });
 
   it("rejects Mob Poison/LifeLink, early ticks, source retention and unrelated Mob changes",()=>{
