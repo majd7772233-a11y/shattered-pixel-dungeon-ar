@@ -67,7 +67,7 @@ At the pre-Batch-2 baseline there were 15 tracked Markdown files:
 | docs/multiplayer/COMPONENT_AND_FILE_MAP.md | Component responsibilities/change impact |
 | docs/multiplayer/AUTHORITATIVE_DATA_FLOWS.md | Native-to-server-to-client paths |
 | docs/multiplayer/BUILD_TEST_AND_CI.md | Build/test/deployment/CI evidence |
-| docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md | Temporary documentation batch tracker |
+
 
 Batch 2 adds:
 - ANDROID_NATIVE_INTEGRATION.md;
