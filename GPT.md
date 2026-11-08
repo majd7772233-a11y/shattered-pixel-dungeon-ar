@@ -3,6 +3,7 @@
 ## Phase 9 continuation checkpoint — 2026-11-08 (LifeLink Mob side effects)
 
 - Branch remains `multiplayer-framework-core-14118577486727081892`; no new branch and no `main` merge.
+- The LifeLink-to-Mob gate is limited to Poison ticks. Other supported timed Hero Buffs are not forced through Mob identity mapping merely because a LifeLink is active.
 - Native Poison Buff capture now snapshots the shared Mob set before `Poison.act()` and includes `secondaryMobDeltas` in the existing `SYNC_HERO_STATE`/`BUFF_TICK` action. The Java engine remains responsible for all split-damage formulas and callbacks.
 - Server validation binds each LifeLink `object` Actor ID to one unique stable Mob entity in the trusted level snapshot. Only linked entities can be included; they cannot move or heal; living results require matching native bundles and Mob Buff lists; death tombstones require the trusted pre-death bundle and validated heap result.
 - Only the designated level publisher may commit shared-Mob results. Non-publishers may publish only unlinked Poison ticks with an empty secondary delta; any LifeLink Poison tick requires the level publisher because native Actor IDs are process-local and cannot be safely mapped across devices. Accepted Mob deaths are removed from snapshot and SQL and receive the existing stable reward receipt.

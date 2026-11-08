@@ -9,6 +9,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -216,8 +217,10 @@ public final class NativeHeroBuffTickPublisher {
                 : "{\"complete\":true,\"deltas\":[]}";
         data.put("secondaryMobDeltas", secondaryMobDeltas);
 
+        // Use the same strict plain-JSON Map writer as native combat actions. LibGDX's
+        // generic Map serializer can emit runtime type wrappers that the Worker must reject.
         String requestId = manager.sendAction(NetworkActionType.SYNC_HERO_STATE,
-                new Json().toJson(data), after);
+                NativeCombatJson.strictWriter().toJson(new HashMap<>(data)), after);
         if (requestId == null || requestId.isEmpty()) {
             manager.requestResync(manager.getLastSequence());
         }

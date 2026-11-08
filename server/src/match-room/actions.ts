@@ -1244,8 +1244,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
               const isLevelPublisher = String(levelPublisherRow?.value || "") === session.playerId;
               const levelSize = Number(levelSnapshot?.width || 0) * Number(levelSnapshot?.height || 0);
-              const lifeLinkMobEntityIds = beforeHeroState && levelSnapshot
-                ? nativeHeroBuffLifeLinkMobEntityIds(data.heroStateBeforeJson, levelSnapshot) : null;
+              const isPoisonBuffTick = String(data?.buffClass || "")
+                === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+              const lifeLinkMobEntityIds = !isPoisonBuffTick ? []
+                : beforeHeroState && levelSnapshot
+                  ? nativeHeroBuffLifeLinkMobEntityIds(data.heroStateBeforeJson, levelSnapshot) : null;
               const secondaryMobPayload = lifeLinkMobEntityIds == null ? null
                 : parseAndValidateNativeLifeLinkMobDeltas(data.secondaryMobDeltas,
                     levelSnapshot?.mobs, lifeLinkMobEntityIds, levelSize, Number(levelSnapshot?.width || 0));

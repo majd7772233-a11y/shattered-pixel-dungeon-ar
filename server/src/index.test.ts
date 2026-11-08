@@ -2835,6 +2835,22 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(missingActor),level)).toBeNull();
   });
 
+  it("does not apply the LifeLink Mob-target gate to unrelated timed Hero Buff expiry",()=>{
+    const haste=buffs+"Haste", lifeLink=buffs+"LifeLink";
+    const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:20,object:7}});
+    const previous=stateWithBuff(haste,101,9,{},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:12
+    });
+    const before=stateWithBuff(haste,101,9,{},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:11
+    });
+    const after:any={...before,buffCount:1,buff_0:linkRow,buffCooldown_0:11};
+    delete after.buff_1;
+    delete after.buffCooldown_1;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(haste,101),{branch:0,locked:false},undefined)).toBe(true);
+  });
+
   it("accepts Poison damage through a mapped LifeLink only when the caller supplies the resolved Mob set",()=>{
     const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
     const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:9,object:7}});

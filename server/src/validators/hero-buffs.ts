@@ -750,9 +750,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     if (!beforeOtherRows.has(otherKey) && (!drowsyTick || row.className !== magicalSleepClass)) return false;
   }
 
-  // Poison invokes Char.damage() with Poison as the source, which can damage a linked
-  // character through LifeLink. That second target is not in this single-Hero result,
-  // so refuse this path until it has a multi-target native result contract.
+  // Poison may invoke Char.damage() on LifeLink targets. The caller must supply
+  // exactly the Mob identities resolved from this trusted Hero pre-state and level snapshot.
   const poisonLifeLinks = buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
     ? before.rows.filter(row=>row.className===NATIVE_LIFE_LINK) : [];
   if (poisonLifeLinks.length > 0) {

@@ -397,6 +397,7 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 
 ### Progress checkpoint — 2026-11-08 (LifeLink Mob side effects; Phase 9 remains OPEN)
 
+- LifeLink-to-Mob mapping is evaluated only for native Poison ticks; unrelated Hero Buff timers (for example Haste expiry) retain the existing source-specific path even when the Hero also has a LifeLink.
 - Added a native Poison tick capture of the pre-tick shared Mob set. The Java publisher sends a complete `secondaryMobDeltas` result alongside the existing Hero state; it does not calculate Poison damage itself, so SPD's original `Char.damage()`/LifeLink split, resistances, shields, death callbacks and actor ordering remain the source of truth.
 - The server resolves every `LifeLink.object` Actor ID in the trusted Hero pre-state to exactly one Mob row and stable server entity ID. It rejects LifeLinks to another Hero, unknown/stale Actors or non-Mob targets until those target classes have a complete multi-entity contract.
 - Secondary Mob deltas are accepted only for those exact linked identities, against the stored Mob pre-state, with no movement or healing. Live Mob results must contain a matching native Mob bundle (Actor ID/class/HP/HT/position and nested Buffs). Native death tombstones must carry the exact pre-death bundle, empty Buff list and a separately validated heap snapshot.
