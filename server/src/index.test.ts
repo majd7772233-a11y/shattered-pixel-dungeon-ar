@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
-  isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, parseAndValidateNativeLifeLinkMobDeltas,
+  isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds,
+  parseAndValidateNativeLifeLinkMobDeltas, parseAndValidateNativeLifeLinkMobDamageEvidence,
   isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeMobBuffExpiryTurn, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable } from './index';
@@ -5646,5 +5647,113 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
     expect(areNativeMobRewardClaimsAvailable(first, ["another-reward"])).toBe(true);
     expect(areNativeMobRewardClaimsAvailable(["same-reward", "same-reward"], [])).toBe(false);
     expect(areNativeMobRewardClaimsAvailable(null, [])).toBe(false);
+  });
+});
+
+
+describe("Native Poison LifeLink Mob event correlation", () => {
+  const poisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+  const linkClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
+  const ratClass = "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
+  const mobBundle = (id:number,hp:number) => JSON.stringify({mob:{
+    __className:ratClass,id,time:9,HP:hp,HT:20,pos:25,buffs:[]
+  }});
+  const heroWithLink = () => ({
+    hp:10,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
+    inventoryBundle:"native-inventory",inventoryItemsJson:"[]",quickslotsJson:"[]",
+    notesBundle:"notes",questStateBundle:"quests",ankhCount:0,blessedAnkhCount:0,
+    cooldown:1,combatBundle:JSON.stringify({time:10,STR:10,items:"native-inventory",buffs:[]}),
+    buffCount:1,
+    buff_0:JSON.stringify({buff:{__className:linkClass,id:45,time:9,object:7}}),
+    buffCooldown_0:0
+  });
+  const makeEvidence = (hpAfter=18, dead=false) => {
+    const entityId="linked-mob-stable-0001";
+    const before=mobBundle(7,20);
+    const afterEvidence=mobBundle(7,hpAfter);
+    const delta:any={
+      entityId,actorId:7,
+      hpBefore:20,htBefore:20,posBefore:25,shieldBefore:0,buffsBefore:"[]",
+      hpAfter,htAfter:20,posAfter:25,shieldAfter:0,buffsAfter:"[]",
+      serializedBundleBefore:before,
+      serializedBundleAfter:dead?before:afterEvidence
+    };
+    const currentMobs=dead?[]:[{
+      mobId:7,entityId,hp:hpAfter,ht:20,pos:25,shielding:0,buffs:[],
+      serializedBundle:afterEvidence
+    }];
+    const heaps:any[]=dead?[{pos:25,items:[]}]:[];
+    const eventPayload:any={
+      targetId:entityId,targetType:"MOB",
+      targetHpBefore:20,targetHtBefore:20,targetHp:hpAfter,targetHt:20,
+      targetPosBefore:25,targetPosAfter:25,targetShieldBefore:0,targetShieldAfter:0,
+      targetBuffsBefore:"[]",targetBuffs:"[]",
+      targetMobBundleAfter:dead?null:afterEvidence,
+      nativeActorId:7,nativeMobBundleBefore:before,
+      nativeMobBundleAfterEvidence:afterEvidence,
+      sourceType:"ENVIRONMENT",sourceClass:poisonClass,engineResolved:true,
+      ...(dead?{heaps}:{})
+    };
+    const event={sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",payload:JSON.stringify(eventPayload)};
+    const payload={complete:true,deltas:[delta],...(dead?{heaps}:{})};
+    return {payload,currentMobs,heaps,event,eventPayload};
+  };
+
+  it("extracts unique native LifeLink Actor IDs and resolves a removed Mob from its accepted death event",()=>{
+    const hero=heroWithLink();
+    expect(nativeHeroBuffLifeLinkMobActorIds(JSON.stringify(hero))).toEqual([7]);
+    const duplicate={...hero,buffCount:2,
+      buff_1:JSON.stringify({buff:{__className:linkClass,id:46,time:9,object:7}}),
+      buffCooldown_1:0};
+    expect(nativeHeroBuffLifeLinkMobActorIds(JSON.stringify(duplicate))).toBeNull();
+    const sample=makeEvidence(0,true);
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(hero),{mobs:[]},[sample.event]))
+      .toEqual(["linked-mob-stable-0001"]);
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(hero),{mobs:[]},[])).toBeNull();
+  });
+
+  it("accepts a live Mob only when its post-state is already committed in the trusted snapshot",()=>{
+    const sample=makeEvidence();
+    const result=parseAndValidateNativeLifeLinkMobDamageEvidence(
+      sample.payload,sample.currentMobs,[7],[sample.event],sample.heaps,64,8,10,"publisher");
+    expect(result?.deltas).toHaveLength(1);
+    expect(sample.currentMobs[0].hp).toBe(18);
+    expect(sample.currentMobs[0].serializedBundle).toBe(mobBundle(7,18));
+  });
+
+  it("accepts a death only when the Mob is already absent and the final heaps match",()=>{
+    const sample=makeEvidence(0,true);
+    const result=parseAndValidateNativeLifeLinkMobDamageEvidence(
+      sample.payload,sample.currentMobs,[7],[sample.event],sample.heaps,64,8,10,"publisher");
+    expect(result?.deltas[0].hpAfter).toBe(0);
+    expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
+      sample.payload,sample.currentMobs,[7],[sample.event],[],64,8,10,"publisher")).toBeNull();
+    const alteredHeaps=[{pos:26,items:[]}];
+    const alteredEvent={...sample.event,payload:JSON.stringify({...sample.eventPayload,heaps:alteredHeaps})};
+    expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
+      {...sample.payload,heaps:alteredHeaps},sample.currentMobs,[7],[alteredEvent],
+      alteredHeaps,64,8,10,"publisher")).toBeNull();
+  });
+
+  it("rejects duplicate, stale, foreign, unlinked, and forged event evidence",()=>{
+    const sample=makeEvidence();
+    const parse=(payload:any=sample.payload,events:any[]=[sample.event],actors:number[]=[7],baseline=10,sender="publisher")=>
+      parseAndValidateNativeLifeLinkMobDamageEvidence(
+        payload,sample.currentMobs,actors,events,sample.heaps,64,8,baseline,sender);
+    expect(parse(sample.payload,[sample.event,sample.event])).toBeNull();
+    expect(parse(sample.payload,[{...sample.event,sequence:10}])).toBeNull();
+    expect(parse(sample.payload,[{...sample.event,sender_id:"another-publisher"}])).toBeNull();
+    expect(parse(sample.payload,[sample.event],[8])).toBeNull();
+    expect(parse({complete:true,deltas:[{...sample.payload.deltas[0],serializedBundleBefore:mobBundle(8,20)}]})).toBeNull();
+    expect(parse(sample.payload,[{...sample.event,payload:JSON.stringify({
+      ...sample.eventPayload,nativeMobBundleBefore:mobBundle(8,20)
+    })}])).toBeNull();
+  });
+
+  it("rejects a matching event when the current Mob snapshot still contains the pre-damage state",()=>{
+    const sample=makeEvidence();
+    const staleMobs=[{...sample.currentMobs[0],hp:20,serializedBundle:mobBundle(7,20)}];
+    expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
+      sample.payload,staleMobs,[7],[sample.event],sample.heaps,64,8,10,"publisher")).toBeNull();
   });
 });
