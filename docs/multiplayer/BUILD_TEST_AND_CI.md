@@ -161,3 +161,12 @@ Stage 2 separates the MatchRoom implementation into `server/src/match-room/` int
 | Deployment/device evidence | No live Worker deployment or physical multiplayer test claimed |
 
 A green branch CI run does not mean the Worker was deployed or a live room was tested.
+
+
+## 6.3 Worker entry integration and Stage 3 parity
+
+Stage 3 keeps `server/wrangler.jsonc`'s `main: src/index.ts` stable while moving the default request router into `server/src/worker.ts`. The root facade re-exports the default handler and retains all original named validator/helper exports plus `MatchRoom`. `server/src/entrypoint.test.ts` checks room routing, exact Request forwarding, `DEFAULT_ROOM` fallback, the non-room information response and the root Durable Object export.
+
+The source-preservation audit reconciled all 200 original top-level declarations before the original `MatchRoom` class against the 15 destination modules using normalized declaration-text comparisons: 200/200 matched without text differences. The 118 historical validator/protocol/helper exports and the `MatchRoom` named export remain available. The separate Stage 2 inheritance chain still contains a single `MatchRoom` class and shares one Durable Object instance.
+
+The exact-final-HEAD CI gate must pass both jobs after the documentation commit: Backend TypeScript build/full tests (including schema validation) and Android JVM tests/debug APK compilation. A green workflow is not a live Worker deployment or a physical-device multiplayer result. The deploy workflow remains scoped to `master`/`main` pushes or manual dispatch.
