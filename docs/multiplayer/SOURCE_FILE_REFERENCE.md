@@ -151,15 +151,15 @@ For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Batch 2 
 
 BluetoothTransport provider registration and runtime permissions remain open. See ANDROID_NATIVE_INTEGRATION.md and Phase 16.
 
-## 7. Backend file inventory after source-refactor Stage 1
+## 7. Backend file inventory after the three-stage source refactor
 
-`server/src/index.ts` remains the official Cloudflare Worker entry and compatibility facade; it re-exports `MatchRoom`, whose single class definition is now in `server/src/match-room/index.ts`. Its original public named exports are preserved. The moved implementations are under:
+`server/src/index.ts` remains the official 35-line Cloudflare Worker entry and compatibility facade; it re-exports the default router from `server/src/worker.ts`, all original public named exports, and `MatchRoom`, whose single class definition is in `server/src/match-room/index.ts`. Its moved implementations are under:
 
 - `server/src/protocol/types.ts`;
 - `server/src/validators/` — entity identity, floor transitions, equipment, item state, abilities, shop, world actions, inventory claims/economy, world items, Hero buffs, world state and combat state;
 - `server/src/util/seeded-rng.ts`.
 
-The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. The final `MatchRoom` class is in `server/src/match-room/index.ts`; the root `index.ts` keeps the original Worker main and default fetch. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged. Historical sizes: 3,635 lines after Stage 1; current root `index.ts` is 51 lines after Stage 2.
+The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. `server/src/entrypoint.test.ts` covers Worker routing through the root facade. The Worker handler is in `server/src/worker.ts`; the root `index.ts` keeps the original Wrangler main path and re-exports the default handler. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged. Historical sizes: 3,635 lines after Stage 1; 51 lines after Stage 2; 35 lines after Stage 3.
 
 
 
@@ -168,15 +168,15 @@ server/ contains:
 - tsconfig.json;
 - wrangler.jsonc;
 - scripts/validate-phase7-native-mutation-schema.mjs;
-- src/index.ts (Worker entry + compatibility facade);
+- src/index.ts (35-line Worker entry + compatibility facade);\n- src/worker.ts (default Worker request router);
 - src/match-room/ (base, persistence, combat, snapshots, actions, messages, final MatchRoom class);
 - src/protocol/types.ts;
 - src/validators/ (14 domain modules);
 - src/util/seeded-rng.ts;
 - src/index.test.ts;
-- src/native-pickup-side-effect.test.ts.
+- src/native-pickup-side-effect.test.ts;\n- src/entrypoint.test.ts (Worker root-entry/routing integration).
 
-`server/src/index.ts` is the Worker entry and compatibility facade; the complete MatchRoom class lives in `server/src/match-room/index.ts`. Pure validator implementations live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
+`server/src/index.ts` is the Worker entry and compatibility facade; `server/src/worker.ts` owns default request routing; the complete `MatchRoom` class lives in `server/src/match-room/index.ts`. Pure validator implementations live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
 
 ## 8. Protocol and automation files
 
@@ -226,10 +226,13 @@ The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from spl
 - **State:** complete for source extraction and automated acceptance. Exact source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`; [CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed Backend typecheck/tests and Android JVM/debug APK compile.
 
 ### Stage 3 — Worker integration and parity
-- Complete remaining Worker routing/entry integration; remove transitional glue only when proven unused.
-- Reconcile every moved declaration with the original source inventory.
+- Relocate the unchanged default Worker request handler to `server/src/worker.ts` and retain `server/src/index.ts` as Wrangler's stable 35-line main and compatibility facade.
+- Add `server/src/entrypoint.test.ts` to exercise root exports, room routing, exact Request forwarding, default-room fallback and the non-room response.
+- Reconcile all 200 original declarations before `MatchRoom` to the 15 owner modules; normalized text comparison found 200/200 matches without differences.
+- Preserve all 118 original validator/protocol/helper named exports and the named `MatchRoom` export (119 named exports total).
 - Recheck Java/client call sites, schema, tests, Wrangler, workflows, deployment docs and import/export compatibility.
 - Keep Hero.java, Mob.java and WorldSnapshot.java untouched throughout.
+- **State:** implementation and parity audit complete; final acceptance remains gated on exact-final-HEAD Backend and Android CI.
 
 These stages are source organization only. They do not change or renumber gameplay phases 1–23.
 
