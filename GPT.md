@@ -21,18 +21,18 @@
 - **No deployment/device claim:** no live Worker smoke test and no physical two-device multiplayer session is claimed. The deploy workflow remains limited to `master`/`main` pushes or manual dispatch.
 - **Gameplay status is unchanged:** gameplay Phases 1–8 remain complete for implementation/automated acceptance; Phase 9 remains open/in progress; Phases 10–23 remain open. The three source-refactor stages are separate from gameplay phases.
 
-## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
+## Historical documentation foundation checkpoint — 2026-11-08 (superseded source-layout observations; READ WITH THE CURRENT CODE)
 
 - **Audit branch HEAD:** 1c48f0e5c70c9e774a3931ee08e332c7c79d8220; this is a documentation-only descendant of gameplay code SHA b9ad0739d10d6a4125fb6ea084d6d072b2699810.
 - **Exact-HEAD validation:** [GitHub Actions run 41490481958](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41490481958) succeeded.
 - **Phase status is unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 in progress and incomplete; phases 10–23 open. No Worker deployment smoke test or physical two-device match is claimed.
 - **Batch 1 documentation:** start at docs/multiplayer/README.md, then use the architecture, file map, data-flow, and build/CI pages. These describe source as inspected at the audit HEAD.
-- **Temporary documentation tracker:** docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md records two documentation batches. It is not a gameplay phase and must be removed after Batch 2.
+- **Historical temporary documentation tracker:** `docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md` coordinated the original documentation batches and source refactor; it has been retired after the permanent architecture/status was transferred into README.md, GPT.md, ROADMAP.md and SOURCE_FILE_REFERENCE.md.
 - **Important audit findings:** the multiplayer package contains 32 Java files; server/src/index.ts is a 10,095-line combined validator/Worker/Durable Object implementation; MessageRouter still has a default route to RemotePlayerActionReceiver; the deploy workflow only auto-deploys master/main server changes or manual dispatch. Inspect current source before relying on any description.
 - **No gameplay source was changed by this documentation foundation.** The exact tested gameplay SHA remains the parent listed above.
 
 
-## Batch 2 documentation checkpoint — 2026-11-08 (CURRENT DOCUMENTATION STATE)
+## Historical Batch 2 documentation checkpoint — 2026-11-08 (source-layout observations superseded by Stage 3)
 
 - **Branch:** multiplayer-framework-core-14118577486727081892.
 - **Documentation parent/source baseline:** eb2075b3f09ca4779773140b7e6539a6655f6824.
@@ -44,7 +44,7 @@
 - **Historical large-source findings at the Batch 2 baseline:** server/src/index.ts was 658,825 bytes / 10,095 lines; Hero.java 117,061 bytes; WorldSnapshot.java 83,795; MessageRouter.java 68,021; Mob.java 66,010; GameScene.java 60,874; Level.java 55,788; MultiplayerManager.java 30,457. The user-protected Hero.java, Mob.java and WorldSnapshot.java remain untouched.
 - **Android Bluetooth gap:** AndroidBluetoothProvider exists, but no provider registration was found in the inspected AndroidLauncher/AndroidPlatformSupport path or indexed repository search; BluetoothTransport reports connected in its null-provider fallback; the inspected Android manifest has no Bluetooth permission declarations. Treat Phase 16 as open and keep the UX honest until fixed and device-tested.
 - **Server/protocol findings:** Worker webSocketMessage explicitly handles RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT. MessageRouter default cases still route to RemotePlayerActionReceiver. See PROTOCOL_MESSAGE_CATALOG.md.
-- **Next project action:** no gameplay phase change is authorized by this docs request. Source-refactor Stage 1 is complete at `4119263d9cc4dd5b230c551897b37dc4391417cf` (CI `42479978278`). Stage 2 is complete at `237577f1e8c68a3f052b36fcac64cd7efc07918d` (CI `42483052104`). Stage 3 is next: audit the Worker root/DO routing, declaration inventory, imports/exports, protocol/schema and Wrangler contract. Keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
+- **Historical next action at the Batch 2 checkpoint:** Stage 3 was then next. It is now implemented and recorded in the current source-refactor checkpoint at the top of this file; no gameplay phase status was changed. Keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
 
 ## Permanent execution rule from the user
 
@@ -163,8 +163,10 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ### Server, protocol and CI
 
-- `server/src/index.ts`: Cloudflare Worker/Durable Object room authority, SQL schema, sessions, snapshot/level storage, actions, event log, reconnect, broadcast/FOV and simplified mob movement. Read the whole affected method before changing it.
-- `server/src/index.test.ts`: current tests are mostly isolated examples and toy calculations; they do not yet exercise the actual Durable Object action lifecycle.
+- `server/src/index.ts`: 35-line stable Wrangler Worker main and compatibility facade; it re-exports historical named validators/types, `MatchRoom`, and the default handler from `server/src/worker.ts`.
+- `server/src/worker.ts`: default Cloudflare Worker router; it maps `/room/{roomCode}/...` to the `MATCH_ROOM` Durable Object stub and retains the non-room informational response.
+- `server/src/match-room/`: one `MatchRoom` Durable Object implementation split into seven inherited responsibility modules sharing the same state/SQLite instance.
+- `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts`: existing backend contract/validator suites remain on `./index`; `server/src/entrypoint.test.ts` adds direct Worker-handler routing regression tests. These tests still do not instantiate a deployed Cloudflare Durable Object runtime.
 - `server/package.json`, `server/tsconfig.json`, `server/wrangler.jsonc`: backend scripts/build/deployment configuration.
 - `protocol/schema.json`: protocol schema; it must match `MessageType` and actual payloads. The current schema includes `LEVEL_DATA`; native Mob full-snapshot AI/scheduler fields were synchronized with server preflight during the 2026-10-21 Phase 1 audit.
 - `.github/workflows/multiplayer-ci.yml`: on relevant pushes, runs backend dependency install/typecheck/tests and Android `assembleDebug`. Docs-only commits may not trigger it because of the path filters.
