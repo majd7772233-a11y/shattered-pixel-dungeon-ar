@@ -1,10 +1,10 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { NATIVE_ENDURE_ABILITY, isValidNativeAbilityIntent } from "../validators/abilities";
-import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, parseAndValidateNativeLifeLinkMobDeltas, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent } from "../validators/combat-state";
+import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, parseAndValidateNativeLifeLinkMobDeltas, parseAndValidateNativeLifeLinkMobDamageEvidence, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent } from "../validators/combat-state";
 import { assignStableEntityIds, resolveServerMobIdByEntityId } from "../validators/entity-identity";
 import { parseNativeQuickslotIndex, isValidNativeEquipmentIntent } from "../validators/equipment";
 import { isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallDestinationSnapshot, isPendingNativeFloorDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection } from "../validators/floor-transitions";
-import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
+import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds } from "../validators/hero-buffs";
 import { isValidNativeFloorItemIdentitySet, reserveNativeLootClaim, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, classifyNativeMutationLock } from "../validators/inventory-claims";
 import { sameNativeItemValue } from "../validators/inventory-economy";
 import { isValidNativeBuybackIntent, mergeNativeItemStatusState, isValidNativeUseItemIntent } from "../validators/item-state";
@@ -1149,6 +1149,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const mobRow = mobId == null ? [] : this.sql.exec(
               `SELECT hp, ht, pos FROM mobs WHERE mob_id = ? AND depth = ?`, mobId, this.currentDepth
             ).toArray();
+            // Preserve the trusted pre-event bundle before the accepted result mutates savedMob.
+            const nativeMobBundleBefore = String(savedMob?.serializedBundle || "");
             const delta = {
               entityId: data.entityId,
               hpBefore: data.hpBefore, htBefore: data.htBefore, posBefore: data.posBefore,
@@ -1204,6 +1206,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 targetShieldBefore: Number(data.shieldBefore), targetShieldAfter: Number(data.shieldAfter),
                 targetBuffsBefore: data.buffsBefore, targetBuffs: data.buffsAfter,
                 targetMobBundleAfter: Number(data.hpAfter) > 0 ? String(data.serializedBundleAfter) : null,
+                nativeActorId: Number(savedMob.mobId),
+                nativeMobBundleBefore,
+                nativeMobBundleAfterEvidence: String(data.serializedBundleAfter),
                 sourceType: "ENVIRONMENT", sourceClass: data.sourceClass,
                 engineResolved: true, ...(deadPositions.length > 0 ? { heaps: data.heaps } : {})
               };
@@ -1246,20 +1251,37 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const levelSize = Number(levelSnapshot?.width || 0) * Number(levelSnapshot?.height || 0);
               const isPoisonBuffTick = String(data?.buffClass || "")
                 === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+              const sequenceBefore = Number(data?.sequenceBefore);
+              const sequenceBeforeValid = Number.isSafeInteger(sequenceBefore)
+                && sequenceBefore >= 0 && sequenceBefore <= this.currentSequence;
+              // Only accepted Mob damage events after the publisher's captured baseline can
+              // prove a LifeLink side effect already committed by SYNC_MOB_STATE.
+              const lifeLinkMobDamageEvents = isPoisonBuffTick && sequenceBeforeValid
+                ? this.sql.exec(
+                    "SELECT sequence,sender_id,event_type,payload FROM events WHERE sequence > ? AND sender_id = ? AND event_type = 'CHAR_DAMAGED' ORDER BY sequence ASC LIMIT 513",
+                    sequenceBefore, session.playerId).toArray()
+                : [];
+              const lifeLinkMobActorIds = !isPoisonBuffTick ? []
+                : beforeHeroState ? nativeHeroBuffLifeLinkMobActorIds(data.heroStateBeforeJson) : null;
               const lifeLinkMobEntityIds = !isPoisonBuffTick ? []
-                : beforeHeroState && levelSnapshot
-                  ? nativeHeroBuffLifeLinkMobEntityIds(data.heroStateBeforeJson, levelSnapshot) : null;
-              const secondaryMobPayload = lifeLinkMobEntityIds == null ? null
-                : parseAndValidateNativeLifeLinkMobDeltas(data.secondaryMobDeltas,
-                    levelSnapshot?.mobs, lifeLinkMobEntityIds, levelSize, Number(levelSnapshot?.width || 0));
+                : (sequenceBeforeValid && lifeLinkMobActorIds !== null && levelSnapshot)
+                  ? nativeHeroBuffLifeLinkMobEntityIds(
+                      data.heroStateBeforeJson, levelSnapshot, lifeLinkMobDamageEvents) : null;
+              const secondaryMobPayload = !isPoisonBuffTick
+                ? parseAndValidateNativeLifeLinkMobDeltas(data.secondaryMobDeltas,
+                    levelSnapshot?.mobs, [], levelSize, Number(levelSnapshot?.width || 0))
+                : (sequenceBeforeValid && lifeLinkMobActorIds !== null && levelSnapshot)
+                  ? parseAndValidateNativeLifeLinkMobDamageEvidence(
+                      data.secondaryMobDeltas, levelSnapshot.mobs, lifeLinkMobActorIds,
+                      lifeLinkMobDamageEvents, levelSnapshot.heaps, levelSize,
+                      Number(levelSnapshot.width || 0), sequenceBefore, session.playerId)
+                  : null;
               const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
                 .filter((delta: any) => Number(delta.hpAfter) === 0)
                 .map((delta: any) => Number(delta.posAfter));
-              const secondaryLootValid = secondaryMobPayload != null
-                && (secondaryDeathPositions.length === 0
-                  ? secondaryMobPayload.heaps === undefined
-                  : isValidNativeLootSnapshot(secondaryMobPayload.heaps, levelSnapshot?.heaps,
-                      secondaryDeathPositions, levelSize));
+              // No Mob HP, SQL row, death, or heap write belongs in BUFF_TICK: the prior
+              // SYNC_MOB_STATE event already committed that result exactly once.
+              const secondaryLootValid = secondaryMobPayload != null;
               // Non-publishers may report a Poison tick with no shared Mob side effect, but may
               // not author a LifeLink Mob mutation. A changed shared Mob is committed only with
               // its exact complete native bundle and, on death, the matching loot snapshot.
@@ -1289,7 +1311,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 })
                 && secondaryLootValid && secondaryMobAuthority && secondaryRewardsUnclaimed
                 && isValidNativeHeroBuffTick(previousHeroRow.value, data.heroStateBeforeJson,
-                  payload.heroStateJson, data, levelSnapshot, lifeLinkMobEntityIds);
+                  payload.heroStateJson, data, levelSnapshot, lifeLinkMobEntityIds,
+                  lifeLinkMobDamageEvents);
               if (validHeroBuffTick) {
                 const storedHeroState = String(payload.heroStateJson);
                 this.sql.exec("UPDATE players SET hp = ? WHERE player_id = ?",
@@ -1297,38 +1320,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + session.playerId, storedHeroState);
 
-                if (secondaryMobPayload!.deltas.length > 0) {
-                  const deadEntityIds: string[] = [];
-                  for (const delta of secondaryMobPayload!.deltas) {
-                    const mobIndex = (levelSnapshot.mobs as any[]).findIndex(
-                      (mob: any) => String(mob?.entityId || "") === delta.entityId);
-                    if (mobIndex < 0) throw new Error("LifeLink secondary Mob missing from trusted snapshot");
-                    const savedMob = levelSnapshot.mobs[mobIndex];
-                    const mobId = Number(savedMob.mobId);
-                    savedMob.hp = Number(delta.hpAfter);
-                    savedMob.ht = Number(delta.htAfter);
-                    savedMob.pos = Number(delta.posAfter);
-                    savedMob.shielding = Number(delta.shieldAfter);
-                    savedMob.buffs = JSON.parse(String(delta.buffsAfter));
-                    savedMob.serializedBundle = String(delta.serializedBundleAfter);
-                    if (Number(delta.hpAfter) === 0) {
-                      deadEntityIds.push(delta.entityId);
-                      this.sql.exec("DELETE FROM mobs WHERE mob_id = ? AND depth = ?", mobId, this.currentDepth);
-                    } else {
-                      this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?",
-                        Number(delta.hpAfter), Number(delta.htAfter), Number(delta.posAfter), mobId, this.currentDepth);
-                    }
-                  }
-                  if (deadEntityIds.length > 0) {
-                    const removedMobIds = removeDeadNativeMobsFromSnapshot(levelSnapshot, deadEntityIds);
-                    if (!removedMobIds || removedMobIds.length !== deadEntityIds.length) {
-                      throw new Error("LifeLink secondary Mob death reconciliation failed");
-                    }
-                    levelSnapshot.heaps = secondaryMobPayload!.heaps;
-                  }
-                  this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                    `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
-                }
+                // Evidence was already committed by preceding SYNC_MOB_STATE events.
+                // Never mutate Mob SQL rows, deaths, levelSnapshot, or heaps in BUFF_TICK.
                 for (const rewardId of secondaryRewardIds || []) {
                   this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
                     rewardId, session.playerId, String(msg.requestId || ""), this.currentDepth);
