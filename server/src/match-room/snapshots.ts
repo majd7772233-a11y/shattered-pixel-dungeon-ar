@@ -1,7 +1,6 @@
 import type { SessionData } from "../protocol/types";
 import { isValidNativeHeroStateJson } from "../validators/combat-state";
 import { isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canFinalizeNativeFloorTransition } from "../validators/floor-transitions";
-import type { SessionData } from "../protocol/types";
 import { MatchRoomCombat } from "./combat";
 
 export class MatchRoomSnapshots extends MatchRoomCombat {

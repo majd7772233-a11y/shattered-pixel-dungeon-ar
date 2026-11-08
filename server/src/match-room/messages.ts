@@ -1,5 +1,4 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
-import type { NetworkMessage, SessionData } from "../protocol/types";
 import { MatchRoomActions } from "./actions";
 
 export class MatchRoomMessages extends MatchRoomActions {

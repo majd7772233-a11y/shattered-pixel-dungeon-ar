@@ -1,7 +1,6 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { mergeNativeCombatAttackerState } from "../validators/combat-state";
 import { canAbortNativeFloorTransition } from "../validators/floor-transitions";
-import type { SessionData } from "../protocol/types";
 import { MatchRoomPersistence } from "./persistence";
 
 export class MatchRoomCombat extends MatchRoomPersistence {

@@ -21,7 +21,7 @@
 - **Stage 2 extraction map:** `server/src/match-room/{base,persistence,combat,snapshots,actions,messages,index}.ts`. The root `server/src/index.ts` remains the Worker entry and compatibility facade.
 - **Preservation:** the original RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION branch bodies are moved into protected handler methods; the dispatcher awaits them inside the same outer parse/error boundary. The long ACTION body is kept intact as one ordered handler to avoid reordering its state mutations.
 - **Stage 2 status:** implementation committed; exact-HEAD CI pending.
-- **Initial CI repair:** the extraction of the final `broadcast` method also captured the old enclosing class brace; one surplus class-closing brace was removed from `match-room/base.ts`. No method body or runtime logic was changed. Do not begin Stage 3 until Backend and Android jobs pass.
+- **Initial CI repairs:** the extraction of the final `broadcast` method also captured the old enclosing class brace; one surplus class-closing brace was removed from `match-room/base.ts`. Static review then removed redundant type imports in combat, snapshots and messages modules. No method body or runtime logic was changed. Do not begin Stage 3 until Backend and Android jobs pass.
 
 ## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
 
