@@ -98,8 +98,8 @@ Batch 1 establishes the index, product overview, architecture, component/file ma
 - **Audit HEAD:** 1c48f0e5c70c9e774a3931ee08e332c7c79d8220 on multiplayer-framework-core-14118577486727081892.
 - **Parent gameplay code/test SHA:** b9ad0739d10d6a4125fb6ea084d6d072b2699810; exact-HEAD workflow [41490481958](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41490481958) succeeded for the documentation-only HEAD.
 - **Phase state unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 remains in progress/open; phases 10–23 remain open. No phase acceptance item was closed by this audit.
-- **Architecture audit:** the repository tree contains 1,956 tracked blobs; the core multiplayer package contains 32 Java files; server/src/index.ts is a 10,095-line combined validator/Worker/Durable Object module; MessageRouter still routes default message types to RemotePlayerActionReceiver; the deploy workflow does not auto-deploy the active multiplayer branch.
-- **Documentation:** Batch 1 references are under docs/multiplayer/; the temporary two-batch plan is docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md. These pages are descriptive and do not replace source verification.
+- **Historical architecture audit at baseline HEAD:** the repository tree contained 1,956 tracked blobs; the core multiplayer package contained 32 Java files; `server/src/index.ts` was a 10,095-line combined validator/Worker/Durable Object module before the separate Stage 1–3 source refactor. `MessageRouter` still routes default message types to `RemotePlayerActionReceiver`; the deploy workflow does not auto-deploy the active multiplayer branch.
+- **Documentation:** maintained references are indexed in `docs/multiplayer/README.md`; the temporary rollout tracker has been retired after its permanent architecture and source-refactor status were transferred into README.md, GPT.md and this roadmap.
 - **No gameplay code was changed by this audit.** Live Worker deployment and physical two-device play remain unverified and stay within Phases 22 and 23.
 
 
@@ -799,7 +799,7 @@ This is a separate source-organization effort. It does not create, renumber, clo
 
 ### Stage 1 — protocol types, pure validators and deterministic helpers
 
-Move the original type/helper/validator declarations and `SeededRNG` into focused `protocol/`, `validators/`, and `util/` modules. Keep `MatchRoom` and the default Worker fetch implementation in `index.ts`. Preserve every original named export through the facade so current tests and consumers do not need import-path changes. Do not change gameplay or wire behavior.
+Move the original type/helper/validator declarations and `SeededRNG` into focused `protocol/`, `validators/`, and `util/` modules. Keep the `MatchRoom` implementation in its single class module and the Worker default handler in its own router module; preserve every original named export through `index.ts` so current tests and consumers do not need import-path changes. Do not change gameplay or wire behavior.
 
 **State:** complete for Stage 1 extraction and automated acceptance. Exact-HEAD source commit `4119263d9cc4dd5b230c551897b37dc4391417cf`; [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed backend TypeScript build/tests and Android JVM tests/debug APK compile.
 
