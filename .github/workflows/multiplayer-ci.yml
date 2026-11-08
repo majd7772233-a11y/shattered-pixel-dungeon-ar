@@ -17,6 +17,7 @@ on:
       - 'ROADMAP.md'
       - 'GPT.md'
       - 'MULTIPLAYER_CONTINUATION_NOTES.md'
+      - 'docs/multiplayer/**'
   pull_request:
     paths:
       - 'core/**'
@@ -31,6 +32,7 @@ on:
       - 'ROADMAP.md'
       - 'GPT.md'
       - 'MULTIPLAYER_CONTINUATION_NOTES.md'
+      - 'docs/multiplayer/**'
 
 concurrency:
   group: multiplayer-validation-${{ github.ref }}

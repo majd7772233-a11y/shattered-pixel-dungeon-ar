@@ -62,7 +62,34 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 - Work on the named branch. Never merge into main unless explicitly instructed.
 - Update ROADMAP.md and GPT.md whenever implementation, phase status, architecture, risks or verification changes.
 
+## Documentation Governance — Continuous and Outside the Gameplay Phase Plan
+
+The multiplayer documentation set lives under docs/multiplayer/. It is not a new product subsystem and must not add, renumber, compress, or silently move any of the 23 gameplay phases.
+
+**Permanent rule: documentation is live and edit-level.** Every source, test, protocol, resource, build, workflow, or documentation edit—including a one-character correction, import, string, condition, fixture, rename, or deletion—must update every affected documentation reference in the same logical work unit. Keep GPT.md and ROADMAP.md synchronized whenever continuation state, phase scope/status, acceptance evidence, architecture, risk, dependency, or next action changes. Update the relevant deep-dive document at the same time; do not wait for phase completion.
+
+- GPT.md is the continuation checkpoint, user rules, verified findings, decisions, risks, exact tested SHA/CI evidence, and next action.
+- ROADMAP.md remains the sole authority for phase scope, dependencies, work-item checklists, acceptance criteria, and phase status.
+- docs/multiplayer/ explains product architecture, responsibilities, relationships, data flows, tests, and file impacts. It is a maintained reference, not executable truth.
+- The exact source tree at active HEAD is implementation truth. If a doc disagrees with code, verify behavior and correct the doc; never edit code by blindly trusting stale descriptions.
+- Read the index and relevant deep reference first, then reopen the actual target source, callers, and tests before editing.
+- Record every edit, even tiny changes, in the same change/session log. For multi-file edits, identify each path and its reason. Keep docs and implementation together in commits wherever possible.
+- After renames/deletions, repair inbound links and file-map entries before calling the task complete.
+- Batch 1 / Batch 2 is tracked temporarily in docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md. It is not a gameplay phase and must be deleted after Batch 2 is complete and permanent guidance is transferred to the index and GPT.md.
+
+Batch 1 establishes the index, product overview, architecture, component/file map, data flows, build/test/CI reference, and temporary rollout tracker. Batch 2 adds deep native integration, backend validation/storage, complete protocol catalog, test matrix, recovery/security operations, and expanded source-file reference. Do not mark a batch complete until files are committed, re-read at resulting HEAD, linked from the index, and applicable branch validation is checked.
+
 ## Current Verified Status
+
+### Documentation foundation audit — 2026-11-08 (documentation-only)
+
+- **Audit HEAD:** 1c48f0e5c70c9e774a3931ee08e332c7c79d8220 on multiplayer-framework-core-14118577486727081892.
+- **Parent gameplay code/test SHA:** b9ad0739d10d6a4125fb6ea084d6d072b2699810; exact-HEAD workflow [41490481958](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41490481958) succeeded for the documentation-only HEAD.
+- **Phase state unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 remains in progress/open; phases 10–23 remain open. No phase acceptance item was closed by this audit.
+- **Architecture audit:** the repository tree contains 1,956 tracked blobs; the core multiplayer package contains 32 Java files; server/src/index.ts is a 10,095-line combined validator/Worker/Durable Object module; MessageRouter still routes default message types to RemotePlayerActionReceiver; the deploy workflow does not auto-deploy the active multiplayer branch.
+- **Documentation:** Batch 1 references are under docs/multiplayer/; the temporary two-batch plan is docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md. These pages are descriptive and do not replace source verification.
+- **No gameplay code was changed by this audit.** Live Worker deployment and physical two-device play remain unverified and stay within Phases 22 and 23.
+
 
 ### Active continuation checkpoint — 2026-10-31
 
@@ -92,6 +119,8 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 
 
 ## Architecture Reference
+
+For maintained, source-grounded architecture and edit-impact guidance, start at docs/multiplayer/README.md, then read PROJECT_OVERVIEW.md, SYSTEM_ARCHITECTURE.md, COMPONENT_AND_FILE_MAP.md, AUTHORITATIVE_DATA_FLOWS.md, and BUILD_TEST_AND_CI.md. The deeper Batch 2 references are listed in the temporary rollout plan. These documents accelerate discovery but do not supersede source at active HEAD.
 
 - Native engine: Actor.java, Char.java, Hero.java, Mob.java, Level.java, Dungeon.java, GameScene.java.
 - Snapshot/reconciliation: multiplayer/SPDLevelSnapshot.java and multiplayer/WorldSnapshot.java.

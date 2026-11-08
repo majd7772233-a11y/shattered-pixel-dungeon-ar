@@ -2,6 +2,17 @@
 
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
+
+## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
+
+- **Audit branch HEAD:** 1c48f0e5c70c9e774a3931ee08e332c7c79d8220; this is a documentation-only descendant of gameplay code SHA b9ad0739d10d6a4125fb6ea084d6d072b2699810.
+- **Exact-HEAD validation:** [GitHub Actions run 41490481958](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41490481958) succeeded.
+- **Phase status is unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 in progress and incomplete; phases 10–23 open. No Worker deployment smoke test or physical two-device match is claimed.
+- **Batch 1 documentation:** start at docs/multiplayer/README.md, then use the architecture, file map, data-flow, and build/CI pages. These describe source as inspected at the audit HEAD.
+- **Temporary documentation tracker:** docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md records two documentation batches. It is not a gameplay phase and must be removed after Batch 2.
+- **Important audit findings:** the multiplayer package contains 32 Java files; server/src/index.ts is a 10,095-line combined validator/Worker/Durable Object implementation; MessageRouter still has a default route to RemotePlayerActionReceiver; the deploy workflow only auto-deploys master/main server changes or manual dispatch. Inspect current source before relying on any description.
+- **No gameplay source was changed by this documentation foundation.** The exact tested gameplay SHA remains the parent listed above.
+
 ## Permanent execution rule from the user
 
 
@@ -65,8 +76,12 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 15. **Avoid unrelated rewrites.** Respect the existing SPD architecture and the smallest coherent set of files needed for the phase. If a cross-cutting redesign is necessary, explain the concrete reason in the code/docs and keep it aligned with the roadmap.
 16. **Re-check the live state before resuming a phase.** A user request naming a phase does not prove it is still open. Compare the current roadmap, branch source and exact-SHA CI; if it is already complete, avoid duplicate code and explicitly record the verified state before moving to the next open phase, unless the user asks for a distinct follow-up.
 17. **Report mirrored tests honestly.** If `index.test.ts` and generated `index.test.js` execute mirrored cases, distinguish executions from unique source scenarios and do not describe the sum as unique tests.
+18. **Continuous live documentation, every edit.** Every source/test/protocol/config/build/workflow/resource/docs change—including a one-character change—must update the relevant reference and log immediately in the same logical work unit. Keep GPT.md and ROADMAP.md synchronized; update deep-dive pages whenever responsibilities, dependencies, data flows, test evidence, or paths change. Do not accumulate documentation debt until phase completion.
+19. **Document-first discovery, source-first editing.** Read the documentation index and relevant component/data-flow page before broad exploration, then verify the actual files/callers/tests at the active HEAD before changing code. Source is implementation truth; stale docs must be corrected, never blindly trusted. The Batch 2 tracker is temporary and must be removed after Batch 2 is completed.
 
 ## 3. Architecture Map — Read These Before Editing
+
+The maintained deep reference starts at docs/multiplayer/README.md. Read its source-of-truth and continuous-documentation contract, then consult PROJECT_OVERVIEW.md, SYSTEM_ARCHITECTURE.md, COMPONENT_AND_FILE_MAP.md, AUTHORITATIVE_DATA_FLOWS.md, and BUILD_TEST_AND_CI.md. The file map accelerates discovery but never replaces opening source at the active HEAD.
 
 ### Android / Java game engine
 
