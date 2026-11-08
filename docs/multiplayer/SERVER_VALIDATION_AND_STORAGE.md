@@ -43,7 +43,7 @@ The original validator declarations have been moved out of `server/src/index.ts`
 
 The grouping follows source cohesion and the observed helper dependencies. Some validator modules import shared helpers from other validator modules; imports are explicit. Do not create duplicate copies to avoid imports. The exact source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf` passed the full backend TypeScript build and test job plus Android JVM/debug-APK job in [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278).
 
-`server/src/index.ts` is now the stable Worker entry and compatibility facade only. It re-exports the original validator API and the final `MatchRoom` class from `server/src/match-room/index.ts`, and retains the default Worker fetch handler. The complete room implementation lives under `server/src/match-room/`. The existing `index.test.ts` and pickup side-effect test continue to import through `./index`; do not change callers merely to reflect internal moves. Original line ranges in sections 2–4 describe the pre-extraction baseline, not current line numbers.
+`server/src/index.ts` is now the stable 35-line Wrangler Worker entry and compatibility facade. It re-exports the original validator API and the final `MatchRoom` class from `server/src/match-room/index.ts`, plus the default handler from `server/src/worker.ts`. The Worker router lives in `worker.ts`; the room implementation lives under `server/src/match-room/`. Existing validator tests continue to import through `./index`; `entrypoint.test.ts` exercises the default route through that same facade. Original line ranges in sections 2–4 describe the pre-extraction baseline, not current line numbers.
 
 ## 2. Top-level validator domains
 
@@ -345,22 +345,22 @@ No Survival end condition appears in this method at the baseline. Mode descripto
 
 ## 10. Default Worker entry
 
-The default export fetch handler:
-- parses URL pathname;
-- for /room/{roomCode}/..., obtains the Durable Object namespace ID by roomCode;
-- delegates the request to that Durable Object stub;
-- otherwise returns a basic informational response.
+The default Worker fetch handler is implemented in `server/src/worker.ts` and re-exported unchanged by `server/src/index.ts`:
+- parses the URL pathname;
+- for `/room/{roomCode}/...`, obtains the Durable Object namespace ID by `roomCode` (or `DEFAULT_ROOM` when the segment is empty);
+- delegates the same Request object to that Durable Object stub;
+- otherwise returns the existing informational response.
 
-server/wrangler.jsonc binds MATCH_ROOM to the MatchRoom class and declares its SQLite Durable Object migration tag v1. The deploy workflow is separate from multiplayer branch validation.
+`server/wrangler.jsonc` still uses `src/index.ts` as `main`, binds `MATCH_ROOM` to the `MatchRoom` class and declares SQLite Durable Object migration tag `v1`. The deploy workflow is separate from multiplayer branch validation.
 
-## 11. Batch 3 boundary
+## 11. Historical documentation-batch boundary
 
-Batch 2 documents the existing monolith and its current behavior only. Batch 3 will separately inspect the feasibility of extracting validators, action domains, storage/repositories, session/WebSocket lifecycle and snapshot/transition coordination into smaller modules. No file is split or behavior changed by this document commit. The extraction design must account for imports, exports, test mocks, Wrangler entry points, storage compatibility, request serialization, module cycles and exact behavior parity. Discuss the proposed design before committing a large refactor.
+The earlier documentation batches described the pre-refactor monolith and are historical. The separate three-stage source refactor is now implemented: pure declarations are in focused protocol/validator/helper modules, the Durable Object uses the single shared-instance inheritance chain under `server/src/match-room/`, and the default Worker router is in `server/src/worker.ts`. The root `server/src/index.ts` remains the configured Worker entry and compatibility facade. The preservation audit and current ownership map below supersede any pre-extraction source-layout wording.
 
 
 ## 1.2 MatchRoom responsibility modules — Stage 2
 
-The Durable Object class is split into an internal inheritance chain. Only `server/src/match-room/index.ts` defines and exports the final `MatchRoom` class; the root `server/src/index.ts` re-exports the class for Wrangler's existing `class_name: MatchRoom` binding and retains the default Worker fetch handler.
+The Durable Object class is split into an internal inheritance chain. Only `server/src/match-room/index.ts` defines and exports the final `MatchRoom` class; the root `server/src/index.ts` re-exports the class for Wrangler's existing `class_name: MatchRoom` binding and re-exports the default Worker fetch handler from `server/src/worker.ts`.
 
 | Module | Responsibility | Preservation notes |
 |---|---|---|
@@ -374,7 +374,7 @@ The Durable Object class is split into an internal inheritance chain. Only `serv
 
 The only intended source changes are method relocation, changing internal `private` methods to `protected` where derived layers must call them, and replacing the monolithic message handler's four large branches with awaited handler calls. Message types, payload JSON, SQL mutations, request replay semantics, event/sequence behavior and Durable Object state ownership are not intentionally changed.
 
-The root Worker entry and `wrangler.jsonc` main/binding remain stable. Stage 3 owns remaining Worker-entry integration and the final declaration-by-declaration parity audit.
+The root Worker entry and `wrangler.jsonc` main/binding remain stable. Stage 3 moved the unchanged default request handler into `server/src/worker.ts`, added entrypoint integration regressions and completed declaration-by-declaration parity checks.
 
 
 ## 1.3 Stage 2 exact-HEAD verification
@@ -387,3 +387,11 @@ The final Stage 2 source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d` passed [
 | Android JVM tests and debug APK compile | Success |
 
 The 20 relocated MatchRoom method bodies and the four large WebSocket branch bodies were checked against the original Stage 2 parent source. The Worker default fetch body is retained. No Java sources, `protocol/schema.json`, `server/wrangler.jsonc`, SQLite schema or migration configuration were changed. This CI result is not a deployed Durable Object smoke test.
+
+## 1.4 Stage 3 Worker integration and parity audit
+
+- The original default Worker fetch implementation was relocated intact to `server/src/worker.ts`; the root `server/src/index.ts` remains the Wrangler `main` and re-exports that default handler.
+- `server/src/entrypoint.test.ts` verifies the root `MatchRoom` export, room-code routing through `MATCH_ROOM.idFromName/get`, forwarding the exact original Request, empty-code fallback to `DEFAULT_ROOM`, and the unchanged non-room information response.
+- The 200 original top-level declarations before `MatchRoom` were reconciled against the 15 destination modules; normalized declaration-text comparison found 200/200 matches and no text differences. All 118 original validator/protocol/helper exports plus the named `MatchRoom` export remain available.
+- The final class remains uniquely defined in `match-room/index.ts`. `wrangler.jsonc` still uses `src/index.ts`, binding `MATCH_ROOM`, class name `MatchRoom` and migration tag `v1`. No protocol/schema or Java source changes were needed.
+- This is source and automated-test evidence only; it is not a live Worker deployment, Durable Object runtime smoke test or physical multiplayer test.
