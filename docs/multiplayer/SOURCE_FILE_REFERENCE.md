@@ -194,7 +194,7 @@ server/ contains:
 
 The following sizes are historical source-baseline values. The approved three-stage source refactor is limited to `server/src/index.ts`. `Hero.java`, `Mob.java` and `WorldSnapshot.java` are explicitly protected and must remain unchanged; their rows below are inventory only.
 
-| File | Bytes | Why it is a Batch 3 candidate |
+| File | Historical bytes | Historical responsibility / current decision |
 |---|---:|---|
 | server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 moved the original validator/type/helper declarations; the file remains the Worker/MatchRoom entry and compatibility facade pending Stages 2–3 |
 | core/.../actors/hero/Hero.java | 117,061 | Protected by the user: do not split or modify as part of this work |
