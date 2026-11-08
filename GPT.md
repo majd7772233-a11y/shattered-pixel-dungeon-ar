@@ -3,7 +3,7 @@
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
 
-## Source refactor checkpoint — Stage 2/3 (2026-11-08; implementation commit pending CI)
+## Source refactor checkpoint — Stage 2/3 (2026-11-08; Stage 2 verified)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 - **Stage 1 source parent:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`.
@@ -20,8 +20,11 @@
 - **Stage 2 goal:** split MatchRoom into one inheritance chain of internal implementation layers (base state/broadcast; persistence; combat/visibility; snapshots/transitions; message/action handlers) while exporting exactly one Durable Object class named `MatchRoom`.
 - **Stage 2 extraction map:** `server/src/match-room/{base,persistence,combat,snapshots,actions,messages,index}.ts`. The root `server/src/index.ts` remains the Worker entry and compatibility facade.
 - **Preservation:** the original RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION branch bodies are moved into protected handler methods; the dispatcher awaits them inside the same outer parse/error boundary. The long ACTION body is kept intact as one ordered handler to avoid reordering its state mutations.
-- **Stage 2 status:** implementation committed; exact-HEAD CI pending.
-- **Initial CI repairs:** the extraction of the final `broadcast` method also captured the old enclosing class brace; one surplus class-closing brace was removed from `match-room/base.ts`. The next compile found duplicate protocol-type imports in `actions.ts` and missing type imports in the final `MatchRoom` module; imports were corrected without changing method bodies or runtime logic. Do not begin Stage 3 until Backend and Android jobs pass.
+- **Stage 2 implementation chain:** extraction `78e80177d9fb508f90c99879a0097e97c0fb929c`; class-boundary fix `0651fb1ab97cb6006d41f8916e7daa5fb8058fc7`; redundant import cleanup `92661b809a84cc524ee76ce092061a87855721c0`; protocol-type import fix `237577f1e8c68a3f052b36fcac64cd7efc07918d` (verified source SHA).
+- **Preservation audit:** 20 original MatchRoom method bodies were found intact in the new modules (visibility adjusted to protected where inheritance requires it); RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION original branch bodies matched the extracted handlers. The default Worker tail is preserved exactly. The root `server/src/index.ts` is now 51 lines, keeps all original validator re-exports, re-exports the single `MatchRoom` class and retains the default Worker fetch.
+- **Exact-HEAD verification:** [GitHub Actions run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed on `237577f1e8c68a3f052b36fcac64cd7efc07918d`: Backend TypeScript build/tests and Android JVM tests/debug APK compile both succeeded.
+- **Stage 2 status:** complete for source extraction and automated acceptance. No Worker deployment smoke test or physical two-device test is claimed.
+- **Initial CI repairs:** the extraction of the final `broadcast` method also captured the old enclosing class brace; one surplus class-closing brace was removed from `match-room/base.ts`. Intermediate compiles exposed duplicate/missing protocol-type imports; those were corrected without changing method bodies or runtime logic. The final exact-HEAD workflow above is green.
 
 ## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
 
@@ -43,10 +46,10 @@
 - **Batch 2 documents:** ANDROID_NATIVE_INTEGRATION.md, SERVER_VALIDATION_AND_STORAGE.md, PROTOCOL_MESSAGE_CATALOG.md, TEST_MATRIX.md, SESSION_RECOVERY_AND_SECURITY.md and SOURCE_FILE_REFERENCE.md under docs/multiplayer/.
 - **Verified current phase state unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 in progress/open; phases 10–23 open. No deployed Worker smoke test or physical two-device multiplayer match is claimed.
 - **Test inventory:** server/src/index.test.ts has 57 describe groups and 277 test declarations; server/src/native-pickup-side-effect.test.ts has 3. NativeCombatRuntimeIntegrationTest.java has 46 @Test methods; five other multiplayer JVM classes contribute 19 more (65 methods across six multiplayer JVM test files). Mirrored TypeScript/JavaScript test executions must not be described as unique scenarios.
-- **Large-source findings reserved for Batch 3:** server/src/index.ts is 658,825 bytes / 10,095 lines; Hero.java 117,061 bytes; WorldSnapshot.java 83,795; MessageRouter.java 68,021; Mob.java 66,010; GameScene.java 60,874; Level.java 55,788; MultiplayerManager.java 30,457. The source files and tests were not split in Batch 2.
+- **Historical large-source findings at the Batch 2 baseline:** server/src/index.ts was 658,825 bytes / 10,095 lines; Hero.java 117,061 bytes; WorldSnapshot.java 83,795; MessageRouter.java 68,021; Mob.java 66,010; GameScene.java 60,874; Level.java 55,788; MultiplayerManager.java 30,457. The user-protected Hero.java, Mob.java and WorldSnapshot.java remain untouched.
 - **Android Bluetooth gap:** AndroidBluetoothProvider exists, but no provider registration was found in the inspected AndroidLauncher/AndroidPlatformSupport path or indexed repository search; BluetoothTransport reports connected in its null-provider fallback; the inspected Android manifest has no Bluetooth permission declarations. Treat Phase 16 as open and keep the UX honest until fixed and device-tested.
 - **Server/protocol findings:** Worker webSocketMessage explicitly handles RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT. MessageRouter default cases still route to RemotePlayerActionReceiver. See PROTOCOL_MESSAGE_CATALOG.md.
-- **Next project action:** no gameplay phase change is authorized by this docs request. Source-refactor Stage 1 is complete at `4119263d9cc4dd5b230c551897b37dc4391417cf` with exact-HEAD CI run `42479978278` green. Stage 2 is the next source-only task; keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
+- **Next project action:** no gameplay phase change is authorized by this docs request. Source-refactor Stage 1 is complete at `4119263d9cc4dd5b230c551897b37dc4391417cf` (CI `42479978278`). Stage 2 is complete at `237577f1e8c68a3f052b36fcac64cd7efc07918d` (CI `42483052104`). Stage 3 is next: audit the Worker root/DO routing, declaration inventory, imports/exports, protocol/schema and Wrangler contract. Keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
 
 ## Permanent execution rule from the user
 

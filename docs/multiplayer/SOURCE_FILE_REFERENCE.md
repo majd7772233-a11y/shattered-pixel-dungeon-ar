@@ -153,13 +153,13 @@ BluetoothTransport provider registration and runtime permissions remain open. Se
 
 ## 7. Backend file inventory after source-refactor Stage 1
 
-`server/src/index.ts` remains the official Cloudflare Worker entry, `MatchRoom` class owner and compatibility facade. Its original public named exports are preserved. The moved implementations are under:
+`server/src/index.ts` remains the official Cloudflare Worker entry and compatibility facade; it re-exports `MatchRoom`, whose single class definition is now in `server/src/match-room/index.ts`. Its original public named exports are preserved. The moved implementations are under:
 
 - `server/src/protocol/types.ts`;
 - `server/src/validators/` — entity identity, floor transitions, equipment, item state, abilities, shop, world actions, inventory claims/economy, world items, Hero buffs, world state and combat state;
 - `server/src/util/seeded-rng.ts`.
 
-The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. MatchRoom remains in `server/src/index.ts` until Stage 2. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged. On the verified Stage 1 HEAD, `index.ts` is 3,635 lines / 254,668 bytes; it retains the whole MatchRoom class and default Worker fetch implementation.
+The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. The final `MatchRoom` class is in `server/src/match-room/index.ts`; the root `index.ts` keeps the original Worker main and default fetch. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged. Historical sizes: 3,635 lines after Stage 1; current root `index.ts` is 51 lines after Stage 2.
 
 
 
@@ -176,7 +176,7 @@ server/ contains:
 - src/index.test.ts;
 - src/native-pickup-side-effect.test.ts.
 
-`server/src/index.ts` is the Worker entry and compatibility facade, while the complete MatchRoom class and default Worker fetch remain there until later stages. Pure validator implementations now live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
+`server/src/index.ts` is the Worker entry and compatibility facade; the complete MatchRoom class lives in `server/src/match-room/index.ts`. Pure validator implementations live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
 
 ## 8. Protocol and automation files
 
@@ -197,7 +197,7 @@ The following sizes are historical source-baseline values. The approved three-st
 
 | File | Historical bytes | Historical responsibility / current decision |
 |---|---:|---|
-| server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 moved the original validator/type/helper declarations; the file remains the Worker/MatchRoom entry and compatibility facade pending Stages 2–3 |
+| server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 extracted validator/type/helper declarations; after Stage 2 it is the 51-line Worker entry and compatibility facade, not the MatchRoom class owner |
 | core/.../actors/hero/Hero.java | 117,061 | Protected by the user: do not split or modify as part of this work |
 | core/.../multiplayer/WorldSnapshot.java | 83,795 | Protected by the user: do not split or modify as part of this work |
 | core/.../multiplayer/MessageRouter.java | 68,021 | Message parsing, combat, snapshot, accepted action and event application |
@@ -223,6 +223,7 @@ The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from spl
 - Split storage/schema helpers, session lifecycle, message routing/action handlers, combat coordination, snapshots/transitions and broadcasts into cohesive modules.
 - Preserve one MatchRoom class export and its Cloudflare identity.
 - Preserve SQLite SQL, migrations, alarms, replay/locks, event sequencing and WebSocket protocol exactly.
+- **State:** complete for source extraction and automated acceptance. Exact source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`; [CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed Backend typecheck/tests and Android JVM/debug APK compile.
 
 ### Stage 3 — Worker integration and parity
 - Complete remaining Worker routing/entry integration; remove transitional glue only when proven unused.

@@ -25,7 +25,7 @@ All engineering pages in this set are written in English for consistency with so
 
 ## Current source-refactor state
 
-Stage 1 moved all 200 original top-level protocol/session, validator/helper and SeededRNG declarations before MatchRoom into 15 focused modules. Stage 2 separates MatchRoom state, persistence, combat/visibility, snapshots/transitions and message/action handling into `server/src/match-room/` while keeping one shared room instance and one exported `MatchRoom` class. All 118 original public named exports remain available through the `index.ts` compatibility facade; the complete MatchRoom and default Worker implementation remain in `index.ts`. Exact-HEAD CI [run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed both Backend typecheck/tests and Android JVM/debug-APK checks on source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf`. The user-protected Hero.java, Mob.java and WorldSnapshot.java files were not changed; nor were protocol/schema.json, Wrangler binding/class identity, SQLite schema or migration files.
+Stage 1 moved all 200 original top-level protocol/session, validator/helper and SeededRNG declarations before MatchRoom into 15 focused modules. Stage 2 moved the Durable Object responsibilities into seven internal modules under `server/src/match-room/`: base state/broadcast, persistence, combat/visibility, snapshots/transitions, action handlers, message dispatch and the final class. All layers share one MatchRoom instance; only `server/src/match-room/index.ts` defines the final `MatchRoom` class. The root `server/src/index.ts` is now a 51-line Worker entry/compatibility facade that preserves all 118 original public named exports, re-exports MatchRoom and retains the default Worker fetch. Exact-HEAD CI [run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed both Backend typecheck/tests and Android JVM/debug-APK checks on source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`. The user-protected Hero.java, Mob.java and WorldSnapshot.java files were not changed; nor were protocol/schema.json, Wrangler binding/class identity, SQLite schema or migration files.
 
 ## Source-of-truth hierarchy
 
@@ -65,7 +65,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Source tree blobs | 1,963 at the Batch 2 baseline |
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
-| Backend entry | Historical source baseline: 10,095 lines / 658,825 bytes; after Stage 1: server/src/index.ts is 3,635 lines / 254,668 bytes with MatchRoom and Worker entry retained |
+| Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root server/src/index.ts is 51 lines, with MatchRoom in server/src/match-room/index.ts |
 | Phase state | Phases 1–8 complete for implementation and automated acceptance; Phase 9 in progress/open; Phases 10–23 open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
@@ -97,4 +97,4 @@ Batch 1 and Batch 2 were documentation-only. The separate source-refactor Stage 
 8. Verify exact-commit CI, and separately record deployment/device evidence.
 9. Never mark a phase, mode, transport or feature complete based only on source presence or compilation.
 
-See DOCUMENTATION_ROLLOUT_PLAN.md for the three-stage source refactor. Stage 1 moves the validator/type/helper layer; Stage 2 will decompose MatchRoom; Stage 3 will complete Worker integration. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.
+See DOCUMENTATION_ROLLOUT_PLAN.md for the three-stage source refactor. Stages 1 and 2 are complete; Stage 3 covers the final Worker integration and declaration-parity audit. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.

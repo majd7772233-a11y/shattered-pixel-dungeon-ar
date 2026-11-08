@@ -1,6 +1,6 @@
 # Server Validation, Durable Object, and Storage Reference
 
-> Source baseline: server/src/index.ts at commit 719dd5869a781d1c0eece2f1a7edd682bd02b9c5, reached from documentation branch HEAD eb2075b3f09ca4779773140b7e6539a6655f6824. This file intentionally documents the current monolithic implementation; source extraction/refactoring is reserved for Batch 3.
+> Historical monolithic source baseline: server/src/index.ts at commit 719dd5869a781d1c0eece2f1a7edd682bd02b9c5. The current source has since completed Stage 1 validator extraction and Stage 2 MatchRoom decomposition; the historical line map below is retained only for tracing the original implementation.
 
 ## 1. Backend shape
 
@@ -17,7 +17,7 @@ At the baseline, server/src/index.ts is 658,825 bytes and 10,095 lines. It conta
 - event sequencing and broadcasts;
 - the Worker fetch entry point.
 
-This describes the original pre-extraction baseline. Stage 1 now places validator/type/helper declarations in focused modules as documented in section 1.1; MatchRoom and Worker routing are intentionally not split yet.
+This describes the original pre-extraction baseline. Stage 1 moved the validator/type/helper declarations into focused modules. Stage 2 has now moved the MatchRoom implementation into the inheritance chain documented in section 1.2; the root Worker entry remains in `server/src/index.ts`.
 
 ## 1.1 Current source layout after Stage 1
 
@@ -43,7 +43,7 @@ The original validator declarations have been moved out of `server/src/index.ts`
 
 The grouping follows source cohesion and the observed helper dependencies. Some validator modules import shared helpers from other validator modules; imports are explicit. Do not create duplicate copies to avoid imports. The exact source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf` passed the full backend TypeScript build and test job plus Android JVM/debug-APK job in [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278).
 
-`server/src/index.ts` is now the stable entry and compatibility facade plus the complete `MatchRoom`/Worker implementation. The existing `index.test.ts` and pickup side-effect test continue to import through `./index`; do not change callers merely to reflect internal moves. Original line ranges in the next section describe the pre-extraction baseline SHA above, not current line numbers.
+`server/src/index.ts` is now the stable Worker entry and compatibility facade only. It re-exports the original validator API and the final `MatchRoom` class from `server/src/match-room/index.ts`, and retains the default Worker fetch handler. The complete room implementation lives under `server/src/match-room/`. The existing `index.test.ts` and pickup side-effect test continue to import through `./index`; do not change callers merely to reflect internal moves. Original line ranges in sections 2–4 describe the pre-extraction baseline, not current line numbers.
 
 ## 2. Top-level validator domains
 
@@ -63,7 +63,7 @@ The following line ranges are approximate source regions at the baseline and are
 | 4,811–5,655 | Native action-cost/world-mutation validation, complete level snapshots and Mob Buff expiry | isValidNativeMutationActionCost, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot, isValidNativeMobBuffExpiryTurn |
 | 5,656–6,481 | World-turn snapshots, HP/damage, Ankh, attack requests/events, stable Mob reward IDs and secondary Mob deltas | isValidNativeWorldTurnSnapshot, isValidNativeDamageAccounting, isValidNativeAttackIntent, mergeNativeCombatAttackerState, parseAndValidateNativeSecondaryMobDeltas, isValidNativeCombatEvent |
 | 6,482–6,503 | SeededRNG | deterministic helper used by server-side logic |
-| 6,504–10,095 | MatchRoom class and default Worker fetch | storage, session, room state, WebSocket, actions, snapshots, transitions, FOV and routing |
+| 6,504–10,095 | Historical MatchRoom class and default Worker fetch in the pre-extraction source | storage, session, room state, WebSocket, actions, snapshots, transitions, FOV and routing; now split into `server/src/match-room/` |
 
 The validator layer is deliberately strict and fail-closed. It checks native state transitions and action intents; it does not re-run the Java SPD engine.
 
@@ -95,7 +95,7 @@ The validator layer is deliberately strict and fail-closed. It checks native sta
 | broadcast(...) | 10,069 | Broadcast a message to room sockets |
 | default fetch(request, env) | 10,082 | Resolve /room/{roomCode}/... to the named Durable Object |
 
-webSocketMessage remains a single very large method inside MatchRoom after Stage 1. Stage 2 owns its handler decomposition. Its inner branches must be moved intact with every SQL mutation, replay guard, lock, sequence increment and broadcast path preserved.
+`webSocketMessage` is now the dispatcher in `server/src/match-room/messages.ts`. The original RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION branch bodies are in `actions.ts`; ACTION remains a single ordered handler. The extracted branch bodies were checked against the original source, and the outer parse/error boundary is retained.
 
 ## 4. Inbound message handling
 
@@ -115,7 +115,7 @@ The received WebSocket attachment supplies the server-side player session. The s
 
 ### 4.1 Initial WebSocket session
 
-MatchRoom.fetch() at approximately line 6,942:
+Historical MatchRoom.fetch() at approximately line 6,942 (now `server/src/match-room/index.ts`):
 - requires an Upgrade: websocket header;
 - creates a WebSocketPair and accepts the server socket;
 - reads playerId from a query parameter or generates a UUID;
@@ -180,7 +180,7 @@ Observed action branches include native combat sync, REVIVE, MOVE, LVL_TRANSITIO
 
 ## 5. SQLite schema
 
-Tables are created in MatchRoom.initDatabase(). The table names and columns below reflect the SQL definitions inspected at the baseline.
+Tables are now created by `MatchRoomPersistence.initDatabase()` in `server/src/match-room/persistence.ts`. The table names and columns below reflect the SQL definitions inspected at the historical baseline; Stage 2 relocated them without changing the schema or migration statements.
 
 ### room_meta
 
@@ -375,3 +375,15 @@ The Durable Object class is split into an internal inheritance chain. Only `serv
 The only intended source changes are method relocation, changing internal `private` methods to `protected` where derived layers must call them, and replacing the monolithic message handler's four large branches with awaited handler calls. Message types, payload JSON, SQL mutations, request replay semantics, event/sequence behavior and Durable Object state ownership are not intentionally changed.
 
 The root Worker entry and `wrangler.jsonc` main/binding remain stable. Stage 3 owns remaining Worker-entry integration and the final declaration-by-declaration parity audit.
+
+
+## 1.3 Stage 2 exact-HEAD verification
+
+The final Stage 2 source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d` passed [GitHub Actions run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104):
+
+| Job | Result |
+|---|---|
+| Backend TypeScript build and full tests | Success |
+| Android JVM tests and debug APK compile | Success |
+
+The 20 relocated MatchRoom method bodies and the four large WebSocket branch bodies were checked against the original Stage 2 parent source. The Worker default fetch body is retained. No Java sources, `protocol/schema.json`, `server/wrangler.jsonc`, SQLite schema or migration configuration were changed. This CI result is not a deployed Durable Object smoke test.

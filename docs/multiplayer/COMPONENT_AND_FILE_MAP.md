@@ -72,7 +72,7 @@ These files are outside the multiplayer package but part of the feature.
 
 | Path | Role | Change impact |
 |---|---|---|
-| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, re-export of MatchRoom and default Worker fetch. | Preserve root facade, Worker route and Wrangler main; room implementation lives under match-room/. |
+| server/src/index.ts | 51-line stable Worker entry, original public-export compatibility facade, MatchRoom re-export and default Worker fetch. | Preserve root facade, Worker route and Wrangler main; room implementation lives under match-room/. Stage 2 passed exact-HEAD CI run 42483052104. |
 | server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
 | server/src/match-room/base.ts | Shared room state/SQL fields and foundational WebSocket close/broadcast methods. | Do not duplicate room state between layers. |
 | server/src/match-room/persistence.ts | SQLite schema/init, claimed item migration and fallback level generation. | Preserve schema, migrations, SQL and initialization order. |

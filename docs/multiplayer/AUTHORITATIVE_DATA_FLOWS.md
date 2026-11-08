@@ -183,4 +183,4 @@ The Worker still enters through `server/src/index.ts`, which preserves protocol/
 - Snapshot publication, floor transition finalization and match-end conditions: `snapshots.ts`.
 - Final Durable Object export, alarm and HTTP fetch: `index.ts`.
 
-These are modules on one MatchRoom instance, not independent Durable Objects or parallel stores. The same request/session/sequence and SQL state must flow across every layer.
+These are modules on one MatchRoom instance, not independent Durable Objects or parallel stores. The same request/session/sequence and SQL state must flow across every layer. The final Stage 2 source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d` passed [exact-HEAD CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) for both Backend typecheck/tests and Android JVM/debug APK compilation.

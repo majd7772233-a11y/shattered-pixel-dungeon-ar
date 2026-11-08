@@ -807,13 +807,13 @@ Move the original type/helper/validator declarations and `SeededRNG` into focuse
 
 Extract the Durable Object's storage/repository operations, lifecycle/snapshot helpers, and protocol/action handlers into cohesive modules. Keep one authoritative MatchRoom class export and preserve the Cloudflare binding name `MATCH_ROOM`, class name `MatchRoom`, existing migration history, SQL behavior, WebSocket attachment/session semantics, sequencing, replay protection, and event payloads. Establish explicit context interfaces instead of copying state or introducing parallel owners.
 
-**State:** in progress. MatchRoom is being decomposed into internal modules while preserving one exported Durable Object class and the original Worker entry; exact-HEAD automated acceptance is pending.
+**State:** complete for source extraction and automated acceptance. Verified source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`; [exact-HEAD CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed Backend typecheck/tests and Android JVM tests/debug APK compile. The root Worker entry remains stable, and the final named Durable Object export remains `MatchRoom`.
 
 ### Stage 3 — Worker entry, integration and parity audit
 
 Finish the remaining Worker routing and supporting integration boundaries; remove only transitional glue proven unnecessary after all callers have moved. Keep `server/src/index.ts` as the stable Worker entry. Audit every original declaration against its new location, every import/export, all backend tests, the Java/client wire contract, protocol schema, Wrangler config, CI/deploy workflows and documentation. Run complete backend tests and exact-HEAD Android validation. No production deploy or physical multiplayer claim follows from CI alone.
 
-**State:** not started.
+**State:** not started. Stage 2 passed its exact-HEAD CI gate; Stage 3 is the next source-only stage.
 
 ### Stage completion gate
 

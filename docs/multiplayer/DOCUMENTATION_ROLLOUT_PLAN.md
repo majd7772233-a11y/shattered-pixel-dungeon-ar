@@ -70,6 +70,8 @@ Batch 2 must not split, rename, move, extract or rewrite any Java/TypeScript sou
 - Preserve one authoritative MatchRoom Durable Object export. Do not change Wrangler `MATCH_ROOM` binding, `class_name: MatchRoom`, migration history, SQLite statements/schema, alarm timings, session attachments, action replay/locks, sequence/event ordering or payloads.
 - Avoid copying MatchRoom mutable state into multiple owners. Use explicit context contracts.
 
+**State:** complete for extraction and automated acceptance. Exact source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`; [CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed both Backend and Android jobs.
+
 #### Stage 3 — Worker entry and end-to-end parity
 
 - Finish Worker request routing and any supporting integration boundaries while keeping `server/src/index.ts` as `wrangler.jsonc`'s stable main.

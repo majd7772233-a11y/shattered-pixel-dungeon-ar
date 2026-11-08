@@ -146,4 +146,18 @@ Use separate deployment and user-led device-test records for those criteria. Pha
 
 ## 6.2 MatchRoom Stage 2 source extraction
 
-Stage 2 separates the MatchRoom implementation into `server/src/match-room/` internal layers and retains `server/src/index.ts` as the stable Worker main and compatibility facade. The final exported Durable Object class is still named `MatchRoom`; the Wrangler binding/class_name and SQLite migration configuration are unchanged. Initial TypeScript compilation found a surplus class-closing brace after moving the original final `broadcast` method into `base.ts`; it was removed without changing the method. The next compile also found a duplicate protocol-type import in `actions.ts` and missing type imports for the final `MatchRoom.fetch` implementation; those imports were corrected without changing handlers. Record the implementation HEAD and both CI jobs here after the first successful exact-HEAD run. A CI pass does not mean the Worker was deployed or a live room was tested.
+Stage 2 separates the MatchRoom implementation into `server/src/match-room/` internal layers and retains `server/src/index.ts` as the stable Worker main and compatibility facade. The final exported Durable Object class is still named `MatchRoom`; the Wrangler binding/class_name and SQLite migration configuration are unchanged. The initial TypeScript attempts exposed a surplus class-closing brace, duplicate protocol-type imports and missing type imports; those were corrected without changing the extracted method bodies or handlers.
+
+| Item | Evidence |
+|---|---|
+| Stage 2 source parent | `8b679910fcc76e6474c7ca81d066da8bc670735d` |
+| Stage 2 implementation chain | `78e80177d9fb508f90c99879a0097e97c0fb929c`, `0651fb1ab97cb6006d41f8916e7daa5fb8058fc7`, `92661b809a84cc524ee76ce092061a87855721c0`, `237577f1e8c68a3f052b36fcac64cd7efc07918d` |
+| Exact-HEAD CI | [Run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) — success |
+| Backend job | TypeScript build and full Backend tests — success |
+| Android job | JVM tests and debug APK compile — success |
+| Root Worker entry | `server/src/index.ts` — 51 lines; default Worker fetch and public re-exports retained |
+| Durable Object class | One exported `MatchRoom`, defined in `server/src/match-room/index.ts` |
+| Protected source/config | No Java files, `protocol/schema.json` or `server/wrangler.jsonc` changed |
+| Deployment/device evidence | No live Worker deployment or physical multiplayer test claimed |
+
+A green branch CI run does not mean the Worker was deployed or a live room was tested.
