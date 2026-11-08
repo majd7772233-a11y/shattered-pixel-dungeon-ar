@@ -72,7 +72,9 @@ These files are outside the multiplayer package but part of the feature.
 
 | Path | Role | Change impact |
 |---|---|---|
-| server/src/index.ts | 51-line stable Worker entry, original public-export compatibility facade, MatchRoom re-export and default Worker fetch. | Preserve root facade, Worker route and Wrangler main; room implementation lives under match-room/. Stage 2 passed exact-HEAD CI run 42483052104. |
+| server/src/index.ts | 35-line stable Wrangler Worker entry and compatibility facade; re-exports the default router, historical public API and final `MatchRoom` class. | Preserve root path, default/named exports and Wrangler `main`. |
+| `server/src/worker.ts` | Default Cloudflare Worker fetch router; resolves `/room/{roomCode}/...` to the `MATCH_ROOM` Durable Object and preserves the default API response. | Keep the handler behavior aligned with `entrypoint.test.ts`; do not change the Wrangler main path. |
+| `server/src/entrypoint.test.ts` | Worker entry integration tests for Durable Object routing, Request forwarding, default-room fallback and the root `MatchRoom` export. | Keep these separate from claims of live Worker/deployment testing. |
 | server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
 | server/src/match-room/base.ts | Shared room state/SQL fields and foundational WebSocket close/broadcast methods. | Do not duplicate room state between layers. |
 | server/src/match-room/persistence.ts | SQLite schema/init, claimed item migration and fallback level generation. | Preserve schema, migrations, SQL and initialization order. |
@@ -88,7 +90,7 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/validators/world-items.ts | DROP/PICKUP/THROW/projectile/alchemy validation and mutation helpers. | Keep all before/after comparisons and native side-effect checks. |
 | server/src/validators/hero-buffs.ts, world-state.ts and combat-state.ts | Hero/Mob Buff ticks, world snapshots/turns, HP/damage, Ankh and combat deltas/events. | Preserve fail-closed native state contracts and existing test coverage. |
 | server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
-| server/src/index.test.ts | Main backend test suite. | Add positive/negative cases beside affected validator/action group. Tests do not prove Durable Object lifecycle unless they instantiate that actual lifecycle. |
+| server/src/index.test.ts | Main backend validator/contract test suite, retained on the root `./index` import path. | Add focused positive/negative cases beside the affected validator/action domain. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |
 | server/package.json and package-lock.json | Backend scripts and dependency lock. | Lockfile changes must correspond to manifest changes; npm ci must work. |
@@ -138,7 +140,7 @@ Mirrored TypeScript/JavaScript outputs may execute the same source cases more th
 
 ## 7. High-risk files
 
-- server/src/index.ts — stable Worker entry and remaining large MatchRoom implementation; Stage 2–3 must preserve Durable Object/storage/route contracts.
+- `server/src/index.ts` — stable Wrangler entry and compatibility facade; `server/src/worker.ts` owns default request routing; `server/src/match-room/` owns the shared Durable Object class layers.
 - WorldSnapshot.java — complex native restore, entity reconciliation and rollback.
 - MultiplayerManager.java — session, authority, sequence and stable player/entity identity hub.
 - MessageRouter.java plus RemotePlayerActionReceiver.java — transitional routing overlap.
