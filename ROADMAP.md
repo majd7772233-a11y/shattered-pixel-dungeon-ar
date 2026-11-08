@@ -75,20 +75,20 @@ The multiplayer documentation set lives under docs/multiplayer/. It is not a new
 - Read the index and relevant deep reference first, then reopen the actual target source, callers, and tests before editing.
 - Record every edit, even tiny changes, in the same change/session log. For multi-file edits, identify each path and its reason. Keep docs and implementation together in commits wherever possible.
 - After renames/deletions, repair inbound links and file-map entries before calling the task complete.
-- Batch 1 / Batch 2 / Batch 3 is tracked temporarily in docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md. Batch 1 and Batch 2 are Markdown-only documentation. Batch 3 is a separate large-source structure assessment and proposal; source moves/refactors require discussion before execution. The tracker is not a gameplay phase and must be retired after Batch 3 is concluded and permanent guidance is transferred to README/GPT.
+- The temporary documentation/source-refactor tracker has been retired. Permanent architecture, preservation requirements and final status are maintained in `docs/multiplayer/README.md`, `docs/multiplayer/SOURCE_FILE_REFERENCE.md`, this roadmap and `GPT.md`. Source-refactor stages are separate from gameplay phases.
 
-Batch 1 establishes the index, product overview, architecture, component/file map, data flows, build/test/CI reference, and temporary rollout tracker. Batch 2 adds deep native integration, backend validation/storage, complete protocol catalog, test matrix, recovery/security operations, and expanded source-file reference. Do not mark a batch complete until files are committed, re-read at resulting HEAD, linked from the index, and applicable branch validation is checked.
+The historical documentation batches established the technical references now indexed in `docs/multiplayer/README.md`. They are complete and are not a current implementation track.
 
 ## Current Verified Status
 
-### Batch 2 documentation and large-source boundary — 2026-11-08 (documentation-only)
+### Historical Batch 2 documentation checkpoint — 2026-11-08 (superseded by source-refactor Stages 1–3)
 
 - **Documentation HEAD before Batch 2:** eb2075b3f09ca4779773140b7e6539a6655f6824.
 - **Gameplay source/test SHA remains:** b9ad0739d10d6a4125fb6ea084d6d072b2699810.
 - **Documentation work does not change gameplay phase status.** Phases 1–8 remain complete for implementation and automated acceptance; Phase 9 remains in progress/open; Phases 10–23 remain open.
 - **Batch 2 scope:** six English Markdown deep references for native Android integration, server validation/storage, protocol catalog, test matrix, session recovery/security and source-file reference. Source code was not split or changed.
 - **Test inventory confirmed from source:** 57 backend describe groups and 277 declarations in index.test.ts; 3 focused pickup policy tests; 46 native runtime JVM tests plus 19 methods across five other multiplayer JVM suites. The previously reported 560 backend executions include mirrored TypeScript/JavaScript output, not 560 unique source scenarios.
-- **Large source candidates are explicitly deferred to Batch 3:** index.ts (658,825 bytes / 10,095 lines), Hero.java (117,061 bytes), WorldSnapshot.java (83,795), MessageRouter.java (68,021), Mob.java (66,010), GameScene.java (60,874), Level.java (55,788) and MultiplayerManager.java (30,457), plus long test files. Any split must first map imports/exports/callers/tests/config and be discussed before implementation.
+- **Historical large-source inventory at that time:** `server/src/index.ts` was 658,825 bytes / 10,095 lines before its completed three-stage source refactor. The protected Java files remain unchanged and were not split.
 - **Android Bluetooth remains unverified:** the provider registration point was not found in inspected Android startup files; the null-provider transport fallback can report connected without a socket; current inspected manifest lacks Bluetooth permission declarations. Keep Phase 16 open and do not call Bluetooth working.
 - **No deployed Worker smoke test or physical two-device match is claimed.**
 
@@ -816,7 +816,8 @@ Extract the Durable Object's storage/repository operations, lifecycle/snapshot h
 - Reconciled all 200 original pre-`MatchRoom` top-level declarations against their 15 destination modules using normalized declaration-text comparisons: 200/200 matched, with no body-text differences. Verified all 118 original validator/protocol/helper exports and the named `MatchRoom` export remain available (119 named exports total).
 - Verified the single `MatchRoom` class definition and the seven-module shared-instance inheritance chain; checked the root Worker route, Wrangler `main`, `MATCH_ROOM` binding, class name and `v1` SQLite migration.
 - Confirmed `protocol/schema.json` and the protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` are unchanged. Existing validator tests continue to import `./index`.
-- **State:** implementation and parity audit complete; final acceptance is gated on Backend typecheck/full tests and Android JVM/debug-APK CI passing at the exact final documentation commit. CI is not live Worker deployment or physical-device verification.
+- **Exact-HEAD acceptance:** [GitHub Actions run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/build/full tests and Android JVM/debug-APK jobs both succeeded.
+- **State:** Stage 3 is complete for implementation, source parity and automated acceptance. This is not live Worker deployment or physical-device verification.
 
 ### Stage completion gate
 
