@@ -807,7 +807,7 @@ Move the original type/helper/validator declarations and `SeededRNG` into focuse
 
 Extract the Durable Object's storage/repository operations, lifecycle/snapshot helpers, and protocol/action handlers into cohesive modules. Keep one authoritative MatchRoom class export and preserve the Cloudflare binding name `MATCH_ROOM`, class name `MatchRoom`, existing migration history, SQL behavior, WebSocket attachment/session semantics, sequencing, replay protection, and event payloads. Establish explicit context interfaces instead of copying state or introducing parallel owners.
 
-**State:** not started. Stage 1 has passed its exact-HEAD automated gate; Stage 2 remains a separate source-only stage.
+**State:** in progress. MatchRoom is being decomposed into internal modules while preserving one exported Durable Object class and the original Worker entry; exact-HEAD automated acceptance is pending.
 
 ### Stage 3 — Worker entry, integration and parity audit
 

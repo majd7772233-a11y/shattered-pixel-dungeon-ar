@@ -72,8 +72,15 @@ These files are outside the multiplayer package but part of the feature.
 
 | Path | Role | Change impact |
 |---|---|---|
-| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, complete MatchRoom Durable Object class and default Worker fetch. | Preserve the facade and Worker/Wrangler contract; MatchRoom internals are Stage 2–3 work. Stage 1 passed exact-HEAD CI run 42479978278. |
+| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, re-export of MatchRoom and default Worker fetch. | Preserve root facade, Worker route and Wrangler main; room implementation lives under match-room/. |
 | server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
+| server/src/match-room/base.ts | Shared room state/SQL fields and foundational WebSocket close/broadcast methods. | Do not duplicate room state between layers. |
+| server/src/match-room/persistence.ts | SQLite schema/init, claimed item migration and fallback level generation. | Preserve schema, migrations, SQL and initialization order. |
+| server/src/match-room/combat.ts | Pending combat reservation/reconciliation, combat position checks, LOS and FOV. | Preserve authority checks, lock expiry and FOV behavior. |
+| server/src/match-room/snapshots.ts | Level snapshots, floor-transition finalization and match-end rules. | Preserve event sequencing and full snapshot contents. |
+| server/src/match-room/actions.ts | Reconnect, level data/ready and native action request handlers. | ACTION remains sequential in one method; do not reorder SQL writes or event publication. |
+| server/src/match-room/messages.ts | WebSocket message parsing and dispatch/error boundary. | Keep dispatcher awaiting extracted handlers within the original try/catch. |
+| server/src/match-room/index.ts | The single exported MatchRoom Durable Object class; owns constructor/alarm/HTTP fetch. | Preserve class export name and Wrangler `class_name: MatchRoom`.
 | server/src/validators/entity-identity.ts and floor-transitions.ts | Stable entity mapping, movement and floor transition validation. | Keep the original fail-closed rules and native transition assumptions. |
 | server/src/validators/equipment.ts, item-state.ts and abilities.ts | Quickslots, equipment, item/buff bundle safety, use/status and ability validation. | Shared helper imports are explicit; avoid weakening item ownership or mutation checks. |
 | server/src/validators/shop.ts and world-actions.ts | Buy/sell/buyback/shopkeeper and world action admission validators. | Preserve exact inventory, heap and action-cost transitions. |

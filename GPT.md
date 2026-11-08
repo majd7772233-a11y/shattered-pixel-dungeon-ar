@@ -3,7 +3,7 @@
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
 
-## Source refactor checkpoint — Stage 1/3 (2026-11-08; Stage 1 verified)
+## Source refactor checkpoint — Stage 2/3 (2026-11-08; implementation commit pending CI)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 - **Stage 1 source parent:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`.
@@ -16,6 +16,11 @@
 - **Preservation accounting:** 200 original top-level declarations before `MatchRoom` were moved into 15 modules; all 118 original public named exports remain on the `index.ts` facade; the original `MatchRoom` and Worker tail remain in `index.ts`. The source partition was verified losslessly before writing. The import correction changed 14 module paths only.
 - **Exact-HEAD verification:** [GitHub Actions run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed on `4119263d9cc4dd5b230c551897b37dc4391417cf`: backend TypeScript build/tests and Android JVM tests/debug APK compile.
 - **Stage 1 status:** complete for extraction and automated acceptance. No deployed Worker smoke test or physical two-device run is claimed.
+- **Stage 2 base HEAD:** `8b679910fcc76e6474c7ca81d066da8bc670735d`.
+- **Stage 2 goal:** split MatchRoom into one inheritance chain of internal implementation layers (base state/broadcast; persistence; combat/visibility; snapshots/transitions; message/action handlers) while exporting exactly one Durable Object class named `MatchRoom`.
+- **Stage 2 extraction map:** `server/src/match-room/{base,persistence,combat,snapshots,actions,messages,index}.ts`. The root `server/src/index.ts` remains the Worker entry and compatibility facade.
+- **Preservation:** the original RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION branch bodies are moved into protected handler methods; the dispatcher awaits them inside the same outer parse/error boundary. The long ACTION body is kept intact as one ordered handler to avoid reordering its state mutations.
+- **Stage 2 status:** implementation committed; exact-HEAD CI pending. Do not begin Stage 3 until Backend and Android jobs pass.
 
 ## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
 

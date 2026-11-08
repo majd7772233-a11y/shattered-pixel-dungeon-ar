@@ -168,7 +168,8 @@ server/ contains:
 - tsconfig.json;
 - wrangler.jsonc;
 - scripts/validate-phase7-native-mutation-schema.mjs;
-- src/index.ts;
+- src/index.ts (Worker entry + compatibility facade);
+- src/match-room/ (base, persistence, combat, snapshots, actions, messages, final MatchRoom class);
 - src/protocol/types.ts;
 - src/validators/ (14 domain modules);
 - src/util/seeded-rng.ts;
@@ -230,3 +231,18 @@ The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from spl
 - Keep Hero.java, Mob.java and WorldSnapshot.java untouched throughout.
 
 These stages are source organization only. They do not change or renumber gameplay phases 1–23.
+
+
+## 11. MatchRoom Stage 2 modules
+
+| Path | Responsibility |
+|---|---|
+| `server/src/match-room/base.ts` | Authoritative shared Durable Object instance state and foundational WebSocket close/broadcast |
+| `server/src/match-room/persistence.ts` | SQLite initialization, item-claim migration, fallback level generation |
+| `server/src/match-room/combat.ts` | Pending combat reservation/reconciliation, geometry, LOS and FOV |
+| `server/src/match-room/snapshots.ts` | Snapshot reads/broadcasts, floor transition commit and match-end rules |
+| `server/src/match-room/actions.ts` | RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION handlers |
+| `server/src/match-room/messages.ts` | WebSocket envelope parsing/dispatch/error handling |
+| `server/src/match-room/index.ts` | Final single exported MatchRoom class; constructor, alarm and room HTTP fetch |
+
+All layers share one instance through inheritance. This is not a new Durable Object per layer.

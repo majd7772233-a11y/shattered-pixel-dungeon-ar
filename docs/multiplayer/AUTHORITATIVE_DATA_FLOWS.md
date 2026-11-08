@@ -169,3 +169,18 @@ When a test fails or a behavior is reported:
 8. Confirm native object changes, scheduler effects, visual refresh and snapshot fallback.
 9. Add accepted and rejected tests where applicable.
 10. Update file map, roadmap, GPT checkpoint and affected flow notes in the same work unit.
+
+
+## Backend implementation locations after MatchRoom Stage 2
+
+The Worker still enters through `server/src/index.ts`, which preserves protocol/validator exports and re-exports the named `MatchRoom` Durable Object. Once routed to the Durable Object, responsibilities are located under `server/src/match-room/`:
+
+- WebSocket JSON parsing and protocol dispatch: `messages.ts`.
+- RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION handling: `actions.ts`.
+- Shared SQL/state fields and WebSocket broadcast primitive: `base.ts`.
+- Schema/migration, item claim migration and generated fallback levels: `persistence.ts`.
+- Combat reservation, authoritative reconciliation, spatial checks and FOV: `combat.ts`.
+- Snapshot publication, floor transition finalization and match-end conditions: `snapshots.ts`.
+- Final Durable Object export, alarm and HTTP fetch: `index.ts`.
+
+These are modules on one MatchRoom instance, not independent Durable Objects or parallel stores. The same request/session/sequence and SQL state must flow across every layer.

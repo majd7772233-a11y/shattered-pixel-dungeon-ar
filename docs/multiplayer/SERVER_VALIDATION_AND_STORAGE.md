@@ -356,3 +356,22 @@ server/wrangler.jsonc binds MATCH_ROOM to the MatchRoom class and declares its S
 ## 11. Batch 3 boundary
 
 Batch 2 documents the existing monolith and its current behavior only. Batch 3 will separately inspect the feasibility of extracting validators, action domains, storage/repositories, session/WebSocket lifecycle and snapshot/transition coordination into smaller modules. No file is split or behavior changed by this document commit. The extraction design must account for imports, exports, test mocks, Wrangler entry points, storage compatibility, request serialization, module cycles and exact behavior parity. Discuss the proposed design before committing a large refactor.
+
+
+## 1.2 MatchRoom responsibility modules — Stage 2
+
+The Durable Object class is split into an internal inheritance chain. Only `server/src/match-room/index.ts` defines and exports the final `MatchRoom` class; the root `server/src/index.ts` re-exports the class for Wrangler's existing `class_name: MatchRoom` binding and retains the default Worker fetch handler.
+
+| Module | Responsibility | Preservation notes |
+|---|---|---|
+| `match-room/base.ts` | Shared room state and SQL handle; WebSocket close and broadcast primitives | Keeps the same mutable fields on one shared instance; no duplicated room state |
+| `match-room/persistence.ts` | Claimed-item migration, DB initialization/schema setup and fallback level generation | SQL statements, table names, migration sequence and initialization order are retained |
+| `match-room/combat.ts` | Pending combat reservation/cleanup, attacker reconciliation, geometry/LOS and FOV broadcast | Lock keys, 15-second stale reservation rule, target checks and FOV filtering retained |
+| `match-room/snapshots.ts` | Current snapshot, transition finalization and match-end checks | Snapshot payload, sequence ordering and transition events retained |
+| `match-room/actions.ts` | RECONNECT, LEVEL_DATA, LEVEL_READY and ACTION request handlers | Original branch bodies are moved intact; ACTION remains one ordered handler to preserve shared state mutations |
+| `match-room/messages.ts` | WebSocket message admission/dispatch | Keeps the original outer parse/error boundary and awaits extracted handlers |
+| `match-room/index.ts` | Single exported Durable Object class, constructor, alarm and per-room HTTP fetch | Class name remains `MatchRoom`; it extends internal layers and initializes the same database |
+
+The only intended source changes are method relocation, changing internal `private` methods to `protected` where derived layers must call them, and replacing the monolithic message handler's four large branches with awaited handler calls. Message types, payload JSON, SQL mutations, request replay semantics, event/sequence behavior and Durable Object state ownership are not intentionally changed.
+
+The root Worker entry and `wrangler.jsonc` main/binding remain stable. Stage 3 owns remaining Worker-entry integration and the final declaration-by-declaration parity audit.

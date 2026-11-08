@@ -200,3 +200,8 @@ For every state-changing server validator or native publisher, add where relevan
 - rejection/resync behavior.
 
 For transport/platform code, add framing, handshake, timeout, close, reconnect, concurrent send/receive, permissions, discovery, and physical-device cases. Current CI does not prove those transports.
+
+
+## MatchRoom module extraction regression gate
+
+Existing backend tests must continue importing the root compatibility surface from `./index`; they must not be rewritten solely to follow internal module moves. Exact-HEAD CI must run the TypeScript build and full backend tests after each stage. Android JVM tests/debug APK compile remain required to prove no cross-layer contract regression, even though MatchRoom extraction should not need Java changes. Stage 2 moves handler bodies; it does not claim a real Durable Object runtime/deployment or two-device smoke test.

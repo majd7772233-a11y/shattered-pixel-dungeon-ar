@@ -142,3 +142,8 @@ The current branch workflow does not:
 - prove every schema enum or action enum is implemented end to end.
 
 Use separate deployment and user-led device-test records for those criteria. Phase 22 is the broad automated/deployed-service preflight; Phase 23 is the final physical-device playtest led by the user.
+
+
+## 6.2 MatchRoom Stage 2 source extraction
+
+Stage 2 separates the MatchRoom implementation into `server/src/match-room/` internal layers and retains `server/src/index.ts` as the stable Worker main and compatibility facade. The final exported Durable Object class is still named `MatchRoom`; the Wrangler binding/class_name and SQLite migration configuration are unchanged. Record the implementation HEAD and both CI jobs here after the first successful exact-HEAD run. A CI pass does not mean the Worker was deployed or a live room was tested.
