@@ -3,7 +3,7 @@
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
 
-## Source refactor checkpoint — Stage 3 implementation complete (2026-11-08; exact-HEAD CI gate)
+## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. No new branch and no merge to `main`.
 - **Stage 1 source parent:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`.
@@ -17,7 +17,8 @@
 - **Stage 3 integration tests:** `server/src/entrypoint.test.ts` covers the root `MatchRoom` export, forwarding a room request to `MATCH_ROOM.idFromName/get`, forwarding the exact original Request, the `DEFAULT_ROOM` fallback, and the existing non-room information response.
 - **Cross-layer parity:** baseline declaration names/text and root exports were checked; all 118 validator/protocol/helper exports plus the `MatchRoom` named export remain available (119 named exports total). Existing backend tests retain their `./index` imports. `protocol/schema.json`, `server/wrangler.jsonc`, the `MATCH_ROOM` binding, `class_name: MatchRoom`, migration tag `v1`, and all Java source contracts remain unchanged.
 - **Protected files:** `Hero.java`, `Mob.java`, and `WorldSnapshot.java` were not modified or split.
-- **Stage 3 status:** implementation, declaration parity and integration-test work are complete; the stage completion gate still requires the final documentation commit's exact-HEAD Backend and Android CI to pass. CI is not a Worker deployment or physical-device test.
+- **Stage 3 exact-HEAD acceptance:** [GitHub Actions run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend TypeScript build and full tests succeeded (568 reported mirrored TS/JS executions across six files, not 568 unique source scenarios); Android JVM tests and debug APK compilation succeeded.
+- **Stage 3 status:** complete for implementation, parity and automated acceptance. CI is not a Worker deployment or physical-device test.
 - **No deployment/device claim:** no live Worker smoke test and no physical two-device multiplayer session is claimed. The deploy workflow remains limited to `master`/`main` pushes or manual dispatch.
 - **Gameplay status is unchanged:** gameplay Phases 1–8 remain complete for implementation/automated acceptance; Phase 9 remains open/in progress; Phases 10–23 remain open. The three source-refactor stages are separate from gameplay phases.
 
