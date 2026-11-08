@@ -822,6 +822,143 @@ export function parseAndValidateNativeLifeLinkMobDeltas(
   return payload;
 }
 
+/** Evidence-only LifeLink parser: the preceding SYNC_MOB_STATE already committed Mob state. */
+export function parseAndValidateNativeLifeLinkMobDamageEvidence(
+  value: unknown, currentMobsValue: unknown, linkedActorIdsValue: unknown,
+  acceptedEventsValue: unknown, currentHeapsValue: unknown,
+  levelSize: number, width: number, sequenceBeforeValue: unknown, expectedSenderId: unknown
+): NativeSecondaryMobDeltaPayload | null {
+  let payload: any = value;
+  if (typeof payload === "string" && payload.length > 200000) return null;
+  try { if (typeof payload === "string") payload = JSON.parse(payload); } catch (_) { return null; }
+  const sequenceBefore = Number(sequenceBeforeValue);
+  const senderId = String(expectedSenderId || "");
+  if (!payload || payload.complete !== true || !Array.isArray(payload.deltas)
+      || payload.deltas.length > 512 || !Array.isArray(currentMobsValue)
+      || !Array.isArray(linkedActorIdsValue) || linkedActorIdsValue.length > 512
+      || !Array.isArray(acceptedEventsValue) || acceptedEventsValue.length > 512
+      || !Number.isSafeInteger(sequenceBefore) || sequenceBefore < 0
+      || !senderId || senderId.length > 80
+      || !Number.isInteger(levelSize) || levelSize < 1
+      || !Number.isInteger(width) || width < 1 || width > levelSize) return null;
+  const linked = new Set<number>();
+  for (const value of linkedActorIdsValue) {
+    const id = Number(value);
+    if (!Number.isInteger(id) || id < 1 || id > 2147483647 || linked.has(id)) return null;
+    linked.add(id);
+  }
+  const currentByActor = new Map<number,any>(), currentByEntity = new Map<string,any>();
+  for (const mob of currentMobsValue as any[]) {
+    const actorId = Number(mob?.mobId), entityId = String(mob?.entityId || "");
+    if (!Number.isInteger(actorId) || actorId < 1 || !/^[A-Za-z0-9._:-]{8,80}$/.test(entityId)
+        || currentByActor.has(actorId) || currentByEntity.has(entityId)) return null;
+    currentByActor.set(actorId,mob); currentByEntity.set(entityId,mob);
+  }
+  const eventsByActor = new Map<number,{sequence:number;body:any}>();
+  for (const event of acceptedEventsValue as any[]) {
+    const sequence=Number(event?.sequence);
+    if (!Number.isSafeInteger(sequence) || sequence<=sequenceBefore
+        || String(event?.sender_id || "")!==senderId
+        || String(event?.event_type || "")!=="CHAR_DAMAGED") continue;
+    let body:any;
+    try { body=typeof event.payload==="string"?JSON.parse(event.payload):event.payload; }
+    catch (_) { continue; }
+    const actorId=Number(body?.nativeActorId);
+    if (body?.sourceType!=="ENVIRONMENT"
+        || body?.sourceClass!=="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
+        || body?.targetType!=="MOB" || !linked.has(actorId)) continue;
+    if (!Number.isInteger(actorId) || actorId<1 || eventsByActor.has(actorId)) return null;
+    eventsByActor.set(actorId,{sequence,body});
+  }
+  const seenActors=new Set<number>(),seenEntities=new Set<string>();
+  const deathEvents:Array<{sequence:number;heaps:any}>=[];
+  for (const delta of payload.deltas as any[]) {
+    const actorId=Number(delta?.actorId),entityId=String(delta?.entityId || "");
+    if (!Number.isInteger(actorId) || actorId<1 || !linked.has(actorId) || seenActors.has(actorId)
+        || !/^[A-Za-z0-9._:-]{8,80}$/.test(entityId) || seenEntities.has(entityId)) return null;
+    seenActors.add(actorId); seenEntities.add(entityId);
+    const match=eventsByActor.get(actorId);
+    if (!match) return null;
+    const event=match.body;
+    if (String(event.targetId || "")!==entityId
+        || Number(event.targetHpBefore)!==Number(delta.hpBefore)
+        || Number(event.targetHtBefore)!==Number(delta.htBefore)
+        || Number(event.targetPosBefore)!==Number(delta.posBefore)
+        || Number(event.targetShieldBefore)!==Number(delta.shieldBefore)
+        || Number(event.targetHp)!==Number(delta.hpAfter)
+        || Number(event.targetHt)!==Number(delta.htAfter)
+        || Number(event.targetPosAfter)!==Number(delta.posAfter)
+        || Number(event.targetShieldAfter)!==Number(delta.shieldAfter)
+        || String(event.targetBuffsBefore || "")!==String(delta.buffsBefore || "")
+        || typeof delta.serializedBundleBefore!=="string" || delta.serializedBundleBefore.length<1
+        || String(event.nativeMobBundleBefore || "")!==delta.serializedBundleBefore
+        || typeof event.nativeMobBundleAfterEvidence!=="string"
+        || event.nativeMobBundleAfterEvidence.length<1) return null;
+    const beforeMob=parseNativeBundleObject(delta.serializedBundleBefore)?.mob;
+    const evidenceMob=parseNativeBundleObject(event.nativeMobBundleAfterEvidence)?.mob;
+    if (!beforeMob || !evidenceMob || Number(beforeMob.id)!==actorId || Number(evidenceMob.id)!==actorId
+        || !String(beforeMob.__className || "")
+        || String(beforeMob.__className)!==String(evidenceMob.__className)
+        || Number(beforeMob.HP)!==Number(delta.hpBefore)
+        || Number(beforeMob.HT)!==Number(delta.htBefore)
+        || Number(beforeMob.pos)!==Number(delta.posBefore)
+        || Number(evidenceMob.HP)!==Number(delta.hpAfter)
+        || Number(evidenceMob.HT)!==Number(delta.htAfter)
+        || Number(evidenceMob.pos)!==Number(delta.posAfter)
+        || !Number.isInteger(delta.hpBefore) || delta.hpBefore<=0
+        || !Number.isInteger(delta.htBefore) || delta.htBefore<1
+        || !Number.isInteger(delta.posBefore) || delta.posBefore<0 || delta.posBefore>=levelSize
+        || !Number.isInteger(delta.hpAfter) || delta.hpAfter<0 || delta.hpAfter>delta.hpBefore
+        || delta.htAfter!==delta.htBefore || delta.posAfter!==delta.posBefore
+        || !Number.isInteger(delta.shieldBefore) || delta.shieldBefore<0 || delta.shieldBefore>100000
+        || !Number.isInteger(delta.shieldAfter) || delta.shieldAfter<0 || delta.shieldAfter>delta.shieldBefore
+        || !Array.isArray(evidenceMob.buffs)) return null;
+    let buffRows:any[];
+    try { buffRows=JSON.parse(String(delta.buffsAfter)); } catch (_) { return null; }
+    if (!Array.isArray(buffRows)) return null;
+    const nested=new Map<string,any>();
+    for (const buff of evidenceMob.buffs) {
+      const key=String(buff?.__className || "")+"#"+Number(buff?.id);
+      if (!buff || nested.has(key)) return null;
+      nested.set(key,buff);
+    }
+    const seen=new Set<string>();
+    for (const row of buffRows) {
+      const buff=parseNativeBundleObject(row?.serializedBundle)?.buff;
+      const key=String(buff?.__className || "")+"#"+Number(buff?.id);
+      if (!buff || typeof row?.serializedBundle!=="string" || seen.has(key)
+          || !sameNativeItemValue(buff,nested.get(key))) return null;
+      seen.add(key);
+    }
+    if (seen.size!==nested.size) return null;
+    if (delta.hpAfter===0) {
+      if (delta.serializedBundleAfter!==delta.serializedBundleBefore || delta.buffsAfter!=="[]"
+          || delta.shieldAfter!==0 || event.targetMobBundleAfter!==null
+          || currentByActor.has(actorId) || currentByEntity.has(entityId)
+          || !Array.isArray(event.heaps)) return null;
+      deathEvents.push({sequence:match.sequence,heaps:event.heaps});
+    } else {
+      const current=currentByActor.get(actorId);
+      if (!current || String(current.entityId || "")!==entityId
+          || Number(current.hp)!==delta.hpAfter || Number(current.ht)!==delta.htAfter
+          || Number(current.pos)!==delta.posAfter || Number(current.shielding)!==delta.shieldAfter
+          || !sameNativeItemValue(current.buffs,buffRows)
+          || String(current.serializedBundle || "")!==delta.serializedBundleAfter
+          || String(event.targetBuffs || "")!==String(delta.buffsAfter || "")
+          || String(event.targetMobBundleAfter || "")!==delta.serializedBundleAfter
+          || String(event.nativeMobBundleAfterEvidence)!==delta.serializedBundleAfter) return null;
+    }
+  }
+  if (eventsByActor.size!==seenActors.size) return null;
+  if (deathEvents.length>0) {
+    if (!Array.isArray(payload.heaps) || !Array.isArray(currentHeapsValue)
+        || !sameNativeItemValue(payload.heaps,currentHeapsValue)) return null;
+    const last=deathEvents.reduce((a,b)=>a.sequence>b.sequence?a:b);
+    if (!sameNativeItemValue(last.heaps,payload.heaps)) return null;
+  } else if (payload.heaps!==undefined) return null;
+  return {complete:true,deltas:payload.deltas,...(deathEvents.length>0?{heaps:payload.heaps}:{})};
+}
+
 /**
  * Removes validated native deaths from a stored level snapshot without running local reward logic.
  * Validate the full ID list first so malformed input cannot partially mutate the snapshot.

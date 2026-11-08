@@ -42,26 +42,56 @@ function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:N
   return {state,clock,rows};
 }
 
-/** Resolves every native LifeLink.object Actor ID to exactly one stable Mob entity.
- * LifeLinks targeting another Hero, an NPC outside the shared Mob snapshot, or a missing/stale
- * Actor are deliberately rejected until those target types have their own multi-entity contract.
- */
-export function nativeHeroBuffLifeLinkMobEntityIds(heroValue: unknown, levelValue: unknown): string[] | null {
+/** Returns the exact publisher-local Actor IDs named by native LifeLink Buffs. */
+export function nativeHeroBuffLifeLinkMobActorIds(heroValue: unknown): number[] | null {
   const hero = nativeHeroBuffTickState(heroValue);
-  let level:any = levelValue;
-  try { if (typeof level === "string") level = JSON.parse(level); } catch (_) { return null; }
-  if (!hero || !level || typeof level !== "object" || !Array.isArray(level.mobs)
-      || level.mobs.length > 512) return null;
-
-  const targets: string[] = [];
-  const actorIds = new Set<number>();
+  if (!hero) return null;
+  const actorIds: number[] = [];
+  const seen = new Set<number>();
   for (const row of hero.rows.filter(value=>value.className===NATIVE_LIFE_LINK)) {
     const actorId = Number(row.data?.object);
-    if (!Number.isInteger(actorId) || actorId < 1 || actorIds.has(actorId)) return null;
-    actorIds.add(actorId);
+    if (!Number.isInteger(actorId) || actorId < 1 || actorId > 2147483647 || seen.has(actorId)) return null;
+    seen.add(actorId);
+    actorIds.push(actorId);
+  }
+  return actorIds.sort((a,b)=>a-b);
+}
+
+/** Resolves LifeLink Actor IDs to stable Mob IDs. A dead Mob can be resolved only from
+ * its accepted, same-publisher Poison damage event after the Mob was removed from the snapshot.
+ */
+export function nativeHeroBuffLifeLinkMobEntityIds(
+  heroValue: unknown, levelValue: unknown, acceptedMobDamageEventsValue?: unknown
+): string[] | null {
+  const actorIds = nativeHeroBuffLifeLinkMobActorIds(heroValue);
+  let level:any = levelValue;
+  try { if (typeof level === "string") level = JSON.parse(level); } catch (_) { return null; }
+  const events = Array.isArray(acceptedMobDamageEventsValue) ? acceptedMobDamageEventsValue : [];
+  if (!actorIds || !level || typeof level !== "object" || !Array.isArray(level.mobs)
+      || level.mobs.length > 512 || events.length > 512) return null;
+  const targets: string[] = [];
+  for (const actorId of actorIds) {
     const matches = level.mobs.filter((mob:any)=>Number(mob?.mobId)===actorId);
-    if (matches.length !== 1) return null;
-    const entityId = String(matches[0]?.entityId || "");
+    let entityId = "";
+    if (matches.length === 1) {
+      entityId = String(matches[0]?.entityId || "");
+    } else if (matches.length === 0) {
+      const eventMatches = events.filter((event:any) => {
+        if (String(event?.event_type || "") !== "CHAR_DAMAGED") return false;
+        let body:any;
+        try { body = typeof event.payload === "string" ? JSON.parse(event.payload) : event.payload; }
+        catch (_) { return false; }
+        return Number(body?.nativeActorId) === actorId
+          && body?.targetType === "MOB" && body?.sourceType === "ENVIRONMENT"
+          && body?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+      });
+      if (eventMatches.length !== 1) return null;
+      let body:any;
+      try { body = typeof eventMatches[0].payload === "string"
+        ? JSON.parse(eventMatches[0].payload) : eventMatches[0].payload; }
+      catch (_) { return null; }
+      entityId = String(body?.targetId || "");
+    } else return null;
     if (!/^[A-Za-z0-9._:-]{8,80}$/.test(entityId) || targets.includes(entityId)) return null;
     targets.push(entityId);
   }
@@ -616,7 +646,7 @@ function isValidNativeDamageRecoveryBuffTransition(
 /** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
 export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
   afterValue: unknown, dataValue: unknown, levelValue?: unknown,
-  lifeLinkMobEntityIdsValue?: unknown): boolean {
+  lifeLinkMobEntityIdsValue?: unknown, acceptedMobDamageEventsValue?: unknown): boolean {
   const previous = nativeHeroBuffTickState(previousValue);
   const before = nativeHeroBuffTickState(beforeValue);
   const after = nativeHeroBuffTickState(afterValue);
@@ -755,7 +785,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const poisonLifeLinks = buffClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
     ? before.rows.filter(row=>row.className===NATIVE_LIFE_LINK) : [];
   if (poisonLifeLinks.length > 0) {
-    const resolvedLifeLinkMobEntityIds = nativeHeroBuffLifeLinkMobEntityIds(beforeValue,levelValue);
+    const resolvedLifeLinkMobEntityIds = nativeHeroBuffLifeLinkMobEntityIds(
+      beforeValue,levelValue,acceptedMobDamageEventsValue);
     if (!Array.isArray(lifeLinkMobEntityIdsValue) || resolvedLifeLinkMobEntityIds === null
         || !sameNativeItemValue(lifeLinkMobEntityIdsValue,resolvedLifeLinkMobEntityIds)) return false;
   }
