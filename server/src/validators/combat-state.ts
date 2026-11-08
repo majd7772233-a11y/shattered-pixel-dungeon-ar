@@ -950,13 +950,18 @@ export function parseAndValidateNativeLifeLinkMobDamageEvidence(
     }
   }
   if (eventsByActor.size!==seenActors.size) return null;
+  let finalHeaps:any = payload.heaps;
+  if (typeof finalHeaps === "string") {
+    if (finalHeaps.length > 200000) return null;
+    try { finalHeaps = JSON.parse(finalHeaps); } catch (_) { return null; }
+  }
   if (deathEvents.length>0) {
-    if (!Array.isArray(payload.heaps) || !Array.isArray(currentHeapsValue)
-        || !sameNativeItemValue(payload.heaps,currentHeapsValue)) return null;
+    if (!Array.isArray(finalHeaps) || !Array.isArray(currentHeapsValue)
+        || !sameNativeItemValue(finalHeaps,currentHeapsValue)) return null;
     const last=deathEvents.reduce((a,b)=>a.sequence>b.sequence?a:b);
-    if (!sameNativeItemValue(last.heaps,payload.heaps)) return null;
+    if (!sameNativeItemValue(last.heaps,finalHeaps)) return null;
   } else if (payload.heaps!==undefined) return null;
-  return {complete:true,deltas:payload.deltas,...(deathEvents.length>0?{heaps:payload.heaps}:{})};
+  return {complete:true,deltas:payload.deltas,...(deathEvents.length>0?{heaps:finalHeaps}:{})};
 }
 
 /**

@@ -5695,7 +5695,7 @@ describe("Native Poison LifeLink Mob event correlation", () => {
       ...(dead?{heaps}:{})
     };
     const event={sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",payload:JSON.stringify(eventPayload)};
-    const payload={complete:true,deltas:[delta],...(dead?{heaps}:{})};
+    const payload={complete:true,deltas:[delta],...(dead?{heaps:JSON.stringify(heaps)}:{})};
     return {payload,currentMobs,heaps,event,eventPayload};
   };
 
@@ -5729,9 +5729,8 @@ describe("Native Poison LifeLink Mob event correlation", () => {
     expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
       sample.payload,sample.currentMobs,[7],[sample.event],[],64,8,10,"publisher")).toBeNull();
     const alteredHeaps=[{pos:26,items:[]}];
-    const alteredEvent={...sample.event,payload:JSON.stringify({...sample.eventPayload,heaps:alteredHeaps})};
     expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
-      {...sample.payload,heaps:alteredHeaps},sample.currentMobs,[7],[alteredEvent],
+      {...sample.payload,heaps:JSON.stringify(alteredHeaps)},sample.currentMobs,[7],[sample.event],
       alteredHeaps,64,8,10,"publisher")).toBeNull();
   });
 
