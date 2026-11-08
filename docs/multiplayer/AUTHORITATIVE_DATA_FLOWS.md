@@ -181,6 +181,7 @@ The Worker still enters through `server/src/index.ts`, which preserves protocol/
 - Schema/migration, item claim migration and generated fallback levels: `persistence.ts`.
 - Combat reservation, authoritative reconciliation, spatial checks and FOV: `combat.ts`.
 - Snapshot publication, floor transition finalization and match-end conditions: `snapshots.ts`.
-- Final Durable Object export, alarm and HTTP fetch: `index.ts`.
+- Final Durable Object export, constructor, alarm and room HTTP fetch: `server/src/match-room/index.ts`.
+- Cloudflare Worker request routing before Durable Object dispatch: `server/src/worker.ts`; Wrangler still loads it through the root `server/src/index.ts` default re-export.
 
-These are modules on one MatchRoom instance, not independent Durable Objects or parallel stores. The same request/session/sequence and SQL state must flow across every layer. The final Stage 2 source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d` passed [exact-HEAD CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) for both Backend typecheck/tests and Android JVM/debug APK compilation.
+These are modules on one MatchRoom instance, not independent Durable Objects or parallel stores. The same request/session/sequence and SQL state must flow across every layer. The Stage 3 router extraction is covered by `server/src/entrypoint.test.ts`; it verifies room-name dispatch, exact Request forwarding, the default-room fallback, the non-room API response and the root `MatchRoom` export. Exact final-head CI is the acceptance gate; it does not prove a deployed Worker or physical-device session.
