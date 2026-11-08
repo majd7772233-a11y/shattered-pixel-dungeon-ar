@@ -225,7 +225,7 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Capture native Mob before/after state around the original Poison actor tick without recreating the split-damage formula in TypeScript.
 - [x] Capture the publisher's sequence baseline before the native Poison tick and include publisher-local Actor IDs plus the native pre-bundle in the later evidence payload.
 - [ ] Commit the authoritative Mob effect exactly once through SYNC_MOB_STATE, then make BUFF_TICK correlation-only with no second Mob SQL, snapshot, death, or heap writes.
-- [ ] Bind evidence to a same-sender accepted CHAR_DAMAGED event with native LifeLink source during the captured Poison tick and after sequenceBefore; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and already-committed snapshot.
+- [ ] Bind evidence to a same-sender accepted CHAR_DAMAGED event with native LifeLink source during the captured Poison tick and after sequenceBefore; require sequenceBefore to include the sender's latest accepted HERO_BUFF_TICKED event; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and already-committed snapshot.
 - [ ] Cover a live target and a dead target already removed from the snapshot, including final-heap equality and death-event identity.
 - [ ] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles, and snapshots that still contain pre-damage state.
 - [x] Keep non-Poison timed Hero Buff expiry independent of LifeLink Mob resolution.

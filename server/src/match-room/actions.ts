@@ -1254,9 +1254,18 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const sequenceBefore = Number(data?.sequenceBefore);
               const sequenceBeforeValid = Number.isSafeInteger(sequenceBefore)
                 && sequenceBefore >= 0 && sequenceBefore <= this.currentSequence;
+              const lastOwnHeroBuffRow = isPoisonBuffTick ? this.sql.exec(
+                "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'HERO_BUFF_TICKED' ORDER BY sequence DESC LIMIT 1",
+                session.playerId).toArray()[0] : null;
+              const lastOwnHeroBuffSequence = Number(lastOwnHeroBuffRow?.sequence || 0);
+              // Require the baseline to include the latest accepted Hero Buff tick from this
+              // sender; otherwise an old LifeLink damage event could be replayed with baseline 0.
+              const sequenceBaselineFresh = sequenceBeforeValid
+                && Number.isSafeInteger(lastOwnHeroBuffSequence)
+                && sequenceBefore >= lastOwnHeroBuffSequence;
               // Only accepted Mob damage events after the publisher's captured baseline can
               // prove a LifeLink side effect already committed by SYNC_MOB_STATE.
-              const lifeLinkMobDamageEvents = isPoisonBuffTick && sequenceBeforeValid
+              const lifeLinkMobDamageEvents = isPoisonBuffTick && sequenceBaselineFresh
                 ? this.sql.exec(
                     "SELECT sequence,sender_id,event_type,payload FROM events WHERE sequence > ? AND sender_id = ? AND event_type = 'CHAR_DAMAGED' ORDER BY sequence ASC LIMIT 513",
                     sequenceBefore, session.playerId).toArray()
@@ -1264,13 +1273,13 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const lifeLinkMobActorIds = !isPoisonBuffTick ? []
                 : beforeHeroState ? nativeHeroBuffLifeLinkMobActorIds(data.heroStateBeforeJson) : null;
               const lifeLinkMobEntityIds = !isPoisonBuffTick ? []
-                : (sequenceBeforeValid && lifeLinkMobActorIds !== null && levelSnapshot)
+                : (sequenceBaselineFresh && lifeLinkMobActorIds !== null && levelSnapshot)
                   ? nativeHeroBuffLifeLinkMobEntityIds(
                       data.heroStateBeforeJson, levelSnapshot, lifeLinkMobDamageEvents) : null;
               const secondaryMobPayload = !isPoisonBuffTick
                 ? parseAndValidateNativeLifeLinkMobDeltas(data.secondaryMobDeltas,
                     levelSnapshot?.mobs, [], levelSize, Number(levelSnapshot?.width || 0))
-                : (sequenceBeforeValid && lifeLinkMobActorIds !== null && levelSnapshot)
+                : (sequenceBaselineFresh && lifeLinkMobActorIds !== null && levelSnapshot)
                   ? parseAndValidateNativeLifeLinkMobDamageEvidence(
                       data.secondaryMobDeltas, levelSnapshot.mobs, lifeLinkMobActorIds,
                       lifeLinkMobDamageEvents, levelSnapshot.heaps, levelSize,
