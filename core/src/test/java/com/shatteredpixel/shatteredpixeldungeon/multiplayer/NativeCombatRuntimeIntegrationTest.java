@@ -23,6 +23,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.FrostImbue;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.RemoteHero;
@@ -155,6 +157,53 @@ public class NativeCombatRuntimeIntegrationTest {
         // without emitting a network action, while still exercising the native capture gate.
         NativeHeroBuffTickPublisher.publish(capture);
         level.locked = false;
+    }
+
+    @Test
+    public void nativePoisonHeroBuffTickPublishesLifeLinkedMobDamage() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-life-link", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-life-link-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Rat linked = addRat(hero.pos + 1, 20);
+        manager.registerServerEntityId(linked.id(), "linked-native-mob-0001");
+        LifeLink link = Buff.prolong(hero, LifeLink.class, 10f);
+        link.object = linked.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(3f);
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull("A Poison tick with LifeLink must capture its native secondary targets", capture);
+        Assert.assertTrue("The original SPD Poison actor resolves the split damage", poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertEquals("Native LifeLink splits two points of Poison damage across both targets",
+                19, hero.HP);
+        Assert.assertEquals(19, linked.HP);
+        Assert.assertFalse("A complete native result must not request a fallback snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        NetworkMessage action = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION)
+                .reduce((first, second) -> second)
+                .orElse(null);
+        Assert.assertNotNull("The completed native Poison tick is published", action);
+        JsonValue payload = new JsonReader().parse(action.payloadJson);
+        JsonValue data = payload == null ? null : payload.get("data");
+        Assert.assertNotNull(data);
+        Assert.assertEquals("BUFF_TICK", data.getString("sourceType", ""));
+        JsonValue secondary = new JsonReader().parse(data.getString("secondaryMobDeltas", ""));
+        JsonValue deltas = secondary == null ? null : secondary.get("deltas");
+        Assert.assertNotNull(deltas);
+        Assert.assertEquals(1, deltas.size);
+        Assert.assertEquals("linked-native-mob-0001", deltas.get(0).getString("entityId", ""));
+        Assert.assertEquals(20, deltas.get(0).getInt("hpBefore", -1));
+        Assert.assertEquals(19, deltas.get(0).getInt("hpAfter", -1));
     }
 
     @Test

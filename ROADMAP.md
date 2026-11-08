@@ -395,6 +395,15 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 
 ### Acceptance criteria
 
+### Progress checkpoint — 2026-11-08 (LifeLink Mob side effects; Phase 9 remains OPEN)
+
+- Added a native Poison tick capture of the pre-tick shared Mob set. The Java publisher sends a complete `secondaryMobDeltas` result alongside the existing Hero state; it does not calculate Poison damage itself, so SPD's original `Char.damage()`/LifeLink split, resistances, shields, death callbacks and actor ordering remain the source of truth.
+- The server resolves every `LifeLink.object` Actor ID in the trusted Hero pre-state to exactly one Mob row and stable server entity ID. It rejects LifeLinks to another Hero, unknown/stale Actors or non-Mob targets until those target classes have a complete multi-entity contract.
+- Secondary Mob deltas are accepted only for those exact linked identities, against the stored Mob pre-state, with no movement or healing. Live Mob results must contain a matching native Mob bundle (Actor ID/class/HP/HT/position and nested Buffs). Native death tombstones must carry the exact pre-death bundle, empty Buff list and a separately validated heap snapshot.
+- Only the designated level publisher may commit non-empty shared Mob deltas. Mob deaths remove their stable entities from the saved level and SQL Mob rows and reserve the existing stable kill-reward receipts. A non-publisher may publish a Poison Hero tick only when it produces no shared Mob changes.
+- Added Java runtime coverage for a real native Poison/LifeLink tick and server regressions for identity mapping, unsupported targets, non-linked entities, movement/healing tampering, bundle mismatch and exact death tombstones.
+- **Remaining Phase 9 gaps:** Poison killing the linked local Hero while secondary targets also change still uses the existing Hero death/environment event path and is not admitted as one atomic multi-target result; LifeLink to another player/RemoteHero remains fail-closed; additional potion/scroll and detach callback families, effect-target death during callbacks, reconnect immediately before/after expiry, broad simultaneous DOT/shield interactions, malformed/resync and duplicate-event integration coverage remain open. Phase 9 is not complete.
+
 ### Progress checkpoint — 2026-11-02 (Phase 9 remains OPEN)
 
 - Latest exact-SHA code/test checkpoint: `b9ad0739d10d6a4125fb6ea084d6d072b2699810`; exact-head CI [41489794307](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41489794307) passed Backend TypeScript build/tests and Android `:core:test` plus Debug APK assembly (`BUILD SUCCESSFUL`). Backend executed **560 Vitest tests across four files**; TypeScript and generated JavaScript suites mirror the same source cases, so this is not 560 unique scenarios.

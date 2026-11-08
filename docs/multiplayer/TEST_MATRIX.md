@@ -218,3 +218,14 @@ Existing backend tests must continue importing the root compatibility surface fr
 - non-room paths preserve the existing HTTP 200 informational response.
 
 These are deterministic Worker-handler integration tests. They do not instantiate a Cloudflare Durable Object runtime, deploy a Worker or prove a physical two-device match. The root test suites continue to use the public `./index` compatibility path.
+
+
+## Phase 9 — LifeLink Mob damage in Poison ticks (2026-11-08)
+
+- [x] Capture pre/post shared Mob state around the original native Poison actor tick; do not recreate the LifeLink formula in TypeScript.
+- [x] Resolve LifeLink Actor IDs against unique stable Mob identities from the trusted level snapshot.
+- [x] Reject secondary Mob deltas outside those LifeLink identities, Mob movement/healing, mismatched native post-bundles, invalid death tombstones, unvalidated loot, duplicate reward receipts and non-publisher writes.
+- [x] Test the real Java Poison/LifeLink actor path and server-side identity/delta/death contracts.
+- [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
+- [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
+- [ ] Complete the remaining Phase 9 reconnect, expiry-boundary, simultaneous effect, consumable and detach-callback matrix.

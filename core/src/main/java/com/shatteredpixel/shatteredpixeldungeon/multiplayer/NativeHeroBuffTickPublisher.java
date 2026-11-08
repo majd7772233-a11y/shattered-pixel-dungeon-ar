@@ -30,9 +30,11 @@ public final class NativeHeroBuffTickPublisher {
         private final int depth;
         private final int heroPos;
         private final String wandItemId;
+        private final Map<Integer, NativeMobCombatDelta.State> secondaryMobStateBefore;
 
         private TickCapture(Hero hero, String beforeState, String buffClass, int buffId,
-                            int depth, int heroPos, float actorClockBefore, String wandItemId) {
+                            int depth, int heroPos, float actorClockBefore, String wandItemId,
+                            Map<Integer, NativeMobCombatDelta.State> secondaryMobStateBefore) {
             this.hero = hero;
             this.beforeState = beforeState;
             this.buffClass = buffClass;
@@ -41,8 +43,13 @@ public final class NativeHeroBuffTickPublisher {
             this.heroPos = heroPos;
             this.actorClockBefore = actorClockBefore;
             this.wandItemId = wandItemId == null ? "" : wandItemId;
+            this.secondaryMobStateBefore = secondaryMobStateBefore == null
+                    ? java.util.Collections.emptyMap() : secondaryMobStateBefore;
         }
     }
+
+    private static final String NATIVE_POISON =
+            "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
 
     private static TickCapture activeCapture;
 
@@ -127,8 +134,14 @@ public final class NativeHeroBuffTickPublisher {
             manager.requestResync(manager.getLastSequence());
             return null;
         }
+        // Poison may split damage through Char.damage() into one or more LifeLink targets.
+        // Capture every shared Mob now; the server later restricts any changed row to an exact
+        // LifeLink object ID and accepts it only from the designated level publisher.
+        Map<Integer, NativeMobCombatDelta.State> secondaryMobStateBefore =
+                NATIVE_POISON.equals(buffClass)
+                        ? NativeMobCombatDelta.capture(null) : java.util.Collections.emptyMap();
         activeCapture = new TickCapture(hero, before, buffClass, buff.id(), Dungeon.depth,
-                hero.pos, clock, wandItemId);
+                hero.pos, clock, wandItemId, secondaryMobStateBefore);
         return activeCapture;
     }
 
@@ -198,6 +211,10 @@ public final class NativeHeroBuffTickPublisher {
         data.put("actorClockBefore", capture.actorClockBefore);
         data.put("heroStateBeforeJson", capture.beforeState);
         if (!capture.wandItemId.isEmpty()) data.put("wandItemId", capture.wandItemId);
+        String secondaryMobDeltas = NATIVE_POISON.equals(capture.buffClass)
+                ? NativeMobCombatDelta.changedSince(capture.secondaryMobStateBefore, null)
+                : "{\"complete\":true,\"deltas\":[]}";
+        data.put("secondaryMobDeltas", secondaryMobDeltas);
 
         String requestId = manager.sendAction(NetworkActionType.SYNC_HERO_STATE,
                 new Json().toJson(data), after);

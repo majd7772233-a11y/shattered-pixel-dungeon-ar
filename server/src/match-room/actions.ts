@@ -1,10 +1,10 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { NATIVE_ENDURE_ABILITY, isValidNativeAbilityIntent } from "../validators/abilities";
-import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent } from "../validators/combat-state";
+import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, parseAndValidateNativeLifeLinkMobDeltas, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent } from "../validators/combat-state";
 import { assignStableEntityIds, resolveServerMobIdByEntityId } from "../validators/entity-identity";
 import { parseNativeQuickslotIndex, isValidNativeEquipmentIntent } from "../validators/equipment";
 import { isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallDestinationSnapshot, isPendingNativeFloorDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection } from "../validators/floor-transitions";
-import { isValidNativeHeroBuffTick } from "../validators/hero-buffs";
+import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
 import { isValidNativeFloorItemIdentitySet, reserveNativeLootClaim, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, classifyNativeMutationLock } from "../validators/inventory-claims";
 import { sameNativeItemValue } from "../validators/inventory-economy";
 import { isValidNativeBuybackIntent, mergeNativeItemStatusState, isValidNativeUseItemIntent } from "../validators/item-state";
@@ -1240,6 +1240,34 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 afterHeroState = null;
                 levelSnapshot = null;
               }
+              const levelPublisherRow = this.sql.exec(
+                "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
+              const isLevelPublisher = String(levelPublisherRow?.value || "") === session.playerId;
+              const levelSize = Number(levelSnapshot?.width || 0) * Number(levelSnapshot?.height || 0);
+              const lifeLinkMobEntityIds = beforeHeroState && levelSnapshot
+                ? nativeHeroBuffLifeLinkMobEntityIds(data.heroStateBeforeJson, levelSnapshot) : null;
+              const secondaryMobPayload = lifeLinkMobEntityIds == null ? null
+                : parseAndValidateNativeLifeLinkMobDeltas(data.secondaryMobDeltas,
+                    levelSnapshot?.mobs, lifeLinkMobEntityIds, levelSize, Number(levelSnapshot?.width || 0));
+              const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
+                .filter((delta: any) => Number(delta.hpAfter) === 0)
+                .map((delta: any) => Number(delta.posAfter));
+              const secondaryLootValid = secondaryMobPayload != null
+                && (secondaryDeathPositions.length === 0
+                  ? secondaryMobPayload.heaps === undefined
+                  : isValidNativeLootSnapshot(secondaryMobPayload.heaps, levelSnapshot?.heaps,
+                      secondaryDeathPositions, levelSize));
+              // Non-publishers may report a Poison tick with no shared Mob side effect, but may
+              // not author a LifeLink Mob mutation. A changed shared Mob is committed only with
+              // its exact complete native bundle and, on death, the matching loot snapshot.
+              const secondaryMobAuthority = secondaryMobPayload != null
+                && (secondaryMobPayload.deltas.length === 0 || isLevelPublisher);
+              const secondaryRewardIds = secondaryDeathPositions.length > 0
+                ? nativeMobKillRewardIds(this.currentDepth, "", 1, secondaryMobPayload?.deltas || []) : [];
+              const existingSecondaryRewardIds = (secondaryRewardIds || []).filter(rewardId =>
+                this.sql.exec("SELECT reward_id FROM native_mob_reward_claims WHERE reward_id = ?", rewardId).toArray().length > 0);
+              const secondaryRewardsUnclaimed = secondaryRewardIds != null
+                && areNativeMobRewardClaimsAvailable(secondaryRewardIds, existingSecondaryRewardIds);
               const validHeroBuffTick = !!playerRow && !!previousHeroState && !!beforeHeroState && !!afterHeroState
                 && String(playerRow.state) === "ALIVE"
                 && Number(previousHeroState.hp) === Number(playerRow.hp)
@@ -1252,20 +1280,59 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   hp: Number(afterHeroState.hp), ht: Number(playerRow.ht),
                   pos: Number(playerRow.pos), shielding: Number(afterHeroState.shielding)
                 })
+                && secondaryLootValid && secondaryMobAuthority && secondaryRewardsUnclaimed
                 && isValidNativeHeroBuffTick(previousHeroRow.value, data.heroStateBeforeJson,
-                  payload.heroStateJson, data, levelSnapshot);
+                  payload.heroStateJson, data, levelSnapshot, lifeLinkMobEntityIds);
               if (validHeroBuffTick) {
                 const storedHeroState = String(payload.heroStateJson);
                 this.sql.exec("UPDATE players SET hp = ? WHERE player_id = ?",
                   Number(afterHeroState.hp), session.playerId);
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + session.playerId, storedHeroState);
+
+                if (secondaryMobPayload!.deltas.length > 0) {
+                  const deadEntityIds: string[] = [];
+                  for (const delta of secondaryMobPayload!.deltas) {
+                    const mobIndex = (levelSnapshot.mobs as any[]).findIndex(
+                      (mob: any) => String(mob?.entityId || "") === delta.entityId);
+                    if (mobIndex < 0) throw new Error("LifeLink secondary Mob missing from trusted snapshot");
+                    const savedMob = levelSnapshot.mobs[mobIndex];
+                    const mobId = Number(savedMob.mobId);
+                    savedMob.hp = Number(delta.hpAfter);
+                    savedMob.ht = Number(delta.htAfter);
+                    savedMob.pos = Number(delta.posAfter);
+                    savedMob.shielding = Number(delta.shieldAfter);
+                    savedMob.buffs = JSON.parse(String(delta.buffsAfter));
+                    savedMob.serializedBundle = String(delta.serializedBundleAfter);
+                    if (Number(delta.hpAfter) === 0) {
+                      deadEntityIds.push(delta.entityId);
+                      this.sql.exec("DELETE FROM mobs WHERE mob_id = ? AND depth = ?", mobId, this.currentDepth);
+                    } else {
+                      this.sql.exec("UPDATE mobs SET hp = ?, ht = ?, pos = ? WHERE mob_id = ? AND depth = ?",
+                        Number(delta.hpAfter), Number(delta.htAfter), Number(delta.posAfter), mobId, this.currentDepth);
+                    }
+                  }
+                  if (deadEntityIds.length > 0) {
+                    const removedMobIds = removeDeadNativeMobsFromSnapshot(levelSnapshot, deadEntityIds);
+                    if (!removedMobIds || removedMobIds.length !== deadEntityIds.length) {
+                      throw new Error("LifeLink secondary Mob death reconciliation failed");
+                    }
+                    levelSnapshot.heaps = secondaryMobPayload!.heaps;
+                  }
+                  this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    `levelSnapshot:${this.currentDepth}`, JSON.stringify(levelSnapshot));
+                }
+                for (const rewardId of secondaryRewardIds || []) {
+                  this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
+                    rewardId, session.playerId, String(msg.requestId || ""), this.currentDepth);
+                }
                 eventType = "HERO_BUFF_TICKED";
                 actionResultPayload = {
                   playerId: session.playerId, sourceType: "BUFF_TICK",
                   buffClass: String(data.buffClass), buffId: Number(data.buffId),
                   targetHp: Number(afterHeroState.hp), targetShielding: Number(afterHeroState.shielding),
-                  targetHeroStateJson: storedHeroState
+                  targetHeroStateJson: storedHeroState,
+                  secondaryMobEntityIds: secondaryMobPayload!.deltas.map((delta: any) => delta.entityId)
                 };
                 actionValid = true;
                 actionCost = 0;

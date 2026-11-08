@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
-  isValidNativeHeroBuffTick, isValidNativeAbilityIntent, isValidNativeAbilityMutation,
+  isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, parseAndValidateNativeLifeLinkMobDeltas,
+  isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
   isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeMobBuffExpiryTurn, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable } from './index';
 
@@ -2811,6 +2812,84 @@ describe("Native Hero Buff tick reconciliation", () => {
     ...extra
   });
   const tick=(buffClass:string,buffId:number,actorClockBefore=9)=>({sourceType:"BUFF_TICK",buffClass,buffId,actorClockBefore});
+  it("resolves LifeLink.object only to one stable Mob identity in the trusted level snapshot",()=>{
+    const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
+    const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:10,object:7}});
+    const linkedHero=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:1
+    });
+    const level={mobs:[{mobId:7,entityId:"linked-native-mob-0001"}]};
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(linkedHero),level))
+      .toEqual(["linked-native-mob-0001"]);
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(stateWithBuff(poison,44,9,{left:9})),level))
+      .toEqual([]);
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(linkedHero),{
+      mobs:[...level.mobs,{mobId:7,entityId:"second-linked-mob-0002"}]
+    })).toBeNull();
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(linkedHero),{
+      mobs:[{mobId:7,entityId:""}]
+    })).toBeNull();
+    const missingActor={...linkedHero,buff_1:JSON.stringify({buff:{
+      __className:lifeLink,id:45,time:10,object:88
+    }})};
+    expect(nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(missingActor),level)).toBeNull();
+  });
+
+  it("accepts Poison damage through a mapped LifeLink only when the caller supplies the resolved Mob set",()=>{
+    const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
+    const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:9,object:7}});
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:1,hp:10
+    });
+    const before=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:0,hp:10
+    });
+    const after=stateWithBuff(poison,44,10,{left:8},{
+      cooldown:1,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:0,hp:8
+    });
+    const level={branch:0,locked:false,mobs:[{mobId:7,entityId:"linked-native-mob-0001"}]};
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44),level,undefined)).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44),level,["linked-native-mob-0001"])).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44),level,["other-native-mob-0002"])).toBe(false);
+  });
+
+  it("accepts only stable, non-moving LifeLink Mob damage bundles and exact death tombstones",()=>{
+    const className="com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
+    const entityId="linked-native-mob-0001";
+    const mobBundle=(hp:number)=>JSON.stringify({mob:{
+      __className:className,id:7,time:9,HP:hp,HT:20,pos:33,buffs:[]
+    }});
+    const saved=[{
+      entityId,mobId:7,name:"Rat",pos:33,hp:20,ht:20,shielding:0,buffs:[],
+      serializedBundle:mobBundle(20)
+    }];
+    const delta={
+      entityId,hpBefore:20,htBefore:20,posBefore:33,shieldBefore:0,
+      hpAfter:19,htAfter:20,posAfter:33,shieldAfter:0,
+      buffsBefore:"[]",buffsAfter:"[]",serializedBundleAfter:mobBundle(19)
+    };
+    const result=parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[delta]},saved,[entityId],1024,32);
+    expect(result?.deltas).toHaveLength(1);
+    expect(parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[delta]},saved,["unlinked-native-mob-02"],1024,32)).toBeNull();
+    expect(parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[{...delta,posAfter:34,serializedBundleAfter:mobBundle(19)}]},
+      saved,[entityId],1024,32)).toBeNull();
+    expect(parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[{...delta,hpAfter:21,serializedBundleAfter:mobBundle(21)}]},
+      saved,[entityId],1024,32)).toBeNull();
+    const death={...delta,hpAfter:0,shieldAfter:0,buffsAfter:"[]",serializedBundleAfter:saved[0].serializedBundle};
+    expect(parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[death],heaps:[]},saved,[entityId],1024,32)?.deltas[0].hpAfter).toBe(0);
+    expect(parseAndValidateNativeLifeLinkMobDeltas(
+      {complete:true,deltas:[{...death,serializedBundleAfter:mobBundle(0)}],heaps:[]},
+      saved,[entityId],1024,32)).toBeNull();
+  });
+
   it("accepts one native WellFed tick with its exact one-HP healing threshold",()=>{
     const cls=buffs+"WellFed";
     const previous=stateWithBuff(cls,22,9,{left:19},{cooldown:2,buffCooldown_0:1,hp:10});

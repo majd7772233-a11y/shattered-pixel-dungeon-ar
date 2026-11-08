@@ -1,3 +1,4 @@
+import { parseNativeBundleObject } from "./abilities";
 import { sameNativeItemValue } from "./inventory-economy";
 import { hasCompleteNativeLevelSnapshot, isValidNativeMobBuffExpiryTurn } from "./world-state";
 
@@ -752,6 +753,73 @@ export function parseAndValidateNativeSecondaryMobDeltas(
     if (!Array.isArray(payload.heaps)) return null;
   } else if (payload.heaps !== undefined) return null;
   return { complete: true, deltas: payload.deltas, ...(deathPositions.size ? { heaps: payload.heaps } : {}) };
+}
+
+/** Parses only LifeLink collateral damage: every changed entity must be one of the
+ * Hero's exact native LifeLink.object Mob IDs, and the Mob must not move or heal during damage.
+ */
+export function parseAndValidateNativeLifeLinkMobDeltas(
+  value: unknown, savedMobsValue: unknown, linkedEntityIdsValue: unknown,
+  levelSize: number, width: number
+): NativeSecondaryMobDeltaPayload | null {
+  if (!Array.isArray(linkedEntityIdsValue) || linkedEntityIdsValue.length > 512
+      || !Array.isArray(savedMobsValue)) return null;
+  const linked = new Set<string>();
+  for (const entityId of linkedEntityIdsValue) {
+    if (typeof entityId !== "string" || !/^[A-Za-z0-9._:-]{8,80}$/.test(entityId) || linked.has(entityId)) return null;
+    linked.add(entityId);
+  }
+  const payload = parseAndValidateNativeSecondaryMobDeltas(value, savedMobsValue, levelSize, width, false);
+  if (!payload) return null;
+  const savedById = new Map<string,any>((savedMobsValue as any[]).map(mob=>[String(mob?.entityId || ""),mob]));
+  for (const delta of payload.deltas) {
+    if (!linked.has(delta.entityId) || delta.posAfter !== delta.posBefore) return null;
+    const saved = savedById.get(delta.entityId);
+    const beforeRoot = parseNativeBundleObject(saved?.serializedBundle);
+    const beforeMob = beforeRoot?.mob;
+    const afterRoot = parseNativeBundleObject(delta.serializedBundleAfter);
+    const afterMob = afterRoot?.mob;
+    if (!beforeMob || Number(beforeMob.id)!==Number(saved.mobId)
+        || String(beforeMob.__className || "") === ""
+        || String(beforeMob.__className || "") !== String(afterMob?.__className || "")
+        || Number(beforeMob.HP)!==Number(delta.hpBefore)
+        || Number(beforeMob.HT)!==Number(delta.htBefore)
+        || Number(beforeMob.pos)!==Number(delta.posBefore)) return null;
+
+    if (delta.hpAfter === 0) {
+      // NativeMobCombatDelta emits a tombstone containing the exact trusted pre-death Mob
+      // bundle and an empty post-death Buff list; the authoritative heap snapshot carries loot.
+      if (delta.serializedBundleAfter !== String(saved.serializedBundle || "")
+          || delta.buffsAfter !== "[]" || delta.shieldAfter !== 0) return null;
+      continue;
+    }
+
+    if (!afterMob || Number(afterMob.id)!==Number(saved.mobId)
+        || Number(afterMob.HP)!==Number(delta.hpAfter)
+        || Number(afterMob.HT)!==Number(delta.htAfter)
+        || Number(afterMob.pos)!==Number(delta.posAfter)
+        || !Array.isArray(afterMob.buffs)) return null;
+    let afterBuffRows:any[];
+    try { afterBuffRows = JSON.parse(delta.buffsAfter); } catch (_) { return null; }
+    if (!Array.isArray(afterBuffRows) || afterBuffRows.length !== afterMob.buffs.length) return null;
+    const nestedByKey = new Map<string,any>();
+    for (const buff of afterMob.buffs) {
+      const key = String(buff?.__className || "")+"#"+Number(buff?.id);
+      if (!buff || nestedByKey.has(key)) return null;
+      nestedByKey.set(key,buff);
+    }
+    const seenBuffs = new Set<string>();
+    for (const row of afterBuffRows) {
+      const root = parseNativeBundleObject(row?.serializedBundle);
+      const buff = root?.buff;
+      const key = String(buff?.__className || "")+"#"+Number(buff?.id);
+      if (!buff || typeof row?.serializedBundle !== "string" || seenBuffs.has(key)
+          || !sameNativeItemValue(buff,nestedByKey.get(key))) return null;
+      seenBuffs.add(key);
+    }
+    if (seenBuffs.size !== nestedByKey.size) return null;
+  }
+  return payload;
 }
 
 /**

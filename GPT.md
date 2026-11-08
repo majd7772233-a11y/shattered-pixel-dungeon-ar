@@ -1,5 +1,15 @@
 # GPT.md — Internal Project Operating Notes
 
+## Phase 9 continuation checkpoint — 2026-11-08 (LifeLink Mob side effects)
+
+- Branch remains `multiplayer-framework-core-14118577486727081892`; no new branch and no `main` merge.
+- Native Poison Buff capture now snapshots the shared Mob set before `Poison.act()` and includes `secondaryMobDeltas` in the existing `SYNC_HERO_STATE`/`BUFF_TICK` action. The Java engine remains responsible for all split-damage formulas and callbacks.
+- Server validation binds each LifeLink `object` Actor ID to one unique stable Mob entity in the trusted level snapshot. Only linked entities can be included; they cannot move or heal; living results require matching native bundles and Mob Buff lists; death tombstones require the trusted pre-death bundle and validated heap result.
+- Only the designated level publisher may commit non-empty shared-Mob results. A non-publisher Poison tick is accepted only with an empty secondary delta. Accepted Mob deaths are removed from snapshot and SQL and receive the existing stable reward receipt.
+- Regression coverage added for native Java Poison/LifeLink publication and server target/bundle/delta validation. Exact-HEAD CI must be checked before treating this checkpoint as verified.
+- Phase 9 remains OPEN. Hero death combined with collateral Mob changes and LifeLink to another player/RemoteHero are fail-closed; other Phase 9 reconnect, expiry, callback, consumable-family and broad interaction coverage remains outstanding. Protected `Hero.java`, `Mob.java`, and `WorldSnapshot.java` are not modified.
+
+
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
 
