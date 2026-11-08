@@ -151,7 +151,17 @@ For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Batch 2 
 
 BluetoothTransport provider registration and runtime permissions remain open. See ANDROID_NATIVE_INTEGRATION.md and Phase 16.
 
-## 7. Backend file inventory
+## 7. Backend file inventory after source-refactor Stage 1
+
+`server/src/index.ts` remains the official Cloudflare Worker entry, `MatchRoom` class owner and compatibility facade. Its original public named exports are preserved. The moved implementations are under:
+
+- `server/src/protocol/types.ts`;
+- `server/src/validators/` — entity identity, floor transitions, equipment, item state, abilities, shop, world actions, inventory claims/economy, world items, Hero buffs, world state and combat state;
+- `server/src/util/seeded-rng.ts`.
+
+The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. MatchRoom remains in `server/src/index.ts` until Stage 2. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged.
+
+
 
 server/ contains:
 - package.json and package-lock.json;
@@ -177,13 +187,13 @@ server/src/index.ts is the backend entry and currently contains all pure validat
 | core/build.gradle / android/build.gradle | Core and Android module dependencies/build configuration |
 | gradle.properties / gradlew / gradlew.bat / gradle/wrapper | Gradle runtime/tooling |
 
-## 9. High-complexity files reserved for Batch 3
+## 9. Large source files and remaining refactor scope
 
 The following file sizes were read from the Git tree at the baseline. They are candidates for a dedicated source-structure analysis; no split or refactor is being proposed as already approved.
 
 | File | Bytes | Why it is a Batch 3 candidate |
 |---|---:|---|
-| server/src/index.ts | 658,825 | 10,095 lines combining validator domains, Durable Object, SQL, WebSocket and Worker routing |
+| server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 moved the original validator/type/helper declarations; the file remains the Worker/MatchRoom entry and compatibility facade pending Stages 2–3 |
 | core/.../actors/hero/Hero.java | 117,061 | Native player class with combat, item, world action, damage and death integration |
 | core/.../multiplayer/WorldSnapshot.java | 83,795 | Validation, serialization, native restore, reconciliation and rollback |
 | core/.../multiplayer/MessageRouter.java | 68,021 | Message parsing, combat, snapshot, accepted action and event application |
@@ -194,20 +204,26 @@ The following file sizes were read from the Git tree at the baseline. They are c
 | server/src/index.test.ts | 337,158 | 5,556-line test file with 57 describe groups and 277 test declarations |
 | core/.../NativeCombatRuntimeIntegrationTest.java | See Git tree/source | 2,648-line integration test with 46 methods |
 
-Batch 3 should also inspect smaller but tightly coupled files before deciding boundaries. A large file is not automatically improved by splitting it; the design must reduce coupling and discovery cost without creating scattered state ownership, circular imports or fragile cross-module contracts.
+The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from splitting; leave them unchanged. Their sizes are retained as historical inventory only. Stage 2 and Stage 3 focus on MatchRoom and Worker/storage integration. Do not move gameplay engine files into this refactor.
 
-## 10. Batch 3 design-only scope
+## 10. Three-stage source refactor
 
-The user requested that very large source files be handled separately from Markdown documentation. The next batch is therefore a source-structure assessment and proposal, not part of Batch 2.
+### Stage 1 — validators/types/helpers
+- Move every original declaration before MatchRoom into focused TypeScript modules.
+- Keep all original public exports available through index.ts.
+- Keep the full MatchRoom class and Worker default fetch code in index.ts.
+- Preserve function bodies, validators, comments, constants and type definitions; promote only cross-module private helpers to internal exports.
+- **State:** implementation committed; exact-head CI pending.
 
-It should:
-1. measure method/type responsibilities and actual dependency direction;
-2. identify seams and shared data contracts;
-3. map every import/export/caller/test/config dependency affected by extraction;
-4. compare modular extraction options with the existing Tanweer server organization as a reference pattern, not as a blind template;
-5. keep a single stable Worker entry point while evaluating internal domain modules;
-6. preserve Durable Object class identity, storage schema/migration behavior, route contracts and deployment entry;
-7. propose incremental moves with behavior-parity tests and exact-SHA validation;
-8. present the architecture recommendation for discussion before a high-risk source refactor.
+### Stage 2 — MatchRoom responsibilities
+- Split storage/schema helpers, session lifecycle, message routing/action handlers, combat coordination, snapshots/transitions and broadcasts into cohesive modules.
+- Preserve one MatchRoom class export and its Cloudflare identity.
+- Preserve SQLite SQL, migrations, alarms, replay/locks, event sequencing and WebSocket protocol exactly.
 
-No gameplay phase is created or renumbered by these documentation batches.
+### Stage 3 — Worker integration and parity
+- Complete remaining Worker routing/entry integration; remove transitional glue only when proven unused.
+- Reconcile every moved declaration with the original source inventory.
+- Recheck Java/client call sites, schema, tests, Wrangler, workflows, deployment docs and import/export compatibility.
+- Keep Hero.java, Mob.java and WorldSnapshot.java untouched throughout.
+
+These stages are source organization only. They do not change or renumber gameplay phases 1–23.

@@ -97,14 +97,15 @@ Do not infer production readiness from implementation presence. Handshake correc
 
 ### 3.4 Backend room layer
 
-server/src/index.ts currently contains:
-1. Shared TypeScript envelope types and a very large group of exported pure validators and state-transition helpers.
-2. MatchRoom, the Durable Object class for a room.
-3. The default Worker fetch handler that selects a Durable Object by room name and delegates /room/{roomCode}/... requests to it.
+After source-refactor Stage 1, the backend has these distinct responsibilities:
+1. `server/src/protocol/types.ts` owns Env, NetworkMessage and SessionData types.
+2. `server/src/validators/` owns the original pure validation/helper declarations, grouped by entity identity, transitions, equipment, item state, abilities, shop, world actions, inventory/claims/economy, floor items, Hero Buffs, world state and combat state.
+3. `server/src/util/seeded-rng.ts` owns the original deterministic SeededRNG helper.
+4. `server/src/index.ts` remains the stable Worker entry, compatibility facade, MatchRoom Durable Object class and default Worker fetch handler.
 
-MatchRoom stores DurableObjectState, a SQLite handle, sequence, match seed, current depth, world time, game mode and match status. It owns room initialization, database migration/schema setup, session/WebSocket handling, action admission, snapshots, pending combat/transition state, event sequence, broadcast and field-of-view filtering.
+The MatchRoom class still owns DurableObjectState, SQLite storage, sequence, match seed, current depth, world time, game mode/status, schema initialization, session/WebSocket handling, actions, snapshots, pending combat/transition state and broadcasts. Its internal decomposition is reserved for Stage 2; Worker/storage integration parity is Stage 3.
 
-The single file is 10,095 lines / approximately 659 KB at the audited HEAD. Backend domain concerns are not yet separated into distinct source modules. This concentration is a maintenance/review risk: when modifying a validator or message handler, inspect the full function and its callers, preconditions, persistence writes, event emission, and tests. A future extraction must be separately planned and preserve behavior; do not introduce an unrelated large refactor inside a gameplay phase.
+The old 10,095-line / approximately 659 KB figure is the pre-extraction source baseline. Stage 1 moves the original 200 top-level declarations before MatchRoom without changing their validation rules or wire behavior. The facade retains every originally exported name. Stage 1 does not modify Java sources, protocol/schema.json, Wrangler binding/class identity, SQLite tables/migrations or deployment routing.
 
 ### 3.5 Protocol layer
 
@@ -173,7 +174,7 @@ Do not move parsing or validation across thread boundaries casually. Separate sa
 
 ## 8. Key design risks
 
-- server/src/index.ts is a very large single backend implementation combining validators, coordination, persistence and WebSocket lifecycle.
+- server/src/index.ts still contains the complete MatchRoom/Worker implementation; MatchRoom handler/storage decomposition remains scheduled for source-refactor Stages 2–3. Validator implementations now live in focused modules, with the facade preserving their original exports.
 - MessageRouter still has a default receiver branch for RemotePlayerActionReceiver; the one typed event path is incomplete.
 - Setup UI does not wait for confirmed connection and silently catches some transport startup failures.
 - Mode descriptors exist, but server-enforced mode acceptance remains open.

@@ -72,7 +72,15 @@ These files are outside the multiplayer package but part of the feature.
 
 | Path | Role | Change impact |
 |---|---|---|
-| server/src/index.ts | All backend pure validators/helpers, MatchRoom, SQLite schema/migration, WebSocket lifecycle, message handling, state admission, sequencing, broadcast, FOV and Worker routing. | Extremely broad. Inspect full function, callers, SQL mutations, sequence writes, events, tests and cross-layer contract. |
+| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, complete MatchRoom Durable Object class and default Worker fetch. | Preserve the facade and Worker/Wrangler contract; MatchRoom internals are Stage 2–3 work. |
+| server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
+| server/src/validators/entity-identity.ts and floor-transitions.ts | Stable entity mapping, movement and floor transition validation. | Keep the original fail-closed rules and native transition assumptions. |
+| server/src/validators/equipment.ts, item-state.ts and abilities.ts | Quickslots, equipment, item/buff bundle safety, use/status and ability validation. | Shared helper imports are explicit; avoid weakening item ownership or mutation checks. |
+| server/src/validators/shop.ts and world-actions.ts | Buy/sell/buyback/shopkeeper and world action admission validators. | Preserve exact inventory, heap and action-cost transitions. |
+| server/src/validators/inventory-claims.ts and inventory-economy.ts | Stable item/heap identity, durable claim helpers, locks, inventory tree/economy and mining validation. | Preserve branch scope, request idempotency, locks and item conservation. |
+| server/src/validators/world-items.ts | DROP/PICKUP/THROW/projectile/alchemy validation and mutation helpers. | Keep all before/after comparisons and native side-effect checks. |
+| server/src/validators/hero-buffs.ts, world-state.ts and combat-state.ts | Hero/Mob Buff ticks, world snapshots/turns, HP/damage, Ankh and combat deltas/events. | Preserve fail-closed native state contracts and existing test coverage. |
+| server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
 | server/src/index.test.ts | Main backend test suite. | Add positive/negative cases beside affected validator/action group. Tests do not prove Durable Object lifecycle unless they instantiate that actual lifecycle. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |
@@ -123,7 +131,7 @@ Mirrored TypeScript/JavaScript outputs may execute the same source cases more th
 
 ## 7. High-risk files
 
-- server/src/index.ts — a large combined backend implementation; validators and persistence side effects can be far from the edited handler.
+- server/src/index.ts — stable Worker entry and remaining large MatchRoom implementation; Stage 2–3 must preserve Durable Object/storage/route contracts.
 - WorldSnapshot.java — complex native restore, entity reconciliation and rollback.
 - MultiplayerManager.java — session, authority, sequence and stable player/entity identity hub.
 - MessageRouter.java plus RemotePlayerActionReceiver.java — transitional routing overlap.

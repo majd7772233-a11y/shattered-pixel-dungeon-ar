@@ -19,9 +19,13 @@ All engineering pages in this set are written in English for consistency with so
 7. PROTOCOL_MESSAGE_CATALOG.md — outer message types, actions, event records and payload definitions.
 8. TEST_MATRIX.md — source test files, suite inventory, coverage limits and CI mapping.
 9. SESSION_RECOVERY_AND_SECURITY.md — session token, replay, authority, reconnect, locks, FOV and risk notes.
-10. SOURCE_FILE_REFERENCE.md — module/file inventory and Batch 3 large-source candidates.
+10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
-12. DOCUMENTATION_ROLLOUT_PLAN.md — temporary three-batch coordination tracker. Not a gameplay phase; remove after Batch 3 design discussion is concluded and the permanent governance is transferred.
+12. DOCUMENTATION_ROLLOUT_PLAN.md — source-refactor stage tracker. Separate from the 23 gameplay phases.
+
+## Current source-refactor state
+
+Stage 1 separates the original backend protocol/session types, pure validators and deterministic helper into focused modules. `server/src/index.ts` remains the Worker entry, exports the original public validator API through a compatibility facade, and still contains the complete `MatchRoom` and default Worker implementation pending Stages 2–3. No Java gameplay file or wire/schema contract is changed by Stage 1.
 
 ## Source-of-truth hierarchy
 
@@ -93,4 +97,4 @@ The Batch 1 commit was documentation/workflow-only and did not change gameplay c
 8. Verify exact-commit CI, and separately record deployment/device evidence.
 9. Never mark a phase, mode, transport or feature complete based only on source presence or compilation.
 
-See DOCUMENTATION_ROLLOUT_PLAN.md for the remaining separate Batch 3 source-structure assessment.
+See DOCUMENTATION_ROLLOUT_PLAN.md for the three-stage source refactor. Stage 1 moves the validator/type/helper layer; Stage 2 will decompose MatchRoom; Stage 3 will complete Worker integration. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.

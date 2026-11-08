@@ -2,6 +2,11 @@
 
 > Baseline: branch HEAD eb2075b3f09ca4779773140b7e6539a6655f6824. This matrix records source test declarations and suite structure; it is not a claim that every production behavior is covered or device-verified.
 
+
+## Source-refactor compatibility
+
+Stage 1 keeps the existing backend test files and their `./index` import path. The facade must continue exporting all names originally exported by `server/src/index.ts`; the suite is an important compile-time guard against accidental export loss. New direct-module tests may be added where they improve isolation, but do not rewrite tests merely to follow internal paths.
+
 ## 1. Evidence levels and counts
 
 | Layer | Source evidence at baseline | Meaning |

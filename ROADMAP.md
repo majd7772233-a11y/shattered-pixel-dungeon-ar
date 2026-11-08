@@ -783,3 +783,38 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 - Final side-effect audit closed Ring identification, unsafe potion side effects, LostBackpack restoration and tipped-dart merge-generated extras through client preflight, Worker validation and positive/negative regressions.
 - Exact tested gameplay SHA `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-HEAD CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455): schema valid, backend build and 456 tests passed, Android JVM tests and APK compile passed.
 - Phase 7 is complete for implementation and automated acceptance. Phase 8 is next. No deployed Worker or physical-device test was performed; Phases 22 and 23 remain open.
+
+
+## Non-gameplay Source Refactor — Three Stages (2026-11-08)
+
+This is a separate source-organization effort. It does not create, renumber, close, or change any of the 23 gameplay phases above.
+
+### User-preservation contract
+
+- Every original top-level implementation element in `server/src/index.ts` must be moved intact to its new owner or remain in the entry file until its scheduled stage. Do not drop validators, helpers, comments, branches, storage operations, event paths, or Worker behavior.
+- Moves may add the exports/imports required for module boundaries, but must not weaken, replace, simplify, stub, duplicate, or silently remove existing behavior.
+- `index.ts` remains the official Worker/Durable Object module entry and compatibility facade. Preserve the historical public exports unless a future explicit decision authorizes a migration.
+- `Hero.java`, `Mob.java`, and `WorldSnapshot.java` are explicitly out of scope for splitting and must remain unchanged.
+- Inspect all affected server tests, Java/client callers, protocol/schema definitions, Wrangler settings, build configuration, and docs after each move. Java changes are only justified by a demonstrated cross-layer contract impact.
+
+### Stage 1 — protocol types, pure validators and deterministic helpers
+
+Move the original type/helper/validator declarations and `SeededRNG` into focused `protocol/`, `validators/`, and `util/` modules. Keep `MatchRoom` and the default Worker fetch implementation in `index.ts`. Preserve every original named export through the facade so current tests and consumers do not need import-path changes. Do not change gameplay or wire behavior.
+
+**State:** implementation committed; exact-HEAD CI pending.
+
+### Stage 2 — MatchRoom decomposition
+
+Extract the Durable Object's storage/repository operations, lifecycle/snapshot helpers, and protocol/action handlers into cohesive modules. Keep one authoritative MatchRoom class export and preserve the Cloudflare binding name `MATCH_ROOM`, class name `MatchRoom`, existing migration history, SQL behavior, WebSocket attachment/session semantics, sequencing, replay protection, and event payloads. Establish explicit context interfaces instead of copying state or introducing parallel owners.
+
+**State:** not started; requires Stage 1 exact-commit CI success.
+
+### Stage 3 — Worker entry, integration and parity audit
+
+Finish the remaining Worker routing and supporting integration boundaries; remove only transitional glue proven unnecessary after all callers have moved. Keep `server/src/index.ts` as the stable Worker entry. Audit every original declaration against its new location, every import/export, all backend tests, the Java/client wire contract, protocol schema, Wrangler config, CI/deploy workflows and documentation. Run complete backend tests and exact-HEAD Android validation. No production deploy or physical multiplayer claim follows from CI alone.
+
+**State:** not started.
+
+### Stage completion gate
+
+A stage is complete only when all moved source is accounted for, no original behavior has been omitted, all dependent files/docs are updated, backend build/tests and required Android CI pass at the exact final commit, and the resulting module tree/import graph has been inspected. A failed check keeps the current stage open.

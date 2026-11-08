@@ -17,7 +17,33 @@ At the baseline, server/src/index.ts is 658,825 bytes and 10,095 lines. It conta
 - event sequencing and broadcasts;
 - the Worker fetch entry point.
 
-There are no separate backend domain modules for these concerns in the current source tree. Do not treat this document as evidence that a modular structure exists.
+This describes the original pre-extraction baseline. Stage 1 now places validator/type/helper declarations in focused modules as documented in section 1.1; MatchRoom and Worker routing are intentionally not split yet.
+
+## 1.1 Current source layout after Stage 1
+
+The original validator declarations have been moved out of `server/src/index.ts` into these focused modules. The original function bodies and domain behavior are retained; helpers required across module boundaries are exported internally, while `index.ts` keeps the former public named exports.
+
+| Module | Responsibility |
+|---|---|
+| `server/src/protocol/types.ts` | Env, NetworkMessage and SessionData declarations |
+| `server/src/validators/entity-identity.ts` | Stable server entity identity mapping |
+| `server/src/validators/floor-transitions.ts` | Movement, stair/fall validation and transition barriers |
+| `server/src/validators/equipment.ts` | Quickslots, equipment slots, equipment and chest validation |
+| `server/src/validators/item-state.ts` | Item Buff/bundle safety, buyback, item status and use validation |
+| `server/src/validators/abilities.ts` | Ability identities, intent and mutation validation |
+| `server/src/validators/shop.ts` | Buy, sell, buyback and Shopkeeper state |
+| `server/src/validators/world-actions.ts` | Native world action admission and movement heap deltas |
+| `server/src/validators/inventory-claims.ts` | Stable loot identity, durable claim helpers, mutation locks and inventory bundle tree checks |
+| `server/src/validators/inventory-economy.ts` | Inventory/economy indexing and mining deltas |
+| `server/src/validators/world-items.ts` | DROP/PICKUP/THROW/projectile/alchemy helpers and mutations |
+| `server/src/validators/hero-buffs.ts` | Hero Buff tick, wand charge, shield and damage-recovery validation |
+| `server/src/validators/world-state.ts` | Action cost, native world mutations, full level snapshot and Mob Buff expiry validation |
+| `server/src/validators/combat-state.ts` | World turn, HP/damage, Ankh, combat, Hero state, Mob deltas and combat event validation |
+| `server/src/util/seeded-rng.ts` | Deterministic SeededRNG utility |
+
+The grouping follows source cohesion and the observed helper dependencies. Some validator modules import shared helpers from other validator modules; imports are explicit. Do not create duplicate copies to avoid imports.
+
+`server/src/index.ts` is now the stable entry and compatibility facade plus the complete `MatchRoom`/Worker implementation. The existing `index.test.ts` and pickup side-effect test continue to import through `./index`; do not change callers merely to reflect internal moves. Original line ranges in the next section describe the pre-extraction baseline SHA above, not current line numbers.
 
 ## 2. Top-level validator domains
 
@@ -69,7 +95,7 @@ The validator layer is deliberately strict and fail-closed. It checks native sta
 | broadcast(...) | 10,069 | Broadcast a message to room sockets |
 | default fetch(request, env) | 10,082 | Resolve /room/{roomCode}/... to the named Durable Object |
 
-webSocketMessage is a single very large method. Its inner request branches are not independent modules; Batch 3 will assess extraction seams and update all callers/imports/tests only after a separate design discussion.
+webSocketMessage remains a single very large method inside MatchRoom after Stage 1. Stage 2 owns its handler decomposition. Its inner branches must be moved intact with every SQL mutation, replay guard, lock, sequence increment and broadcast path preserved.
 
 ## 4. Inbound message handling
 
