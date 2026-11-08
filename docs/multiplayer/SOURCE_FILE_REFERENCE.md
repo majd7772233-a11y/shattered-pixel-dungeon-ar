@@ -1,0 +1,213 @@
+# Multiplayer Repository Source-File Reference
+
+> Inventory baseline: branch HEAD eb2075b3f09ca4779773140b7e6539a6655f6824. This document maps project areas and multiplayer-critical paths. It does not claim that every one of the repository's 1,963 tracked files has been manually reviewed line by line.
+
+## 1. Repository structure
+
+The audited Git tree contains 1,963 tracked blobs at the baseline. Main top-level areas:
+
+| Path | Approx. tracked files | Responsibility |
+|---|---:|---|
+| SPD-classes/ | 81 | Shared game/engine support classes |
+| android/ | 55 | Android application, launcher, platform adapter, resources and native dependencies |
+| core/ | 1,695 | Main game engine, assets, multiplayer Java, and JVM tests |
+| desktop/ | 16 | Desktop launcher/platform module |
+| ios/ | 63 | iOS/RoboVM platform module |
+| docs/ | 6 at the original source audit plus new multiplayer docs | Contributor/platform docs and this maintained engineering guide |
+| gradle/ | 2 | Gradle wrapper support |
+| protocol/ | 1 | Shared JSON Schema |
+| server/ | 8 | Cloudflare Worker/Durable Object source, tests, package and deployment config |
+| services/ | 17 | News/update service modules |
+| .github/ | 3 | Workflow automation |
+
+The directory counts are a repository-tree snapshot. Recalculate them after source additions, moves or removals.
+
+## 2. Gradle and runtime modules
+
+settings.gradle includes:
+- :SPD-classes;
+- :core;
+- :android;
+- :ios;
+- :desktop;
+- :services;
+- :services:updates:debugUpdates;
+- :services:updates:githubUpdates;
+- :services:news:debugNews;
+- :services:news:shatteredNews.
+
+Root build variables at the audited commit:
+- Android Gradle Plugin 9.1.0;
+- Java compatibility 11;
+- Android compile/target SDK 36 and minimum SDK 21;
+- libGDX 1.14.0;
+- Controllers extension 2.2.4;
+- RoboVM 2.3.24;
+- app ID com.magd.shatteredpixeldungeon.
+
+These are observed baseline values. Re-check before modifying build configuration.
+
+## 3. Root and project-memory Markdown files
+
+At the pre-Batch-2 baseline there were 15 tracked Markdown files:
+
+| Path | Role |
+|---|---|
+| GPT.md | AI continuation rules/checkpoint and historical implementation notes |
+| ROADMAP.md | Authoritative 23-phase plan, dependencies and acceptance gates |
+| MULTIPLAYER_CONTINUATION_NOTES.md | Superseded historical checkpoint; not current phase authority |
+| docs/PULL_REQUEST_TEMPLATE.md | PR contribution template |
+| docs/getting-started-android.md | Android build/setup instructions |
+| docs/getting-started-desktop.md | Desktop build/setup instructions |
+| docs/getting-started-ios.md | iOS build/setup instructions |
+| docs/recommended-changes.md | App branding/version/translation customization guidance |
+| docs/multiplayer/README.md | Multiplayer documentation index/source-of-truth contract |
+| docs/multiplayer/PROJECT_OVERVIEW.md | Product scope and terminology |
+| docs/multiplayer/SYSTEM_ARCHITECTURE.md | High-level project/runtime/server architecture |
+| docs/multiplayer/COMPONENT_AND_FILE_MAP.md | Component responsibilities/change impact |
+| docs/multiplayer/AUTHORITATIVE_DATA_FLOWS.md | Native-to-server-to-client paths |
+| docs/multiplayer/BUILD_TEST_AND_CI.md | Build/test/deployment/CI evidence |
+| docs/multiplayer/DOCUMENTATION_ROLLOUT_PLAN.md | Temporary documentation batch tracker |
+
+Batch 2 adds:
+- ANDROID_NATIVE_INTEGRATION.md;
+- SERVER_VALIDATION_AND_STORAGE.md;
+- PROTOCOL_MESSAGE_CATALOG.md;
+- TEST_MATRIX.md;
+- SESSION_RECOVERY_AND_SECURITY.md;
+- SOURCE_FILE_REFERENCE.md.
+
+The temporary rollout tracker is retained while Batch 3 is pending; it must be deleted after that plan has been reviewed and the permanent reference index/checkpoint are finalized.
+
+## 4. Multiplayer Java package inventory
+
+Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
+
+The package has 32 Java files:
+
+| File | Main responsibility |
+|---|---|
+| BluetoothTransport.java | Core Bluetooth facade/provider interface |
+| CoopMode.java | Co-op rule descriptor |
+| DeathmatchMode.java | Deathmatch rule descriptor |
+| EmbeddedMatchAuthority.java | Small embedded/local authority helper; not a Worker replacement |
+| GameMode.java | Mode descriptor interface |
+| InternetTransport.java | Custom TCP/TLS/WebSocket client |
+| LANTransport.java | TCP server/client and UDP host discovery |
+| LootClaimManager.java | In-memory claim helper |
+| MessageRouter.java | Structured client message/event/snapshot/combat router |
+| MessageType.java | Outer protocol enum |
+| MultiHeroManager.java | Native Hero enumeration/nearest-hero helper |
+| MultiplayerActionDispatcher.java | Native Hero action dispatch bridge |
+| MultiplayerManager.java | Client session, transport, sequence, identities and publication |
+| MultiplayerRunProgress.java | Run progress state serialization/restore |
+| NativeCombatAuthorityPolicy.java | Authority selection helper for native combat |
+| NativeCombatJson.java | Strict JSON writer for combat payloads |
+| NativeHeroBuffTickPublisher.java | Native Hero Buff tick capture/publish |
+| NativeItemActionPublisher.java | Selected native item action publication |
+| NativeItemUse.java | Item-use preflight and fail-closed allowlist |
+| NativeMobCombatDelta.java | Secondary native Mob delta capture |
+| NetworkActionBridge.java | Native HeroAction → network action mapping |
+| NetworkActionType.java | Gameplay action enum |
+| NetworkMessage.java | Outer envelope and parser |
+| NetworkTransport.java | Common transport interface |
+| PlayerFOV.java | Local field-of-view calculation |
+| PvPMode.java | PvP rule descriptor |
+| RemotePlayer.java | Remote participant model and local Hero instance |
+| RemotePlayerActionReceiver.java | Legacy/general remote-player receiver |
+| SPDLevelSnapshot.java | Native snapshot exporter |
+| SurvivalMode.java | Survival rule descriptor |
+| TransportCallback.java | Transport callback interface |
+| WorldSnapshot.java | Snapshot validation, restore, entity reconciliation and rollback |
+
+For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Batch 2 native/protocol/server references.
+
+## 5. Native engine integration paths
+
+| File | Why it matters |
+|---|---|
+| actors/Actor.java | Scheduler, Actor time/cooldown, shared actor gating and deferred result publication |
+| actors/Char.java | Native shared combat/buff/damage behavior inherited by Hero and Mob |
+| actors/hero/Hero.java | Main local player action, native combat, item mutation, death/revival and action publisher hooks |
+| actors/hero/RemoteHero.java | Delegated native Hero simulation for another player |
+| actors/mobs/Mob.java | Native AI, Mob scheduling, Hero target ownership and Mob damage reports |
+| levels/Level.java | Native world geometry, metadata, respawner, terrain and floor fall behavior |
+| Dungeon.java | Run seed, generation, depth and floor lifecycle; seed is injected before generation through HeroSelectScene |
+| scenes/TitleScene.java | Multiplayer entry point |
+| scenes/MultiplayerTransportScene.java | Transport selection |
+| scenes/MultiplayerSetupScene.java | Host/client and endpoint setup/session start |
+| scenes/HeroSelectScene.java | Applies the authoritative seed before native game creation |
+| scenes/GameScene.java | Publishes current native level and updates sprites/visuals |
+| scenes/InterlevelScene.java | Native floor and revival transition lifecycle |
+
+## 6. Android platform files
+
+| Path | Role / current finding |
+|---|---|
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java | Android application startup; no direct Bluetooth provider registration was found |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidPlatformSupport.java | Platform support utilities; no Bluetooth provider registration was found |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java | RFCOMM adapter class implementing NativeBluetoothProvider |
+| android/src/main/AndroidManifest.xml | At baseline declares VIBRATE, INTERNET and ACCESS_NETWORK_STATE; no Bluetooth permission declarations were present |
+
+BluetoothTransport provider registration and runtime permissions remain open. See ANDROID_NATIVE_INTEGRATION.md and Phase 16.
+
+## 7. Backend file inventory
+
+server/ contains:
+- package.json and package-lock.json;
+- tsconfig.json;
+- wrangler.jsonc;
+- scripts/validate-phase7-native-mutation-schema.mjs;
+- src/index.ts;
+- src/index.test.ts;
+- src/native-pickup-side-effect.test.ts.
+
+server/src/index.ts is the backend entry and currently contains all pure validators, MatchRoom and Worker routing. There are no separate domain source modules in this baseline. See SERVER_VALIDATION_AND_STORAGE.md.
+
+## 8. Protocol and automation files
+
+| Path | Responsibility |
+|---|---|
+| protocol/schema.json | Draft-07 schema, protocol 1.0.0, envelope and native payload definitions |
+| .github/workflows/multiplayer-ci.yml | Backend build/tests and Android JVM tests/debug APK compile |
+| .github/workflows/deploy-server.yml | Cloudflare Worker deployment from master/main or manual dispatch |
+| .github/workflows/release.yml | Release workflow; inspect before release changes |
+| server/wrangler.jsonc | Worker main entry, Durable Object binding and SQLite migration tag |
+| build.gradle / settings.gradle | Shared app metadata, toolchain and included Gradle projects |
+| core/build.gradle / android/build.gradle | Core and Android module dependencies/build configuration |
+| gradle.properties / gradlew / gradlew.bat / gradle/wrapper | Gradle runtime/tooling |
+
+## 9. High-complexity files reserved for Batch 3
+
+The following file sizes were read from the Git tree at the baseline. They are candidates for a dedicated source-structure analysis; no split or refactor is being proposed as already approved.
+
+| File | Bytes | Why it is a Batch 3 candidate |
+|---|---:|---|
+| server/src/index.ts | 658,825 | 10,095 lines combining validator domains, Durable Object, SQL, WebSocket and Worker routing |
+| core/.../actors/hero/Hero.java | 117,061 | Native player class with combat, item, world action, damage and death integration |
+| core/.../multiplayer/WorldSnapshot.java | 83,795 | Validation, serialization, native restore, reconciliation and rollback |
+| core/.../multiplayer/MessageRouter.java | 68,021 | Message parsing, combat, snapshot, accepted action and event application |
+| core/.../actors/mobs/Mob.java | 66,010 | Native Mob AI, scheduler, combat and multiplayer state bridge |
+| core/.../scenes/GameScene.java | 60,874 | Scene lifecycle, render-thread integration, sprites and game UI |
+| core/.../levels/Level.java | 55,788 | Geometry, generation, native metadata, transitions and shared world state |
+| core/.../multiplayer/MultiplayerManager.java | 30,457 | Session, transport, sequence, identity and publication coordinator |
+| server/src/index.test.ts | 337,158 | 5,556-line test file with 57 describe groups and 277 test declarations |
+| core/.../NativeCombatRuntimeIntegrationTest.java | See Git tree/source | 2,648-line integration test with 46 methods |
+
+Batch 3 should also inspect smaller but tightly coupled files before deciding boundaries. A large file is not automatically improved by splitting it; the design must reduce coupling and discovery cost without creating scattered state ownership, circular imports or fragile cross-module contracts.
+
+## 10. Batch 3 design-only scope
+
+The user requested that very large source files be handled separately from Markdown documentation. The next batch is therefore a source-structure assessment and proposal, not part of Batch 2.
+
+It should:
+1. measure method/type responsibilities and actual dependency direction;
+2. identify seams and shared data contracts;
+3. map every import/export/caller/test/config dependency affected by extraction;
+4. compare modular extraction options with the existing Tanweer server organization as a reference pattern, not as a blind template;
+5. keep a single stable Worker entry point while evaluating internal domain modules;
+6. preserve Durable Object class identity, storage schema/migration behavior, route contracts and deployment entry;
+7. propose incremental moves with behavior-parity tests and exact-SHA validation;
+8. present the architecture recommendation for discussion before a high-risk source refactor.
+
+No gameplay phase is created or renumbered by these documentation batches.

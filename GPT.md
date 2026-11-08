@@ -13,6 +13,21 @@
 - **Important audit findings:** the multiplayer package contains 32 Java files; server/src/index.ts is a 10,095-line combined validator/Worker/Durable Object implementation; MessageRouter still has a default route to RemotePlayerActionReceiver; the deploy workflow only auto-deploys master/main server changes or manual dispatch. Inspect current source before relying on any description.
 - **No gameplay source was changed by this documentation foundation.** The exact tested gameplay SHA remains the parent listed above.
 
+
+## Batch 2 documentation checkpoint — 2026-11-08 (CURRENT DOCUMENTATION STATE)
+
+- **Branch:** multiplayer-framework-core-14118577486727081892.
+- **Documentation parent/source baseline:** eb2075b3f09ca4779773140b7e6539a6655f6824.
+- **Gameplay code/test SHA remains:** b9ad0739d10d6a4125fb6ea084d6d072b2699810. Batch 2 is Markdown-only; it does not change gameplay or phase status.
+- **Exact-HEAD CI for Batch 1 parent:** [42470021358](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42470021358) passed backend typecheck/tests and Android JVM tests/debug APK compilation.
+- **Batch 2 documents:** ANDROID_NATIVE_INTEGRATION.md, SERVER_VALIDATION_AND_STORAGE.md, PROTOCOL_MESSAGE_CATALOG.md, TEST_MATRIX.md, SESSION_RECOVERY_AND_SECURITY.md and SOURCE_FILE_REFERENCE.md under docs/multiplayer/.
+- **Verified current phase state unchanged:** phases 1–8 complete for implementation and automated acceptance; phase 9 in progress/open; phases 10–23 open. No deployed Worker smoke test or physical two-device multiplayer match is claimed.
+- **Test inventory:** server/src/index.test.ts has 57 describe groups and 277 test declarations; server/src/native-pickup-side-effect.test.ts has 3. NativeCombatRuntimeIntegrationTest.java has 46 @Test methods; five other multiplayer JVM classes contribute 19 more (65 methods across six multiplayer JVM test files). Mirrored TypeScript/JavaScript test executions must not be described as unique scenarios.
+- **Large-source findings reserved for Batch 3:** server/src/index.ts is 658,825 bytes / 10,095 lines; Hero.java 117,061 bytes; WorldSnapshot.java 83,795; MessageRouter.java 68,021; Mob.java 66,010; GameScene.java 60,874; Level.java 55,788; MultiplayerManager.java 30,457. The source files and tests were not split in Batch 2.
+- **Android Bluetooth gap:** AndroidBluetoothProvider exists, but no provider registration was found in the inspected AndroidLauncher/AndroidPlatformSupport path or indexed repository search; BluetoothTransport reports connected in its null-provider fallback; the inspected Android manifest has no Bluetooth permission declarations. Treat Phase 16 as open and keep the UX honest until fixed and device-tested.
+- **Server/protocol findings:** Worker webSocketMessage explicitly handles RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT. MessageRouter default cases still route to RemotePlayerActionReceiver. See PROTOCOL_MESSAGE_CATALOG.md.
+- **Next project action:** no gameplay phase change is authorized by this docs request. The next separate batch is the large-source structure assessment/proposal. Discuss target module boundaries and migration risks before moving server/Java files.
+
 ## Permanent execution rule from the user
 
 
@@ -81,7 +96,7 @@ The detailed checkpoint that followed this heading described the previous ten-ph
 
 ## 3. Architecture Map — Read These Before Editing
 
-The maintained deep reference starts at docs/multiplayer/README.md. Read its source-of-truth and continuous-documentation contract, then consult PROJECT_OVERVIEW.md, SYSTEM_ARCHITECTURE.md, COMPONENT_AND_FILE_MAP.md, AUTHORITATIVE_DATA_FLOWS.md, and BUILD_TEST_AND_CI.md. The file map accelerates discovery but never replaces opening source at the active HEAD.
+The maintained deep reference starts at docs/multiplayer/README.md. Read its source-of-truth and continuous-documentation contract, then consult PROJECT_OVERVIEW.md, SYSTEM_ARCHITECTURE.md, COMPONENT_AND_FILE_MAP.md, AUTHORITATIVE_DATA_FLOWS.md, ANDROID_NATIVE_INTEGRATION.md, SERVER_VALIDATION_AND_STORAGE.md, PROTOCOL_MESSAGE_CATALOG.md, TEST_MATRIX.md, SESSION_RECOVERY_AND_SECURITY.md, SOURCE_FILE_REFERENCE.md, and BUILD_TEST_AND_CI.md. The file map accelerates discovery but never replaces opening source at the active HEAD. Large-source decomposition is a separate Batch 3 assessment; do not move source files during documentation work.
 
 ### Android / Java game engine
 
