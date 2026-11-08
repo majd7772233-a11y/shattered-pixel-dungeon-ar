@@ -83,7 +83,7 @@ export function nativeHeroBuffLifeLinkMobEntityIds(
         catch (_) { return false; }
         return Number(body?.nativeActorId) === actorId
           && body?.targetType === "MOB" && body?.sourceType === "ENVIRONMENT"
-          && body?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+          && body?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
       });
       if (eventMatches.length !== 1) return null;
       let body:any;

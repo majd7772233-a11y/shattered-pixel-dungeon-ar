@@ -865,7 +865,7 @@ export function parseAndValidateNativeLifeLinkMobDamageEvidence(
     catch (_) { continue; }
     const actorId=Number(body?.nativeActorId);
     if (body?.sourceType!=="ENVIRONMENT"
-        || body?.sourceClass!=="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison"
+        || body?.sourceClass!=="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink"
         || body?.targetType!=="MOB" || !linked.has(actorId)) continue;
     if (!Number.isInteger(actorId) || actorId<1 || eventsByActor.has(actorId)) return null;
     eventsByActor.set(actorId,{sequence,body});

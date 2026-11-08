@@ -5652,7 +5652,6 @@ describe("Native run-progress persistence and exactly-once reward identity", () 
 
 
 describe("Native Poison LifeLink Mob event correlation", () => {
-  const poisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
   const linkClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
   const ratClass = "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
   const mobBundle = (id:number,hp:number) => JSON.stringify({mob:{
@@ -5691,7 +5690,7 @@ describe("Native Poison LifeLink Mob event correlation", () => {
       targetMobBundleAfter:dead?null:afterEvidence,
       nativeActorId:7,nativeMobBundleBefore:before,
       nativeMobBundleAfterEvidence:afterEvidence,
-      sourceType:"ENVIRONMENT",sourceClass:poisonClass,engineResolved:true,
+      sourceType:"ENVIRONMENT",sourceClass:linkClass,engineResolved:true,
       ...(dead?{heaps}:{})
     };
     const event={sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",payload:JSON.stringify(eventPayload)};

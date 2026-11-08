@@ -196,7 +196,7 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
         JsonValue mobData = mobAction == null ? null : mobAction.get("data");
         Assert.assertNotNull(mobData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
                 mobData.getString("sourceClass", ""));
         NetworkMessage action = actions.get(1);
         Assert.assertNotNull("The completed native Poison tick is published after the Mob result", action);
