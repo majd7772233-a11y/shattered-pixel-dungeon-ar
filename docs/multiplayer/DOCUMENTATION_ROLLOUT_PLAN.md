@@ -19,7 +19,8 @@ Markdown documentation and source restructuring are tracked separately. Document
 - Tracked blobs at Batch 2 baseline: 1,963
 - Tracked Markdown files: 15 before Batch 2
 - Multiplayer Java package: 32 files
-- server/src/index.ts: 10,095 lines / 658,825 bytes
+- Original server/src/index.ts source baseline: 10,095 lines / 658,825 bytes
+- Stage 1 current index.ts: 3,635 lines / 254,668 bytes; original declarations moved into 15 focused modules
 - Phase state: 1–8 complete for implementation and automated acceptance; 9 in progress/open; 10–23 open
 - No deployed Worker smoke test or physical two-device match is claimed
 
@@ -61,7 +62,7 @@ Batch 2 must not split, rename, move, extract or rewrite any Java/TypeScript sou
 - Keep the complete MatchRoom class and Worker default fetch implementation in index.ts.
 - Preserve the original declaration bodies, comments, constants, return conditions and fail-closed checks. Add only necessary module exports/imports.
 - Keep test files on their existing `./index` import path unless a demonstrated code change requires otherwise.
-- **State:** implementation is committed; exact-head CI pending.
+- **State:** complete for source extraction and automated acceptance. Exact source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf`; [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed both backend and Android jobs.
 
 #### Stage 2 — MatchRoom decomposition
 

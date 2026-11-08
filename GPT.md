@@ -3,16 +3,19 @@
 > This file is the working memory and implementation guide for the AI continuing this repository. It is intentionally open-ended: append new findings, decisions, rules, verification results and user requirements as the project evolves. Do not treat it as a user-facing README.
 
 
-## Source refactor checkpoint — Stage 1/3 (2026-11-08; implementation commit pending CI)
+## Source refactor checkpoint — Stage 1/3 (2026-11-08; Stage 1 verified)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Base HEAD:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`; source baseline: `server/src/index.ts` blob from the exact parent commit.
+- **Stage 1 source parent:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`.
+- **Stage 1 implementation:** `8a0a9f4f275f1a450aec066865d182de0f21125b`; import-path correction: `4119263d9cc4dd5b230c551897b37dc4391417cf` (current verified source SHA).
 - **User's preservation rules:** every original declaration and implementation in `server/src/index.ts` must be moved, not discarded; only the named server file is being decomposed. `Hero.java`, `Mob.java`, and `WorldSnapshot.java` must remain untouched.
 - **Stage 1 scope:** move protocol/session types, all pure validator/helper declarations (200 top-level declarations through the original `SeededRNG`), and `SeededRNG` into focused modules. Keep `MatchRoom` and the default Worker fetch implementation in `server/src/index.ts`.
 - **Compatibility:** retain every original named export through the `index.ts` facade so both existing server test files and consumers continue using the established `./index` path.
 - **No wire/runtime redesign:** `protocol/schema.json`, Java multiplayer files, test source files, Wrangler Durable Object binding/class identity, SQLite schema/migrations, Worker route and message payload contracts are not changed by this stage.
 - **Three source-refactor stages:** Stage 1 = pure validators/types/helpers; Stage 2 = MatchRoom responsibilities/handlers; Stage 3 = Worker routing/storage integration and final compatibility audit. These are not gameplay roadmap phases.
-- **Current status:** exact source partition check passed; exact-commit CI pending. Do not mark Stage 1 complete until backend typecheck/tests and Android CI succeed.
+- **Preservation accounting:** 200 original top-level declarations before `MatchRoom` were moved into 15 modules; all 118 original public named exports remain on the `index.ts` facade; the original `MatchRoom` and Worker tail remain in `index.ts`. The source partition was verified losslessly before writing. The import correction changed 14 module paths only.
+- **Exact-HEAD verification:** [GitHub Actions run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed on `4119263d9cc4dd5b230c551897b37dc4391417cf`: backend TypeScript build/tests and Android JVM tests/debug APK compile.
+- **Stage 1 status:** complete for extraction and automated acceptance. No deployed Worker smoke test or physical two-device run is claimed.
 
 ## Documentation foundation checkpoint — 2026-11-08 (READ WITH THE CURRENT CODE)
 
@@ -37,7 +40,7 @@
 - **Large-source findings reserved for Batch 3:** server/src/index.ts is 658,825 bytes / 10,095 lines; Hero.java 117,061 bytes; WorldSnapshot.java 83,795; MessageRouter.java 68,021; Mob.java 66,010; GameScene.java 60,874; Level.java 55,788; MultiplayerManager.java 30,457. The source files and tests were not split in Batch 2.
 - **Android Bluetooth gap:** AndroidBluetoothProvider exists, but no provider registration was found in the inspected AndroidLauncher/AndroidPlatformSupport path or indexed repository search; BluetoothTransport reports connected in its null-provider fallback; the inspected Android manifest has no Bluetooth permission declarations. Treat Phase 16 as open and keep the UX honest until fixed and device-tested.
 - **Server/protocol findings:** Worker webSocketMessage explicitly handles RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT. MessageRouter default cases still route to RemotePlayerActionReceiver. See PROTOCOL_MESSAGE_CATALOG.md.
-- **Next project action:** no gameplay phase change is authorized by this docs request. The source-refactor Stage 1 is the first approved implementation step. Continue with Stage 2 only after its exact-commit CI is green; keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
+- **Next project action:** no gameplay phase change is authorized by this docs request. Source-refactor Stage 1 is complete at `4119263d9cc4dd5b230c551897b37dc4391417cf` with exact-HEAD CI run `42479978278` green. Stage 2 is the next source-only task; keep Hero.java, Mob.java and WorldSnapshot.java unchanged.
 
 ## Permanent execution rule from the user
 

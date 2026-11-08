@@ -105,7 +105,7 @@ After source-refactor Stage 1, the backend has these distinct responsibilities:
 
 The MatchRoom class still owns DurableObjectState, SQLite storage, sequence, match seed, current depth, world time, game mode/status, schema initialization, session/WebSocket handling, actions, snapshots, pending combat/transition state and broadcasts. Its internal decomposition is reserved for Stage 2; Worker/storage integration parity is Stage 3.
 
-The old 10,095-line / approximately 659 KB figure is the pre-extraction source baseline. Stage 1 moves the original 200 top-level declarations before MatchRoom without changing their validation rules or wire behavior. The facade retains every originally exported name. Stage 1 does not modify Java sources, protocol/schema.json, Wrangler binding/class identity, SQLite tables/migrations or deployment routing.
+The old 10,095-line / approximately 659 KB figure is the pre-extraction source baseline. Stage 1 moved the original 200 top-level declarations before MatchRoom into 15 modules without changing their validation rules or wire behavior. The new `index.ts` is 3,635 lines / 254,668 bytes and retains all 118 original public named exports through its facade. Exact-HEAD [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed backend typecheck/tests and Android JVM/debug-APK checks. Stage 1 did not modify Java sources, protocol/schema.json, Wrangler binding/class identity, SQLite tables/migrations or deployment routing.
 
 ### 3.5 Protocol layer
 

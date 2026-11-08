@@ -25,7 +25,7 @@ All engineering pages in this set are written in English for consistency with so
 
 ## Current source-refactor state
 
-Stage 1 separates the original backend protocol/session types, pure validators and deterministic helper into focused modules. `server/src/index.ts` remains the Worker entry, exports the original public validator API through a compatibility facade, and still contains the complete `MatchRoom` and default Worker implementation pending Stages 2–3. No Java gameplay file or wire/schema contract is changed by Stage 1.
+Stage 1 moved all 200 original top-level protocol/session, validator/helper and SeededRNG declarations before MatchRoom into 15 focused modules. All 118 original public named exports remain available through the `index.ts` compatibility facade; the complete MatchRoom and default Worker implementation remain in `index.ts`. Exact-HEAD CI [run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed both Backend typecheck/tests and Android JVM/debug-APK checks on source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf`. The user-protected Hero.java, Mob.java and WorldSnapshot.java files were not changed; nor were protocol/schema.json, Wrangler binding/class identity, SQLite schema or migration files.
 
 ## Source-of-truth hierarchy
 
@@ -65,12 +65,12 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Source tree blobs | 1,963 at the Batch 2 baseline |
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
-| Backend entry | server/src/index.ts, 10,095 lines / 658,825 bytes |
+| Backend entry | Historical source baseline: 10,095 lines / 658,825 bytes; after Stage 1: server/src/index.ts is 3,635 lines / 254,668 bytes with MatchRoom and Worker entry retained |
 | Phase state | Phases 1–8 complete for implementation and automated acceptance; Phase 9 in progress/open; Phases 10–23 open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 
-The Batch 1 commit was documentation/workflow-only and did not change gameplay code. Batch 2 is also Markdown-only and must not refactor or move source files.
+Batch 1 and Batch 2 were documentation-only. The separate source-refactor Stage 1 is recorded above; gameplay phases 1–23 remain unchanged.
 
 ## Repository at a glance
 

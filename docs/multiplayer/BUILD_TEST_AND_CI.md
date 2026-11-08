@@ -99,6 +99,21 @@ Critical implication: pushing to multiplayer-framework-core-14118577486727081892
 
 The 2026-11-02 GPT checkpoint records 560 backend test executions across four files with mirrored TypeScript/JavaScript suites. Do not report that number as 560 unique test scenarios. The exact-HEAD workflow above is the current documentation commit's CI result.
 
+## 6.1 Source-refactor Stage 1 verification
+
+| Item | Evidence |
+|---|---|
+| Source implementation commit | `8a0a9f4f275f1a450aec066865d182de0f21125b` |
+| Import correction commit | `4119263d9cc4dd5b230c551897b37dc4391417cf` |
+| Exact-HEAD CI | [Run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) — success |
+| Backend job | TypeScript build and full backend tests — success |
+| Android job | JVM tests and debug APK compile — success |
+| Source preservation | 200 declarations moved; all 118 previously public named exports retained through `index.ts`; MatchRoom and Worker default fetch retained |
+| Protected files/config | Hero.java, Mob.java, WorldSnapshot.java, protocol/schema.json and Wrangler config unchanged |
+| Deployment/device evidence | No live Worker deployment or physical multiplayer test claimed |
+
+The first Stage 1 CI attempt exposed invalid relative imports from the new `index.ts` facade. Those 14 paths were corrected in the import-fix commit above; the successful run is tied to the corrected exact source SHA, not the failed intermediate commit.
+
 ## 7. Minimum validation matrix by change type
 
 | Change | Minimum check before completion |

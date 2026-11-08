@@ -72,7 +72,7 @@ These files are outside the multiplayer package but part of the feature.
 
 | Path | Role | Change impact |
 |---|---|---|
-| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, complete MatchRoom Durable Object class and default Worker fetch. | Preserve the facade and Worker/Wrangler contract; MatchRoom internals are Stage 2–3 work. |
+| server/src/index.ts | Stable Worker entry, original public-export compatibility facade, complete MatchRoom Durable Object class and default Worker fetch. | Preserve the facade and Worker/Wrangler contract; MatchRoom internals are Stage 2–3 work. Stage 1 passed exact-HEAD CI run 42479978278. |
 | server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
 | server/src/validators/entity-identity.ts and floor-transitions.ts | Stable entity mapping, movement and floor transition validation. | Keep the original fail-closed rules and native transition assumptions. |
 | server/src/validators/equipment.ts, item-state.ts and abilities.ts | Quickslots, equipment, item/buff bundle safety, use/status and ability validation. | Shared helper imports are explicit; avoid weakening item ownership or mutation checks. |

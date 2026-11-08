@@ -159,7 +159,7 @@ BluetoothTransport provider registration and runtime permissions remain open. Se
 - `server/src/validators/` — entity identity, floor transitions, equipment, item state, abilities, shop, world actions, inventory claims/economy, world items, Hero buffs, world state and combat state;
 - `server/src/util/seeded-rng.ts`.
 
-The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. MatchRoom remains in `server/src/index.ts` until Stage 2. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged.
+The original `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts` remain on the existing `./index` import path. MatchRoom remains in `server/src/index.ts` until Stage 2. Wrangler `main`, `MATCH_ROOM` binding, `MatchRoom` class name and migration tag remain unchanged. On the verified Stage 1 HEAD, `index.ts` is 3,635 lines / 254,668 bytes; it retains the whole MatchRoom class and default Worker fetch implementation.
 
 
 
@@ -169,10 +169,13 @@ server/ contains:
 - wrangler.jsonc;
 - scripts/validate-phase7-native-mutation-schema.mjs;
 - src/index.ts;
+- src/protocol/types.ts;
+- src/validators/ (14 domain modules);
+- src/util/seeded-rng.ts;
 - src/index.test.ts;
 - src/native-pickup-side-effect.test.ts.
 
-server/src/index.ts is the backend entry and currently contains all pure validators, MatchRoom and Worker routing. There are no separate domain source modules in this baseline. See SERVER_VALIDATION_AND_STORAGE.md.
+`server/src/index.ts` is the Worker entry and compatibility facade, while the complete MatchRoom class and default Worker fetch remain there until later stages. Pure validator implementations now live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
 
 ## 8. Protocol and automation files
 
@@ -189,15 +192,15 @@ server/src/index.ts is the backend entry and currently contains all pure validat
 
 ## 9. Large source files and remaining refactor scope
 
-The following file sizes were read from the Git tree at the baseline. They are candidates for a dedicated source-structure analysis; no split or refactor is being proposed as already approved.
+The following sizes are historical source-baseline values. The approved three-stage source refactor is limited to `server/src/index.ts`. `Hero.java`, `Mob.java` and `WorldSnapshot.java` are explicitly protected and must remain unchanged; their rows below are inventory only.
 
 | File | Bytes | Why it is a Batch 3 candidate |
 |---|---:|---|
 | server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 moved the original validator/type/helper declarations; the file remains the Worker/MatchRoom entry and compatibility facade pending Stages 2–3 |
-| core/.../actors/hero/Hero.java | 117,061 | Native player class with combat, item, world action, damage and death integration |
+| core/.../actors/hero/Hero.java | 117,061 | Protected by the user: do not split or modify as part of this work |
 | core/.../multiplayer/WorldSnapshot.java | 83,795 | Validation, serialization, native restore, reconciliation and rollback |
 | core/.../multiplayer/MessageRouter.java | 68,021 | Message parsing, combat, snapshot, accepted action and event application |
-| core/.../actors/mobs/Mob.java | 66,010 | Native Mob AI, scheduler, combat and multiplayer state bridge |
+| core/.../actors/mobs/Mob.java | 66,010 | Protected by the user: do not split or modify as part of this work |
 | core/.../scenes/GameScene.java | 60,874 | Scene lifecycle, render-thread integration, sprites and game UI |
 | core/.../levels/Level.java | 55,788 | Geometry, generation, native metadata, transitions and shared world state |
 | core/.../multiplayer/MultiplayerManager.java | 30,457 | Session, transport, sequence, identity and publication coordinator |
@@ -213,7 +216,7 @@ The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from spl
 - Keep all original public exports available through index.ts.
 - Keep the full MatchRoom class and Worker default fetch code in index.ts.
 - Preserve function bodies, validators, comments, constants and type definitions; promote only cross-module private helpers to internal exports.
-- **State:** implementation committed; exact-head CI pending.
+- **State:** complete. Exact source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf`; [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed both backend and Android jobs.
 
 ### Stage 2 — MatchRoom responsibilities
 - Split storage/schema helpers, session lifecycle, message routing/action handlers, combat coordination, snapshots/transitions and broadcasts into cohesive modules.

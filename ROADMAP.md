@@ -801,13 +801,13 @@ This is a separate source-organization effort. It does not create, renumber, clo
 
 Move the original type/helper/validator declarations and `SeededRNG` into focused `protocol/`, `validators/`, and `util/` modules. Keep `MatchRoom` and the default Worker fetch implementation in `index.ts`. Preserve every original named export through the facade so current tests and consumers do not need import-path changes. Do not change gameplay or wire behavior.
 
-**State:** implementation committed; exact-HEAD CI pending.
+**State:** complete for Stage 1 extraction and automated acceptance. Exact-HEAD source commit `4119263d9cc4dd5b230c551897b37dc4391417cf`; [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed backend TypeScript build/tests and Android JVM tests/debug APK compile.
 
 ### Stage 2 — MatchRoom decomposition
 
 Extract the Durable Object's storage/repository operations, lifecycle/snapshot helpers, and protocol/action handlers into cohesive modules. Keep one authoritative MatchRoom class export and preserve the Cloudflare binding name `MATCH_ROOM`, class name `MatchRoom`, existing migration history, SQL behavior, WebSocket attachment/session semantics, sequencing, replay protection, and event payloads. Establish explicit context interfaces instead of copying state or introducing parallel owners.
 
-**State:** not started; requires Stage 1 exact-commit CI success.
+**State:** not started. Stage 1 has passed its exact-HEAD automated gate; Stage 2 remains a separate source-only stage.
 
 ### Stage 3 — Worker entry, integration and parity audit
 
