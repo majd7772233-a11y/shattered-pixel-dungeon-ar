@@ -1,4 +1,4 @@
-import type { Env } from "../protocol/types";
+import type { Env, NetworkMessage, SessionData } from "../protocol/types";
 import { MatchRoomMessages } from "./messages";
 
 export class MatchRoom extends MatchRoomMessages {

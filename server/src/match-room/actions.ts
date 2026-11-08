@@ -12,7 +12,6 @@ import { isValidNativeBuyIntent, isValidNativeSellIntent } from "../validators/s
 import { isValidNativeWorldActionIntent } from "../validators/world-actions";
 import { isValidNativeDropIntent, isValidNativePickupIntent, isValidNativeThrowIntent, isValidNativeProjectileCombatIntent, isValidNativeProjectileCombatResult, isValidNativeAlchemyIntent } from "../validators/world-items";
 import { isValidNativeMutationActionCost, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot } from "../validators/world-state";
-import type { NetworkMessage, SessionData } from "../protocol/types";
 import { MatchRoomSnapshots } from "./snapshots";
 
 export class MatchRoomActions extends MatchRoomSnapshots {
