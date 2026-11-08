@@ -104,4 +104,4 @@ Batch 1 and Batch 2 were documentation-only. The separate source-refactor Stage 
 8. Verify exact-commit CI, and separately record deployment/device evidence.
 9. Never mark a phase, mode, transport or feature complete based only on source presence or compilation.
 
-See DOCUMENTATION_ROLLOUT_PLAN.md for the three-stage source refactor. Stages 1 and 2 are complete; Stage 3 covers the final Worker integration and declaration-parity audit. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.
+The three-stage source refactor is complete for implementation, source parity and automated acceptance; its permanent status and module map are recorded above and in SOURCE_FILE_REFERENCE.md. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.
