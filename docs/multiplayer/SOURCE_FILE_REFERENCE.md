@@ -198,7 +198,7 @@ The following sizes are historical source-baseline values. The approved three-st
 |---|---:|---|
 | server/src/index.ts | Historical baseline: 658,825 bytes / 10,095 lines | Stage 1 moved the original validator/type/helper declarations; the file remains the Worker/MatchRoom entry and compatibility facade pending Stages 2–3 |
 | core/.../actors/hero/Hero.java | 117,061 | Protected by the user: do not split or modify as part of this work |
-| core/.../multiplayer/WorldSnapshot.java | 83,795 | Validation, serialization, native restore, reconciliation and rollback |
+| core/.../multiplayer/WorldSnapshot.java | 83,795 | Protected by the user: do not split or modify as part of this work |
 | core/.../multiplayer/MessageRouter.java | 68,021 | Message parsing, combat, snapshot, accepted action and event application |
 | core/.../actors/mobs/Mob.java | 66,010 | Protected by the user: do not split or modify as part of this work |
 | core/.../scenes/GameScene.java | 60,874 | Scene lifecycle, render-thread integration, sprites and game UI |
