@@ -24,7 +24,7 @@ All engineering pages in this set are written in English for consistency with so
 
 ## Current source-refactor state
 
-The three-stage source refactor is complete for implementation and automated acceptance, pending exact-final-HEAD CI on the final documentation commit.
+The three-stage source refactor is complete for implementation and automated acceptance. Exact-HEAD CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/full tests and Android JVM/debug-APK jobs both succeeded.
 
 Stage 1 moved all 200 original top-level declarations before the original `MatchRoom` class into 15 focused protocol/validator/helper modules. A normalized declaration-text comparison verified 200/200 matches with no body-text differences. All 118 historical validator/protocol/helper named exports remain available through the root facade.
 
