@@ -65,6 +65,19 @@ The designated level publisher runs the Mob's native AI/action. The Mob path que
 
 Current code includes target-owner/delegated patterns using RemoteHero representations so an authorized native SPD runtime can execute native attack logic. Server checks must bind attacker identity, target player identity, target ownership, request freshness, and exact before/after state. Final PvP/Deathmatch/Survival rules remain open phases and must be audited independently.
 
+## 4.1 Poison LifeLink Mob damage: commit once, correlate once
+
+A native Poison tick that damages a LifeLink Mob produces two ordered messages:
+
+1. The existing Mob.damage() path emits SYNC_MOB_STATE. The Worker validates that envelope against its trusted pre-event level snapshot, commits the Mob state or death and any loot change once, then records a CHAR_DAMAGED event with server-derived Actor identity and before/after bundle evidence.
+2. The Hero Buff publisher emits SYNC_HERO_STATE / BUFF_TICK after Poison.act(). It includes the sequence baseline captured before the tick and a NativeMobCombatDelta payload. That Mob delta is evidence only; it is not a second mutation command.
+
+The BUFF_TICK handler may correlate only accepted CHAR_DAMAGED Poison events from the same sender whose sequence is greater than sequenceBefore. It must match publisher-local Actor ID, stable entity ID, exact HP/HT/position/shield/Buff values, trusted pre-bundle, native post-bundle, and the already-updated level snapshot. For a dead Mob, the accepted event must prove the target identity and zero-HP native post-bundle while the Mob is already absent from the current snapshot; final heaps must match the committed level snapshot.
+
+The BUFF_TICK handler must never update Mob SQL rows, remove dead Mobs, rewrite levelSnapshot Mob entries, or apply the heap snapshot again. Reward receipts may be recorded idempotently, but they are not authority to repeat the native death transaction.
+
+AI-only callbacks that do not produce the native SYNC_MOB_STATE event fail closed. RemoteHero/player LifeLink, cross-publisher Actor-ID mapping, reconnect gaps, and other unmodelled callback paths remain unsupported until they receive their own explicit identity and event contract. This is automated validation coverage, not proof of a deployed Worker or physical-device multiplayer session.
+
 ## 5. Mob turns and Actor scheduling
 
 Actor scheduler is part of gameplay rules. Actor.java exposes multiplayer-specific classification and scheduler decisions: whether a shared actor is skipped on a non-publisher, whether its result should be published, and deferred publication when an actor is still resolving an attack.

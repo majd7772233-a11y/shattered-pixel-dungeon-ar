@@ -222,11 +222,13 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 
 ## Phase 9 — LifeLink Mob damage in Poison ticks (2026-11-08)
 
-- [x] Capture pre/post shared Mob state around the original native Poison actor tick; do not recreate the LifeLink formula in TypeScript.
-- [x] Resolve LifeLink Actor IDs against unique stable Mob identities from the trusted level snapshot.
-- [x] Reject secondary Mob deltas outside those LifeLink identities, Mob movement/healing, mismatched native post-bundles, invalid death tombstones, unvalidated loot, duplicate reward receipts and non-publisher writes; require the level publisher for every linked Poison tick because Actor IDs are process-local.
-- [x] Test the real Java Poison/LifeLink actor path and server-side identity/delta/death contracts.
-- [x] Verify ordinary timed Hero Buff expiry remains accepted while a LifeLink is active.
+- [x] Capture native Mob before/after state around the original Poison actor tick without recreating the split-damage formula in TypeScript.
+- [x] Capture the publisher's sequence baseline before the native Poison tick and include publisher-local Actor IDs plus the native pre-bundle in the later evidence payload.
+- [ ] Commit the authoritative Mob effect exactly once through SYNC_MOB_STATE, then make BUFF_TICK correlation-only with no second Mob SQL, snapshot, death, or heap writes.
+- [ ] Bind evidence to a same-sender accepted CHAR_DAMAGED Poison event after sequenceBefore; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and already-committed snapshot.
+- [ ] Cover a live target and a dead target already removed from the snapshot, including final-heap equality and death-event identity.
+- [ ] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles, and snapshots that still contain pre-damage state.
+- [x] Keep non-Poison timed Hero Buff expiry independent of LifeLink Mob resolution.
 - [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
 - [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
 - [ ] Complete the remaining Phase 9 reconnect, expiry-boundary, simultaneous effect, consumable and detach-callback matrix.
