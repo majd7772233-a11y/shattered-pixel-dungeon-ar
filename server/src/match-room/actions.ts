@@ -1261,6 +1261,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               // not author a LifeLink Mob mutation. A changed shared Mob is committed only with
               // its exact complete native bundle and, on death, the matching loot snapshot.
               const secondaryMobAuthority = secondaryMobPayload != null
+                // Actor IDs are process-local. A client that is not the level publisher cannot
+                // safely map its LifeLink.object to the publisher's Mob IDs, even when they happen
+                // to collide numerically; require the publisher for every linked Poison tick.
+                && ((lifeLinkMobEntityIds!.length === 0) || isLevelPublisher)
                 && (secondaryMobPayload.deltas.length === 0 || isLevelPublisher);
               const secondaryRewardIds = secondaryDeathPositions.length > 0
                 ? nativeMobKillRewardIds(this.currentDepth, "", 1, secondaryMobPayload?.deltas || []) : [];

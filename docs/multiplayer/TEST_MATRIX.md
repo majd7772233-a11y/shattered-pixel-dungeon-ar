@@ -224,7 +224,7 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 
 - [x] Capture pre/post shared Mob state around the original native Poison actor tick; do not recreate the LifeLink formula in TypeScript.
 - [x] Resolve LifeLink Actor IDs against unique stable Mob identities from the trusted level snapshot.
-- [x] Reject secondary Mob deltas outside those LifeLink identities, Mob movement/healing, mismatched native post-bundles, invalid death tombstones, unvalidated loot, duplicate reward receipts and non-publisher writes.
+- [x] Reject secondary Mob deltas outside those LifeLink identities, Mob movement/healing, mismatched native post-bundles, invalid death tombstones, unvalidated loot, duplicate reward receipts and non-publisher writes; require the level publisher for every linked Poison tick because Actor IDs are process-local.
 - [x] Test the real Java Poison/LifeLink actor path and server-side identity/delta/death contracts.
 - [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
 - [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
