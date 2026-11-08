@@ -97,15 +97,15 @@ Do not infer production readiness from implementation presence. Handshake correc
 
 ### 3.4 Backend room layer
 
-After source-refactor Stage 1, the backend has these distinct responsibilities:
+After the three-stage source refactor, the backend has these distinct responsibilities:
 1. `server/src/protocol/types.ts` owns Env, NetworkMessage and SessionData types.
 2. `server/src/validators/` owns the original pure validation/helper declarations, grouped by entity identity, transitions, equipment, item state, abilities, shop, world actions, inventory/claims/economy, floor items, Hero Buffs, world state and combat state.
 3. `server/src/util/seeded-rng.ts` owns the original deterministic SeededRNG helper.
-4. `server/src/index.ts` remains the stable Worker entry, compatibility facade, re-export of the MatchRoom class and default Worker fetch handler; the final class is defined in `server/src/match-room/index.ts`.
+4. `server/src/index.ts` remains the stable Wrangler Worker entry and compatibility facade; it re-exports the default request router from `server/src/worker.ts` and the named `MatchRoom` class from `server/src/match-room/index.ts`.
 
 The single MatchRoom class owns one shared DurableObjectState, SQLite storage, sequence, match seed, current depth, world time, game mode/status, schema initialization, session/WebSocket handling, actions, snapshots, pending combat/transition state and broadcasts through internal inheritance layers under `server/src/match-room/`. The final class is defined in `match-room/index.ts`, while the root entry remains the stable Worker main and facade. Stage 2 passed exact-HEAD [CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) on `237577f1e8c68a3f052b36fcac64cd7efc07918d` (Backend + Android jobs). Stage 3 owns the final Worker-entry and declaration-parity audit.
 
-The old 10,095-line / approximately 659 KB figure is the pre-extraction source baseline. Stage 1 moved the original 200 top-level declarations before MatchRoom into 15 modules without changing their validation rules or wire behavior. After Stage 1 the root `index.ts` was 3,635 lines / 254,668 bytes; after Stage 2 it is a 51-line Worker facade and retains all 118 original public named exports through its facade. Exact-HEAD [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed backend typecheck/tests and Android JVM/debug-APK checks. Stage 1 did not modify Java sources, protocol/schema.json, Wrangler binding/class identity, SQLite tables/migrations or deployment routing.
+The old 10,095-line / approximately 659 KB figure is the pre-extraction source baseline. Stage 1 moved the original 200 top-level declarations before MatchRoom into 15 modules without changing their validation rules or wire behavior. After Stage 1 the root `index.ts` was 3,635 lines / 254,668 bytes; after Stage 2 it was a 51-line facade; after Stage 3 it is 35 lines and re-exports the unchanged default Worker handler from `worker.ts`. It retains all 118 original validator/protocol/helper exports plus the named `MatchRoom` export. Exact-HEAD [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278) passed backend typecheck/tests and Android JVM/debug-APK checks. Stages 1–3 did not modify Java sources, `protocol/schema.json`, Wrangler binding/class identity, SQLite tables/migrations or deployment routing.
 
 ### 3.5 Protocol layer
 
@@ -174,7 +174,7 @@ Do not move parsing or validation across thread boundaries casually. Separate sa
 
 ## 8. Key design risks
 
-- server/src/index.ts still contains the complete MatchRoom/Worker implementation; MatchRoom handler/storage decomposition remains scheduled for source-refactor Stages 2–3. Validator implementations now live in focused modules, with the facade preserving their original exports.
+- `server/src/index.ts` is a 35-line stable Wrangler entry and compatibility facade; `server/src/worker.ts` owns default request routing; `server/src/match-room/` contains the one shared-instance Durable Object inheritance chain; validator implementations live in focused modules. The three source-refactor stages are complete for implementation and automated acceptance.
 - MessageRouter still has a default receiver branch for RemotePlayerActionReceiver; the one typed event path is incomplete.
 - Setup UI does not wait for confirmed connection and silently catches some transport startup failures.
 - Mode descriptors exist, but server-enforced mode acceptance remains open.
@@ -182,4 +182,4 @@ Do not move parsing or validation across thread boundaries casually. Separate sa
 - The backend deploy workflow triggers only from master/main server changes or manual dispatch; it does not deploy the active multiplayer branch on push.
 - Current exact-head CI proves automated backend and Android JVM/debug-APK validation only. It does not prove live Worker deployment or device networking.
 
-See AUTHORITATIVE_DATA_FLOWS.md and COMPONENT_AND_FILE_MAP.md for edit-level impact details.
+The Worker integration tests live in `server/src/entrypoint.test.ts`; they verify deterministic routing contracts, not live deployment or physical-device behavior. See AUTHORITATIVE_DATA_FLOWS.md and COMPONENT_AND_FILE_MAP.md for edit-level impact details.
