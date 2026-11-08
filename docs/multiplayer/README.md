@@ -21,11 +21,18 @@ All engineering pages in this set are written in English for consistency with so
 9. SESSION_RECOVERY_AND_SECURITY.md — session token, replay, authority, reconnect, locks, FOV and risk notes.
 10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
-12. DOCUMENTATION_ROLLOUT_PLAN.md — source-refactor stage tracker. Separate from the 23 gameplay phases.
 
 ## Current source-refactor state
 
-Stage 1 moved all 200 original top-level protocol/session, validator/helper and SeededRNG declarations before MatchRoom into 15 focused modules. Stage 2 moved the Durable Object responsibilities into seven internal modules under `server/src/match-room/`: base state/broadcast, persistence, combat/visibility, snapshots/transitions, action handlers, message dispatch and the final class. All layers share one MatchRoom instance; only `server/src/match-room/index.ts` defines the final `MatchRoom` class. The root `server/src/index.ts` is now a 51-line Worker entry/compatibility facade that preserves all 118 original public named exports, re-exports MatchRoom and retains the default Worker fetch. Exact-HEAD CI [run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104) passed both Backend typecheck/tests and Android JVM/debug-APK checks on source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d`. The user-protected Hero.java, Mob.java and WorldSnapshot.java files were not changed; nor were protocol/schema.json, Wrangler binding/class identity, SQLite schema or migration files.
+The three-stage source refactor is complete for implementation and automated acceptance, pending exact-final-HEAD CI on the final documentation commit.
+
+Stage 1 moved all 200 original top-level declarations before the original `MatchRoom` class into 15 focused protocol/validator/helper modules. A normalized declaration-text comparison verified 200/200 matches with no body-text differences. All 118 historical validator/protocol/helper named exports remain available through the root facade.
+
+Stage 2 moved the Durable Object into seven responsibility modules under `server/src/match-room/`. One final `MatchRoom` class is exported from `match-room/index.ts`; all internal layers share the same instance and mutable state.
+
+Stage 3 moved the original default Worker router unchanged into `server/src/worker.ts`. The 35-line `server/src/index.ts` remains Wrangler's configured `main`, re-exports the default Worker handler, all 118 historical exports, and the named `MatchRoom` class. `server/src/entrypoint.test.ts` checks the room route, same-Request forwarding, `DEFAULT_ROOM` fallback, non-room response, and root `MatchRoom` export.
+
+The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
 ## Source-of-truth hierarchy
 
