@@ -205,3 +205,16 @@ For transport/platform code, add framing, handshake, timeout, close, reconnect, 
 ## MatchRoom module extraction regression gate
 
 Existing backend tests must continue importing the root compatibility surface from `./index`; they must not be rewritten solely to follow internal module moves. Exact-HEAD CI must run the TypeScript build and full backend tests after each stage. Android JVM tests/debug APK compile remain required to prove no cross-layer contract regression, even though MatchRoom extraction should not need Java changes. Stage 2 moved handler bodies without changing the Java/client wire contract. Exact source SHA `237577f1e8c68a3f052b36fcac64cd7efc07918d` passed [CI run 42483052104](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42483052104): Backend typecheck/full tests and Android JVM/debug APK jobs both succeeded. This does not claim a real Durable Object runtime/deployment or two-device smoke test.
+
+
+## Worker entry integration regression gate — Stage 3
+
+`server/src/entrypoint.test.ts` imports the default Worker and named `MatchRoom` through the root `./index` facade. It verifies:
+
+- the canonical `MatchRoom` class remains available from the root named export;
+- `/room/{roomCode}/...` resolves the expected Durable Object ID and calls its stub;
+- the exact incoming `Request` object is forwarded without replacement;
+- an empty room-code segment uses `DEFAULT_ROOM`;
+- non-room paths preserve the existing HTTP 200 informational response.
+
+These are deterministic Worker-handler integration tests. They do not instantiate a Cloudflare Durable Object runtime, deploy a Worker or prove a physical two-device match. The root test suites continue to use the public `./index` compatibility path.
