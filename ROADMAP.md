@@ -140,7 +140,7 @@ For maintained, source-grounded architecture and edit-impact guidance, start at 
 - Legacy overlapping receiver to audit/migrate: multiplayer/RemotePlayerActionReceiver.java.
 - Native transport/action bridge: NetworkMessage.java, MessageType.java, NetworkActionType.java, NetworkActionBridge.java, MultiplayerActionDispatcher.java, InternetTransport.java, LANTransport.java and BluetoothTransport.java.
 - Native combat contracts: NativeCombatAuthorityPolicy.java, NativeCombatJson.java and NativeMobCombatDelta.java.
-- Worker/Durable Object room: server/src/index.ts. Backend tests: server/src/index.test.ts. Protocol: protocol/schema.json.
+- Worker entry/facade: `server/src/index.ts` (Wrangler `main`); request router: `server/src/worker.ts`; Durable Object implementation: `server/src/match-room/`; backend tests: `server/src/index.test.ts`, `server/src/native-pickup-side-effect.test.ts` and `server/src/entrypoint.test.ts`. Protocol: `protocol/schema.json`.
 - CI: .github/workflows/multiplayer-ci.yml. It runs Node 20 npm build/tests and Java 17 Gradle JVM tests plus Android debug APK compilation.
 - Mode descriptors: CoopMode.java, PvPMode.java, DeathmatchMode.java and SurvivalMode.java need actual server/client enforcement; class existence is not proof that a mode works.
 
@@ -811,9 +811,12 @@ Extract the Durable Object's storage/repository operations, lifecycle/snapshot h
 
 ### Stage 3 — Worker entry, integration and parity audit
 
-Finish the remaining Worker routing and supporting integration boundaries; remove only transitional glue proven unnecessary after all callers have moved. Keep `server/src/index.ts` as the stable Worker entry. Audit every original declaration against its new location, every import/export, all backend tests, the Java/client wire contract, protocol schema, Wrangler config, CI/deploy workflows and documentation. Run complete backend tests and exact-HEAD Android validation. No production deploy or physical multiplayer claim follows from CI alone.
-
-**State:** not started. Stage 2 passed its exact-HEAD CI gate; Stage 3 is the next source-only stage.
+- Moved the original default Worker request handler intact into `server/src/worker.ts`; `server/src/index.ts` remains the unchanged Wrangler `main` and now re-exports the default handler alongside the historical named API and `MatchRoom`.
+- Added `server/src/entrypoint.test.ts` for room-code resolution, exact Request forwarding, `DEFAULT_ROOM` fallback, the non-room information response and the root `MatchRoom` export.
+- Reconciled all 200 original pre-`MatchRoom` top-level declarations against their 15 destination modules using normalized declaration-text comparisons: 200/200 matched, with no body-text differences. Verified all 118 original validator/protocol/helper exports and the named `MatchRoom` export remain available (119 named exports total).
+- Verified the single `MatchRoom` class definition and the seven-module shared-instance inheritance chain; checked the root Worker route, Wrangler `main`, `MATCH_ROOM` binding, class name and `v1` SQLite migration.
+- Confirmed `protocol/schema.json` and the protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` are unchanged. Existing validator tests continue to import `./index`.
+- **State:** implementation and parity audit complete; final acceptance is gated on Backend typecheck/full tests and Android JVM/debug-APK CI passing at the exact final documentation commit. CI is not live Worker deployment or physical-device verification.
 
 ### Stage completion gate
 
