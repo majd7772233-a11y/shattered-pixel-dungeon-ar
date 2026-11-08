@@ -232,7 +232,8 @@ The user explicitly excluded Hero.java, Mob.java and WorldSnapshot.java from spl
 - Preserve all 118 original validator/protocol/helper named exports and the named `MatchRoom` export (119 named exports total).
 - Recheck Java/client call sites, schema, tests, Wrangler, workflows, deployment docs and import/export compatibility.
 - Keep Hero.java, Mob.java and WorldSnapshot.java untouched throughout.
-- **State:** implementation and parity audit complete; final acceptance remains gated on exact-final-HEAD Backend and Android CI.
+- **Exact-HEAD acceptance:** [GitHub Actions run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/full tests and Android JVM/debug-APK CI both succeeded.
+- **State:** complete for implementation, source parity and automated acceptance; no live Worker deployment or physical-device session is implied.
 
 These stages are source organization only. They do not change or renumber gameplay phases 1–23.
 
