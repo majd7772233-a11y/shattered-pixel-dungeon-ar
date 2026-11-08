@@ -188,20 +188,31 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertFalse("A complete native result must not request a fallback snapshot",
                 transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
 
-        NetworkMessage action = transport.sent.stream()
-                .filter(message -> message.messageType == MessageType.ACTION)
-                .reduce((first, second) -> second)
-                .orElse(null);
-        Assert.assertNotNull("The completed native Poison tick is published", action);
+        java.util.List<NetworkMessage> actions = new ArrayList<>();
+        for (NetworkMessage message : transport.sent) {
+            if (message.messageType == MessageType.ACTION) actions.add(message);
+        }
+        Assert.assertEquals("Mob.damage publishes its native result before the Hero Buff summary", 2, actions.size());
+        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
+        Assert.assertNotNull(mobData);
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+                mobData.getString("sourceClass", ""));
+        NetworkMessage action = actions.get(1);
+        Assert.assertNotNull("The completed native Poison tick is published after the Mob result", action);
         JsonValue payload = new JsonReader().parse(action.payloadJson);
         JsonValue data = payload == null ? null : payload.get("data");
         Assert.assertNotNull(data);
         Assert.assertEquals("BUFF_TICK", data.getString("sourceType", ""));
+        Assert.assertEquals("The Hero summary captures the sequence baseline before Poison.act()",
+                1L, data.getLong("sequenceBefore", -1L));
         JsonValue secondary = new JsonReader().parse(data.getString("secondaryMobDeltas", ""));
         JsonValue deltas = secondary == null ? null : secondary.get("deltas");
         Assert.assertNotNull(deltas);
         Assert.assertEquals(1, deltas.size);
         Assert.assertEquals("linked-native-mob-0001", deltas.get(0).getString("entityId", ""));
+        Assert.assertEquals(linked.id(), deltas.get(0).getInt("actorId", -1));
+        Assert.assertTrue(deltas.get(0).getString("serializedBundleBefore", "").length() > 0);
         Assert.assertEquals(20, deltas.get(0).getInt("hpBefore", -1));
         Assert.assertEquals(19, deltas.get(0).getInt("hpAfter", -1));
     }

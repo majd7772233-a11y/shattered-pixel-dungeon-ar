@@ -30,11 +30,13 @@ public final class NativeMobCombatDelta {
 
     public static final class Delta {
         public String entityId;
+        public int actorId;
         public int hpBefore = -1;
         public int htBefore = -1;
         public int posBefore = -1;
         public int shieldBefore = -1;
         public String buffsBefore;
+        public String serializedBundleBefore;
         public int hpAfter = -1;
         public int htAfter = -1;
         public int posAfter = -1;
@@ -89,11 +91,13 @@ public final class NativeMobCombatDelta {
                 }
                 Delta tombstone = new Delta();
                 tombstone.entityId = oldState.entityId;
+                tombstone.actorId = oldState.actorId;
                 tombstone.hpBefore = oldState.hp;
                 tombstone.htBefore = oldState.ht;
                 tombstone.posBefore = oldState.pos;
                 tombstone.shieldBefore = oldState.shielding;
                 tombstone.buffsBefore = oldState.buffs;
+                tombstone.serializedBundleBefore = oldState.serializedBundle;
                 tombstone.hpAfter = 0;
                 tombstone.htAfter = oldState.ht;
                 tombstone.posAfter = oldState.pos;
@@ -113,11 +117,13 @@ public final class NativeMobCombatDelta {
             }
             Delta delta = new Delta();
             delta.entityId = oldState.entityId;
+            delta.actorId = oldState.actorId;
             delta.hpBefore = oldState.hp;
             delta.htBefore = oldState.ht;
             delta.posBefore = oldState.pos;
             delta.shieldBefore = oldState.shielding;
             delta.buffsBefore = oldState.buffs;
+            delta.serializedBundleBefore = oldState.serializedBundle;
             delta.hpAfter = newState.hp;
             delta.htAfter = newState.ht;
             delta.posAfter = newState.pos;

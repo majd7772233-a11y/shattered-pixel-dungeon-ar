@@ -26,6 +26,7 @@ public final class NativeHeroBuffTickPublisher {
         private final Hero hero;
         private String beforeState;
         private float actorClockBefore;
+        private final long sequenceBefore;
         private final String buffClass;
         private final int buffId;
         private final int depth;
@@ -34,7 +35,8 @@ public final class NativeHeroBuffTickPublisher {
         private final Map<Integer, NativeMobCombatDelta.State> secondaryMobStateBefore;
 
         private TickCapture(Hero hero, String beforeState, String buffClass, int buffId,
-                            int depth, int heroPos, float actorClockBefore, String wandItemId,
+                            int depth, int heroPos, float actorClockBefore, long sequenceBefore,
+                            String wandItemId,
                             Map<Integer, NativeMobCombatDelta.State> secondaryMobStateBefore) {
             this.hero = hero;
             this.beforeState = beforeState;
@@ -43,6 +45,7 @@ public final class NativeHeroBuffTickPublisher {
             this.depth = depth;
             this.heroPos = heroPos;
             this.actorClockBefore = actorClockBefore;
+            this.sequenceBefore = sequenceBefore;
             this.wandItemId = wandItemId == null ? "" : wandItemId;
             this.secondaryMobStateBefore = secondaryMobStateBefore == null
                     ? java.util.Collections.emptyMap() : secondaryMobStateBefore;
@@ -142,7 +145,7 @@ public final class NativeHeroBuffTickPublisher {
                 NATIVE_POISON.equals(buffClass)
                         ? NativeMobCombatDelta.capture(null) : java.util.Collections.emptyMap();
         activeCapture = new TickCapture(hero, before, buffClass, buff.id(), Dungeon.depth,
-                hero.pos, clock, wandItemId, secondaryMobStateBefore);
+                hero.pos, clock, manager.getLastSequence(), wandItemId, secondaryMobStateBefore);
         return activeCapture;
     }
 
@@ -210,6 +213,7 @@ public final class NativeHeroBuffTickPublisher {
         data.put("buffClass", capture.buffClass);
         data.put("buffId", capture.buffId);
         data.put("actorClockBefore", capture.actorClockBefore);
+        data.put("sequenceBefore", capture.sequenceBefore);
         data.put("heroStateBeforeJson", capture.beforeState);
         if (!capture.wandItemId.isEmpty()) data.put("wandItemId", capture.wandItemId);
         String secondaryMobDeltas = NATIVE_POISON.equals(capture.buffClass)
