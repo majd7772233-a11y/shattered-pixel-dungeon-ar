@@ -36,11 +36,11 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest tested implementation SHA: `3f867aa95d5c44119c70e6cee251c08043bef42e`; exact-head [CI run 42676272240](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42676272240) passed Backend TypeScript build/626 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+Latest tested implementation SHA: `93432802e75d0d7de67af91e09830a068f9e145c`; exact-head [CI run 42678657964](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42678657964) passed Backend TypeScript build/630 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
 
 The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, and rollback through the real WebSocket message handler.
 
-A transaction exception now returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. The new MatchRoom integration regression verifies rollback and error correlation after a forced final event-insert failure.
+A transaction exception now returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. The new MatchRoom integration regression verifies rollback and error correlation after a forced final event-insert failure. Action acceptance and room/FOV event messages are deferred until the scoped SQL transaction commits. The original sender socket is explicitly preserved as the FOV exclusion after the transactional proxy is removed, preventing duplicate delivery to the publisher.
 
 A non-publisher cannot run the shared Mob portion of Poison LifeLink because its local Actor ID is not an authoritative shared identity. Its Hero tick is rejected even if it sends an empty Mob delta; the client requests a fresh snapshot. The current test checks the request, not end-to-end snapshot application. Actual delegated cross-client LifeLink support remains open.
 
