@@ -5938,6 +5938,52 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
       fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
   });
 
+  it("sums two accepted linked Mob deaths and applies both native MonkEnergy rewards once",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0,energy:0});
+    const existingEnergyBefore=fixture.before.buff_2;
+    const existingEnergyCooldown=fixture.before.buffCooldown_2;
+    fixture.before.buffCount=4;
+    fixture.before.buff_2=JSON.stringify({buff:{
+      __className:lifeLinkClass,id:46,time:9,object:8
+    }});
+    fixture.before.buffCooldown_2=0;
+    fixture.before.buff_3=existingEnergyBefore;
+    fixture.before.buffCooldown_3=existingEnergyCooldown;
+
+    const secondBefore=JSON.stringify({mob:{
+      __className:ratClass,id:8,HP:1,HT:20,pos:26,buffs:[]
+    }});
+    const secondAfter=JSON.stringify({mob:{
+      __className:ratClass,id:8,HP:0,HT:20,pos:26,buffs:[]
+    }});
+    const secondEvent=rewardEvent({
+      targetId:"dead-linked-mob-0002",
+      nativeActorId:8,
+      nativeMobBundleBefore:secondBefore,
+      nativeMobBundleAfterEvidence:secondAfter,
+      nativeMobRewardExp:3
+    });
+    secondEvent.sequence=13;
+
+    fixture.after.combatBundle=JSON.stringify({
+      ...JSON.parse(fixture.after.combatBundle),exp:5
+    });
+    fixture.after.buffCount=2;
+    fixture.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:2,cooldown:0
+    }});
+    fixture.after.buffCooldown_1=0;
+
+    const result=validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent(),secondEvent],[deadActorId,8],levelSnapshot);
+    expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId,8],levelSnapshot)).toBeNull();
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent(),secondEvent,secondEvent],
+      [deadActorId,8],levelSnapshot)).toBeNull();
+  });
+
   it("applies MonkEnergy's per-kill cap and rejects unsupported talent multipliers",()=>{
     const fixture=makeHero({subClass:"MONK",exp:0,energy:9});
     fixture.after.buffCount=2;
