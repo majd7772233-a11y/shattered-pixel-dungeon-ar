@@ -51,7 +51,6 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     return { transactionSync: (callback: () => any) => callback() };
   }
 
-  protected handleActionInTransaction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
   protected async handleReconnect(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
         try {
           const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
