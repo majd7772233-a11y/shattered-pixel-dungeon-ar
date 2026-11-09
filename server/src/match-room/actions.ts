@@ -1389,6 +1389,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               let poisonDeathRewardIds: string[] = [];
               let poisonDeathEntityIds: string[] = [];
               if (isPoisonHeroDeath) {
+                // Enter the proof path optimistically; every malformed/unrelated event or
+                // failed reward contract below explicitly flips this back to false.
+                poisonDeathEvidenceValid = true;
                 const latestHeroBuffRow = this.sql.exec(
                   "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'HERO_BUFF_TICKED' ORDER BY sequence DESC LIMIT 1",
                   session.playerId).toArray()[0];

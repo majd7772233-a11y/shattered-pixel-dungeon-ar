@@ -1,13 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { MatchRoom } from "./index";
-import {
-  nativeHeroBuffLifeLinkMobActorIds, validateNativeLifeLinkEnvironmentDeathRewardTransition,
-  mergeNativeLifeLinkDeathExperienceBundle
-} from "../validators/hero-buffs";
-import {
-  isValidNativeEnvironmentDamage, isValidNativeHeroStateJson, isValidNativeCombatBuffs,
-  mergeNativeHeroState
-} from "../validators/combat-state";
 
 const PLAYER_ID = "publisher-player-001";
 const ENTITY_ID = "stable-linked-mob-0001";
@@ -24,21 +16,16 @@ class MemoryMatchRoomSql {
   processedActions = new Map<string, Row>();
   events: Row[] = [];
   rewardClaims = new Set<string>();
-  calls: Array<{query:string;args:any[];rows?:Row[]}> = [];
   mobUpdates = 0;
   mobDeletes = 0;
   rewardClaimInsertAttempts = 0;
 
   private cursor(rows: Row[] = []) {
-    const copy = rows.map(row => ({ ...row }));
-    const latest = this.calls[this.calls.length - 1];
-    if (latest) latest.rows = copy;
-    return { toArray: () => copy.map(row => ({ ...row })) };
+    return { toArray: () => rows.map(row => ({ ...row })) };
   }
 
   exec(queryValue: string, ...args: any[]) {
     const query = String(queryValue).replace(/\s+/g, " ").trim();
-    this.calls.push({ query, args });
 
     if (query === "SELECT value FROM room_meta WHERE key = 'transitionPending'") {
       const value = this.roomMeta.get("transitionPending");
@@ -300,36 +287,6 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.mobDeletes).toBe(1);
 
     const heroDeath = makeHeroAfterDeath(beforeHero);
-    const acceptedMobEvents = sql.events.filter(event => event.event_type === "CHAR_DAMAGED");
-    const rewardLevelSnapshot = JSON.parse(String(sql.roomMeta.get("levelSnapshot:1")));
-    const linkedActors = nativeHeroBuffLifeLinkMobActorIds(JSON.stringify(beforeHero));
-    const rewardContract = validateNativeLifeLinkEnvironmentDeathRewardTransition(
-      JSON.stringify(beforeHero), JSON.stringify(heroDeath.state), acceptedMobEvents,
-      [7], 0, rewardLevelSnapshot);
-    const mergedHero = mergeNativeHeroState(
-      JSON.stringify(beforeHero), JSON.stringify(heroDeath.state),
-      {hp:0,ht:20,pos:9,shielding:0}, heroDeath.targetBuffs);
-    const mergedExperience = mergeNativeLifeLinkDeathExperienceBundle(
-      beforeHero.combatBundle, heroDeath.state.combatBundle, rewardContract?.allowExperienceChange === true);
-    const diagnostic = {
-      linkedActors,
-      acceptedMobEvents: acceptedMobEvents.map(event=>JSON.parse(String(event.payload))),
-      rewardContract, mergedHero: mergedHero !== null, mergedExperience,
-      nativeEnvironmentDamage: isValidNativeEnvironmentDamage({
-        sourceType:"ENVIRONMENT",sourceClass:POISON_CLASS,engineDamageResult:true,
-        targetHpBefore:9,targetHtBefore:20,targetHp:0,targetHt:20,
-        targetPosBefore:9,targetPosAfter:9,targetShieldBefore:0,targetShieldAfter:0,
-        targetState:"DEAD",damage:9,effectiveDamage:9,
-        targetBuffsBefore:heroDeath.targetBuffsBefore,targetBuffs:heroDeath.targetBuffs
-      },{pos:9,hp:9,ht:20,state:"ALIVE",levelSize:1024,levelWidth:32,
-        heroState:beforeHero,shielding:beforeHero.shielding}),
-      nativeHeroState: isValidNativeHeroStateJson(JSON.stringify(heroDeath.state),{hp:0,ht:20,pos:9,shielding:0}),
-      nativeBuffs: isValidNativeCombatBuffs(heroDeath.targetBuffs)
-    };
-    if (linkedActors?.length !== 1 || !rewardContract || !mergedHero || !mergedExperience
-        || !diagnostic.nativeEnvironmentDamage || !diagnostic.nativeHeroState || !diagnostic.nativeBuffs) {
-      throw new Error("Direct Hero death validation diagnostics: " + JSON.stringify(diagnostic));
-    }
     await room.handleAction(ws, actionMessage("lifelink-hero-death-001", {
       action: "SYNC_HERO_STATE",
       heroStateJson: JSON.stringify(heroDeath.state),
@@ -343,37 +300,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       }
     }), session);
 
-    const heroActionResponse = JSON.parse(String(ws.send.mock.calls.at(-1)[0]));
-    if (heroActionResponse.messageType !== "ACTION_ACCEPTED") {
-      const actorIdsFromStored = nativeHeroBuffLifeLinkMobActorIds(
-        String(sql.roomMeta.get("heroState:" + PLAYER_ID)));
-      const acceptedEventQuery = sql.calls.find(call => call.query.startsWith(
-        "SELECT sequence,sender_id,event_type,payload FROM events WHERE sequence > ?"));
-      const acceptedRows = acceptedEventQuery?.rows || [];
-      const eventChecks = acceptedRows.map(event => {
-        const evidence = JSON.parse(String(event.payload));
-        const actorId = Number(evidence.nativeActorId);
-        const entityId = String(evidence.targetId || "");
-        const targetHp = Number(evidence.targetHp);
-        return {
-          eventType: event.event_type, sender: event.sender_id,
-          sourceType: evidence.sourceType, sourceClass: evidence.sourceClass,
-          targetType: evidence.targetType, actorId,
-          linked: (actorIdsFromStored || []).includes(actorId),
-          duplicate: acceptedRows.filter(row => Number(JSON.parse(String(row.payload)).nativeActorId)===actorId).length > 1,
-          entityIdValid: /^[A-Za-z0-9._:-]{8,80}$/.test(entityId),
-          targetHp, targetHpValid: Number.isInteger(targetHp) && targetHp >= 0
-        };
-      });
-      const exactContract = validateNativeLifeLinkEnvironmentDeathRewardTransition(
-        String(sql.roomMeta.get("heroState:" + PLAYER_ID)), JSON.stringify(heroDeath.state),
-        acceptedRows, [7], 0, JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))));
-      throw new Error("Hero death request rejected: " + JSON.stringify(heroActionResponse)
-        + " exact SQL-derived evidence: " + JSON.stringify({
-          actorIdsFromStored, acceptedRows, eventChecks, exactContract,
-          sqlTail: sql.calls.slice(-18)
-        }));
-    }
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])))
+      .toMatchObject({ messageType: "ACTION_ACCEPTED" });
     expect(sql.events).toHaveLength(2);
     expect(sql.events.map(event => event.event_type)).toEqual(["CHAR_DAMAGED", "PLAYER_DAMAGED"]);
     const heroEvent = JSON.parse(String(sql.events[1].payload));
