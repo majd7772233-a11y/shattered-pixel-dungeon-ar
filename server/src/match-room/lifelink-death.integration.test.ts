@@ -225,6 +225,72 @@ function makeHeroAfterDeath(before: Row): { state: Row; targetBuffsBefore: strin
   };
 }
 
+function makeNonlethalPoisonFixture() {
+  const sql = new MemoryMatchRoomSql();
+  const beforeHero = makeHeroBefore();
+  const afterHero = JSON.parse(JSON.stringify(beforeHero));
+  afterHero.hp = 8;
+  afterHero.buff_0 = JSON.stringify({ buff: {
+    __className: POISON_CLASS, id: 44, time: 10, left: 8
+  }});
+  afterHero.buffCooldown_0 = 1;
+  const afterCombat = JSON.parse(String(beforeHero.combatBundle));
+  afterCombat.HP = 8;
+  afterHero.combatBundle = JSON.stringify(afterCombat);
+
+  const mobBefore = nativeMobBundle(20);
+  const mobAfter = nativeMobBundle(19);
+  const savedMob = {
+    mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 20, ht: 20, shielding: 0,
+    state: "Hunting", serializedBundle: mobBefore, buffs: [],
+    defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+    targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+    rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+    rewardSpawningWeight: 1, rewardMonkEnergy: 1
+  };
+  const levelSnapshot = {
+    schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+    entrancePos: 0, exitPos: 1023, seed: 123456, locked: false, feeling: "NONE",
+    levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+    heroStateJson: JSON.stringify(beforeHero), nativeLevelMetadataBundle: "native-level-metadata",
+    tiles: Array.from({ length: 1024 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+      flammable: false, secret: false, avoid: false, water: false,
+      discoverable: false, openSpace: false
+    })),
+    transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+    mobs: [savedMob], visitedPositions: [], mappedPositions: []
+  };
+  sql.roomMeta.set("levelPublisher", PLAYER_ID);
+  sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(beforeHero));
+  sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+  sql.players.set(PLAYER_ID, {
+    player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+  });
+  sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 25 });
+
+  const mobDelta = {
+    entityId: ENTITY_ID, actorId: 7,
+    hpBefore: 20, htBefore: 20, posBefore: 25, shieldBefore: 0,
+    buffsBefore: "[]", serializedBundleBefore: mobBefore,
+    hpAfter: 19, htAfter: 20, posAfter: 25, shieldAfter: 0,
+    buffsAfter: "[]", serializedBundleAfter: mobAfter
+  };
+  const tickData = {
+    sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
+    actorClockBefore: 9, sequenceBefore: 0,
+    heroStateBeforeJson: JSON.stringify(beforeHero),
+    secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta] })
+  };
+  const room = makeRoom(sql);
+  const ws = { send: vi.fn() };
+  const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+  return {
+    sql, beforeHero, afterHero, mobBefore, mobAfter, savedMob, levelSnapshot,
+    mobDelta, tickData, room, ws, session
+  };
+}
+
 function makeRoom(sql: MemoryMatchRoomSql): any {
   // Exercise the real MatchRoom prototype/handler without invoking the production
   // Durable Object constructor or its level-generation/migration side effects.
@@ -489,6 +555,55 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
     expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, state: "ALIVE" });
     expect(room.currentSequence).toBe(1);
+  });
+
+  it("rejects non-publisher LifeLink Mob mutations without changing either authoritative state", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    fixture.sql.roomMeta.set("levelPublisher", "different-level-publisher-002");
+
+    await fixture.room.handleAction(fixture.ws, actionMessage("lifelink-nonpublisher-forged-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    }), fixture.session);
+
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("BUFF_TICK_MOB_AUTHORITY_REQUIRED");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(fixture.mobBefore);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(fixture.sql.rewardClaims.size).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+  });
+
+  it("rolls back a nonlethal Hero and Mob Poison batch when its final event insert fails", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    fixture.sql.failEventInsert = true;
+
+    await expect(fixture.room.handleAction(fixture.ws, actionMessage("lifelink-poison-buff-rollback-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    }), fixture.session)).rejects.toThrow("forced event insert failure");
+
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.size).toBe(0);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(fixture.mobBefore);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(fixture.sql.rewardClaims.size).toBe(0);
+    expect(fixture.sql.mobUpdates).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+    expect(fixture.ws.send).not.toHaveBeenCalled();
   });
 
   it("rejects a LifeLink death batch that adds a heap outside every dead Mob cell", async () => {
