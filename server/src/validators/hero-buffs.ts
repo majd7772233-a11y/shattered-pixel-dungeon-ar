@@ -471,7 +471,8 @@ export function mergeNativeLifeLinkDeathExperienceBundle(
       || !Number.isInteger(reportedExp) || reportedExp < 0
       || reportedExp < beforeExp) return null;
   const beforeWithoutExp = { ...before }, reportedWithoutExp = { ...reported };
-  for (const key of ["exp", "HP", "HT", "pos"]) {
+  // Embedded Actor vitals and Buff Bundles are validated separately from the outer Hero snapshot.
+  for (const key of ["exp", "HP", "HT", "pos", "buffs"]) {
     delete beforeWithoutExp[key];
     delete reportedWithoutExp[key];
   }
