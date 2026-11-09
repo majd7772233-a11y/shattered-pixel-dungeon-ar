@@ -5,8 +5,11 @@ export class MatchRoomMessages extends MatchRoomActions {
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== "string") return;
 
+    let requestId: string | undefined;
     try {
       const msg: NetworkMessage = JSON.parse(message);
+      requestId = typeof msg.requestId === "string" && msg.requestId.length > 0
+        ? msg.requestId : undefined;
       const session = ws.deserializeAttachment() as SessionData | null;
       if (!session) return;
 
@@ -75,6 +78,8 @@ export class MatchRoomMessages extends MatchRoomActions {
       ws.send(JSON.stringify({
         protocolVersion: "1.0.0",
         messageType: "ERROR",
+        ...(requestId ? { requestId } : {}),
+        sequence: this.currentSequence,
         payloadJson: JSON.stringify({ error: (e as Error).message })
       }));
     }

@@ -634,6 +634,40 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.ws.send).not.toHaveBeenCalled();
   });
 
+  it("returns a correlated ERROR after rolling back a failed Poison LifeLink transaction", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    fixture.sql.failEventInsert = true;
+    const requestId = "lifelink-poison-websocket-rollback-001";
+    const ws = {
+      send: vi.fn(),
+      deserializeAttachment: () => fixture.session
+    };
+
+    await fixture.room.webSocketMessage(ws, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    })));
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const response = JSON.parse(String(ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe(requestId);
+    expect(response.sequence).toBe(0);
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("forced event insert failure");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.size).toBe(0);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(fixture.mobBefore);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(fixture.sql.rewardClaims.size).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+  });
+
   it("rejects a LifeLink death batch that adds a heap outside every dead Mob cell", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();
