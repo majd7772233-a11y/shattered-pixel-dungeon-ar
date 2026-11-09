@@ -1388,7 +1388,17 @@ public class WorldSnapshot {
         if (dimensionsChanged && GameScene.hasActiveScene()) {
             Game.switchScene(GameScene.class);
         }
-        lastRestoreDiagnostic = "applied sequence " + snapshot.sequence;
+        String restoredLocalPlayerId = manager.getLocalPlayerId();
+        Integer restoredPlayerHp = restoredLocalPlayerId == null ? null : snapshot.playerHp.get(restoredLocalPlayerId);
+        Integer restoredPlayerPos = restoredLocalPlayerId == null ? null : snapshot.playerPositions.get(restoredLocalPlayerId);
+        lastRestoreDiagnostic = "applied sequence " + snapshot.sequence
+                + " localPlayer=" + restoredLocalPlayerId
+                + " snapshotHp=" + restoredPlayerHp
+                + " snapshotPos=" + restoredPlayerPos
+                + " heroHp=" + (Dungeon.hero == null ? null : Dungeon.hero.HP)
+                + " heroPos=" + (Dungeon.hero == null ? null : Dungeon.hero.pos)
+                + " hasHeroBundle=" + (restoredLocalPlayerId != null
+                    && snapshot.playerStateJson.containsKey(restoredLocalPlayerId));
         return true;
         } catch (RuntimeException restoreError) {
             String failure = "exception " + restoreError.getClass().getSimpleName()
