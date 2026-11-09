@@ -220,15 +220,19 @@ Existing backend tests must continue importing the root compatibility surface fr
 These are deterministic Worker-handler integration tests. They do not instantiate a Cloudflare Durable Object runtime, deploy a Worker or prove a physical two-device match. The root test suites continue to use the public `./index` compatibility path.
 
 
-## Phase 9 — LifeLink Mob damage in Poison ticks (2026-11-08)
+## Phase 9 — LifeLink Mob damage in Poison ticks (2026-11-09)
 
 - [x] Capture native Mob before/after state around the original Poison actor tick without recreating the split-damage formula in TypeScript.
 - [x] Capture the publisher's sequence baseline before the native Poison tick and include publisher-local Actor IDs plus the native pre-bundle in the later evidence payload.
-- [ ] Commit the authoritative Mob effect exactly once through SYNC_MOB_STATE, then make BUFF_TICK correlation-only with no second Mob SQL, snapshot, death, or heap writes.
-- [ ] Bind evidence to a same-sender accepted CHAR_DAMAGED event with native LifeLink source during the captured Poison tick and after sequenceBefore; require sequenceBefore to include the sender's latest accepted HERO_BUFF_TICKED event; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and already-committed snapshot.
-- [ ] Cover a live target and a dead target already removed from the snapshot, including final-heap equality and death-event identity.
-- [ ] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles, and snapshots that still contain pre-damage state.
+- [x] Commit the authoritative Mob effect exactly once through `SYNC_MOB_STATE`; make the later `BUFF_TICK` correlation-only with no second Mob SQL, snapshot, death or heap writes.
+- [x] Bind evidence to a same-sender accepted `CHAR_DAMAGED` event with native LifeLink source during the captured Poison tick and after `sequenceBefore`; require the baseline to include the sender's latest accepted `HERO_BUFF_TICKED`; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and the already-committed snapshot.
+- [x] Cover live and dead linked Mob targets; require death to be already committed/removed and final heaps to match.
+- [x] Allow the Hero's paired LifeLink detach only when the same linked Mob Actor ID has accepted zero-HP death evidence; reject detach without exact proof.
+- [x] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles and snapshots that still contain pre-damage state.
 - [x] Keep non-Poison timed Hero Buff expiry independent of LifeLink Mob resolution.
+- [ ] Validate positive-EXP Mob death side effects on Hero state (XP, level-up and MonkEnergy) as part of an authoritative transaction; current native death fixture uses `EXP=0`.
 - [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
 - [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
 - [ ] Complete the remaining Phase 9 reconnect, expiry-boundary, simultaneous effect, consumable and detach-callback matrix.
+- [x] Exact-head CI on `f2f01e814e558c5e59c8d1b7106d1cb4b57a8a2a`: [run 42606111312 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42606111312). This is not a deployed Worker or physical-device test.
+
