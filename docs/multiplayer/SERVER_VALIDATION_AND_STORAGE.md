@@ -330,6 +330,8 @@ Even an empty `secondaryMobDeltas` list is not sufficient for a non-publisher Po
 
 The integration suite's in-memory SQL adapter models transaction rollback after a forced final event-insert failure and checks that Mob rows, level snapshot, Hero state, reward claims, event rows, sequence and world time all return to their pre-request values. This is deterministic handler-level evidence, not a substitute for exercising Cloudflare Durable Object SQLite, storage restart semantics or a deployed Worker. This special wrapper does not imply that unrelated MatchRoom actions share a transaction.
 
+The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the parsed request ID before dispatch and includes it plus the current room sequence in its outer `ERROR` response when a handler throws. This matters for a failed atomic batch: SQL rollback alone is insufficient if the sender cannot correlate the rejection to its pending action. The sender's Android manager recognizes the rejected `SYNC_HERO_STATE` and requests a full snapshot. If the incoming frame is malformed before a request ID can be parsed, the response remains uncorrelated by necessity.
+
 
 ## 7. Pending locks and deadlines
 

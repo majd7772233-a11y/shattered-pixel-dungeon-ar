@@ -237,6 +237,8 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] MatchRoom integration: reject non-publisher linked Mob writes without changing either state.
 - [x] MatchRoom integration: reject a non-publisher Poison tick with a valid empty Mob delta when the Hero pre-state still contains local LifeLink Actor IDs.
 - [x] MatchRoom integration: force final event insertion failure and verify Mob rows, level snapshot, Hero state, rewards, event log, sequence and world time roll back together.
+- [x] WebSocket boundary: force the same final event insertion failure through `webSocketMessage()`; verify SQL/sequence rollback and an `ERROR` carrying the original request ID and current sequence.
+- [x] Android error correlation: receiving that failed `SYNC_HERO_STATE` request response removes the pending action and requests RESYNC.
 - [x] Native Java runtime: multiple linked Mob deaths in one Poison tick are included in one ACTION; final heaps are serialized as a JSON array.
 - [x] Android non-publisher regression: local Poison/LifeLink leaves Mob HP unchanged, publishes an empty secondary Mob delta for server rejection, and triggers RESYNC when the Hero tick is rejected.
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
@@ -245,5 +247,5 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Confirm full snapshot application after a rejected non-publisher Poison/LifeLink tick in a connected client, not only that the RESYNC request is sent.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `e85b1768b6b42cb9165fd6e344bd9a1fa1f755e9` passed [run 42675202175](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42675202175): TypeScript build + 624 Vitest executions across eight files and Android JVM tests + Debug APK compilation. Some TS/generated-JS suites mirror source cases. These MatchRoom tests use an in-memory SQL adapter; they do not run a deployed Worker, real Durable Object SQLite or physical devices.
+**Exact-head CI:** `3f867aa95d5c44119c70e6cee251c08043bef42e` passed [run 42676272240](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42675202175): TypeScript build + 626 Vitest executions across eight files and Android JVM tests + Debug APK compilation. Some TS/generated-JS suites mirror source cases. These MatchRoom tests use an in-memory SQL adapter; they do not run a deployed Worker, real Durable Object SQLite or physical devices.
 
