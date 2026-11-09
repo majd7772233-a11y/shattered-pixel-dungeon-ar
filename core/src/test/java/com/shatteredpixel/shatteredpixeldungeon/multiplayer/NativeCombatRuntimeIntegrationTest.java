@@ -2061,6 +2061,62 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nonPublisherPoisonLifeLinkTickRejectsAndResyncsWithoutApplyingMobDamage() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-non-publisher-poison-lifelink", "client-peer", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-peer\",\"sessionToken\":\"poison-life-link-peer-token\","
+                        + "\"isLevelPublisher\":false,\"sequence\":1,\"seed\":123456,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertFalse(manager.isLevelPublisher());
+
+        Rat linked = addRat(hero.pos + 1, 20);
+        manager.registerServerEntityId(linked.id(), "nonpublisher-poison-linked-mob-0001");
+        LifeLink link = Buff.prolong(hero, LifeLink.class, 10f);
+        link.object = linked.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(9f);
+        int heroHpBefore = hero.HP;
+        int mobHpBefore = linked.HP;
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue(poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertEquals("A non-publisher must not apply the shared Mob's LifeLink damage locally",
+                mobHpBefore, linked.HP);
+        Assert.assertEquals("The local native prediction splits Poison damage before the server rejects it",
+                heroHpBefore - 2, hero.HP);
+        NetworkMessage tick = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\\"action\\\":\\\"SYNC_HERO_STATE\\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The unsupported non-publisher tick must reach the server for fail-closed validation", tick);
+        JsonValue data = new JsonReader().parse(tick.payloadJson).get("data");
+        Assert.assertEquals("BUFF_TICK", data.getString("sourceType", ""));
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+                data.getString("buffClass", ""));
+        JsonValue secondary = new JsonReader().parse(data.getString("secondaryMobDeltas", ""));
+        Assert.assertNotNull(secondary);
+        Assert.assertTrue(secondary.getBoolean("complete", false));
+        Assert.assertEquals("The non-publisher cannot report a Mob HP mutation", 0,
+                secondary.get("deltas").size);
+
+        NetworkMessage rejected = new NetworkMessage();
+        rejected.messageType = MessageType.ERROR;
+        rejected.requestId = tick.requestId;
+        rejected.sequence = 1L;
+        rejected.payloadJson = "{\"error\":\"BUFF_TICK_MOB_AUTHORITY_REQUIRED\"}";
+        manager.onMessageReceived(rejected);
+        Assert.assertTrue("Rejecting the Hero Buff tick must request a full authoritative snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
     public void publisherAppliesAndPublishesNativePeriodicMobDamage() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();

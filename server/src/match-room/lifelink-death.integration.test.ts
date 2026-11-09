@@ -581,6 +581,34 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.room.currentSequence).toBe(0);
   });
 
+  it("rejects a non-publisher LifeLink Poison tick even when its local Mob delta is empty", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    fixture.sql.roomMeta.set("levelPublisher", "different-level-publisher-002");
+    const tickData = {
+      ...fixture.tickData,
+      secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] })
+    };
+
+    await fixture.room.handleAction(fixture.ws, actionMessage("lifelink-nonpublisher-empty-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: tickData
+    }), fixture.session);
+
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("BUFF_TICK_MOB_AUTHORITY_REQUIRED");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(fixture.mobBefore);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(fixture.sql.rewardClaims.size).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+  });
+
   it("rolls back a nonlethal Hero and Mob Poison batch when its final event insert fails", async () => {
     const fixture = makeNonlethalPoisonFixture();
     fixture.sql.failEventInsert = true;
