@@ -24,6 +24,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.FrostImbue;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Weakness;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroClass;
@@ -230,8 +231,25 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.onMessageReceived(session);
 
         Rat linked = addRat(hero.pos + 1, 1);
-        linked.EXP = 0;
+        linked.EXP = 2;
+        hero.subClass = com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.MONK;
+        int heroExpBefore = hero.exp;
         manager.registerServerEntityId(linked.id(), "linked-dead-native-mob-0001");
+
+        JsonValue snapshotBeforeDeath = new JsonReader().parse(SPDLevelSnapshot.currentLevelJson());
+        JsonValue snapshotMobs = snapshotBeforeDeath == null ? null : snapshotBeforeDeath.get("mobs");
+        Assert.assertNotNull(snapshotMobs);
+        JsonValue rewardMob = null;
+        for (JsonValue candidate = snapshotMobs.child; candidate != null; candidate = candidate.next) {
+            if (candidate.getInt("mobId", -1) == linked.id()) rewardMob = candidate;
+        }
+        Assert.assertNotNull("The full level snapshot captures trusted native reward metadata", rewardMob);
+        Assert.assertEquals(linked.getClass().getName(), rewardMob.getString("rewardClassName", ""));
+        Assert.assertTrue(rewardMob.getBoolean("rewardEligible", false));
+        Assert.assertEquals(2, rewardMob.getInt("rewardExp", -1));
+        Assert.assertEquals(linked.maxLvl, rewardMob.getInt("rewardMaxLevel", -1));
+        Assert.assertEquals(1f, rewardMob.getFloat("rewardSpawningWeight", -1f), 0.001f);
+        Assert.assertEquals(1f, rewardMob.getFloat("rewardMonkEnergy", -1f), 0.001f);
         // Mob.die() logs a localized message for deaths outside the Hero FOV. Keep the
         // linked target visible so this headless test exercises the callback without loading
         // locale resources that are not part of the unit-test runtime.
@@ -250,6 +268,12 @@ public class NativeCombatRuntimeIntegrationTest {
                 level.mobs.contains(linked));
         Assert.assertNull("Char.damage() detaches the Hero's LifeLink when the linked target dies",
                 hero.buff(LifeLink.class));
+        Assert.assertEquals("Mob.destroy() grants the native EXP reward exactly once",
+                heroExpBefore + 2, hero.exp);
+        MonkEnergy monkEnergy = hero.buff(MonkEnergy.class);
+        Assert.assertNotNull("A Monk receives the native energy Buff on an eligible Mob kill", monkEnergy);
+        Assert.assertEquals("A normal Rat grants one base Monk energy",
+                1f, monkEnergy.energy, 0.001f);
 
         java.util.List<NetworkMessage> actions = new ArrayList<>();
         for (NetworkMessage message : transport.sent) {

@@ -102,6 +102,13 @@ public final class SPDLevelSnapshot {
         public int shielding;
         public String state;
         public String serializedBundle = "";
+        /** Native death-reward metadata captured before a Mob can leave the level. */
+        public String rewardClassName = "";
+        public boolean rewardEligible;
+        public int rewardExp;
+        public int rewardMaxLevel;
+        public float rewardSpawningWeight;
+        public float rewardMonkEnergy;
         public int defenseSkill;
         public float baseSpeed;
         public float effectiveSpeed;
@@ -217,6 +224,17 @@ public final class SPDLevelSnapshot {
         return mobBundle.toString();
     }
 
+    /** Exact native MonkEnergy.gainEnergy(Mob) base reward, before Hero talent multipliers. */
+    private static float nativeMobMonkEnergyReward(Mob mob) {
+        if (Char.hasProp(mob, Char.Property.BOSS)) return 5f;
+        if (Char.hasProp(mob, Char.Property.MINIBOSS)) return 3f;
+        if (mob instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Ghoul
+                || mob instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.RipperDemon
+                || mob instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.YogDzewa.Larva
+                || mob instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Wraith) return 0.5f;
+        return 1f;
+    }
+
     public static String currentLevelJson() {
         return buildLevelJson(null, 0L);
     }
@@ -328,6 +346,12 @@ public final class SPDLevelSnapshot {
                 m.enemySeen = mob.multiplayerEnemySeen();
                 m.alerted = mob.multiplayerAlerted();
                 m.serializedBundle = currentMobBundle(mob);
+                m.rewardClassName = mob.getClass().getName();
+                m.rewardEligible = mob.alignment == Char.Alignment.ENEMY;
+                m.rewardExp = mob.EXP;
+                m.rewardMaxLevel = mob.maxLvl;
+                m.rewardSpawningWeight = mob.spawningWeight();
+                m.rewardMonkEnergy = nativeMobMonkEnergyReward(mob);
                 if (mob instanceof Shopkeeper) {
                     Shopkeeper shopkeeper = (Shopkeeper) mob;
                     m.shopkeeperTurnsSinceHarmed = shopkeeper.multiplayerTurnsSinceHarmed();
