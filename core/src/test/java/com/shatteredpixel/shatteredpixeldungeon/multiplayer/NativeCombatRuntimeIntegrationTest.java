@@ -2345,6 +2345,9 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue("The authoritative SNAPSHOT must finish applying on the render thread",
                 snapshotApplied.await(5, TimeUnit.SECONDS));
 
+        Assert.assertEquals("The full authoritative snapshot must apply successfully: "
+                        + WorldSnapshot.lastRestoreDiagnostic(),
+                "applied sequence 1", WorldSnapshot.lastRestoreDiagnostic());
         Assert.assertEquals("The rejected Hero HP delta must be rolled back by the server snapshot",
                 authoritativeHeroHp, hero.HP);
         Assert.assertEquals("The native Mob must remain at its authoritative pre-tick HP",

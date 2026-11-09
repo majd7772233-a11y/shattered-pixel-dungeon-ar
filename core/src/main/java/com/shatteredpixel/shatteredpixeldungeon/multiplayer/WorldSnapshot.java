@@ -32,6 +32,7 @@ import java.util.Map;
 public class WorldSnapshot {
     private static volatile WorldSnapshot lastAppliedSnapshot;
     private static volatile String lastRollbackCaptureDiagnostic = "not run";
+    private static volatile String lastRestoreDiagnostic = "not run";
     /** True only for a local rollback copy; never serialized on the wire. */
     private boolean localRollbackBaseline;
 
@@ -893,6 +894,11 @@ public class WorldSnapshot {
         return lastRollbackCaptureDiagnostic;
     }
 
+    /** Last authoritative snapshot restore result, retained for recovery diagnostics and integration tests. */
+    public static String lastRestoreDiagnostic() {
+        return lastRestoreDiagnostic;
+    }
+
     /** Reapplies the last known-good snapshot if a later reconciliation throws mid-apply. */
     public static boolean rollbackToLastApplied() {
         WorldSnapshot backup = lastAppliedSnapshot;
@@ -939,14 +945,24 @@ public class WorldSnapshot {
     }
 
     private static boolean restoreWorld(WorldSnapshot snapshot, boolean rollback) {
+        lastRestoreDiagnostic = "preflight";
         if (!validateForRestore(snapshot)) {
-            GLog.w("Rejected incomplete or invalid multiplayer world snapshot; live dungeon was left unchanged.");
+            lastRestoreDiagnostic = "rejected: " + lastRollbackCaptureDiagnostic;
+            GLog.w("Rejected incomplete or invalid multiplayer world snapshot; live dungeon was left unchanged: "
+                    + lastRestoreDiagnostic);
             return false;
         }
 
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        if (!manager.isMultiplayerActive()
-                || (!rollback && snapshot.sequence < manager.getLastSequence())) return false;
+        if (!manager.isMultiplayerActive()) {
+            lastRestoreDiagnostic = "rejected: multiplayer session is inactive";
+            return false;
+        }
+        if (!rollback && snapshot.sequence < manager.getLastSequence()) {
+            lastRestoreDiagnostic = "rejected: stale sequence " + snapshot.sequence
+                    + " < " + manager.getLastSequence();
+            return false;
+        }
 
         if (!rollback && !snapshot.localRollbackBaseline && lastAppliedSnapshot == null) {
             WorldSnapshot baseline = captureLocalRollbackBaseline();
@@ -1372,14 +1388,18 @@ public class WorldSnapshot {
         if (dimensionsChanged && GameScene.hasActiveScene()) {
             Game.switchScene(GameScene.class);
         }
+        lastRestoreDiagnostic = "applied sequence " + snapshot.sequence;
         return true;
         } catch (RuntimeException restoreError) {
+            String failure = "exception " + restoreError.getClass().getSimpleName()
+                    + ": " + restoreError.getMessage();
             if (!rollback && rollbackBackup != null && rollbackBackup != snapshot) {
                 lastAppliedSnapshot = rollbackBackup;
                 if (!rollbackToLastApplied()) {
                     GLog.w("Failed to restore previous world after snapshot exception.");
                 }
             }
+            lastRestoreDiagnostic = failure;
             throw restoreError;
         }
     }
