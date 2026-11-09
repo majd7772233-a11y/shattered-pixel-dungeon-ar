@@ -194,6 +194,10 @@ function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = "",
   const combat = parseNativeBundleObject(state.combatBundle);
   if (!combat) return null;
   delete combat.buffs;
+  // HP/HT/position are separately validated against the authoritative outer Hero state.
+  delete combat.HP;
+  delete combat.HT;
+  delete combat.pos;
   if (ignoreNativeDeathExperience) delete combat.exp;
   if (ignoredWandItemId) scrubNativeWandChargeValue(combat, ignoredWandItemId);
   state.combatBundle = combat;
@@ -467,8 +471,10 @@ export function mergeNativeLifeLinkDeathExperienceBundle(
       || !Number.isInteger(reportedExp) || reportedExp < 0
       || reportedExp < beforeExp) return null;
   const beforeWithoutExp = { ...before }, reportedWithoutExp = { ...reported };
-  delete beforeWithoutExp.exp;
-  delete reportedWithoutExp.exp;
+  for (const key of ["exp", "HP", "HT", "pos"]) {
+    delete beforeWithoutExp[key];
+    delete reportedWithoutExp[key];
+  }
   if (!sameNativeItemValue(beforeWithoutExp, reportedWithoutExp)
       || (!allowExperienceChange && reportedExp !== beforeExp)) return null;
   return JSON.stringify({ ...before, exp: allowExperienceChange ? reportedExp : beforeExp });
