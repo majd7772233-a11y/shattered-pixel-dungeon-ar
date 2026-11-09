@@ -2335,6 +2335,11 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue encodedLevel = encodedSnapshot == null ? null : encodedSnapshot.get("level");
         Assert.assertNotNull("The full RESYNC envelope must include the native level object", encodedLevel);
         Assert.assertEquals("Full native level schema must be version 1", 1, encodedLevel.getInt("schemaVersion", -1));
+        Assert.assertEquals("Default branch zero must be explicitly serialized", 0, encodedLevel.getInt("branch", -1));
+        Assert.assertNotNull("The default-valued lock flag must be explicitly serialized", encodedLevel.get("locked"));
+        Assert.assertFalse(encodedLevel.getBoolean("locked", true));
+        Assert.assertEquals("The first tile at position zero must not be omitted by prototype serialization",
+                0, encodedLevel.get("tiles").get(0).getInt("pos", -1));
         for (String collection : new String[]{
                 "tiles", "transitions", "heaps", "traps", "blobs", "plants", "mobs",
                 "visitedPositions", "mappedPositions"

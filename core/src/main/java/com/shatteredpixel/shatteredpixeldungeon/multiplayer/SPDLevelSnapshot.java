@@ -426,7 +426,12 @@ public final class SPDLevelSnapshot {
                 if (buff != null) out.nativeRemoteHeroActorIds.add(buff.id());
             }
         }
-        return new Json().toJson(out);
+        // Full snapshots are a schema contract: serialize default-valued fields and empty
+        // collections too. Prototype elision drops schemaVersion, branch=0 and required empty
+        // arrays, causing a valid native level to be rejected as an incomplete snapshot.
+        Json wireJson = new Json();
+        wireJson.setUsePrototypes(false);
+        return wireJson.toJson(out);
     }
 
     /** Serializes native timed buffs after combat without reimplementing their effects remotely. */
