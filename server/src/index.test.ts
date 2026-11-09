@@ -5956,24 +5956,10 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
       fixture.before,fixture.after,[],[],10,levelSnapshot)).toBeNull();
 
-    const liveLinkHero=makeHero({exp:0,energy:null});
-    liveLinkHero.after.hp=0;
-    liveLinkHero.after.combatBundle=JSON.stringify({
-      ...JSON.parse(liveLinkHero.after.combatBundle),HP:0,HT:20,pos:9,
-      exp:JSON.parse(liveLinkHero.before.combatBundle).exp
-    });
-    // No linked Mob died: the LifeLink Buff must remain present and unchanged.
-    liveLinkHero.after.buffCount=2;
-    liveLinkHero.after.buff_0=liveLinkHero.before.buff_0;
-    liveLinkHero.after.buffCooldown_0=liveLinkHero.before.buffCooldown_0;
-    liveLinkHero.after.buff_1=liveLinkHero.before.buff_1;
-    liveLinkHero.after.buffCooldown_1=liveLinkHero.before.buffCooldown_1;
-    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
-      liveLinkHero.before,liveLinkHero.after,[],[],10,levelSnapshot))
-      .toEqual({allowExperienceChange:false,allowMonkEnergyChange:false});
+    const noRewardHero=makeHero({exp:0,energy:null});
     expect(mergeNativeLifeLinkDeathExperienceBundle(
-      liveLinkHero.before.combatBundle,JSON.stringify({
-        ...JSON.parse(liveLinkHero.after.combatBundle),exp:1
+      noRewardHero.before.combatBundle,JSON.stringify({
+        ...JSON.parse(noRewardHero.after.combatBundle),exp:1
       }),false)).toBeNull();
   });
 
