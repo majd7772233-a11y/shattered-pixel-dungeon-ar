@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds,
+  validateNativeLifeLinkDeathRewardTransition,
   parseAndValidateNativeLifeLinkMobDeltas, parseAndValidateNativeLifeLinkMobDamageEvidence,
   isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
@@ -5795,5 +5796,179 @@ describe("Native Poison LifeLink Mob event correlation", () => {
     const staleMobs=[{...sample.currentMobs[0],hp:20,serializedBundle:mobBundle(7,20)}];
     expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
       sample.payload,staleMobs,[7],[sample.event],sample.heaps,64,8,10,"publisher")).toBeNull();
+  });
+});
+
+
+describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
+  const poisonClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+  const lifeLinkClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
+  const ascensionClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.AscensionChallenge";
+  const monkEnergyClass="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy";
+  const ratClass="com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
+  const deadActorId=7;
+  const bundle=JSON.stringify({mob:{__className:ratClass,id:deadActorId,HP:1,HT:20,pos:25,buffs:[]}});
+  const rewardEvent=(overrides:Record<string,any>={})=>({
+    sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",
+    payload:JSON.stringify({
+      targetId:"dead-linked-mob-0001",targetType:"MOB",targetHpBefore:1,targetHp:0,
+      nativeActorId:deadActorId,nativeMobBundleBefore:bundle,nativeMobBundleAfterEvidence:bundle,
+      sourceType:"ENVIRONMENT",sourceClass:lifeLinkClass,
+      nativeMobRewardClassName:ratClass,nativeMobRewardEligible:true,nativeMobRewardExp:2,
+      nativeMobRewardMaxLevel:29,nativeMobRewardSpawningWeight:1,nativeMobRewardMonkEnergy:1,
+      ...overrides
+    })
+  });
+  const makeHero=(options:{
+    subClass?:string;level?:number;exp?:number;energy?:number|null;
+    includeAscension?:boolean;unencumberedSpirit?:number;poisonAfter?:boolean;
+  }={})=>{
+    const level=options.level ?? 1, subClass=options.subClass ?? "NONE";
+    const rowsBefore:any[]=[
+      {className:poisonClass,id:44,time:9,data:{left:9}},
+      {className:lifeLinkClass,id:45,time:9,data:{object:deadActorId}}
+    ];
+    if(options.includeAscension) rowsBefore.push({
+      className:ascensionClass,id:46,time:9,data:{}
+    });
+    if(options.energy!==null && options.energy!==undefined) rowsBefore.push({
+      className:monkEnergyClass,id:56,time:9,data:{energy:options.energy,cooldown:0}
+    });
+    const rowsAfter:any[]=[
+      {className:poisonClass,id:44,time:10,data:{left:8}}
+    ];
+    if(options.includeAscension) rowsAfter.push({
+      className:ascensionClass,id:46,time:9,data:{}
+    });
+    if(options.energy!==null && options.energy!==undefined) rowsAfter.push({
+      className:monkEnergyClass,id:56,time:9,data:{energy:options.energy,cooldown:0}
+    });
+    const create=(exp:number,rows:any[],cooldown=1)=>{
+      const combat:any={
+        id:21,time:10,lvl:level,exp,subClass,STR:10,items:"native-inventory",buffs:[],
+        talents_tier_1:{},talents_tier_2:{},
+        talents_tier_3:options.unencumberedSpirit
+          ? {UNENCUMBERED_SPIRIT:options.unencumberedSpirit} : {},
+        talents_tier_4:{}
+      };
+      const state:any={
+        hp:9,ht:20,pos:9,shielding:0,gold:0,alchemyEnergy:5,
+        inventoryBundle:"native-inventory",inventoryItemsJson:"[]",quickslotsJson:"[]",
+        notesBundle:"notes",questStateBundle:"quests",ankhCount:0,blessedAnkhCount:0,
+        cooldown,combatBundle:JSON.stringify(combat),buffCount:rows.length
+      };
+      rows.forEach((row,index)=>{
+        state["buff_"+index]=JSON.stringify({buff:{
+          __className:row.className,id:row.id,time:row.time,...row.data
+        }});
+        state["buffCooldown_"+index]=Math.max(0,row.time-9);
+      });
+      return state;
+    };
+    return {before:create(options.exp ?? 0,rowsBefore),after:create(options.expAfter ?? (options.exp ?? 0)+2,rowsAfter),
+      rowsBefore,rowsAfter};
+  };
+  const data={buffClass:poisonClass,sequenceBefore:10};
+  const levelSnapshot={levelClass:"com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel"};
+
+  it("accepts only the exact non-level-up native EXP amount from an accepted linked Mob death",()=>{
+    const fixture=makeHero({exp:0});
+    const result=validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot);
+    expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:false});
+    const forged=makeHero({exp:0});
+    forged.after.combatBundle=JSON.stringify({...JSON.parse(forged.after.combatBundle),exp:3});
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      forged.before,forged.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
+  });
+
+  it("uses the native AscensionChallenge fallback EXP formula when the Hero exceeds Mob.maxLvl",()=>{
+    const fixture=makeHero({level:2,exp:0,includeAscension:true});
+    const event=rewardEvent({
+      nativeMobRewardExp:1,nativeMobRewardMaxLevel:1,nativeMobRewardSpawningWeight:1.2
+    });
+    fixture.after.combatBundle=JSON.stringify({...JSON.parse(fixture.after.combatBundle),exp:12});
+    const result=validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[event],[deadActorId],levelSnapshot);
+    expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:false});
+  });
+
+  it("rejects level-up XP transitions until Hero.updateHT and its callbacks have a complete contract",()=>{
+    const fixture=makeHero({exp:8});
+    fixture.after.combatBundle=JSON.stringify({...JSON.parse(fixture.after.combatBundle),lvl:2,exp:0});
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
+  });
+
+  it("accepts exact base MonkEnergy gain and its native cap without Unencumbered Spirit",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0,energy:0});
+    fixture.after.buffCount=3;
+    fixture.after.buff_2=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:57,time:9,energy:1,cooldown:0
+    }});
+    fixture.after.buffCooldown_2=0;
+    const result=validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot);
+    expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
+    fixture.after.buff_2=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:57,time:9,energy:2,cooldown:0
+    }});
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
+  });
+
+  it("applies MonkEnergy's per-kill cap and rejects unsupported talent multipliers",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0,energy:9});
+    fixture.after.buffCount=3;
+    fixture.after.buff_2=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:10,cooldown:0
+    }});
+    fixture.after.buffCooldown_2=0;
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot))
+      .toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
+    const talented=makeHero({subClass:"MONK",exp:0,energy:0,unencumberedSpirit:1});
+    talented.after.buffCount=3;
+    talented.after.buff_2=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:57,time:9,energy:2,cooldown:0
+    }});
+    talented.after.buffCooldown_2=0;
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      talented.before,talented.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
+  });
+
+  it("adds the MonkEnergy Buff with zero gain when native Regeneration is disabled",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0});
+    fixture.before.buffCount=3;
+    fixture.before.buff_2=JSON.stringify({buff:{
+      __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LockedFloor",
+      id:47,time:9,left:0
+    }});
+    fixture.before.buffCooldown_2=0;
+    fixture.after.buffCount=3;
+    fixture.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:57,time:9,energy:0,cooldown:0
+    }});
+    fixture.after.buffCooldown_1=0;
+    fixture.after.buff_2=JSON.stringify({buff:{
+      __className:"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LockedFloor",
+      id:47,time:9,left:0
+    }});
+    fixture.after.buffCooldown_2=0;
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot))
+      .toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
+  });
+
+  it("rejects foreign, stale, duplicate, or unproven reward events",()=>{
+    const fixture=makeHero({exp:0});
+    const parse=(events:any[]= [rewardEvent()])=>validateNativeLifeLinkDeathRewardTransition(
+      fixture.before,fixture.after,data,events,[deadActorId],levelSnapshot);
+    expect(parse([{...rewardEvent(),sequence:10}])).toBeNull();
+    expect(parse([{...rewardEvent(),sender_id:""}])).toBeNull();
+    expect(parse([rewardEvent(),rewardEvent()])).toBeNull();
+    expect(parse([{...rewardEvent(),payload:JSON.stringify({
+      ...JSON.parse(rewardEvent().payload),nativeMobRewardClassName:"forged.Rat"
+    })}])).toBeNull();
   });
 });
