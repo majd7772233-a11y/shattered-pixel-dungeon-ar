@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, parseAndValidateNativeSecondaryMobDeltas, isValidNativeMobBundle, isAuthorizedNativeMobOwner, isValidNativeMissTransition, NetworkMessage, SeededRNG, assignStableEntityIds, isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection, isPendingNativeFloorDestinationSnapshot, canAbortNativeFloorTransition, canFinalizeNativeFloorTransition, isValidNativeWorldActionIntent, isValidNativeMutationActionCost, isValidNativeInteractInventoryMutation, isValidNativeUnchangedBuffState, isValidNativeMineBuffMutation, isValidNativeMovementHeapMutation, isValidNativeWorldMutation, isValidNativePickupIntent, isValidNativePickupHeapMutation, isValidNativeInventoryBundleIndex, isValidNativeDropIntent, isValidNativeDropInventoryMutation, isValidNativeDropHeapMutation, isValidNativePickupInventoryMutation, isNativeLootClaimConflict, isValidStableMultiplayerId, isValidNativeFloorItemIdentitySet, nativeLootClaimScopeKey, isNativeLootClaimSchemaCurrent, reserveNativeLootClaim, isValidNativeThrowIntent, isValidNativeThrowInventoryMutation, isValidNativeThrowHeapMutation, isValidNativeProjectileCombatIntent, isValidNativeProjectileHeapResult, isValidNativeProjectileCombatResult,
   isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds,
-  validateNativeLifeLinkDeathRewardTransition,
+  validateNativeLifeLinkDeathRewardTransition, validateNativeLifeLinkEnvironmentDeathRewardTransition,
+  mergeNativeLifeLinkDeathExperienceBundle,
   parseAndValidateNativeLifeLinkMobDeltas, parseAndValidateNativeLifeLinkMobDamageEvidence,
   isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
@@ -5901,6 +5902,78 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     forged.after.combatBundle=JSON.stringify({...JSON.parse(forged.after.combatBundle),exp:3});
     expect(validateNativeLifeLinkDeathRewardTransition(
       forged.before,forged.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
+  });
+
+  it("reconciles linked Mob EXP and MonkEnergy when the same Poison hit kills the Hero",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0,energy:0});
+    fixture.after.hp=0;
+    fixture.after.combatBundle=JSON.stringify({
+      ...JSON.parse(fixture.after.combatBundle),exp:2,HP:0,HT:20,pos:9
+    });
+    // Hero.damage() publishes from inside Char.damage(), before Poison.act() spends its turn.
+    // The Poison actor row therefore remains byte-for-byte unchanged in this intermediate state.
+    fixture.after.buffCount=2;
+    fixture.after.buff_0=fixture.before.buff_0;
+    fixture.after.buffCooldown_0=fixture.before.buffCooldown_0;
+    fixture.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:1,cooldown:0
+    }});
+    fixture.after.buffCooldown_1=0;
+
+    const result=validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      fixture.before,fixture.after,[rewardEvent()],[deadActorId],10,levelSnapshot);
+    expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
+
+    const merged=mergeNativeLifeLinkDeathExperienceBundle(
+      fixture.before.combatBundle,fixture.after.combatBundle,true);
+    expect(JSON.parse(String(merged)).exp).toBe(2);
+    expect(JSON.parse(String(merged)).HP).toBe(9);
+
+    const forgedExp={...fixture.after,combatBundle:JSON.stringify({
+      ...JSON.parse(fixture.after.combatBundle),exp:3
+    })};
+    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      fixture.before,forgedExp,[rewardEvent()],[deadActorId],10,levelSnapshot)).toBeNull();
+
+    const unrelatedMutation={...fixture.after,combatBundle:JSON.stringify({
+      ...JSON.parse(fixture.after.combatBundle),STR:99
+    })};
+    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      fixture.before,unrelatedMutation,[rewardEvent()],[deadActorId],10,levelSnapshot)).toBeNull();
+    expect(mergeNativeLifeLinkDeathExperienceBundle(
+      fixture.before.combatBundle,unrelatedMutation.combatBundle,true)).toBeNull();
+  });
+
+  it("rejects an unproven LifeLink detach and keeps EXP fixed without linked Mob deaths",()=>{
+    const fixture=makeHero({subClass:"MONK",exp:0,energy:0});
+    fixture.after.hp=0;
+    fixture.after.combatBundle=JSON.stringify({
+      ...JSON.parse(fixture.after.combatBundle),HP:0,HT:20,pos:9
+    });
+    fixture.after.buffCount=1;
+    fixture.after.buff_0=fixture.before.buff_0;
+    fixture.after.buffCooldown_0=fixture.before.buffCooldown_0;
+    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      fixture.before,fixture.after,[],[],10,levelSnapshot)).toBeNull();
+
+    const noLinkHero=makeHero({exp:0,energy:null});
+    noLinkHero.before.buffCount=1;
+    noLinkHero.before.buff_0=noLinkHero.before.buff_0;
+    noLinkHero.before.buffCooldown_0=0;
+    noLinkHero.after.buffCount=1;
+    noLinkHero.after.buff_0=noLinkHero.before.buff_0;
+    noLinkHero.after.buffCooldown_0=0;
+    noLinkHero.after.hp=0;
+    noLinkHero.after.combatBundle=JSON.stringify({
+      ...JSON.parse(noLinkHero.after.combatBundle),HP:0,HT:20,pos:9
+    });
+    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      noLinkHero.before,noLinkHero.after,[],[],10,levelSnapshot))
+      .toEqual({allowExperienceChange:false,allowMonkEnergyChange:false});
+    expect(mergeNativeLifeLinkDeathExperienceBundle(
+      noLinkHero.before.combatBundle,JSON.stringify({
+        ...JSON.parse(noLinkHero.after.combatBundle),exp:1
+      }),false)).toBeNull();
   });
 
   it("uses the native AscensionChallenge fallback EXP formula when the Hero exceeds Mob.maxLvl",()=>{
