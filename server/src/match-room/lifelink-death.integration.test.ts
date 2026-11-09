@@ -24,13 +24,16 @@ class MemoryMatchRoomSql {
   processedActions = new Map<string, Row>();
   events: Row[] = [];
   rewardClaims = new Set<string>();
-  calls: Array<{query:string;args:any[]}> = [];
+  calls: Array<{query:string;args:any[];rows?:Row[]}> = [];
   mobUpdates = 0;
   mobDeletes = 0;
   rewardClaimInsertAttempts = 0;
 
   private cursor(rows: Row[] = []) {
-    return { toArray: () => rows.map(row => ({ ...row })) };
+    const copy = rows.map(row => ({ ...row }));
+    const latest = this.calls[this.calls.length - 1];
+    if (latest) latest.rows = copy;
+    return { toArray: () => copy.map(row => ({ ...row })) };
   }
 
   exec(queryValue: string, ...args: any[]) {
@@ -342,7 +345,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
     const heroActionResponse = JSON.parse(String(ws.send.mock.calls.at(-1)[0]));
     if (heroActionResponse.messageType !== "ACTION_ACCEPTED") {
-      throw new Error("Hero death request rejected: " + JSON.stringify(heroActionResponse));
+      throw new Error("Hero death request rejected: " + JSON.stringify(heroActionResponse)
+        + " SQL trace: " + JSON.stringify(sql.calls.slice(-18)));
     }
     expect(sql.events).toHaveLength(2);
     expect(sql.events.map(event => event.event_type)).toEqual(["CHAR_DAMAGED", "PLAYER_DAMAGED"]);
