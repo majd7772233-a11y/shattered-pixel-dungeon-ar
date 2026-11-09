@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { MatchRoom } from "./index";
+import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
+import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas } from "../validators/combat-state";
 
 const PLAYER_ID = "publisher-player-001";
 const ENTITY_ID = "stable-linked-mob-0001";
@@ -404,15 +406,34 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       hpAfter: 19, htAfter: 20, posAfter: 25, shieldAfter: 0,
       buffsAfter: "[]", serializedBundleAfter: mobAfter
     };
+    const levelSnapshot = {
+      depth: 1, width: 32, height: 32, branch: 0, locked: false,
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heaps: [], mobs: [savedMob]
+    };
+    const tickData = {
+      sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
+      actorClockBefore: 9, sequenceBefore: 0,
+      heroStateBeforeJson: JSON.stringify(beforeHero),
+      secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta] })
+    };
+    const parsedMobPayload = parseAndValidateNativeLifeLinkMobDeltas(
+      tickData.secondaryMobDeltas, levelSnapshot.mobs, [ENTITY_ID], 1024, 32);
+    expect(parsedMobPayload).not.toBeNull();
+    const linkedIds = nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(beforeHero), levelSnapshot, []);
+    expect(linkedIds).toEqual([ENTITY_ID]);
+    const mobEvents = buildNativeLifeLinkMobDamageEvents(parsedMobPayload, levelSnapshot.mobs, PLAYER_ID, 0);
+    expect(mobEvents).not.toBeNull();
+    expect(isValidNativeHeroBuffTick(
+      JSON.stringify(previousHero), JSON.stringify(beforeHero), JSON.stringify(afterHero),
+      tickData, levelSnapshot, linkedIds, mobEvents, []
+    )).toBe(true);
 
     await room.handleAction(ws, actionMessage("lifelink-poison-buff-001", {
       action: "SYNC_HERO_STATE",
       heroStateJson: JSON.stringify(afterHero),
       data: {
-        sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
-        actorClockBefore: 9, sequenceBefore: 0,
-        heroStateBeforeJson: JSON.stringify(beforeHero),
-        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta] })
+        ...tickData
       }
     }), session);
 
