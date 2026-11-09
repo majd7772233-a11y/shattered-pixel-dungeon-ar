@@ -668,6 +668,76 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.room.worldTime).toBe(0);
   });
 
+  it("does not publish ACTION_ACCEPTED or events when a post-write transactional hook throws", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const broadcast = vi.fn();
+    const broadcastWithFOV = vi.fn();
+    fixture.room.broadcast = broadcast;
+    fixture.room.broadcastWithFOV = broadcastWithFOV;
+    fixture.room.checkMatchEndCondition = vi.fn(() => {
+      throw new Error("forced post-write match-end failure");
+    });
+    const ws = {
+      send: vi.fn(),
+      deserializeAttachment: () => fixture.session
+    };
+    const requestId = "lifelink-poison-post-write-rollback-001";
+
+    await fixture.room.webSocketMessage(ws, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    })));
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const response = JSON.parse(String(ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe(requestId);
+    expect(response.sequence).toBe(0);
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("forced post-write match-end failure");
+
+    // No external success/event may escape before the SQL transaction commits.
+    expect(broadcast).not.toHaveBeenCalled();
+    expect(broadcastWithFOV).not.toHaveBeenCalled();
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.size).toBe(0);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(fixture.mobBefore);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(fixture.sql.rewardClaims.size).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+    expect(fixture.room.gameStatus).toBe("PLAYING");
+  });
+
+  it("flushes accepted ACTION and FOV event only after the Poison transaction commits", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const order: string[] = [];
+    fixture.room.broadcastWithFOV = vi.fn(() => { order.push("broadcast"); });
+    const ws = {
+      send: vi.fn(() => { order.push("accepted"); }),
+      deserializeAttachment: () => fixture.session
+    };
+
+    await fixture.room.webSocketMessage(ws, JSON.stringify(actionMessage("lifelink-poison-after-commit-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    })));
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
+    expect(fixture.room.broadcastWithFOV).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["accepted", "broadcast"]);
+    expect(fixture.sql.events).toHaveLength(1);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, state: "ALIVE" });
+    expect(fixture.room.currentSequence).toBe(1);
+  });
+
   it("rejects a LifeLink death batch that adds a heap outside every dead Mob cell", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();

@@ -60,9 +60,40 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       worldTime: this.worldTime,
       gameStatus: this.gameStatus
     };
+    const deferredSocketMessages: Array<string | ArrayBuffer> = [];
+    const deferredBroadcasts: Array<() => void> = [];
+    const targetWs = ws;
+    const transactionalWs = new Proxy(ws, {
+      get(target, property) {
+        if (property === "send") {
+          return (data: string | ArrayBuffer) => { deferredSocketMessages.push(data); };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    });
+    const room = this as any;
+    const hadOwnBroadcast = Object.prototype.hasOwnProperty.call(room, "broadcast");
+    const ownBroadcast = room.broadcast;
+    const hadOwnBroadcastWithFov = Object.prototype.hasOwnProperty.call(room, "broadcastWithFOV");
+    const ownBroadcastWithFov = room.broadcastWithFOV;
+    const originalBroadcast = this.broadcast;
+    const originalBroadcastWithFov = this.broadcastWithFOV;
+    let transactionCommitted = false;
+
+    // WebSocket sends are external side effects: Cloudflare SQL can roll back, but a message
+    // already sent to a client cannot. Queue every outbound from this action until transactionSync
+    // has returned successfully. Keep MATCH_END persistence/sequence changes inside the transaction.
     this.nativeActionTransactionActive = true;
+    room.broadcast = (...args: any[]) => {
+      deferredBroadcasts.push(() => originalBroadcast.apply(this, args));
+    };
+    room.broadcastWithFOV = (...args: any[]) => {
+      deferredBroadcasts.push(() => originalBroadcastWithFov.apply(this, args));
+    };
     try {
-      storage.transactionSync(() => this.handleActionInTransaction(ws, msg, session));
+      storage.transactionSync(() => this.handleActionInTransaction(transactionalWs, msg, session));
+      transactionCommitted = true;
     } catch (error) {
       this.currentSequence = checkpoint.sequence;
       this.worldTime = checkpoint.worldTime;
@@ -70,6 +101,21 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       throw error;
     } finally {
       this.nativeActionTransactionActive = false;
+      if (hadOwnBroadcast) room.broadcast = ownBroadcast;
+      else delete room.broadcast;
+      if (hadOwnBroadcastWithFov) room.broadcastWithFOV = ownBroadcastWithFov;
+      else delete room.broadcastWithFOV;
+    }
+
+    if (transactionCommitted) {
+      // Preserve the native response-before-event order. A delivery failure after commit must
+      // never turn a committed action into an ERROR; the client recovers through reconnect/RESYNC.
+      for (const data of deferredSocketMessages) {
+        try { targetWs.send(data); } catch (_) {}
+      }
+      for (const send of deferredBroadcasts) {
+        try { send(); } catch (_) {}
+      }
     }
   }
   /** Avoid opening a nested transaction for item-claim helpers inside handleAction. */
