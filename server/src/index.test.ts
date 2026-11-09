@@ -2877,15 +2877,23 @@ describe("Native Hero Buff tick reconciliation", () => {
   it("allows native LifeLink detach only when that exact linked Mob death is already accepted",()=>{
     const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
     const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:9,object:7}});
+    const rewardCombatBundle=JSON.stringify({
+      id:21,time:10,lvl:1,exp:0,STR:10,items:"native-inventory",buffs:[],
+      class:"WARRIOR",subClass:"NONE",talents_tier_1:{},talents_tier_2:{},
+      talents_tier_3:{},talents_tier_4:{}
+    });
     const previous=stateWithBuff(poison,44,9,{left:9},{
-      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:1,hp:10
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:1,hp:10,
+      combatBundle:rewardCombatBundle
     });
     const before=stateWithBuff(poison,44,9,{left:9},{
-      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:0,hp:10
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:0,hp:10,
+      combatBundle:rewardCombatBundle
     });
     // Char.damage() detaches the Hero's LifeLink after the linked Mob dies.
     const after=stateWithBuff(poison,44,10,{left:8},{
-      cooldown:1,buffCooldown_0:1,buffCount:1,hp:8
+      cooldown:1,buffCooldown_0:1,buffCount:1,hp:8,
+      combatBundle:rewardCombatBundle
     });
     const eventBody={
       targetId:"dead-linked-mob-0001",targetType:"MOB",
