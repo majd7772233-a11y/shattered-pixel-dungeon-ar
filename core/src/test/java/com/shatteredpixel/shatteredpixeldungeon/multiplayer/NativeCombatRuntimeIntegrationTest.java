@@ -259,13 +259,14 @@ public class NativeCombatRuntimeIntegrationTest {
                 1, actions.size());
 
         JsonValue heroAction = new JsonReader().parse(actions.get(0).payloadJson);
-        JsonValue secondary = new JsonReader().parse(heroAction.getString("data", "").getString("secondaryMobDeltas", ""));
+        JsonValue heroData = heroAction == null ? null : heroAction.get("data");
+        Assert.assertNotNull(heroData);
+        JsonValue secondary = new JsonReader().parse(heroData.getString("secondaryMobDeltas", ""));
         Assert.assertNotNull("The lethal Hero result carries the linked Mob batch", secondary);
         Assert.assertEquals(1, secondary.get("deltas").size);
         Assert.assertEquals("linked-dead-native-mob-hero-0001",
                 secondary.get("deltas").get(0).getString("entityId", ""));
         Assert.assertEquals(0, secondary.get("deltas").get(0).getInt("hpAfter", -1));
-        JsonValue heroData = heroAction == null ? null : heroAction.get("data");
         Assert.assertNotNull(heroData);
         Assert.assertEquals("ENVIRONMENT", heroData.getString("sourceType", ""));
         Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
