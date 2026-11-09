@@ -352,6 +352,18 @@ public class MultiplayerManager implements TransportCallback {
     /** Sends a native action and returns its request ID to correlate the completed native world delta. */
     public String sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
         if (!isMultiplayerActive || activeTransport == null || actionType == null || actionDetailsJson == null) return null;
+
+        // LifeLink Mob callbacks produced inside native Poison are included in the final Poison
+        // result. Sending them independently would expose a committed Mob death if the following
+        // Hero callback is rejected or the Worker restarts between the two messages.
+        if (actionType == NetworkActionType.SYNC_MOB_STATE
+                && NativeHeroBuffTickPublisher.shouldBufferLifeLinkMobDamage(actionDetailsJson)) {
+            return null;
+        }
+        if (actionType == NetworkActionType.SYNC_HERO_STATE) {
+            String batchedDeath = NativeHeroBuffTickPublisher.enrichLethalPoisonEnvironmentDamage(actionDetailsJson);
+            if (batchedDeath != null) actionDetailsJson = batchedDeath;
+        }
         NetworkMessage msg = new NetworkMessage();
         msg.messageType = MessageType.ACTION;
         msg.senderId = localPlayerId;

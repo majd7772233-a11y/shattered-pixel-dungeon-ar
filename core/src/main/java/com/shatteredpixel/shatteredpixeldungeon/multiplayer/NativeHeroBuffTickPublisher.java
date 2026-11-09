@@ -175,6 +175,98 @@ public final class NativeHeroBuffTickPublisher {
         capture.actorClockBefore = clock;
     }
 
+    private static final String NATIVE_LIFE_LINK =
+            "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
+
+    /**
+     * Mob.damage() normally publishes a LifeLink Mob result immediately. During the native
+     * Poison actor, defer that message: the enclosing Buff tick carries a complete before/after
+     * Mob delta and can be committed together with the Hero result by one server transaction.
+     */
+    public static boolean shouldBufferLifeLinkMobDamage(String actionDetailsJson) {
+        TickCapture capture = activeCapture;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (capture == null || !NATIVE_POISON.equals(capture.buffClass)
+                || !manager.isMultiplayerActive() || !manager.isLevelPublisher()
+                || actionDetailsJson == null) return false;
+        try {
+            JsonValue data = new JsonReader().parse(actionDetailsJson);
+            return data != null && NATIVE_LIFE_LINK.equals(data.getString("sourceClass", ""))
+                    && data.getInt("combatDepth", -1) == capture.depth;
+        } catch (RuntimeException malformed) {
+            return false;
+        }
+    }
+
+    /**
+     * A lethal Poison tick emits Hero.damage() before Actor can publish BUFF_TICK. Attach the
+     * exact Poison pre-state and the same complete LifeLink Mob delta to that environment action
+     * so the Worker can validate and commit the world + Hero death atomically.
+     */
+    public static String enrichLethalPoisonEnvironmentDamage(String actionDetailsJson) {
+        TickCapture capture = activeCapture;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (capture == null || !NATIVE_POISON.equals(capture.buffClass)
+                || !manager.isMultiplayerActive() || !manager.isLevelPublisher()
+                || actionDetailsJson == null) return null;
+        try {
+            JsonValue data = new JsonReader().parse(actionDetailsJson);
+            if (data == null
+                    || !"ENVIRONMENT".equals(data.getString("sourceType", ""))
+                    || !NATIVE_POISON.equals(data.getString("sourceClass", ""))
+                    || data.getInt("targetHp", -1) != 0
+                    || !"DEAD".equals(data.getString("targetState", ""))) return null;
+
+            String mobDeltas = NativeMobCombatDelta.changedSince(capture.secondaryMobStateBefore, null);
+            if (mobDeltas == null || mobDeltas.isEmpty()) return null;
+
+            Json json = new Json();
+            String fields = "\"heroStateBeforeJson\":" + json.toJson(capture.beforeState)
+                    + ",\"sequenceBefore\":" + capture.sequenceBefore
+                    + ",\"actorClockBefore\":" + capture.actorClockBefore
+                    + ",\"buffClass\":" + json.toJson(capture.buffClass)
+                    + ",\"buffId\":" + capture.buffId
+                    + ",\"secondaryMobDeltas\":" + json.toJson(mobDeltas);
+
+            int close = findObjectEnd(actionDetailsJson);
+            if (close < 0) return null;
+            int open = firstNonWhitespace(actionDetailsJson);
+            if (open < 0 || actionDetailsJson.charAt(open) != '{') return null;
+            boolean empty = firstNonWhitespace(actionDetailsJson.substring(open + 1, close)) < 0
+                    || actionDetailsJson.substring(open + 1, close).trim().equals("");
+            return actionDetailsJson.substring(0, close)
+                    + (empty ? "" : ",") + fields + actionDetailsJson.substring(close);
+        } catch (RuntimeException malformed) {
+            return null;
+        }
+    }
+
+    private static int firstNonWhitespace(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            if (!Character.isWhitespace(value.charAt(i))) return i;
+        }
+        return -1;
+    }
+
+    /** Finds the matching close brace while ignoring braces inside JSON strings. */
+    private static int findObjectEnd(String value) {
+        boolean inString = false, escaped = false;
+        int depth = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (c == '\\\\') escaped = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') inString = true;
+            else if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+        }
+        return -1;
+    }
+
     public static void abort(TickCapture capture) {
         if (capture == null) return;
         if (activeCapture == capture) activeCapture = null;
