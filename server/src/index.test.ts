@@ -3280,21 +3280,24 @@ describe("Native Hero Buff tick reconciliation", () => {
     // Two priority-2 points and two priority-1 points are consumed before priority-0 Barrier.
     // AscendBuff and WarriorShield remain attached at zero; BlockBuff and DivineShield detach.
     const middleValid=stateWithBuff(poison,47,10,{left:5},{
-      cooldown:1,buffCooldown_0:1,hp:10,shielding:2,buffCount:4,
+      // Poison left 6 deals three damage: two priority-2 points, then one priority-1 point.
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:3,buffCount:5,
       buff_1:warriorRow(0),buffCooldown_1:0,
       buff_2:ascendRow(0),buffCooldown_2:0,
-      buff_3:barrierRow(2),buffCooldown_3:0
+      buff_3:divineRow(1),buffCooldown_3:0,
+      buff_4:barrierRow(2),buffCooldown_4:0
     });
     expect(isValidNativeHeroBuffTick(JSON.stringify(middlePrevious),JSON.stringify(middleBefore),
       JSON.stringify(middleValid),tick(poison,47))).toBe(true);
 
-    // Here priority 2 is depleted, but Barrier loses shield while both priority-1
-    // Cleric shields remain. That also contradicts the native descending-priority pipeline.
+    // Here priority 2 is depleted, but Barrier loses one point while both priority-1
+    // Cleric shields remain. That contradicts the native descending-priority pipeline.
     const forgedMiddlePriorityBypass=stateWithBuff(poison,47,10,{left:5},{
-      cooldown:1,buffCooldown_0:1,hp:10,shielding:2,buffCount:4,
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:3,buffCount:5,
       buff_1:warriorRow(0),buffCooldown_1:0,
       buff_2:ascendRow(1),buffCooldown_2:0,
-      buff_3:divineRow(1),buffCooldown_3:0
+      buff_3:divineRow(1),buffCooldown_3:0,
+      buff_4:barrierRow(1),buffCooldown_4:0
     });
     expect(isValidNativeHeroBuffTick(JSON.stringify(middlePrevious),JSON.stringify(middleBefore),
       JSON.stringify(forgedMiddlePriorityBypass),tick(poison,47))).toBe(false);

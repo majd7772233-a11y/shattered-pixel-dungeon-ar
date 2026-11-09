@@ -266,7 +266,7 @@ public class NativeCombatRuntimeIntegrationTest {
         session.sequence = 1L;
         manager.onMessageReceived(session);
 
-        hero.HP = 10;
+        hero.HP = 15; // Stay above the WarriorShield auto-activation threshold in the JVM fixture.
         com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal.WarriorShield warrior =
                 Buff.affect(hero, com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal.WarriorShield.class);
         warrior.setShield(1);
@@ -288,7 +288,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertTrue(poison.act());
         NativeHeroBuffTickPublisher.publish(capture);
 
-        Assert.assertEquals("All higher-priority shields absorb the four-point hit before Barrier", 10, hero.HP);
+        Assert.assertEquals("All higher-priority shields absorb the four-point hit before Barrier", 15, hero.HP);
         Assert.assertEquals("The lower-priority Barrier remains untouched", 2, barrier.shielding());
         Assert.assertEquals(2, hero.shielding());
         Assert.assertEquals("WarriorShield and AscendBuff remain attached after reaching zero", 0, warrior.shielding());
