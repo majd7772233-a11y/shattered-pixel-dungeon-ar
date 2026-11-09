@@ -2331,6 +2331,18 @@ public class NativeCombatRuntimeIntegrationTest {
                 + ",\"mobs\":" + mobRows.toString()
                 + ",\"events\":[],\"worldTime\":0,\"level\":" + levelJson + "}";
 
+        JsonValue encodedSnapshot = new JsonReader().parse(snapshotPayload);
+        JsonValue encodedPlayers = encodedSnapshot == null ? null : encodedSnapshot.get("players");
+        Assert.assertNotNull("The RESYNC payload must include the player rows", encodedPlayers);
+        Assert.assertTrue(encodedPlayers.isArray());
+        Assert.assertEquals("client-peer", encodedPlayers.get(0).getString("player_id", ""));
+        Assert.assertEquals("The root player row must carry the authoritative pre-tick HP",
+                authoritativeHeroHp, encodedPlayers.get(0).getInt("hp", -1));
+        Assert.assertEquals("The root player row must carry the exact pre-tick native Hero bundle",
+                authoritativeHeroStateJson, encodedPlayers.get(0).getString("hero_state_json", ""));
+        Assert.assertEquals("The manager must resolve the local player row by the session identity",
+                "client-peer", manager.getLocalPlayerId());
+
         NetworkMessage snapshot = new NetworkMessage();
         snapshot.messageType = MessageType.SNAPSHOT;
         snapshot.senderId = "SERVER";
