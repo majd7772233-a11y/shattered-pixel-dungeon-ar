@@ -8,6 +8,7 @@ type NativeHeroBuffTickRow = {className:string,id:number,time:number,cooldown:nu
 
 const NATIVE_LIFE_LINK = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
 const NATIVE_BARRIER = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier";
+const NATIVE_BARRIER_PARTIAL_LOST_SHIELD = "partial_lost_shield";
 const NATIVE_POISON = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
 const NATIVE_ASCENSION_CHALLENGE = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.AscensionChallenge";
 const NATIVE_MONK_ENERGY = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy";
@@ -865,14 +866,14 @@ function isValidNativePoisonBarrierDamageTransition(
 ): boolean {
   if (before.className !== NATIVE_BARRIER || !beforeState || !afterState) return false;
   const oldShield = Number(before.data?.shielding);
-  const oldPartial = Number(before.data?.partialLostShield);
+  const oldPartial = Number(before.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
   if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000
       || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return false;
 
   let newShield = 0;
   if (after) {
     newShield = Number(after.data?.shielding);
-    const newPartial = Number(after.data?.partialLostShield);
+    const newPartial = Number(after.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
     if (after.className !== NATIVE_BARRIER || after.id !== before.id
         || Math.abs(after.time-before.time) > 0.06
         || Math.abs(after.cooldown-before.cooldown) > 0.06
@@ -1348,18 +1349,18 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   }
 
   if (className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier") {
-    const oldShield = Number(oldData.shielding), oldPartial = Number(oldData.partialLostShield);
+    const oldShield = Number(oldData.shielding), oldPartial = Number(oldData[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
     if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000
         || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return false;
     if (result) {
       if (!isSameTimeTick(0.9,1.1)
           || !Number.isInteger(newData.shielding) || newData.shielding < 0
           || newData.shielding > oldShield || oldShield-newData.shielding > 1
-          || !Number.isFinite(Number(newData.partialLostShield))) return false;
+          || !Number.isFinite(Number(newData[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]))) return false;
       if (oldShield-newData.shielding===1) {
-        if (!near(Number(newData.partialLostShield),0)) return false;
-      } else if (Number(newData.partialLostShield)<oldPartial
-          || Number(newData.partialLostShield)>=1) return false;
+        if (!near(Number(newData[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]),0)) return false;
+      } else if (Number(newData[NATIVE_BARRIER_PARTIAL_LOST_SHIELD])<oldPartial
+          || Number(newData[NATIVE_BARRIER_PARTIAL_LOST_SHIELD])>=1) return false;
     } else if (oldShield>1 || shieldAfter!==shieldBefore-oldShield) return false;
     if (hpAfter!==hpBefore) return false;
     return shieldAfter===shieldBefore-(oldShield-(result?Number(newData.shielding):0));
