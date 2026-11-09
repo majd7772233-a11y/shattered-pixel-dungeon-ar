@@ -2892,8 +2892,18 @@ describe("Native Hero Buff tick reconciliation", () => {
       targetHpBefore:1,targetHtBefore:20,targetHp:0,targetHt:20,
       targetPosBefore:25,targetPosAfter:25,targetShieldBefore:0,targetShieldAfter:0,
       targetBuffsBefore:"[]",targetBuffs:"[]",targetMobBundleAfter:null,
-      nativeActorId:7,nativeMobBundleBefore:"trusted-before",
-      nativeMobBundleAfterEvidence:"native-after",
+      nativeActorId:7,
+      nativeMobBundleBefore:JSON.stringify({mob:{
+        __className:"com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat",
+        id:7,HP:1,HT:20,pos:25,buffs:[]
+      }}),
+      nativeMobBundleAfterEvidence:JSON.stringify({mob:{
+        __className:"com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat",
+        id:7,HP:0,HT:20,pos:25,buffs:[]
+      }}),
+      nativeMobRewardClassName:"com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat",
+      nativeMobRewardEligible:false,nativeMobRewardExp:0,nativeMobRewardMaxLevel:29,
+      nativeMobRewardSpawningWeight:1,nativeMobRewardMonkEnergy:1,
       sourceType:"ENVIRONMENT",sourceClass:lifeLink,engineResolved:true,heaps:[]
     };
     const event={sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",payload:JSON.stringify(eventBody)};
@@ -5786,9 +5796,12 @@ describe("Native Poison LifeLink Mob event correlation", () => {
     expect(parse(sample.payload,[{...sample.event,payload:JSON.stringify({
       ...sample.eventPayload,nativeMobBundleBefore:mobBundle(8,20)
     })}])).toBeNull();
-    expect(parse(sample.payload,[{...sample.event,payload:JSON.stringify({
-      ...sample.eventPayload,nativeMobRewardExp:999,nativeMobRewardClassName:"forged.Mob"
-    })}])).toBeNull();
+    const dead=makeEvidence(0,true);
+    const forgedRewardEvent={...dead.event,payload:JSON.stringify({
+      ...dead.eventPayload,nativeMobRewardExp:999,nativeMobRewardClassName:"forged.Mob"
+    })};
+    expect(parseAndValidateNativeLifeLinkMobDamageEvidence(
+      dead.payload,dead.currentMobs,[7],[forgedRewardEvent],dead.heaps,64,8,10,"publisher")).toBeNull();
   });
 
   it("rejects a matching event when the current Mob snapshot still contains the pre-damage state",()=>{
@@ -5902,16 +5915,16 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
 
   it("accepts exact base MonkEnergy gain and its native cap without Unencumbered Spirit",()=>{
     const fixture=makeHero({subClass:"MONK",exp:0,energy:0});
-    fixture.after.buffCount=3;
-    fixture.after.buff_2=JSON.stringify({buff:{
-      __className:monkEnergyClass,id:57,time:9,energy:1,cooldown:0
+    fixture.after.buffCount=2;
+    fixture.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:1,cooldown:0
     }});
-    fixture.after.buffCooldown_2=0;
+    fixture.after.buffCooldown_1=0;
     const result=validateNativeLifeLinkDeathRewardTransition(
       fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot);
     expect(result).toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
-    fixture.after.buff_2=JSON.stringify({buff:{
-      __className:monkEnergyClass,id:57,time:9,energy:2,cooldown:0
+    fixture.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:2,cooldown:0
     }});
     expect(validateNativeLifeLinkDeathRewardTransition(
       fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
@@ -5919,20 +5932,20 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
 
   it("applies MonkEnergy's per-kill cap and rejects unsupported talent multipliers",()=>{
     const fixture=makeHero({subClass:"MONK",exp:0,energy:9});
-    fixture.after.buffCount=3;
-    fixture.after.buff_2=JSON.stringify({buff:{
+    fixture.after.buffCount=2;
+    fixture.after.buff_1=JSON.stringify({buff:{
       __className:monkEnergyClass,id:56,time:9,energy:10,cooldown:0
     }});
-    fixture.after.buffCooldown_2=0;
+    fixture.after.buffCooldown_1=0;
     expect(validateNativeLifeLinkDeathRewardTransition(
       fixture.before,fixture.after,data,[rewardEvent()],[deadActorId],levelSnapshot))
       .toEqual({allowExperienceChange:true,allowMonkEnergyChange:true});
     const talented=makeHero({subClass:"MONK",exp:0,energy:0,unencumberedSpirit:1});
-    talented.after.buffCount=3;
-    talented.after.buff_2=JSON.stringify({buff:{
-      __className:monkEnergyClass,id:57,time:9,energy:2,cooldown:0
+    talented.after.buffCount=2;
+    talented.after.buff_1=JSON.stringify({buff:{
+      __className:monkEnergyClass,id:56,time:9,energy:2,cooldown:0
     }});
-    talented.after.buffCooldown_2=0;
+    talented.after.buffCooldown_1=0;
     expect(validateNativeLifeLinkDeathRewardTransition(
       talented.before,talented.after,data,[rewardEvent()],[deadActorId],levelSnapshot)).toBeNull();
   });
