@@ -3241,15 +3241,6 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(after),tick(poison,44))).toBe(true);
 
-    const forgedBlockLeft=JSON.parse(JSON.stringify(after));
-    forgedBlockLeft.buffCount=4;
-    forgedBlockLeft.buff_2=blockRow(0,4);
-    forgedBlockLeft.buffCooldown_2=0;
-    forgedBlockLeft.buff_3=barrierRow(1);
-    forgedBlockLeft.buffCooldown_3=0;
-    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
-      JSON.stringify(forgedBlockLeft),tick(poison,44))).toBe(false);
-
     const forgedWarriorState=JSON.parse(JSON.stringify(after));
     forgedWarriorState.buff_1=warriorRow(0).replace('"cooldown":150','"cooldown":149');
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
@@ -3281,6 +3272,10 @@ describe("Native Hero Buff tick reconciliation", () => {
     });
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(after),tick(poison,44))).toBe(true);
+    const forgedLeft=JSON.parse(JSON.stringify(after));
+    forgedLeft.buff_1=blockRow(1,4);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedLeft),tick(poison,44))).toBe(false);
   });
 
   it("serializes concurrent native Healing and Barrier ticks without cross-effect mutation",()=>{
