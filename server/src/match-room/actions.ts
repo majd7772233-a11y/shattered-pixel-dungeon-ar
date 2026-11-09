@@ -4,7 +4,7 @@ import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativ
 import { assignStableEntityIds, resolveServerMobIdByEntityId } from "../validators/entity-identity";
 import { parseNativeQuickslotIndex, isValidNativeEquipmentIntent } from "../validators/equipment";
 import { isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallDestinationSnapshot, isPendingNativeFloorDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection } from "../validators/floor-transitions";
-import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds } from "../validators/hero-buffs";
+import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds, validateNativeLifeLinkEnvironmentDeathRewardTransition, mergeNativeLifeLinkDeathExperienceBundle } from "../validators/hero-buffs";
 import { isValidNativeFloorItemIdentitySet, reserveNativeLootClaim, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, classifyNativeMutationLock } from "../validators/inventory-claims";
 import { sameNativeItemValue } from "../validators/inventory-economy";
 import { isValidNativeBuybackIntent, mergeNativeItemStatusState, isValidNativeUseItemIntent } from "../validators/item-state";
@@ -1372,8 +1372,109 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const levelSize = Number(levelRow?.width || 0) * Number(levelRow?.height || 0);
               const hp = Number(data?.targetHp), ht = Number(data?.targetHt);
               const pos = Number(data?.targetPosAfter), shield = Number(data?.targetShieldAfter);
+              let reportedHeroState: any = null;
+              try {
+                reportedHeroState = typeof payload.heroStateJson === "string"
+                  ? JSON.parse(payload.heroStateJson) : null;
+              } catch (_) { reportedHeroState = null; }
+
+              // A lethal Poison callback runs LifeLink Mob.damage() before Hero.damage().
+              // Hero.damage() publishes the Hero death synchronously, then the Buff publisher
+              // intentionally skips its later BUFF_TICK because the Hero is already dead.
+              // Reconstruct only that narrow same-sender event window from accepted Mob events.
+              const isPoisonHeroDeath = hp === 0 && data?.targetState === "DEAD"
+                && data?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+              let poisonDeathEvidenceValid = !isPoisonHeroDeath;
+              let poisonDeathRewardContract: {allowExperienceChange:boolean;allowMonkEnergyChange:boolean} | null = null;
+              let poisonDeathRewardIds: string[] = [];
+              let poisonDeathEntityIds: string[] = [];
+              if (isPoisonHeroDeath) {
+                const latestHeroBuffRow = this.sql.exec(
+                  "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'HERO_BUFF_TICKED' ORDER BY sequence DESC LIMIT 1",
+                  session.playerId).toArray()[0];
+                const sequenceBefore = Number(latestHeroBuffRow?.sequence || 0);
+                const linkedActorIds = nativeHeroBuffLifeLinkMobActorIds(previousHeroRow?.value);
+                const acceptedLifeLinkEvents = Number.isSafeInteger(sequenceBefore)
+                    && sequenceBefore >= 0 && sequenceBefore <= this.currentSequence && linkedActorIds !== null
+                  ? this.sql.exec(
+                      "SELECT sequence,sender_id,event_type,payload FROM events WHERE sequence > ? AND sender_id = ? AND event_type = 'CHAR_DAMAGED' ORDER BY sequence ASC LIMIT 513",
+                      sequenceBefore, session.playerId).toArray()
+                  : [];
+                if (linkedActorIds === null || acceptedLifeLinkEvents.length > 512) {
+                  poisonDeathEvidenceValid = false;
+                } else {
+                  const linked = new Set<number>(linkedActorIds);
+                  const seenActors = new Set<number>();
+                  const deadActorIds: number[] = [];
+                  const deadDeltas: Array<{entityId:string;hpAfter:number}> = [];
+                  for (const event of acceptedLifeLinkEvents) {
+                    let evidence: any = null;
+                    try {
+                      evidence = typeof event.payload === "string" ? JSON.parse(event.payload) : event.payload;
+                    } catch (_) { evidence = null; }
+                    const actorId = Number(evidence?.nativeActorId);
+                    const entityId = String(evidence?.targetId || "");
+                    const targetHp = Number(evidence?.targetHp);
+                    if (String(event.event_type || "") !== "CHAR_DAMAGED"
+                        || String(event.sender_id || "") !== session.playerId
+                        || evidence?.sourceType !== "ENVIRONMENT"
+                        || evidence?.sourceClass !== "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink"
+                        || evidence?.targetType !== "MOB"
+                        || !Number.isInteger(actorId) || actorId < 1 || !linked.has(actorId)
+                        || seenActors.has(actorId) || !/^[A-Za-z0-9._:-]{8,80}$/.test(entityId)
+                        || !Number.isInteger(targetHp) || targetHp < 0) {
+                      poisonDeathEvidenceValid = false;
+                      break;
+                    }
+                    seenActors.add(actorId);
+                    if (targetHp === 0) {
+                      deadActorIds.push(actorId);
+                      deadDeltas.push({entityId,hpAfter:0});
+                      poisonDeathEntityIds.push(entityId);
+                    }
+                  }
+                  const savedLevelRow = this.sql.exec(
+                    "SELECT value FROM room_meta WHERE key = ?", "levelSnapshot:" + this.currentDepth
+                  ).toArray()[0];
+                  let rewardLevelSnapshot: any = null;
+                  try {
+                    rewardLevelSnapshot = savedLevelRow && typeof savedLevelRow.value === "string"
+                      ? JSON.parse(String(savedLevelRow.value)) : null;
+                  } catch (_) { rewardLevelSnapshot = null; }
+                  if (poisonDeathEvidenceValid) {
+                    poisonDeathRewardContract = validateNativeLifeLinkEnvironmentDeathRewardTransition(
+                      previousHeroRow?.value, payload.heroStateJson, acceptedLifeLinkEvents,
+                      deadActorIds, sequenceBefore, rewardLevelSnapshot);
+                    if (!poisonDeathRewardContract) poisonDeathEvidenceValid = false;
+                  }
+                  if (poisonDeathEvidenceValid && deadDeltas.length > 0) {
+                    const rewardIds = nativeMobKillRewardIds(this.currentDepth, "", 1, deadDeltas);
+                    const existingRewardIds = (rewardIds || []).filter(rewardId =>
+                      this.sql.exec("SELECT reward_id FROM native_mob_reward_claims WHERE reward_id = ?",
+                        rewardId).toArray().length > 0);
+                    if (!rewardIds || !areNativeMobRewardClaimsAvailable(rewardIds, existingRewardIds)) {
+                      poisonDeathEvidenceValid = false;
+                    } else {
+                      poisonDeathRewardIds = rewardIds;
+                    }
+                  }
+                }
+              }
               const mergedJson = mergeNativeHeroState(previousHeroRow?.value, payload.heroStateJson,
                 { hp, ht, pos, shielding: shield }, data?.targetBuffs);
+              // The outer state owns HP/HT/position; accept no other Hero Bundle mutation here
+              // except the independently verified non-level-up EXP delta from linked Mob deaths.
+              const mergedExperienceBundle = mergeNativeLifeLinkDeathExperienceBundle(
+                previousHeroState?.combatBundle, reportedHeroState?.combatBundle,
+                poisonDeathRewardContract?.allowExperienceChange === true);
+              let finalMergedJson: string | null = null;
+              try {
+                if (mergedJson != null && mergedExperienceBundle != null) {
+                  const mergedHero = JSON.parse(mergedJson);
+                  mergedHero.combatBundle = mergedExperienceBundle;
+                  finalMergedJson = JSON.stringify(mergedHero);
+                }
+              } catch (_) { finalMergedJson = null; }
               const validEnvironmentDamage = !!playerRow && previousHeroState != null
                 && isValidNativeEnvironmentDamage(data, {
                   ...playerRow, levelSize, levelWidth: Number(levelRow?.width || 0),
@@ -1385,7 +1486,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 && Number(previousHeroState.shielding) === Number(data.targetShieldBefore)
                 && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shield })
                 && isValidNativeCombatBuffs(data?.targetBuffs)
-                && mergedJson != null
+                && poisonDeathEvidenceValid && finalMergedJson != null
                 && (pos === Number(playerRow.pos)
                   || (this.isValidCombatTargetPosition(pos, this.currentDepth)
                     && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)));
@@ -1394,8 +1495,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 const newState = hp > 0 ? "ALIVE"
                   : this.gameMode === "DEATHMATCH" ? "ALIVE"
                     : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
-                const mergedState = JSON.parse(mergedJson as string);
-                const storedHeroState = JSON.stringify(mergedState);
+                const storedHeroState = String(finalMergedJson);
                 this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
                   hp, ht, pos, newState, session.playerId);
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
@@ -1403,6 +1503,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   `heroState:${session.playerId}`, storedHeroState);
                 if (oldState === "ALIVE" && newState === "DEAD") {
                   this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
+                }
+                for (const rewardId of poisonDeathRewardIds) {
+                  this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
+                    rewardId, session.playerId, String(msg.requestId || ""), this.currentDepth);
                 }
                 eventType = "PLAYER_DAMAGED";
                 actionResultPayload = { playerId: session.playerId, targetId: session.playerId, targetType: "PLAYER",
@@ -1412,7 +1516,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   targetShieldBefore: Number(data.targetShieldBefore), targetShieldAfter: shield,
                   targetBuffsBefore: data.targetBuffsBefore, targetBuffs: data.targetBuffs,
                   targetHeroStateJson: storedHeroState, targetState: newState, damage: Number(data.damage),
-                  effectiveDamage: Number(data.effectiveDamage), engineResolved: true };
+                  effectiveDamage: Number(data.effectiveDamage), engineResolved: true,
+                  nativeLifeLinkDeathEntityIds: poisonDeathEntityIds };
                 actionValid = true;
                 actionCost = 0;
               }
