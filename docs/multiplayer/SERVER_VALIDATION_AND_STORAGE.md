@@ -333,6 +333,16 @@ The integration suite's in-memory SQL adapter models transaction rollback after 
 The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the parsed request ID before dispatch and includes it plus the current room sequence in its outer `ERROR` response when a handler throws. During these scoped Poison batches, `ACTION_ACCEPTED`, FOV event delivery and room broadcasts are captured as deferred side effects and released only after `transactionSync` succeeds. The original sender WebSocket is restored as the FOV exclusion after leaving the proxy-based transaction context; a rollback cannot leak an acceptance or phantom event. This matters for a failed atomic batch: SQL rollback alone is insufficient if the sender cannot correlate the rejection to its pending action. The sender's Android manager recognizes the rejected `SYNC_HERO_STATE` and requests a full snapshot. If the incoming frame is malformed before a request ID can be parsed, the response remains uncorrelated by necessity.
 
 
+
+### 6.2 Poison damage against a native Hero Barrier
+
+The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
+
+For a surviving Barrier, the row must retain its ID, time/cooldown and all fields other than `shielding`; its shield can only decrease and `partialLostShield` must remain unchanged. When the Barrier reaches zero and detaches, the validator permits the row removal only if the outer Hero shield total falls by exactly the Barrier's full prior shield amount. This conservation check prevents unrelated/second shield changes from being hidden inside the Barrier exception. Hero HP and all unrelated Buff rows still pass the ordinary Poison validator.
+
+The matching tests cover full Barrier absorption/detachment, partial consumption, and rejection of a vanished Barrier without aggregate shield loss, excess total shield loss, and a forged partial-decay remainder. The Java runtime test executes Poison against a two-point Barrier and checks the native Hero HP/shield result. Hunger's shield bypass remains separately enforced.
+
+
 ## 7. Pending locks and deadlines
 
 - Pending native combat is reserved by request, attacker and optional target keys. A previous reservation older than 15 seconds may be cleared; a fresh conflicting reservation is rejected.

@@ -152,6 +152,12 @@ When a Poison LifeLink transaction throws, `MatchRoomActions.handleAction()` res
 This evidence is still based on a deterministic in-memory SQL adapter. Real Durable Object SQLite commit/rollback behavior, crash/restart recovery and live Worker behavior remain unverified. Do not generalize the atomicity guarantee to actions outside the specific Poison LifeLink wrapper.
 
 
+
+### 8.3 Native Poison/Barrier damage reconciliation
+
+A Poison tick may consume Hero Barrier shielding through the native `ShieldBuff.processDamage()` path without changing Hero HP. The authoritative validator permits only the exact Barrier row shield loss (or detach at zero) when the aggregate Hero shield decreases by the same amount. It leaves `partialLostShield` and other Buff state immutable, rejecting excess or unaccounted shield loss. Hunger remains distinct because native starvation damage bypasses shields. Backend and Java tests cover full absorption/detachment, partial absorption and forged shield/partial-state rejection.
+
+
 ## 9. Authority and ownership
 
 The current model includes:
