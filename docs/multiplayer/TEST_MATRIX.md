@@ -242,6 +242,8 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Successful transaction delivery: verify `ACTION_ACCEPTED` is flushed before the FOV event and the original sender WebSocket—not the transactional proxy—is excluded from its own event broadcast.
 - [x] Android error correlation: receiving that failed `SYNC_HERO_STATE` request response removes the pending action and requests RESYNC.
 - [x] Native Java runtime: multiple linked Mob deaths in one Poison tick are included in one ACTION; final heaps are serialized as a JSON array.
+- [x] MatchRoom transaction scope: every source-shaped native Hero `BUFF_TICK` uses `transactionSync`, not only Poison/LifeLink; source-specific validators remain fail-closed.
+- [x] MatchRoom integration: force Healing's final event insert to fail after Hero/player HP and Buff writes, and verify SQL state, event, processed request and sequence all roll back with a correlated ERROR.
 - [x] Android non-publisher regression: local Poison/LifeLink leaves Mob HP unchanged, publishes an empty secondary Mob delta for server rejection, and triggers RESYNC when the Hero tick is rejected.
 - [x] Native Hero Poison/Barrier: accept a Poison hit fully absorbed by Barrier with Hero HP unchanged and Barrier detached exactly at zero.
 - [x] Native Hero Poison/Barrier: accept partial Barrier absorption only when the Hero's aggregate shield loss equals the Barrier row loss and its partial-decay remainder remains unchanged.
@@ -259,5 +261,5 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Confirm full snapshot application after a rejected non-publisher Poison/LifeLink tick in a connected client, not only that the RESYNC request is sent.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `3291698d1fbbb6bc37611d1a8276bb2477c50b58` passed [run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852): TypeScript build + 638 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
+**Exact-head CI:** `a6578d3ef57fb058aab5539096c877db8a3903ea` passed [run 42706884160](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42706884160): TypeScript build + 640 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 
