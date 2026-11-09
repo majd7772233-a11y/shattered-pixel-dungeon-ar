@@ -338,7 +338,9 @@ The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the p
 
 The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
 
-For a surviving Barrier, the row must retain its ID, time/cooldown and all fields other than `shielding`; its shield can only decrease and `partialLostShield` must remain unchanged. When the Barrier reaches zero and detaches, the validator permits the row removal only if the outer Hero shield total falls by exactly the Barrier's full prior shield amount. This conservation check prevents unrelated/second shield changes from being hidden inside the Barrier exception. Hero HP and all unrelated Buff rows still pass the ordinary Poison validator.
+Java writes the Barrier decay remainder under the native Bundle key `partial_lost_shield`; both the Poison-damage side-effect validator and the standalone Barrier tick validator read that exact name, not a camelCase alias.
+
+For a surviving Barrier, the row must retain its ID, time/cooldown and all fields other than `shielding`; its shield can only decrease and `partial_lost_shield` must remain unchanged. When the Barrier reaches zero and detaches, the validator permits the row removal only if the outer Hero shield total falls by exactly the Barrier's full prior shield amount. This conservation check prevents unrelated/second shield changes from being hidden inside the Barrier exception. Hero HP and all unrelated Buff rows still pass the ordinary Poison validator.
 
 The matching tests cover full Barrier absorption/detachment, partial consumption, and rejection of a vanished Barrier without aggregate shield loss, excess total shield loss, and a forged partial-decay remainder. The Java runtime test executes Poison against a two-point Barrier and checks the native Hero HP/shield result. Hunger's shield bypass remains separately enforced.
 

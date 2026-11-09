@@ -150,9 +150,9 @@ On a non-publisher, shared Mob periodic damage is blocked by `Mob.damage()`, inc
 
 When the native Poison actor damages a Hero, `Char.damage()` runs the regular shield pipeline. A Hero-side `Barrier` is therefore allowed to absorb the hit before HP changes; at zero, native `ShieldBuff.absorbDamage()` detaches it. This is distinct from Hunger/Starvation damage, which native `ShieldBuff.processDamage()` explicitly lets bypass shields.
 
-The server admits only the exact Barrier row transition associated with the Poison tick. A surviving Barrier may lose shield but cannot change its decay remainder or unrelated fields. A depleted Barrier can detach only when the Hero's total shield drops by exactly the Barrier's previous shield amount. Hero HP and other Buffs must still match the strict native Poison contract.
+The Barrier Bundle stores its decay remainder under the exact key `partial_lost_shield`; the server reads that same native key. The server admits only the exact Barrier row transition associated with the Poison tick. A surviving Barrier may lose shield but cannot change its decay remainder or unrelated fields. A depleted Barrier can detach only when the Hero's total shield drops by exactly the Barrier's previous shield amount. Hero HP and other Buffs must still match the strict native Poison contract.
 
-The Java regression `nativePoisonDamageConsumesConcurrentBarrierWithoutChangingHeroHp` executes the original Poison actor with a two-point Barrier and verifies that the shield absorbs the hit, Barrier detaches at zero and Hero HP stays unchanged. Backend tests also reject a missing/forged aggregate shield loss and a changed `partialLostShield`. This does not relax the existing separate Hunger shield-bypass rule.
+The Java regression `nativePoisonDamageConsumesConcurrentBarrierWithoutChangingHeroHp` executes the original Poison actor with a two-point Barrier and verifies that the shield absorbs the hit, Barrier detaches at zero and Hero HP stays unchanged. Backend tests also reject a missing/forged aggregate shield loss and a changed `partial_lost_shield`. This does not relax the existing separate Hunger shield-bypass rule.
 
 
 ## 5. RemoteHero and RemotePlayer
