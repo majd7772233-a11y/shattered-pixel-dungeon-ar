@@ -2873,6 +2873,43 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(poison,44),level,["other-native-mob-0002"])).toBe(false);
   });
 
+  it("allows native LifeLink detach only when that exact linked Mob death is already accepted",()=>{
+    const poison=buffs+"Poison", lifeLink=buffs+"LifeLink";
+    const linkRow=JSON.stringify({buff:{__className:lifeLink,id:45,time:9,object:7}});
+    const previous=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:2,buffCooldown_0:1,buffCount:2,buff_1:linkRow,buffCooldown_1:1,hp:10
+    });
+    const before=stateWithBuff(poison,44,9,{left:9},{
+      cooldown:1,buffCooldown_0:0,buffCount:2,buff_1:linkRow,buffCooldown_1:0,hp:10
+    });
+    // Char.damage() detaches the Hero's LifeLink after the linked Mob dies.
+    const after=stateWithBuff(poison,44,10,{left:8},{
+      cooldown:1,buffCooldown_0:1,buffCount:1,hp:8
+    });
+    const eventBody={
+      targetId:"dead-linked-mob-0001",targetType:"MOB",
+      targetHpBefore:1,targetHtBefore:20,targetHp:0,targetHt:20,
+      targetPosBefore:25,targetPosAfter:25,targetShieldBefore:0,targetShieldAfter:0,
+      targetBuffsBefore:"[]",targetBuffs:"[]",targetMobBundleAfter:null,
+      nativeActorId:7,nativeMobBundleBefore:"trusted-before",
+      nativeMobBundleAfterEvidence:"native-after",
+      sourceType:"ENVIRONMENT",sourceClass:lifeLink,engineResolved:true,heaps:[]
+    };
+    const event={sequence:12,sender_id:"publisher",event_type:"CHAR_DAMAGED",payload:JSON.stringify(eventBody)};
+    const level={branch:0,locked:false,mobs:[]};
+    const tickData={...tick(poison,44),sequenceBefore:10};
+    const resolved=nativeHeroBuffLifeLinkMobEntityIds(JSON.stringify(before),level,[event]);
+    expect(resolved).toEqual(["dead-linked-mob-0001"]);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tickData,level,resolved,[event],[7])).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tickData,level,resolved,[event],[])).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tickData,level,resolved,[],[7])).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tickData,level,resolved,[event],[8])).toBe(false);
+  });
+
   it("accepts only stable, non-moving LifeLink Mob damage bundles and exact death tombstones",()=>{
     const className="com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
     const entityId="linked-native-mob-0001";

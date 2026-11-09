@@ -1321,7 +1321,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 && secondaryLootValid && secondaryMobAuthority && secondaryRewardsUnclaimed
                 && isValidNativeHeroBuffTick(previousHeroRow.value, data.heroStateBeforeJson,
                   payload.heroStateJson, data, levelSnapshot, lifeLinkMobEntityIds,
-                  lifeLinkMobDamageEvents);
+                  lifeLinkMobDamageEvents,
+                  secondaryMobPayload!.deltas.filter((delta: any) => Number(delta.hpAfter) === 0)
+                    .map((delta: any) => Number(delta.actorId)));
               if (validHeroBuffTick) {
                 const storedHeroState = String(payload.heroStateJson);
                 this.sql.exec("UPDATE players SET hp = ? WHERE player_id = ?",

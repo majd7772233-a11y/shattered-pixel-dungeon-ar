@@ -646,7 +646,8 @@ function isValidNativeDamageRecoveryBuffTransition(
 /** A single native Hero Buff.act() may update only its own trusted actor and its bounded native effect. */
 export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: unknown,
   afterValue: unknown, dataValue: unknown, levelValue?: unknown,
-  lifeLinkMobEntityIdsValue?: unknown, acceptedMobDamageEventsValue?: unknown): boolean {
+  lifeLinkMobEntityIdsValue?: unknown, acceptedMobDamageEventsValue?: unknown,
+  deadLifeLinkMobActorIdsValue?: unknown): boolean {
   const previous = nativeHeroBuffTickState(previousValue);
   const before = nativeHeroBuffTickState(beforeValue);
   const after = nativeHeroBuffTickState(afterValue);
@@ -732,6 +733,47 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Frost",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep"
   ]);
+  // A LifeLink row is removed by the native Char.damage() callback only when its linked
+  // target died. The caller supplies these Actor IDs only from already-validated Mob death
+  // evidence; corroborate them against the same accepted LifeLink damage event window here.
+  const nativePoisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+  const nativeLifeLinkDeathActors = new Set<number>();
+  const nativeDetachedLifeLinkActors = new Set<number>();
+  const linkedLifeLinkActors = new Set(before.rows
+    .filter(row=>row.className===NATIVE_LIFE_LINK)
+    .map(row=>Number(row.data?.object)));
+  const sequenceBaseline = Number(data.sequenceBefore);
+  const provedDeathActors = new Set<number>();
+  if (buffClass===nativePoisonClass && Array.isArray(acceptedMobDamageEventsValue)
+      && acceptedMobDamageEventsValue.length<=512 && Number.isSafeInteger(sequenceBaseline)
+      && sequenceBaseline>=0) {
+    for (const event of acceptedMobDamageEventsValue) {
+      if (String(event?.event_type || "")!=="CHAR_DAMAGED"
+          || !Number.isSafeInteger(Number(event?.sequence))
+          || Number(event.sequence)<=sequenceBaseline) continue;
+      let body:any;
+      try { body=typeof event.payload==="string"?JSON.parse(event.payload):event.payload; }
+      catch (_) { continue; }
+      const actorId=Number(body?.nativeActorId);
+      if (body?.sourceType==="ENVIRONMENT"
+          && body?.sourceClass===NATIVE_LIFE_LINK
+          && body?.targetType==="MOB"
+          && Number(body?.targetHp)===0
+          && Number.isInteger(actorId) && actorId>0) provedDeathActors.add(actorId);
+    }
+  }
+  if (buffClass===nativePoisonClass && deadLifeLinkMobActorIdsValue !== undefined) {
+    if (!Array.isArray(deadLifeLinkMobActorIdsValue) || deadLifeLinkMobActorIdsValue.length>512) return false;
+    for (const value of deadLifeLinkMobActorIdsValue) {
+      const actorId=Number(value);
+      if (!Number.isInteger(actorId) || actorId<1 || nativeLifeLinkDeathActors.has(actorId)
+          || !linkedLifeLinkActors.has(actorId) || !provedDeathActors.has(actorId)) return false;
+      nativeLifeLinkDeathActors.add(actorId);
+    }
+  } else if (deadLifeLinkMobActorIdsValue !== undefined
+      && (!Array.isArray(deadLifeLinkMobActorIdsValue) || deadLifeLinkMobActorIdsValue.length>0)) {
+    return false;
+  }
   const beforeOtherRows = new Map(before.rows
     .filter(row=>row.className+"#"+row.id!==key)
     .map(row=>[row.className+"#"+row.id,row]));
@@ -769,6 +811,11 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     } else if (buffClass===NATIVE_BLOCK_BUFF && row.className===NATIVE_HOLD_FAST
         && Number(row.data.pos)!==Number(before.state.pos)) {
       continue;
+    } else if (buffClass===nativePoisonClass && row.className===NATIVE_LIFE_LINK) {
+      const actorId=Number(row.data?.object);
+      if (!nativeLifeLinkDeathActors.has(actorId) || nativeDetachedLifeLinkActors.has(actorId)) return false;
+      nativeDetachedLifeLinkActors.add(actorId);
+      continue;
     } else if (allowDamageSideEffectRemoval
         && isValidNativeDamageRecoveryBuffTransition(row,undefined)) {
       continue;
@@ -776,6 +823,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       return false;
     }
   }
+  if (nativeDetachedLifeLinkActors.size!==nativeLifeLinkDeathActors.size
+      || Array.from(nativeLifeLinkDeathActors).some(actorId=>!nativeDetachedLifeLinkActors.has(actorId))) return false;
   for (const [otherKey,row] of afterOtherRows) {
     if (!beforeOtherRows.has(otherKey) && (!drowsyTick || row.className !== magicalSleepClass)) return false;
   }
