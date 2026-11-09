@@ -102,11 +102,23 @@ The nonlethal accepted event is `HERO_BUFF_TICKED` and carries `secondaryMobDelt
 
 The server builds validation-only synthetic Mob damage evidence from the already-validated deltas and trusted pre-death Mob snapshot. This lets the Hero validator calculate exact native non-level-up EXP (including the AscensionChallenge fallback) and supported base MonkEnergy while retaining the trusted Hero Bundle. It is not a second event or a second Mob write. Level-ups, `Hero.updateHT()`, item `onHeroGainExp` callbacks, Unencumbered Spirit, UnarmedAbilityTracker and RemoteHero/player links remain fail-closed.
 
+### Poison damage absorbed by a concurrent Hero Barrier
+
+The original Java `Char.damage()` path applies `ShieldBuff.processDamage()` to Poison damage (unlike Hunger, which native `ShieldBuff.processDamage()` explicitly bypasses). If a Hero has a `Barrier`, that same Poison callback may reduce its shield row or detach it at zero while leaving Hero HP unchanged.
+
+The server now admits this one exact side effect for a native Poison `BUFF_TICK`:
+- A surviving Barrier keeps its Actor ID, Actor time/cooldown and all non-shield bundle fields. Its shield value may only decrease; its `partialLostShield` decay remainder must remain unchanged.
+- A depleted Barrier may disappear only when its row shield reaches zero. The outer Hero shield total must decrease by exactly the same amount as that Barrier row; unrelated shield loss cannot be hidden in the exception.
+- Hero HP and every unrelated Buff remain governed by the existing Poison tick rules. An unchanged aggregate shield with a missing Barrier, extra shield loss, or a forged partial-decay change is rejected.
+- Hunger remains on its native separate rule: starvation damage bypasses shields and cannot use this Poison/Barrier exception.
+
+The server tests cover a fully absorbed Poison hit that detaches the Barrier, a partial shield absorption with the remainder unchanged, and negative cases for missing shield loss, excess aggregate loss and a forged partial accumulator. A Java runtime regression runs the native Poison actor against a two-point Barrier and verifies that the Barrier absorbs the two-point hit without changing Hero HP.
+
 ### MatchRoom tests and verification boundary
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, rollback when the final event insert fails, and a forced transaction failure through the WebSocket message boundary that verifies a correlated ERROR. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `93432802e75d0d7de67af91e09830a068f9e145c` passed [run 42678657964](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42678657964): TypeScript build and 630 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this execution count is not a count of unique scenarios.
+Exact-head CI on `ca5f2738c5ab6326d599b740a980961ba8de2de1` passed [run 42691408672](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42691408672): TypeScript build and 634 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count. Some TypeScript/generated-JavaScript suites mirror cases; this execution count is not a count of unique scenarios.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
 

@@ -145,6 +145,16 @@ The Java runtime integration tests assert one ACTION for multiple linked Mob dea
 On a non-publisher, shared Mob periodic damage is blocked by `Mob.damage()`, including the LifeLink callback. The local Hero's Poison actor can still predict the divided Hero-side damage and send a Hero `BUFF_TICK` with a complete but empty secondary Mob delta. The server rejects it with `BUFF_TICK_MOB_AUTHORITY_REQUIRED` because that peer's `LifeLink.object` Actor ID is not authoritative. When the corresponding `SYNC_HERO_STATE` request receives an ERROR, `MultiplayerManager` requests a full RESYNC. A JVM regression verifies the Mob HP guard, empty delta and RESYNC request; it does not yet verify application of the returned full snapshot. This is fail-closed fallback, not supported remote LifeLink execution. For publisher transaction failures, the WebSocket boundary returns an ERROR correlated with the original request ID and current sequence, so the manager can clear the pending `SYNC_HERO_STATE` and request RESYNC rather than leave it waiting. The server defers that action's acceptance and event broadcasts until the atomic SQL transaction commits, and retains the actual sender socket as the FOV exclusion even though validation runs through a WebSocket proxy.
 
 
+
+### 4.6 Poison damage against an active Barrier
+
+When the native Poison actor damages a Hero, `Char.damage()` runs the regular shield pipeline. A Hero-side `Barrier` is therefore allowed to absorb the hit before HP changes; at zero, native `ShieldBuff.absorbDamage()` detaches it. This is distinct from Hunger/Starvation damage, which native `ShieldBuff.processDamage()` explicitly lets bypass shields.
+
+The server admits only the exact Barrier row transition associated with the Poison tick. A surviving Barrier may lose shield but cannot change its decay remainder or unrelated fields. A depleted Barrier can detach only when the Hero's total shield drops by exactly the Barrier's previous shield amount. Hero HP and other Buffs must still match the strict native Poison contract.
+
+The Java regression `nativePoisonDamageConsumesConcurrentBarrierWithoutChangingHeroHp` executes the original Poison actor with a two-point Barrier and verifies that the shield absorbs the hit, Barrier detaches at zero and Hero HP stays unchanged. Backend tests also reject a missing/forged aggregate shield loss and a changed `partialLostShield`. This does not relax the existing separate Hunger shield-bypass rule.
+
+
 ## 5. RemoteHero and RemotePlayer
 
 Sources:
