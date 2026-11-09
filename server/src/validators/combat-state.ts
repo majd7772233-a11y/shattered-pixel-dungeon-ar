@@ -822,6 +822,80 @@ export function parseAndValidateNativeLifeLinkMobDeltas(
   return payload;
 }
 
+/**
+ * Constructs server-side reward evidence from a LifeLink batch that has already been
+ * validated against the trusted pre-tick level snapshot. These are validation inputs only;
+ * the caller commits the Mob deltas and Hero result together, not as separate CHAR_DAMAGED
+ * requests.
+ */
+export function buildNativeLifeLinkMobDamageEvents(
+  payloadValue: unknown, savedMobsValue: unknown, senderIdValue: unknown, sequenceBeforeValue: unknown
+): any[] | null {
+  const payload: any = payloadValue;
+  const senderId = String(senderIdValue || "");
+  const sequenceBefore = Number(sequenceBeforeValue);
+  if (!payload || payload.complete !== true || !Array.isArray(payload.deltas)
+      || payload.deltas.length > 512 || !Array.isArray(savedMobsValue)
+      || !senderId || senderId.length > 80
+      || !Number.isSafeInteger(sequenceBefore) || sequenceBefore < 0
+      || sequenceBefore + payload.deltas.length > Number.MAX_SAFE_INTEGER) return null;
+
+  const savedByEntity = new Map<string, any>();
+  for (const saved of savedMobsValue as any[]) {
+    const entityId = String(saved?.entityId || "");
+    if (!/^[A-Za-z0-9._:-]{8,80}$/.test(entityId) || savedByEntity.has(entityId)) return null;
+    savedByEntity.set(entityId, saved);
+  }
+
+  const events: any[] = [];
+  const actorIds = new Set<number>();
+  for (let i = 0; i < payload.deltas.length; i++) {
+    const delta: any = payload.deltas[i];
+    const entityId = String(delta?.entityId || "");
+    const saved = savedByEntity.get(entityId);
+    const actorId = Number(saved?.mobId);
+    if (!saved || !Number.isInteger(actorId) || actorId < 1 || actorIds.has(actorId)
+        || (delta.actorId !== undefined && Number(delta.actorId) !== actorId)
+        || typeof saved.serializedBundle !== "string" || saved.serializedBundle.length < 1) return null;
+    actorIds.add(actorId);
+
+    const body: any = {
+      targetId: entityId,
+      targetType: "MOB",
+      targetHpBefore: Number(delta.hpBefore),
+      targetHtBefore: Number(delta.htBefore),
+      targetPosBefore: Number(delta.posBefore),
+      targetShieldBefore: Number(delta.shieldBefore),
+      targetHp: Number(delta.hpAfter),
+      targetHt: Number(delta.htAfter),
+      targetPosAfter: Number(delta.posAfter),
+      targetShieldAfter: Number(delta.shieldAfter),
+      targetBuffsBefore: String(delta.buffsBefore),
+      targetBuffs: String(delta.buffsAfter),
+      targetMobBundleAfter: Number(delta.hpAfter) > 0 ? String(delta.serializedBundleAfter) : null,
+      sourceType: "ENVIRONMENT",
+      sourceClass: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
+      nativeActorId: actorId,
+      nativeMobBundleBefore: String(saved.serializedBundle),
+      nativeMobBundleAfterEvidence: String(delta.serializedBundleAfter),
+      nativeMobRewardClassName: String(saved.rewardClassName || ""),
+      nativeMobRewardEligible: saved.rewardEligible === true,
+      nativeMobRewardExp: Number(saved.rewardExp),
+      nativeMobRewardMaxLevel: Number(saved.rewardMaxLevel),
+      nativeMobRewardSpawningWeight: Number(saved.rewardSpawningWeight),
+      nativeMobRewardMonkEnergy: Number(saved.rewardMonkEnergy)
+    };
+    if (Number(delta.hpAfter) === 0) body.heaps = payload.heaps;
+    events.push({
+      sequence: sequenceBefore + i + 1,
+      sender_id: senderId,
+      event_type: "CHAR_DAMAGED",
+      payload: body
+    });
+  }
+  return events;
+}
+
 /** Evidence-only LifeLink parser: the preceding SYNC_MOB_STATE already committed Mob state. */
 export function parseAndValidateNativeLifeLinkMobDamageEvidence(
   value: unknown, currentMobsValue: unknown, linkedActorIdsValue: unknown,
