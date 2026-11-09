@@ -94,9 +94,15 @@ The Worker uses the last accepted `HERO_BUFF_TICKED` sequence from the same send
 
 For one or more linked Mob deaths, the Hero validator computes the exact non-level-up XP and supported MonkEnergy changes from those accepted events, validates exact LifeLink detaches, and preserves the trusted Hero combat Bundle except for the proven `exp` field. When Poison kills the Hero without a linked Mob death, the same complete Buff-delta validator still runs: no LifeLink detach, XP/MonkEnergy gain or unrelated Buff/Bundle mutation is admitted. The native runtime test asserts the Mob event precedes the Hero death event and that no late `BUFF_TICK` is sent.
 
-Exact-head CI on `bacfecbe78bb4b425effde86390cf60cb750582c` passed [run 42617329132](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42617329132): Backend build and 608 Vitest executions across six files, plus Android JVM tests and Debug APK compilation.
+### MatchRoom handler verification and its boundary
 
-A transaction-level MatchRoom integration test for the combined ordered Mob/Hero death path is still open, as are level-up/item callbacks, Monk talent/ability variants, RemoteHero/player LifeLink, reconnect/expiry boundaries and remaining consumable/detach callback families. No Worker deployment or physical-device multiplayer session has been performed.
+The server integration test calls the actual `MatchRoom.handleAction` method in order for the accepted Mob death request and the subsequent Hero death request. A deterministic in-memory SQL adapter verifies that the Mob row and level-snapshot entry are removed once, the Hero request records `PLAYER_DAMAGED` after `CHAR_DAMAGED`, the trusted Hero Bundle contains only the exact validated XP change, and the stable Mob reward claim is inserted once. It also checks same-request idempotency and rejects replaying the old Mob death with a new request ID.
+
+This is not a single atomic action: the Mob event and Hero event are separate accepted requests. The test uses an in-memory SQL adapter rather than the Cloudflare Durable Object SQLite runtime; it therefore does not prove rollback/restart semantics or atomicity if the process fails between the two requests. Those recovery guarantees remain open and must not be inferred from CI.
+
+Exact-head CI on `768485f5222fd5d8cf2285211af367f8fcf5b773` passed [run 42620080111](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42620080111): Backend TypeScript build and 610 Vitest executions across eight files, plus Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror source cases; the execution count is not a count of unique scenarios.
+
+Level-up/item callbacks, Monk talent/ability variants, RemoteHero/player LifeLink, reconnect/expiry boundaries and remaining consumable/detach callback families are still open. No Worker deployment or physical-device multiplayer session has been performed.
 
 ## 5. Mob turns and Actor scheduling
 
