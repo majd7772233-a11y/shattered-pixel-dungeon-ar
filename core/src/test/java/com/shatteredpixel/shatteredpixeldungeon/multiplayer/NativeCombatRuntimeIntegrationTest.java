@@ -279,8 +279,12 @@ public class NativeCombatRuntimeIntegrationTest {
                 heroData.getString("sourceClass", ""));
         Assert.assertEquals("DEAD", heroData.getString("targetState", ""));
         Assert.assertEquals(0, heroData.getInt("targetHp", -1));
-        Assert.assertTrue("The final Hero state carries the already-earned native EXP",
-                heroAction.getString("heroStateJson", "").contains("\"exp\":2"));
+        JsonValue heroState = new JsonReader().parse(heroAction.getString("heroStateJson", ""));
+        Assert.assertNotNull("The lethal Poison event carries a complete Hero state", heroState);
+        JsonValue nativeHeroBundle = new JsonReader().parse(heroState.getString("combatBundle", ""));
+        Assert.assertNotNull("The native combat Bundle is preserved in the death result", nativeHeroBundle);
+        Assert.assertEquals("The final native Hero Bundle carries the already-earned EXP",
+                heroExpBefore + 2, nativeHeroBundle.getInt("exp", -1));
         Assert.assertTrue("The final Hero state carries the MonkEnergy Buff",
                 heroAction.getString("heroStateJson", "").contains("MonkEnergy"));
         Assert.assertFalse("No post-death BUFF_TICK may be emitted",
