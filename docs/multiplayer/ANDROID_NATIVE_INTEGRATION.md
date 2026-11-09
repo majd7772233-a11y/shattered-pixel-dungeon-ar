@@ -161,6 +161,12 @@ The Java engine sorts shields before applying Poison damage: `WarriorShield` and
 
 The regression `nativePoisonConsumesPriorityTwoAndOneShieldsBeforeBarrier` executes the original native Poison actor with all three tiers active. It checks that priority 2 and then priority 1 absorb the hit before Barrier, and that zero-shield Buffs follow their native detach rules. The test keeps Hero HP above the WarriorShield activation threshold to avoid initializing UI textures in the headless JVM environment; it tests shield consumption, not the separate automatic activation visual callback.
 
+### 4.8 Atomic commit for all native Hero Buff ticks
+
+`NativeHeroBuffTickPublisher.publish()` uses the `SYNC_HERO_STATE` / `BUFF_TICK` envelope for every supported local Hero Buff tick, including Healing, Hunger, Poison, Barrier and the source-specific expiry/charging transitions. MatchRoom wraps every such source-shaped Buff tick in `state.storage.transactionSync`, not only Poison/LifeLink, so Hero bundle/player HP, the sequenced event and request record commit or roll back together. `ACTION_ACCEPTED` and FOV/room broadcasts are held until commit succeeds.
+
+This is a transaction-boundary change, not an expansion of the accepted effect list: the backend still validates each Buff class against its native transition rules and rejects unsupported transitions. The Healing integration regression forces event insertion to fail after Hero/player writes and verifies that stored HP and Healing Buff state roll back. Exact-head CI at `a6578d3ef57fb058aab5539096c877db8a3903ea` passed Backend 640 Vitest executions and Android JVM/Debug APK compilation ([run 42706884160](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42706884160)).
+
 ## 5. RemoteHero and RemotePlayer
 
 Sources:

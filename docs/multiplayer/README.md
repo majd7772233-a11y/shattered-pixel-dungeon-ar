@@ -36,7 +36,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest tested implementation SHA: `3291698d1fbbb6bc37611d1a8276bb2477c50b58`; exact-head [CI run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852) passed Backend TypeScript build/638 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+Latest tested implementation SHA: `a6578d3ef57fb058aab5539096c877db8a3903ea`; exact-head [CI run 42706884160](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42706884160) passed Backend TypeScript build/640 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
 
 The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, correlated WebSocket errors, and rollback-safe deferred broadcasts that preserve the original sender exclusion.
 
@@ -46,6 +46,8 @@ Poison shield reconciliation also mirrors the native `ShieldBuff.processDamage()
 The Barrier decay remainder is serialized by Java as `partial_lost_shield`; both server validators now use that exact key, and the backend test rejects the mistaken camelCase alias.
 
 A transaction exception returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. Action acceptance and room/FOV broadcasts are deferred until the scoped SQL transaction commits, so a later exception cannot leak an ACK or event for rolled-back state.
+
+Every source-shaped native Hero `BUFF_TICK` now uses the same SQL transaction/deferred-message boundary, including non-Poison Healing, Hunger and Barrier ticks. Strict per-class validators remain the allowlist; the wrapper only makes each accepted tick atomic. A Healing integration regression forces the final event insert to fail and checks rollback of Hero HP, player HP, Buff state, event, processed request and sequence.
 
 A non-publisher cannot run the shared Mob portion of Poison LifeLink because its local Actor ID is not an authoritative shared identity. Its Hero tick is rejected even if it sends an empty Mob delta; the client requests a fresh snapshot. The current test checks the request, not end-to-end snapshot application. Actual delegated cross-client LifeLink support remains open.
 
