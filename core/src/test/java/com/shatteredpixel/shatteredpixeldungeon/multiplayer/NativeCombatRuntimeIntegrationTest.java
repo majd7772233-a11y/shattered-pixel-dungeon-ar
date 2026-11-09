@@ -18,6 +18,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight;
@@ -206,6 +207,52 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(10, heroState.getInt("hp", -1));
         Assert.assertEquals(0, heroState.getInt("shielding", -1));
         Assert.assertEquals(1, heroState.getInt("buffCount", -1));
+    }
+
+    @Test
+    public void nativePoisonConsumesPriorityOrderedBlockingAndBarrierShields() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-priority-shields", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-priority-shields-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        hero.HP = 10;
+        Blocking.BlockBuff blocking = Buff.affect(hero, Blocking.BlockBuff.class);
+        blocking.setShield(2);
+        Barrier barrier = Buff.affect(hero, Barrier.class);
+        barrier.setShield(2);
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(6f); // Native Poison damage is (int)(6 / 3) + 1 = 3.
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue(poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertEquals(10, hero.HP);
+        Assert.assertNull("The higher-priority Blocking shield is consumed first and detaches", hero.buff(Blocking.BlockBuff.class));
+        Assert.assertNotNull("The lower-priority Barrier remains after absorbing the final point", hero.buff(Barrier.class));
+        Assert.assertEquals(1, hero.buff(Barrier.class).shielding());
+        Assert.assertEquals(1, hero.shielding());
+        Assert.assertFalse("The complete native multi-shield result must not force resync",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        ArrayList<NetworkMessage> actions = new ArrayList<>();
+        for (NetworkMessage message : transport.sent) {
+            if (message.messageType == MessageType.ACTION) actions.add(message);
+        }
+        Assert.assertEquals(1, actions.size());
+        JsonValue action = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue heroStateValue = action == null ? null : action.get("heroStateJson");
+        Assert.assertNotNull(heroStateValue);
+        JsonValue heroState = new JsonReader().parse(heroStateValue.asString());
+        Assert.assertEquals(10, heroState.getInt("hp", -1));
+        Assert.assertEquals(1, heroState.getInt("shielding", -1));
+        Assert.assertEquals(2, heroState.getInt("buffCount", -1));
     }
 
     @Test

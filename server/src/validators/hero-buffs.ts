@@ -858,27 +858,46 @@ function isValidNativeWarriorShieldDamageActivation(
   return hpBefore <= halfHp || hpBefore + shieldBefore - damage <= halfHp;
 }
 
-function isValidNativePoisonBarrierDamageTransition(
+function nativePoisonShieldDamageRowLoss(
   before: NativeHeroBuffTickRow,
-  after: NativeHeroBuffTickRow | undefined,
-  beforeState: any,
-  afterState: any
-): boolean {
-  if (before.className !== NATIVE_BARRIER || !beforeState || !afterState) return false;
+  after: NativeHeroBuffTickRow | undefined
+): {oldShield:number,newShield:number} | null {
+  const className = before.className;
+  const detachesAtZero = className === NATIVE_BARRIER || className === NATIVE_BLOCK_BUFF;
+  if (!detachesAtZero && className !== NATIVE_WARRIOR_SHIELD) return null;
+
   const oldShield = Number(before.data?.shielding);
-  const oldPartial = Number(before.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
-  if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000
-      || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return false;
+  if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000) return null;
+
+  if (className === NATIVE_BARRIER) {
+    const oldPartial = Number(before.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
+    if (!Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return null;
+  } else if (className === NATIVE_BLOCK_BUFF) {
+    const left = Number(before.data?.left);
+    if (!Number.isFinite(left) || left < 0 || left > 5.001) return null;
+  } else {
+    const cooldown = Number(before.data?.cooldown);
+    const turnsSinceEnemies = Number(before.data?.turns_since_enemies);
+    const initialShield = Number(before.data?.initial_shield);
+    if (!Number.isInteger(cooldown) || cooldown < -150 || cooldown > 100000
+        || !Number.isFinite(turnsSinceEnemies) || turnsSinceEnemies < -100 || turnsSinceEnemies > 100000
+        || !Number.isInteger(initialShield) || initialShield < 0 || initialShield > 100000) return null;
+  }
 
   let newShield = 0;
   if (after) {
     newShield = Number(after.data?.shielding);
-    const newPartial = Number(after.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
-    if (after.className !== NATIVE_BARRIER || after.id !== before.id
+    if (after.className !== className || after.id !== before.id
         || Math.abs(after.time-before.time) > 0.06
         || Math.abs(after.cooldown-before.cooldown) > 0.06
-        || !Number.isInteger(newShield) || newShield < 1 || newShield >= oldShield
-        || !Number.isFinite(newPartial) || Math.abs(newPartial-oldPartial) > 0.0001) return false;
+        || !Number.isInteger(newShield) || newShield < 0 || newShield >= oldShield
+        || (detachesAtZero && newShield === 0)) return null;
+    if (className === NATIVE_BARRIER) {
+      const newPartial = Number(after.data?.[NATIVE_BARRIER_PARTIAL_LOST_SHIELD]);
+      if (!Number.isFinite(newPartial) || Math.abs(newPartial-Number(before.data[NATIVE_BARRIER_PARTIAL_LOST_SHIELD])) > 0.0001) {
+        return null;
+      }
+    }
     const oldFields = {...before.data}, newFields = {...after.data};
     for (const fields of [oldFields,newFields]) {
       delete fields.__className;
@@ -886,17 +905,13 @@ function isValidNativePoisonBarrierDamageTransition(
       delete fields.time;
       delete fields.shielding;
     }
-    if (!sameNativeItemValue(oldFields,newFields)) return false;
+    if (!sameNativeItemValue(oldFields,newFields)) return null;
+  } else if (!detachesAtZero) {
+    // WarriorShield explicitly survives at zero; Barrier and BlockBuff detach there.
+    return null;
   }
 
-  // ShieldBuff.absorbDamage() changes only this Barrier's shielding value. Its decay
-  // remainder is untouched; at zero Barrier detaches. The outer Hero shield delta must
-  // equal this row's exact loss, so a second/unreported shield mutation cannot hide here.
-  const oldTotal = Number(beforeState.shielding);
-  const newTotal = Number(afterState.shielding);
-  return Number.isInteger(oldTotal) && Number.isInteger(newTotal)
-    && oldTotal >= oldShield && newTotal >= newShield
-    && oldTotal-newTotal === oldShield-newShield;
+  return {oldShield,newShield};
 }
 
 function isValidNativeDamageRecoveryBuffTransition(
@@ -1106,6 +1121,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       warriorShieldBefore,warriorShieldAfter);
   const allowDamageSideEffectRemoval = damageTickClass.has(buffClass)
     && (hpAfter < hpBefore || shieldAfter < shieldBefore || nativeWarriorShieldActivation);
+  let nativePoisonShieldLoss = 0;
   if (!source || !prior || source.bundle !== prior.bundle
       || (buffClass!==NATIVE_WAND_CHARGER && before.state.inventoryBundle !== after.state.inventoryBundle)) return false;
   // Char.damage() natively recovers Terror/Dread/Charm and removes Frost/MagicalSleep
@@ -1119,8 +1135,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) {
         if (row.className===NATIVE_MONK_ENERGY && deathRewardContract.allowMonkEnergyChange) continue;
         if (row.className===NATIVE_WARRIOR_SHIELD && nativeWarriorShieldActivation) continue;
-        if (buffClass===nativePoisonClass
-            && isValidNativePoisonBarrierDamageTransition(row,next,before.state,after.state)) continue;
+        const poisonShieldLoss = buffClass===nativePoisonClass
+          ? nativePoisonShieldDamageRowLoss(row,next) : null;
+        if (poisonShieldLoss) {
+          nativePoisonShieldLoss += poisonShieldLoss.oldShield-poisonShieldLoss.newShield;
+          continue;
+        }
         if (!allowDamageSideEffectRemoval
             || !isValidNativeDamageRecoveryBuffTransition(row,next)) return false;
       }
@@ -1134,16 +1154,25 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       if (!nativeLifeLinkDeathActors.has(actorId) || nativeDetachedLifeLinkActors.has(actorId)) return false;
       nativeDetachedLifeLinkActors.add(actorId);
       continue;
-    } else if (buffClass===nativePoisonClass
-        && isValidNativePoisonBarrierDamageTransition(row,undefined,before.state,after.state)) {
-      continue;
-    } else if (allowDamageSideEffectRemoval
+    } else {
+      const poisonShieldLoss = buffClass===nativePoisonClass
+        ? nativePoisonShieldDamageRowLoss(row,undefined) : null;
+      if (poisonShieldLoss) {
+        nativePoisonShieldLoss += poisonShieldLoss.oldShield-poisonShieldLoss.newShield;
+        continue;
+      }
+      if (allowDamageSideEffectRemoval
         && isValidNativeDamageRecoveryBuffTransition(row,undefined)) {
       continue;
-    } else if (!allowDamageSideEffectRemoval || !damageSideEffectRemovals.has(row.className)) {
-      return false;
+      } else if (!allowDamageSideEffectRemoval || !damageSideEffectRemovals.has(row.className)) {
+        return false;
+      }
     }
   }
+  const activatedWarriorShieldNetChange = nativeWarriorShieldActivation
+    ? Number(warriorShieldAfter?.data.shielding)-Number(warriorShieldBefore?.data.shielding) : 0;
+  if (buffClass===nativePoisonClass
+      && shieldBefore-shieldAfter !== nativePoisonShieldLoss-activatedWarriorShieldNetChange) return false;
   if (nativeDetachedLifeLinkActors.size!==nativeLifeLinkDeathActors.size
       || Array.from(nativeLifeLinkDeathActors).some(actorId=>!nativeDetachedLifeLinkActors.has(actorId))) return false;
   for (const [otherKey,row] of afterOtherRows) {

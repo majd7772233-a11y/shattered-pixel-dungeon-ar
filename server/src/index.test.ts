@@ -3206,6 +3206,83 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(forgedPartialRemainder),tick(poison,45))).toBe(false);
   });
 
+  it("validates Poison consumption across priority-ordered active ShieldBuff rows",()=>{
+    const poison=buffs+"Poison";
+    const warriorShield="com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+    const blockBuff="com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
+    const barrier=buffs+"Barrier";
+    const warriorRow=(shielding:number)=>JSON.stringify({buff:{
+      __className:warriorShield,id:91,time:8,shielding,cooldown:150,
+      turns_since_enemies:0,initial_shield:1
+    }});
+    const blockRow=(shielding:number,left=5)=>JSON.stringify({buff:{
+      __className:blockBuff,id:92,time:8,shielding,left
+    }});
+    const barrierRow=(shielding:number,partial_lost_shield=0)=>JSON.stringify({buff:{
+      __className:barrier,id:93,time:8,shielding,partial_lost_shield
+    }});
+    const previous=stateWithBuff(poison,44,9,{left:6},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:4,buffCount:4,
+      buff_1:warriorRow(1),buffCooldown_1:0,
+      buff_2:blockRow(1),buffCooldown_2:0,
+      buff_3:barrierRow(2),buffCooldown_3:0
+    });
+    const before=stateWithBuff(poison,44,9,{left:6},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:4,buffCount:4,
+      buff_1:warriorRow(1),buffCooldown_1:0,
+      buff_2:blockRow(1),buffCooldown_2:0,
+      buff_3:barrierRow(2),buffCooldown_3:0
+    });
+    const after=stateWithBuff(poison,44,10,{left:5},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:1,buffCount:3,
+      buff_1:warriorRow(0),buffCooldown_1:0,
+      buff_2:barrierRow(1),buffCooldown_2:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(true);
+
+    const forgedBlockLeft=JSON.parse(JSON.stringify(after));
+    forgedBlockLeft.buffCount=4;
+    forgedBlockLeft.buff_2=blockRow(0,4);
+    forgedBlockLeft.buffCooldown_2=0;
+    forgedBlockLeft.buff_3=barrierRow(1);
+    forgedBlockLeft.buffCooldown_3=0;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedBlockLeft),tick(poison,44))).toBe(false);
+
+    const forgedWarriorState=JSON.parse(JSON.stringify(after));
+    forgedWarriorState.buff_1=warriorRow(0).replace('"cooldown":150','"cooldown":149');
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedWarriorState),tick(poison,44))).toBe(false);
+
+    const forgedAggregate=JSON.parse(JSON.stringify(after));
+    forgedAggregate.shielding=2;
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedAggregate),tick(poison,44))).toBe(false);
+  });
+
+  it("validates a partial native Blocking.BlockBuff shield loss during Poison",()=>{
+    const poison=buffs+"Poison";
+    const blockBuff="com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
+    const blockRow=(shielding:number,left=5)=>JSON.stringify({buff:{
+      __className:blockBuff,id:95,time:8,shielding,left
+    }});
+    const previous=stateWithBuff(poison,44,9,{left:3},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:3,buffCount:2,
+      buff_1:blockRow(3),buffCooldown_1:0
+    });
+    const before=stateWithBuff(poison,44,9,{left:3},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:3,buffCount:2,
+      buff_1:blockRow(3),buffCooldown_1:0
+    });
+    const after=stateWithBuff(poison,44,10,{left:2},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:1,buffCount:2,
+      buff_1:blockRow(1),buffCooldown_1:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(poison,44))).toBe(true);
+  });
+
   it("serializes concurrent native Healing and Barrier ticks without cross-effect mutation",()=>{
     const healing=buffs+"Healing", barrier=buffs+"Barrier";
     const barrierRow=JSON.stringify({buff:{
