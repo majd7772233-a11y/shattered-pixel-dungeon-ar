@@ -163,68 +163,49 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void nativeHealingAndBarrierTicksPreserveTheOtherConcurrentEffect() {
+    public void nativePoisonDamageConsumesConcurrentBarrierWithoutChangingHeroHp() {
         TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        manager.startSession("native-concurrent-healing-barrier", "client-publisher", transport);
+        manager.startSession("native-poison-barrier-absorption", "client-publisher", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"healing-barrier-token\","
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-barrier-token\","
                         + "\"isLevelPublisher\":true,\"sequence\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
 
         hero.HP = 10;
-        Healing healing = Buff.affect(hero, Healing.class);
-        healing.setHeal(5, 0.2f, 0);
         Barrier barrier = Buff.affect(hero, Barrier.class);
         barrier.setShield(2);
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(3f);
 
-        NativeHeroBuffTickPublisher.TickCapture healingCapture =
-                NativeHeroBuffTickPublisher.capture(healing);
-        Assert.assertNotNull("The native HoT tick must be captured while Barrier is active", healingCapture);
-        Assert.assertTrue(healing.act());
-        NativeHeroBuffTickPublisher.publish(healingCapture);
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull("The native Poison tick must be captured while Barrier is active", capture);
+        Assert.assertTrue("The native Poison damage pipeline consumes the available Barrier", poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
 
-        Assert.assertEquals("Healing applies exactly one native HP before the later Barrier actor", 11, hero.HP);
-        Assert.assertEquals("The HoT must not consume or rewrite the concurrent Barrier", 2, barrier.shielding());
-
-        NativeHeroBuffTickPublisher.TickCapture barrierCapture =
-                NativeHeroBuffTickPublisher.capture(barrier);
-        Assert.assertNotNull("The native shield decay tick must be captured while Healing is active", barrierCapture);
-        Assert.assertTrue(barrier.act());
-        NativeHeroBuffTickPublisher.publish(barrierCapture);
-
-        Assert.assertEquals("Barrier decay must not undo the earlier native healing", 11, hero.HP);
-        Assert.assertEquals("A small Barrier must accumulate partial decay before consuming one shield", 2,
-                barrier.shielding());
+        Assert.assertEquals("Barrier absorbs the full two-point Poison hit before Hero HP changes", 10, hero.HP);
+        Assert.assertEquals("A fully consumed Barrier detaches at zero", 0, hero.shielding());
+        Assert.assertNull("The native damage callback removes the depleted Barrier", hero.buff(Barrier.class));
+        Assert.assertFalse("A complete shielded result must not request a fallback snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
 
         ArrayList<NetworkMessage> actions = new ArrayList<>();
         for (NetworkMessage message : transport.sent) {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
-        Assert.assertEquals("Concurrent HoT and shield actors remain two ordered native tick actions", 2, actions.size());
-
-        JsonValue first = new JsonReader().parse(actions.get(0).payloadJson);
-        JsonValue firstData = first == null ? null : first.get("data");
-        Assert.assertNotNull(firstData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
-                firstData.getString("buffClass", ""));
-        JsonValue firstHero = first == null ? null : first.get("heroStateJson");
-        Assert.assertNotNull(firstHero);
-        JsonValue firstHeroState = new JsonReader().parse(firstHero.asString());
-        Assert.assertEquals(11, firstHeroState.getInt("hp", -1));
-        Assert.assertEquals(2, firstHeroState.getInt("shielding", -1));
-
-        JsonValue second = new JsonReader().parse(actions.get(1).payloadJson);
-        JsonValue secondData = second == null ? null : second.get("data");
-        Assert.assertNotNull(secondData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier",
-                secondData.getString("buffClass", ""));
-        JsonValue secondHero = second == null ? null : second.get("heroStateJson");
-        Assert.assertNotNull(secondHero);
-        JsonValue secondHeroState = new JsonReader().parse(secondHero.asString());
-        Assert.assertEquals(11, secondHeroState.getInt("hp", -1));
-        Assert.assertEquals(2, secondHeroState.getInt("shielding", -1));
+        Assert.assertEquals(1, actions.size());
+        JsonValue action = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue data = action == null ? null : action.get("data");
+        Assert.assertNotNull(data);
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+                data.getString("buffClass", ""));
+        JsonValue heroStateValue = action.get("heroStateJson");
+        Assert.assertNotNull(heroStateValue);
+        JsonValue heroState = new JsonReader().parse(heroStateValue.asString());
+        Assert.assertEquals(10, heroState.getInt("hp", -1));
+        Assert.assertEquals(0, heroState.getInt("shielding", -1));
+        Assert.assertEquals(1, heroState.getInt("buffCount", -1));
     }
 
     @Test

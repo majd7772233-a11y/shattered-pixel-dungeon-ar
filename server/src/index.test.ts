@@ -3133,6 +3133,61 @@ describe("Native Hero Buff tick reconciliation", () => {
   });
 
 
+  it("accounts for exact Barrier absorption and detachment during a native Poison tick",()=>{
+    const poison=buffs+"Poison", barrier=buffs+"Barrier";
+    const barrierRow=(shielding:number,partialLostShield=0)=>JSON.stringify({buff:{
+      __className:barrier,id:82,time:9,shielding,partialLostShield
+    }});
+    const previous=stateWithBuff(poison,44,9,{left:3},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:2,
+      buffCount:2,buff_1:barrierRow(2),buffCooldown_1:1
+    });
+    const before=stateWithBuff(poison,44,9,{left:3},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:2,
+      buffCount:2,buff_1:barrierRow(2),buffCooldown_1:0
+    });
+    const consumed=stateWithBuff(poison,44,10,{left:2},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:0,buffCount:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(consumed),tick(poison,44))).toBe(true);
+
+    const previousPartial=stateWithBuff(poison,45,9,{left:2},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:4,
+      buffCount:2,buff_1:barrierRow(4,0.35),buffCooldown_1:1
+    });
+    const beforePartial=stateWithBuff(poison,45,9,{left:2},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:4,
+      buffCount:2,buff_1:barrierRow(4,0.35),buffCooldown_1:0
+    });
+    const partial=stateWithBuff(poison,45,10,{left:1},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:3,
+      buffCount:2,buff_1:barrierRow(3,0.35),buffCooldown_1:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previousPartial),JSON.stringify(beforePartial),
+      JSON.stringify(partial),tick(poison,45))).toBe(true);
+
+    const forgedUnspentShield=stateWithBuff(poison,44,10,{left:2},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:2,buffCount:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedUnspentShield),tick(poison,44))).toBe(false);
+
+    const forgedExtraLoss=stateWithBuff(poison,45,10,{left:1},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:1,
+      buffCount:2,buff_1:barrierRow(3,0.35),buffCooldown_1:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previousPartial),JSON.stringify(beforePartial),
+      JSON.stringify(forgedExtraLoss),tick(poison,45))).toBe(false);
+
+    const forgedPartialRemainder=stateWithBuff(poison,45,10,{left:1},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:3,
+      buffCount:2,buff_1:barrierRow(3,0.8),buffCooldown_1:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previousPartial),JSON.stringify(beforePartial),
+      JSON.stringify(forgedPartialRemainder),tick(poison,45))).toBe(false);
+  });
+
   it("serializes concurrent native Healing and Barrier ticks without cross-effect mutation",()=>{
     const healing=buffs+"Healing", barrier=buffs+"Barrier";
     const barrierRow=JSON.stringify({buff:{

@@ -7,6 +7,7 @@ import { nativeUseItemBuffMap } from "./item-state";
 type NativeHeroBuffTickRow = {className:string,id:number,time:number,cooldown:number,bundle:string,data:any};
 
 const NATIVE_LIFE_LINK = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
+const NATIVE_BARRIER = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier";
 const NATIVE_POISON = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
 const NATIVE_ASCENSION_CHALLENGE = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.AscensionChallenge";
 const NATIVE_MONK_ENERGY = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy";
@@ -856,6 +857,47 @@ function isValidNativeWarriorShieldDamageActivation(
   return hpBefore <= halfHp || hpBefore + shieldBefore - damage <= halfHp;
 }
 
+function isValidNativePoisonBarrierDamageTransition(
+  before: NativeHeroBuffTickRow,
+  after: NativeHeroBuffTickRow | undefined,
+  beforeState: any,
+  afterState: any
+): boolean {
+  if (before.className !== NATIVE_BARRIER || !beforeState || !afterState) return false;
+  const oldShield = Number(before.data?.shielding);
+  const oldPartial = Number(before.data?.partialLostShield);
+  if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000
+      || !Number.isFinite(oldPartial) || oldPartial < 0 || oldPartial >= 1.1) return false;
+
+  let newShield = 0;
+  if (after) {
+    newShield = Number(after.data?.shielding);
+    const newPartial = Number(after.data?.partialLostShield);
+    if (after.className !== NATIVE_BARRIER || after.id !== before.id
+        || Math.abs(after.time-before.time) > 0.06
+        || Math.abs(after.cooldown-before.cooldown) > 0.06
+        || !Number.isInteger(newShield) || newShield < 1 || newShield >= oldShield
+        || !Number.isFinite(newPartial) || Math.abs(newPartial-oldPartial) > 0.0001) return false;
+    const oldFields = {...before.data}, newFields = {...after.data};
+    for (const fields of [oldFields,newFields]) {
+      delete fields.__className;
+      delete fields.id;
+      delete fields.time;
+      delete fields.shielding;
+    }
+    if (!sameNativeItemValue(oldFields,newFields)) return false;
+  }
+
+  // ShieldBuff.absorbDamage() changes only this Barrier's shielding value. Its decay
+  // remainder is untouched; at zero Barrier detaches. The outer Hero shield delta must
+  // equal this row's exact loss, so a second/unreported shield mutation cannot hide here.
+  const oldTotal = Number(beforeState.shielding);
+  const newTotal = Number(afterState.shielding);
+  return Number.isInteger(oldTotal) && Number.isInteger(newTotal)
+    && oldTotal >= oldShield && newTotal >= newShield
+    && oldTotal-newTotal === oldShield-newShield;
+}
+
 function isValidNativeDamageRecoveryBuffTransition(
   before: NativeHeroBuffTickRow,
   after: NativeHeroBuffTickRow | undefined
@@ -1076,6 +1118,8 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) {
         if (row.className===NATIVE_MONK_ENERGY && deathRewardContract.allowMonkEnergyChange) continue;
         if (row.className===NATIVE_WARRIOR_SHIELD && nativeWarriorShieldActivation) continue;
+        if (buffClass===nativePoisonClass
+            && isValidNativePoisonBarrierDamageTransition(row,next,before.state,after.state)) continue;
         if (!allowDamageSideEffectRemoval
             || !isValidNativeDamageRecoveryBuffTransition(row,next)) return false;
       }
@@ -1088,6 +1132,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       const actorId=Number(row.data?.object);
       if (!nativeLifeLinkDeathActors.has(actorId) || nativeDetachedLifeLinkActors.has(actorId)) return false;
       nativeDetachedLifeLinkActors.add(actorId);
+      continue;
+    } else if (buffClass===nativePoisonClass
+        && isValidNativePoisonBarrierDamageTransition(row,undefined,before.state,after.state)) {
       continue;
     } else if (allowDamageSideEffectRemoval
         && isValidNativeDamageRecoveryBuffTransition(row,undefined)) {
