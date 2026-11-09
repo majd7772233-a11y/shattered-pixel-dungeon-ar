@@ -7,6 +7,10 @@ import { nativeUseItemBuffMap } from "./item-state";
 type NativeHeroBuffTickRow = {className:string,id:number,time:number,cooldown:number,bundle:string,data:any};
 
 const NATIVE_LIFE_LINK = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink";
+const NATIVE_POISON = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+const NATIVE_ASCENSION_CHALLENGE = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.AscensionChallenge";
+const NATIVE_MONK_ENERGY = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy";
+const NATIVE_MONK_UNARMED_TRACKER = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy$MonkAbility$UnarmedAbilityTracker";
 
 function nativeHeroBuffTickState(value: unknown): {state:any,clock:number,rows:NativeHeroBuffTickRow[]} | null {
   let state:any;
@@ -179,7 +183,8 @@ function nativeWandStableInventoryRows(heroValue: any, itemId: string): any[] | 
   return rows;
 }
 
-function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""): any | null {
+function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = "",
+  ignoreNativeDeathExperience = false): any | null {
   const state = {...stateValue};
   delete state.hp;
   delete state.shielding;
@@ -189,6 +194,7 @@ function nativeHeroBuffTickStableState(stateValue: any, ignoredWandItemId = ""):
   const combat = parseNativeBundleObject(state.combatBundle);
   if (!combat) return null;
   delete combat.buffs;
+  if (ignoreNativeDeathExperience) delete combat.exp;
   if (ignoredWandItemId) scrubNativeWandChargeValue(combat, ignoredWandItemId);
   state.combatBundle = combat;
 
@@ -216,6 +222,159 @@ function nativeBuffTickRegenerationOn(level: any, rows: NativeHeroBuffTickRow[])
   if (locked.length === 0) return true;
   const left = Number(locked[0].data.left);
   return Number.isFinite(left) ? left >= 1 : null;
+}
+
+export type NativeLifeLinkDeathRewardContract = {
+  allowExperienceChange: boolean;
+  allowMonkEnergyChange: boolean;
+};
+
+/** Validates the Hero-side rewards already produced by Mob.destroy() during linked Mob deaths.
+ * Scope is intentionally conservative: exact non-level-up EXP and un-talented MonkEnergy only.
+ * Level-ups, XP item callbacks and Unencumbered Spirit multipliers remain fail-closed.
+ */
+export function validateNativeLifeLinkDeathRewardTransition(
+  beforeValue: unknown, afterValue: unknown, dataValue: unknown,
+  acceptedEventsValue: unknown, deadActorIdsValue: unknown, levelValue: unknown
+): NativeLifeLinkDeathRewardContract | null {
+  const data:any = dataValue;
+  const before = nativeHeroBuffTickState(beforeValue);
+  const after = nativeHeroBuffTickState(afterValue);
+  if (!before || !after || !data || typeof data !== "object") return null;
+  const deadActorIds = deadActorIdsValue === undefined ? [] : deadActorIdsValue;
+  if (!Array.isArray(deadActorIds) || deadActorIds.length > 512) return null;
+  if (deadActorIds.length === 0) {
+    return {allowExperienceChange:false,allowMonkEnergyChange:false};
+  }
+  if (data.buffClass !== NATIVE_POISON || !Array.isArray(acceptedEventsValue)
+      || acceptedEventsValue.length > 512) return null;
+  const baseline = Number(data.sequenceBefore);
+  if (!Number.isSafeInteger(baseline) || baseline < 0) return null;
+
+  const linkedActors = new Set(before.rows.filter(row=>row.className===NATIVE_LIFE_LINK)
+    .map(row=>Number(row.data?.object)));
+  const dead = new Set<number>();
+  for (const value of deadActorIds) {
+    const actorId = Number(value);
+    if (!Number.isInteger(actorId) || actorId < 1 || dead.has(actorId)
+        || !linkedActors.has(actorId)) return null;
+    dead.add(actorId);
+  }
+
+  const eventsByActor = new Map<number,{sequence:number;body:any;senderId:string}>();
+  const senderIds = new Set<string>();
+  for (const event of acceptedEventsValue as any[]) {
+    const sequence = Number(event?.sequence);
+    if (String(event?.event_type || "") !== "CHAR_DAMAGED"
+        || !Number.isSafeInteger(sequence) || sequence <= baseline) continue;
+    const senderId = String(event?.sender_id || "");
+    if (!senderId) return null;
+    let body:any;
+    try { body = typeof event.payload === "string" ? JSON.parse(event.payload) : event.payload; }
+    catch (_) { return null; }
+    const actorId = Number(body?.nativeActorId);
+    if (body?.sourceType !== "ENVIRONMENT" || body?.sourceClass !== NATIVE_LIFE_LINK
+        || body?.targetType !== "MOB" || Number(body?.targetHp) !== 0
+        || !dead.has(actorId)) continue;
+    if (eventsByActor.has(actorId)) return null;
+    eventsByActor.set(actorId,{sequence,body,senderId});
+    senderIds.add(senderId);
+  }
+  if (eventsByActor.size !== dead.size || senderIds.size !== 1) return null;
+
+  const beforeCombat = parseNativeBundleObject(before.state.combatBundle);
+  const afterCombat = parseNativeBundleObject(after.state.combatBundle);
+  const heroLevel = Number(beforeCombat?.lvl), expBefore = Number(beforeCombat?.exp);
+  const expAfter = Number(afterCombat?.exp), levelAfter = Number(afterCombat?.lvl);
+  if (!beforeCombat || !afterCombat || !Number.isInteger(heroLevel) || heroLevel < 1 || heroLevel > 30
+      || !Number.isInteger(expBefore) || expBefore < 0 || expBefore >= 5 + heroLevel*5
+      || levelAfter !== heroLevel || !Number.isInteger(expAfter) || expAfter < 0) return null;
+  const hasAscensionChallenge = before.rows.some(row=>row.className===NATIVE_ASCENSION_CHALLENGE);
+  const orderedEvents = Array.from(eventsByActor.values()).sort((a,b)=>a.sequence-b.sequence);
+  let expectedExpGain = 0;
+  for (const match of orderedEvents) {
+    const event = match.body;
+    const rewardClassName = String(event.nativeMobRewardClassName || "");
+    const rewardEligible = event.nativeMobRewardEligible;
+    const rewardExp = Number(event.nativeMobRewardExp);
+    const rewardMaxLevel = Number(event.nativeMobRewardMaxLevel);
+    const rewardSpawningWeight = Number(event.nativeMobRewardSpawningWeight);
+    const rewardMonkEnergy = Number(event.nativeMobRewardMonkEnergy);
+    const beforeMob = parseNativeBundleObject(event.nativeMobBundleBefore)?.mob;
+    if (typeof rewardEligible !== "boolean"
+        || !Number.isInteger(rewardExp) || rewardExp < 0 || rewardExp > 100000
+        || !Number.isInteger(rewardMaxLevel) || rewardMaxLevel < -1 || rewardMaxLevel > 1000
+        || !Number.isFinite(rewardSpawningWeight) || rewardSpawningWeight < 0 || rewardSpawningWeight > 10000
+        || ![0.5,1,3,5].includes(rewardMonkEnergy)
+        || !beforeMob || rewardClassName !== String(beforeMob.__className || "")
+        || Number(beforeMob.id) !== Number(event.nativeActorId)) return null;
+    if (!rewardEligible) continue;
+    let mobExp = heroLevel <= rewardMaxLevel ? rewardExp : 0;
+    if (mobExp === 0 && hasAscensionChallenge && rewardMaxLevel > 0
+        && rewardExp > 0 && heroLevel < 30) {
+      // Java evaluates 10 * spawningWeight() as a float before Math.round(float).
+      mobExp = Math.round(Math.fround(10 * Math.fround(rewardSpawningWeight)));
+    }
+    expectedExpGain += mobExp;
+    if (expectedExpGain > 1000000) return null;
+  }
+  const expectedExpAfter = expBefore + expectedExpGain;
+  // Do not admit level-ups here: Hero.updateHT(), item onHeroGainExp callbacks and talent/ability
+  // side effects need their own complete transaction contract.
+  if (expectedExpAfter >= 5 + heroLevel*5 || expAfter !== expectedExpAfter) return null;
+
+  const isMonk = String(beforeCombat.subClass || "") === "MONK";
+  const eligibleMonkDeaths = orderedEvents.filter(match=>match.body.nativeMobRewardEligible === true);
+  let allowMonkEnergyChange = false;
+  if (isMonk && eligibleMonkDeaths.length > 0) {
+    const unencumberedSpirit = nativeEquipmentTalentPoints(beforeCombat,"UNENCUMBERED_SPIRIT");
+    if (!Number.isInteger(unencumberedSpirit) || unencumberedSpirit < 0 || unencumberedSpirit > 3
+        || unencumberedSpirit > 0
+        || before.rows.some(row=>row.className===NATIVE_MONK_UNARMED_TRACKER)) return null;
+    const regenerationOn = nativeBuffTickRegenerationOn(levelValue,before.rows);
+    if (regenerationOn === null) return null;
+    const beforeEnergyRows = before.rows.filter(row=>row.className===NATIVE_MONK_ENERGY);
+    const afterEnergyRows = after.rows.filter(row=>row.className===NATIVE_MONK_ENERGY);
+    if (beforeEnergyRows.length > 1 || afterEnergyRows.length !== 1) return null;
+    const energyCap = Math.max(10,5+Math.floor(heroLevel/2));
+    let expectedEnergy = beforeEnergyRows.length === 1 ? Number(beforeEnergyRows[0].data.energy) : 0;
+    if (!Number.isFinite(expectedEnergy) || expectedEnergy < 0 || expectedEnergy > energyCap) return null;
+    if (regenerationOn) {
+      for (const match of eligibleMonkDeaths) {
+        expectedEnergy = Math.min(energyCap,expectedEnergy+Number(match.body.nativeMobRewardMonkEnergy));
+      }
+    }
+    const afterEnergy = afterEnergyRows[0];
+    if (!Number.isFinite(Number(afterEnergy.data.energy))
+        || Math.abs(Number(afterEnergy.data.energy)-expectedEnergy) > 0.0001
+        || !Number.isFinite(Number(afterEnergy.data.cooldown))
+        || Number(afterEnergy.data.cooldown) !== 0) return null;
+    if (beforeEnergyRows.length === 1) {
+      const priorEnergy = beforeEnergyRows[0];
+      const beforeData = {...priorEnergy.data}, afterData = {...afterEnergy.data};
+      delete beforeData.energy;
+      delete afterData.energy;
+      if (afterEnergy.id !== priorEnergy.id || afterEnergy.time !== priorEnergy.time
+          || afterEnergy.cooldown !== priorEnergy.cooldown
+          || !sameNativeItemValue(beforeData,afterData)) return null;
+    } else if (afterEnergy.id < 1 || afterEnergy.time < 0 || afterEnergy.cooldown < 0) {
+      return null;
+    }
+    allowMonkEnergyChange = true;
+  } else {
+    const beforeEnergyRows = before.rows.filter(row=>row.className===NATIVE_MONK_ENERGY);
+    const afterEnergyRows = after.rows.filter(row=>row.className===NATIVE_MONK_ENERGY);
+    if (beforeEnergyRows.length !== afterEnergyRows.length
+        || beforeEnergyRows.some(row=>{
+          const next=afterEnergyRows.find(candidate=>candidate.id===row.id);
+          return !next || row.bundle!==next.bundle || row.cooldown!==next.cooldown;
+        })) return null;
+  }
+
+  return {
+    allowExperienceChange: expectedExpGain > 0,
+    allowMonkEnergyChange
+  };
 }
 
 function nativeWandRingChargeMultiplier(hero: any, inventory: any[], rows: NativeHeroBuffTickRow[]): number | null {
@@ -653,6 +812,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const after = nativeHeroBuffTickState(afterValue);
   const data:any = dataValue;
   const level:any = levelValue;
+  const deathRewardContract = validateNativeLifeLinkDeathRewardTransition(
+    beforeValue,afterValue,data,acceptedMobDamageEventsValue,deadLifeLinkMobActorIdsValue,levelValue);
+  if (!deathRewardContract) return false;
   if (!previous || !before || !after || !data || typeof data !== "object"
       || typeof data.buffClass !== "string" || !Number.isInteger(data.buffId) || data.buffId < 0
       || !Number.isFinite(data.actorClockBefore)
@@ -661,8 +823,12 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
       || Math.abs(after.clock-before.clock) > 0.06
       || !sameNativeItemValue(nativeHeroBuffTickStableState(previous.state),nativeHeroBuffTickStableState(before.state))
       || !sameNativeItemValue(
-          nativeHeroBuffTickStableState(before.state, data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : ""),
-          nativeHeroBuffTickStableState(after.state, data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : ""))
+          nativeHeroBuffTickStableState(before.state,
+            data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : "",
+            deathRewardContract.allowExperienceChange),
+          nativeHeroBuffTickStableState(after.state,
+            data.buffClass===NATIVE_WAND_CHARGER ? String(data.wandItemId || "") : "",
+            deathRewardContract.allowExperienceChange))
       || Number(previous.state.hp) !== Number(before.state.hp)
       || Number(previous.state.ht) !== Number(before.state.ht)
       || Number(previous.state.pos) !== Number(before.state.pos)
@@ -804,12 +970,15 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     const next = afterOtherRows.get(otherKey);
     if (next) {
       if (row.bundle !== next.bundle || row.cooldown !== next.cooldown) {
+        if (row.className===NATIVE_MONK_ENERGY && deathRewardContract.allowMonkEnergyChange) continue;
         if (row.className===NATIVE_WARRIOR_SHIELD && nativeWarriorShieldActivation) continue;
         if (!allowDamageSideEffectRemoval
             || !isValidNativeDamageRecoveryBuffTransition(row,next)) return false;
       }
     } else if (buffClass===NATIVE_BLOCK_BUFF && row.className===NATIVE_HOLD_FAST
         && Number(row.data.pos)!==Number(before.state.pos)) {
+      continue;
+    } else if (row.className===NATIVE_MONK_ENERGY && deathRewardContract.allowMonkEnergyChange) {
       continue;
     } else if (buffClass===nativePoisonClass && row.className===NATIVE_LIFE_LINK) {
       const actorId=Number(row.data?.object);
@@ -826,7 +995,9 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   if (nativeDetachedLifeLinkActors.size!==nativeLifeLinkDeathActors.size
       || Array.from(nativeLifeLinkDeathActors).some(actorId=>!nativeDetachedLifeLinkActors.has(actorId))) return false;
   for (const [otherKey,row] of afterOtherRows) {
-    if (!beforeOtherRows.has(otherKey) && (!drowsyTick || row.className !== magicalSleepClass)) return false;
+    if (!beforeOtherRows.has(otherKey)
+        && !(deathRewardContract.allowMonkEnergyChange && row.className===NATIVE_MONK_ENERGY)
+        && (!drowsyTick || row.className !== magicalSleepClass)) return false;
   }
 
   // Poison may invoke Char.damage() on LifeLink targets. The caller must supply
