@@ -1408,6 +1408,34 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   lifeLinkMobDamageEvents,
                   secondaryMobPayload!.deltas.filter((delta: any) => Number(delta.hpAfter) === 0)
                     .map((delta: any) => Number(delta.actorId)));
+              if (!validHeroBuffTick) {
+                // Return the first failed authoritative precondition instead of collapsing every
+                // rejected native Buff result into INVALID_ACTION. These codes are useful to a
+                // client deciding whether it can safely continue or must request a full resync.
+                actionErrorCode = !playerRow ? "BUFF_TICK_PLAYER_MISSING"
+                  : !previousHeroState || !beforeHeroState || !afterHeroState ? "BUFF_TICK_HERO_STATE_MISSING"
+                    : String(playerRow.state) !== "ALIVE" ? "BUFF_TICK_HERO_NOT_ALIVE"
+                      : Number(previousHeroState.hp) !== Number(playerRow.hp)
+                        || Number(previousHeroState.ht) !== Number(playerRow.ht)
+                        || Number(previousHeroState.pos) !== Number(playerRow.pos) ? "BUFF_TICK_HERO_PRE_STATE_MISMATCH"
+                        : !sequenceBaselineFresh ? "BUFF_TICK_STALE_SEQUENCE_BASELINE"
+                          : lifeLinkMobActorIds === null || lifeLinkMobEntityIds === null ? "BUFF_TICK_LIFELINK_IDENTITY_INVALID"
+                            : secondaryMobPayload === null ? "BUFF_TICK_MOB_DELTA_INVALID"
+                              : !lifeLinkMobEvidenceValid ? "BUFF_TICK_MOB_EVIDENCE_INVALID"
+                                : !secondaryMobRowsMatch ? "BUFF_TICK_MOB_PRE_STATE_MISMATCH"
+                                  : !secondaryLootValid ? "BUFF_TICK_LOOT_INVALID"
+                                    : !secondaryMobAuthority ? "BUFF_TICK_MOB_AUTHORITY_REQUIRED"
+                                      : !secondaryRewardsUnclaimed ? "BUFF_TICK_REWARD_ALREADY_CLAIMED"
+                                        : !hasCompleteNativeLevelSnapshot(levelSnapshot) ? "BUFF_TICK_LEVEL_SNAPSHOT_INVALID"
+                                          : Number(levelSnapshot.depth) !== this.currentDepth
+                                            || Number(levelSnapshot.branch) !== 0 || typeof levelSnapshot.locked !== "boolean"
+                                            ? "BUFF_TICK_LEVEL_CONTEXT_INVALID"
+                                            : !isValidNativeHeroStateJson(payload.heroStateJson, {
+                                                hp: Number(afterHeroState.hp), ht: Number(playerRow.ht),
+                                                pos: Number(playerRow.pos), shielding: Number(afterHeroState.shielding)
+                                              }) ? "BUFF_TICK_HERO_RESULT_INVALID"
+                                              : "BUFF_TICK_NATIVE_TRANSITION_INVALID";
+              }
               if (validHeroBuffTick) {
                 if (secondaryMobPayload!.deltas.length > 0) {
                   const deadEntityIds: string[] = [];
