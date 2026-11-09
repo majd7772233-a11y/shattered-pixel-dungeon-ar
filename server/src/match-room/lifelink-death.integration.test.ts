@@ -731,6 +731,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(ws.send).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
     expect(fixture.room.broadcastWithFOV).toHaveBeenCalledTimes(1);
+    expect(fixture.room.broadcastWithFOV.mock.calls[0][3]).toBe(ws);
     expect(order).toEqual(["accepted", "broadcast"]);
     expect(fixture.sql.events).toHaveLength(1);
     expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
