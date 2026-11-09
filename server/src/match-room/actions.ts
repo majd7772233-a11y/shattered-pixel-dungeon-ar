@@ -1551,7 +1551,6 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 // Legacy evidence path for a non-publisher peer that cannot author shared Mob state.
                 // It accepts only already-committed same-sender Mob damage and never writes Mob rows.
                 // Enter the proof path optimistically; every malformed/unrelated event or
- every malformed/unrelated event or
                 // failed reward contract below explicitly flips this back to false.
                 poisonDeathEvidenceValid = true;
                 const latestHeroBuffRow = this.sql.exec(

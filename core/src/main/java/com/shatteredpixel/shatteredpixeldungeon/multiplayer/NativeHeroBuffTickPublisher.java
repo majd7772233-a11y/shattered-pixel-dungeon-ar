@@ -250,19 +250,31 @@ public final class NativeHeroBuffTickPublisher {
 
     /** Finds the matching close brace while ignoring braces inside JSON strings. */
     private static int findObjectEnd(String value) {
-        boolean inString = false, escaped = false;
+        if (value == null || value.isEmpty() || value.charAt(0) != '{') return -1;
+        boolean inString = false;
+        boolean escaped = false;
         int depth = 0;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (inString) {
-                if (escaped) escaped = false;
-                else if (c == '\\') escaped = true;
-                else if (c == '\\') escaped = true;
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
                 continue;
             }
-            if (c == '"') inString = true;
-                else if (c == '\\') escaped = true;
-                else if (c == '\\') escaped = true;
+            if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) return i;
+                if (depth < 0) return -1;
+            }
         }
         return -1;
     }
