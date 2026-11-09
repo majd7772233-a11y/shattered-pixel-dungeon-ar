@@ -194,13 +194,8 @@ public class NativeCombatRuntimeIntegrationTest {
         for (NetworkMessage message : transport.sent) {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
-        Assert.assertEquals("Mob.damage publishes its native result before the Hero Buff summary", 2, actions.size());
-        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
-        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
-        Assert.assertNotNull(mobData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
-                mobData.getString("sourceClass", ""));
-        NetworkMessage action = actions.get(1);
+        Assert.assertEquals("Poison and all of its native LifeLink Mob deltas share one ACTION", 1, actions.size());
+        NetworkMessage action = actions.get(0);
         Assert.assertNotNull("The completed native Poison tick is published after the Mob result", action);
         JsonValue payload = new JsonReader().parse(action.payloadJson);
         JsonValue data = payload == null ? null : payload.get("data");
@@ -260,18 +255,16 @@ public class NativeCombatRuntimeIntegrationTest {
         for (NetworkMessage message : transport.sent) {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
-        Assert.assertEquals("Death during periodic damage emits Mob then Hero events, never a late Buff tick",
-                2, actions.size());
+        Assert.assertEquals("Lethal Poison and its linked Mob death are one atomic ACTION with no late Buff tick",
+                1, actions.size());
 
-        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
-        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
-        Assert.assertNotNull(mobData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
-                mobData.getString("sourceClass", ""));
-        Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
-        Assert.assertEquals("linked-dead-native-mob-hero-0001", mobData.getString("entityId", ""));
-
-        JsonValue heroAction = new JsonReader().parse(actions.get(1).payloadJson);
+        JsonValue heroAction = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue secondary = new JsonReader().parse(heroAction.getString("data", "").getString("secondaryMobDeltas", ""));
+        Assert.assertNotNull("The lethal Hero result carries the linked Mob batch", secondary);
+        Assert.assertEquals(1, secondary.get("deltas").size);
+        Assert.assertEquals("linked-dead-native-mob-hero-0001",
+                secondary.get("deltas").get(0).getString("entityId", ""));
+        Assert.assertEquals(0, secondary.get("deltas").get(0).getInt("hpAfter", -1));
         JsonValue heroData = heroAction == null ? null : heroAction.get("data");
         Assert.assertNotNull(heroData);
         Assert.assertEquals("ENVIRONMENT", heroData.getString("sourceType", ""));
@@ -344,21 +337,8 @@ public class NativeCombatRuntimeIntegrationTest {
         for (NetworkMessage message : transport.sent) {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
-        Assert.assertEquals("Each native Mob death is committed before one Hero Buff summary", 3, actions.size());
-        java.util.Set<String> committedTargets = new java.util.HashSet<>();
-        for (int i = 0; i < 2; i++) {
-            JsonValue mobAction = new JsonReader().parse(actions.get(i).payloadJson);
-            JsonValue mobData = mobAction == null ? null : mobAction.get("data");
-            Assert.assertNotNull(mobData);
-            Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
-                    mobData.getString("sourceClass", ""));
-            Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
-            committedTargets.add(mobData.getString("entityId", ""));
-        }
-        Assert.assertEquals(new java.util.HashSet<>(Arrays.asList(
-                "linked-dead-native-mob-0002", "linked-dead-native-mob-0003")), committedTargets);
-
-        JsonValue heroAction = new JsonReader().parse(actions.get(2).payloadJson);
+        Assert.assertEquals("Both linked Mob deaths and the Hero tick are sent in one ACTION", 1, actions.size());
+        JsonValue heroAction = new JsonReader().parse(actions.get(0).payloadJson);
         JsonValue heroData = heroAction == null ? null : heroAction.get("data");
         Assert.assertNotNull(heroData);
         Assert.assertEquals("BUFF_TICK", heroData.getString("sourceType", ""));
@@ -376,8 +356,9 @@ public class NativeCombatRuntimeIntegrationTest {
                     delta.getString("serializedBundleAfter", ""));
             deltaTargets.add(delta.getString("entityId", ""));
         }
-        Assert.assertEquals(committedTargets, deltaTargets);
-        Assert.assertTrue("The multi-death correlation carries the final combined heap snapshot",
+        Assert.assertEquals(new java.util.HashSet<>(Arrays.asList(
+                "linked-dead-native-mob-0002", "linked-dead-native-mob-0003")), deltaTargets);
+        Assert.assertTrue("The multi-death batch carries the final combined heap snapshot",
                 secondary.getString("heaps", "").length() > 0);
     }
 
@@ -441,17 +422,8 @@ public class NativeCombatRuntimeIntegrationTest {
         for (NetworkMessage message : transport.sent) {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
-        Assert.assertEquals("The committed Mob death must precede the Hero Buff summary", 2, actions.size());
-        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
-        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
-        Assert.assertNotNull(mobData);
-        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
-                mobData.getString("sourceClass", ""));
-        Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
-        Assert.assertTrue("The native Mob death event carries the post-death loot snapshot",
-                mobData.get("heaps") != null);
-
-        JsonValue buffAction = new JsonReader().parse(actions.get(1).payloadJson);
+        Assert.assertEquals("The linked Mob death is included in the Hero Buff transaction", 1, actions.size());
+        JsonValue buffAction = new JsonReader().parse(actions.get(0).payloadJson);
         JsonValue buffData = buffAction == null ? null : buffAction.get("data");
         Assert.assertNotNull(buffData);
         JsonValue secondary = new JsonReader().parse(buffData.getString("secondaryMobDeltas", ""));
