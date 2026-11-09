@@ -36,9 +36,11 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest tested implementation SHA: `e85b1768b6b42cb9165fd6e344bd9a1fa1f755e9`; exact-head [CI run 42675202175](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42675202175) passed Backend TypeScript build/624 Vitest executions and Android JVM tests/Debug APK compilation. The subsequent documentation commit synchronizes the new non-publisher test coverage; Phase 9 remains open.
+Latest tested implementation SHA: `3f867aa95d5c44119c70e6cee251c08043bef42e`; exact-head [CI run 42676272240](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42676272240) passed Backend TypeScript build/626 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
 
-The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with both changed and empty Mob deltas. Android coverage verifies that an unsupported non-publisher LifeLink tick leaves shared Mob HP unchanged and requests RESYNC after server rejection.
+The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, and rollback through the real WebSocket message handler.
+
+A transaction exception now returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. The new MatchRoom integration regression verifies rollback and error correlation after a forced final event-insert failure.
 
 A non-publisher cannot run the shared Mob portion of Poison LifeLink because its local Actor ID is not an authoritative shared identity. Its Hero tick is rejected even if it sends an empty Mob delta; the client requests a fresh snapshot. The current test checks the request, not end-to-end snapshot application. Actual delegated cross-client LifeLink support remains open.
 

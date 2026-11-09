@@ -144,6 +144,11 @@ Publisher Poison LifeLink Mob callbacks are not committed as separate `SYNC_MOB_
 
 The accepted request ID and sequence belong to the whole batch. A retry with the same request replays its stored result; a new request ID cannot reuse the old Mob pre-state or the previous Hero Buff sequence baseline. The integration tests cover fresh-ID stale replay rejection and rollback after forced final event insertion failure.
 
+
+### 8.2 Correlated rejection after transaction rollback
+
+When a Poison LifeLink transaction throws, `MatchRoomActions.handleAction()` restores its in-memory sequence/world-time checkpoint and rethrows so SQLite can roll the transaction back. `MatchRoomMessages.webSocketMessage()` now preserves the parsed request ID and includes it plus the current sequence in the ERROR response. Android can match that response to its pending `SYNC_HERO_STATE`, remove the pending entry and request RESYNC. The integration test invokes the actual WebSocket handler, forces the final event insert to fail, and checks that the SQL state was rolled back and the ERROR was correlated. Malformed frames that fail before a request ID can be parsed necessarily have no request ID in their error response.
+
 This evidence is still based on a deterministic in-memory SQL adapter. Real Durable Object SQLite commit/rollback behavior, crash/restart recovery and live Worker behavior remain unverified. Do not generalize the atomicity guarantee to actions outside the specific Poison LifeLink wrapper.
 
 
