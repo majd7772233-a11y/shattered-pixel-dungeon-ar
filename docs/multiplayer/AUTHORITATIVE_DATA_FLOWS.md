@@ -88,6 +88,8 @@ The Worker/MatchRoom handler validates the batch against server-held state befor
 
 Non-publishers cannot author linked Mob deltas from their local `LifeLink.object` Actor IDs. The non-publisher integration test verifies that the server returns `BUFF_TICK_MOB_AUTHORITY_REQUIRED` and leaves both sides untouched. Authority handoff and RemoteHero/player LifeLink are still separate Phase 9 work.
 
+On a non-publisher, the owner's local Poison actor may still predict the Hero-side split damage, while `Mob.damage()` correctly refuses the shared Mob portion. The client sends the Hero tick only for server validation; because the sender's local Actor IDs cannot authorize the shared LifeLink, MatchRoom rejects the request with `BUFF_TICK_MOB_AUTHORITY_REQUIRED` even when the delta list is empty. `MultiplayerManager` recognizes the rejected `SYNC_HERO_STATE` and requests a full snapshot. This is a fail-closed recovery path, not supported delegated LifeLink gameplay; an end-to-end remote Hero/Mob execution path remains open.
+
 ### Atomic MatchRoom commit
 
 The public `MatchRoom.handleAction()` wrapper recognizes only the native Poison LifeLink batch shapes: a Poison Hero `BUFF_TICK` carrying `secondaryMobDeltas`, or the corresponding lethal Poison environment-death action carrying the Poison pre-state and Mob batch. It runs the inner handler once inside `state.storage.transactionSync(...)`. The transaction includes Mob SQL updates/deletions and the level snapshot/heap, Hero state and player HP/state, stable Mob reward claims, the request replay record and final event, sequence and world-time advancement.
@@ -104,7 +106,7 @@ The server builds validation-only synthetic Mob damage evidence from the already
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, and rollback when the final event insert fails. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `644c221efd7996f8efe4a3be337ad0eafa612d4d` passed [run 42662905179](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179): TypeScript build and 622 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this execution count is not a count of unique scenarios.
+Exact-head CI on `e85b1768b6b42cb9165fd6e344bd9a1fa1f755e9` passed [run 42675202175](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179): TypeScript build and 624 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this execution count is not a count of unique scenarios.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
 
