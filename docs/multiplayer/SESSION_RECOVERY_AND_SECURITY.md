@@ -140,16 +140,16 @@ Review whether database mutation, sequence increment, events insert, processed_a
 
 ### 8.1 Poison LifeLink batch rollback and replay
 
-Publisher Poison LifeLink Mob callbacks are not committed as separate `SYNC_MOB_STATE` requests. The Mob deltas travel in the same Hero Buff tick or lethal Hero environment-death request. For these two payload shapes only, MatchRoom uses `state.storage.transactionSync` so a partial Mob write cannot survive if Hero validation, reward insertion, event insertion or deduplication fails. The in-memory handler checkpoint restores sequence/world time when the transaction throws.
+Publisher Poison LifeLink Mob callbacks are not committed as separate `SYNC_MOB_STATE` requests. The Mob deltas travel in the same Hero Buff tick or lethal Hero environment-death request. MatchRoom now uses `state.storage.transactionSync` for every source-shaped native Hero `BUFF_TICK`, plus the lethal Poison LifeLink environment-death request, so Hero/player state, the event and sequence cannot split; linked Mob/loot/reward state is included when present. The in-memory handler checkpoint restores sequence/world time when the transaction throws.
 
 The accepted request ID and sequence belong to the whole batch. A retry with the same request replays its stored result; a new request ID cannot reuse the old Mob pre-state or the previous Hero Buff sequence baseline. The integration tests cover fresh-ID stale replay rejection and rollback after forced final event insertion failure.
 
 
 ### 8.2 Correlated rejection after transaction rollback
 
-When a Poison LifeLink transaction throws, `MatchRoomActions.handleAction()` restores its in-memory sequence/world-time checkpoint and rethrows so SQLite can roll the transaction back. `MatchRoomMessages.webSocketMessage()` now preserves the parsed request ID and includes it plus the current sequence in the ERROR response. Android can match that response to its pending `SYNC_HERO_STATE`, remove the pending entry and request RESYNC. The integration test invokes the actual WebSocket handler, forces the final event insert to fail, and checks that the SQL state was rolled back and the ERROR was correlated. Malformed frames that fail before a request ID can be parsed necessarily have no request ID in their error response. The same transaction boundary now defers `ACTION_ACCEPTED` and event broadcasts until commit: a later validation/hook failure cannot deliver a success event for rolled-back state. For FOV delivery, the original sender socket is used as the exclusion target after the transactional proxy is removed.
+When a native Hero Buff tick or lethal Poison LifeLink transaction throws, `MatchRoomActions.handleAction()` restores its in-memory sequence/world-time checkpoint and rethrows so SQLite can roll the transaction back. `MatchRoomMessages.webSocketMessage()` now preserves the parsed request ID and includes it plus the current sequence in the ERROR response. Android can match that response to its pending `SYNC_HERO_STATE`, remove the pending entry and request RESYNC. The integration test invokes the actual WebSocket handler, forces the final event insert to fail, and checks that the SQL state was rolled back and the ERROR was correlated. Malformed frames that fail before a request ID can be parsed necessarily have no request ID in their error response. The same transaction boundary now defers `ACTION_ACCEPTED` and event broadcasts until commit: a later validation/hook failure cannot deliver a success event for rolled-back state. For FOV delivery, the original sender socket is used as the exclusion target after the transactional proxy is removed.
 
-This evidence is still based on a deterministic in-memory SQL adapter. Real Durable Object SQLite commit/rollback behavior, crash/restart recovery and live Worker behavior remain unverified. Do not generalize the atomicity guarantee to actions outside the specific Poison LifeLink wrapper.
+This evidence is still based on a deterministic in-memory SQL adapter. Real Durable Object SQLite commit/rollback behavior, crash/restart recovery and live Worker behavior remain unverified. Do not generalize the atomicity guarantee to actions outside source-shaped native Hero `BUFF_TICK` requests and the special lethal Poison LifeLink environment-death wrapper.
 
 
 
@@ -157,6 +157,8 @@ This evidence is still based on a deterministic in-memory SQL adapter. Real Dura
 
 A Poison tick may consume Hero Barrier shielding through the native `ShieldBuff.processDamage()` path without changing Hero HP. The authoritative validator permits only the exact Barrier row shield loss (or detach at zero) when the aggregate Hero shield decreases by the same amount. It leaves `partial_lost_shield` and other Buff state immutable, rejecting excess or unaccounted shield loss. Hunger remains distinct because native starvation damage bypasses shields. Backend and Java tests cover full absorption/detachment, partial absorption and forged shield/partial-state rejection.
 The decay accumulator is checked using the exact Java Bundle key `partial_lost_shield`; the validator does not accept a synthetic camelCase field name.
+Healing is covered by the same transaction boundary even though it has no linked Mob delta: the integration test forces the final event insert to fail after the Hero HP and Healing Buff updates, and verifies that both the player HP row and stored Hero Buff state roll back with the event and sequence. The wrapper broadens atomicity only; source-specific validation remains strict.
+
 
 ### 8.4 Poison shield priority order and lower-tier bypass
 
