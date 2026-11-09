@@ -932,10 +932,20 @@ export function parseAndValidateNativeLifeLinkMobDamageEvidence(
     }
     if (seen.size!==nested.size) return null;
     if (delta.hpAfter===0) {
+      const rewardClassName=String(event.nativeMobRewardClassName || "");
       if (delta.serializedBundleAfter!==delta.serializedBundleBefore || delta.buffsAfter!=="[]"
           || delta.shieldAfter!==0 || event.targetMobBundleAfter!==null
           || currentByActor.has(actorId) || currentByEntity.has(entityId)
-          || !Array.isArray(event.heaps)) return null;
+          || !Array.isArray(event.heaps)
+          || typeof event.nativeMobRewardEligible!=="boolean"
+          || !Number.isInteger(event.nativeMobRewardExp) || event.nativeMobRewardExp<0 || event.nativeMobRewardExp>100000
+          || !Number.isInteger(event.nativeMobRewardMaxLevel) || event.nativeMobRewardMaxLevel < -1
+            || event.nativeMobRewardMaxLevel > 1000
+          || !Number.isFinite(event.nativeMobRewardSpawningWeight)
+          || event.nativeMobRewardSpawningWeight < 0 || event.nativeMobRewardSpawningWeight > 10000
+          || ![0.5,1,3,5].includes(Number(event.nativeMobRewardMonkEnergy))
+          || rewardClassName.length<1 || rewardClassName.length>240
+          || rewardClassName!==String(beforeMob.__className || "")) return null;
       deathEvents.push({sequence:match.sequence,heaps:event.heaps});
     } else {
       const current=currentByActor.get(actorId);

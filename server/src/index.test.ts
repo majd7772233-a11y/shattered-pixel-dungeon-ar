@@ -5727,6 +5727,8 @@ describe("Native Poison LifeLink Mob event correlation", () => {
       targetMobBundleAfter:dead?null:afterEvidence,
       nativeActorId:7,nativeMobBundleBefore:before,
       nativeMobBundleAfterEvidence:afterEvidence,
+      nativeMobRewardClassName:ratClass,nativeMobRewardEligible:true,nativeMobRewardExp:0,
+      nativeMobRewardMaxLevel:29,nativeMobRewardSpawningWeight:1,nativeMobRewardMonkEnergy:1,
       sourceType:"ENVIRONMENT",sourceClass:linkClass,engineResolved:true,
       ...(dead?{heaps}:{})
     };
@@ -5782,6 +5784,9 @@ describe("Native Poison LifeLink Mob event correlation", () => {
     expect(parse({complete:true,deltas:[{...sample.payload.deltas[0],serializedBundleBefore:mobBundle(8,20)}]})).toBeNull();
     expect(parse(sample.payload,[{...sample.event,payload:JSON.stringify({
       ...sample.eventPayload,nativeMobBundleBefore:mobBundle(8,20)
+    })}])).toBeNull();
+    expect(parse(sample.payload,[{...sample.event,payload:JSON.stringify({
+      ...sample.eventPayload,nativeMobRewardExp:999,nativeMobRewardClassName:"forged.Mob"
     })}])).toBeNull();
   });
 

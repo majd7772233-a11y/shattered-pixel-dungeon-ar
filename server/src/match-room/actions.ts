@@ -1209,6 +1209,12 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 nativeActorId: Number(savedMob.mobId),
                 nativeMobBundleBefore,
                 nativeMobBundleAfterEvidence: String(data.serializedBundleAfter),
+                nativeMobRewardClassName: String(savedMob.rewardClassName || ""),
+                nativeMobRewardEligible: savedMob.rewardEligible === true,
+                nativeMobRewardExp: Number(savedMob.rewardExp),
+                nativeMobRewardMaxLevel: Number(savedMob.rewardMaxLevel),
+                nativeMobRewardSpawningWeight: Number(savedMob.rewardSpawningWeight),
+                nativeMobRewardMonkEnergy: Number(savedMob.rewardMonkEnergy),
                 sourceType: "ENVIRONMENT", sourceClass: data.sourceClass,
                 engineResolved: true, ...(deadPositions.length > 0 ? { heaps: data.heaps } : {})
               };

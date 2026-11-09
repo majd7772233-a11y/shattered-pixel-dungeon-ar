@@ -469,6 +469,20 @@ export function hasCompleteNativeLevelSnapshot(level: any): boolean {
   const entityIds = new Set<string>();
   for (const mob of level.mobs) {
     const entityId = mob?.entityId;
+    const rewardKeys = ["rewardClassName","rewardEligible","rewardExp","rewardMaxLevel",
+      "rewardSpawningWeight","rewardMonkEnergy"];
+    const hasRewardContract = rewardKeys.some(key=>mob?.[key] !== undefined);
+    if (hasRewardContract) {
+      const nativeMob = parseNativeBundleObject(mob?.serializedBundle)?.mob;
+      const rewardClassName = String(mob?.rewardClassName || "");
+      if (typeof mob?.rewardEligible !== "boolean"
+          || !Number.isInteger(mob?.rewardExp) || mob.rewardExp < 0 || mob.rewardExp > 100000
+          || !Number.isInteger(mob?.rewardMaxLevel) || mob.rewardMaxLevel < -1 || mob.rewardMaxLevel > 1000
+          || !Number.isFinite(mob?.rewardSpawningWeight) || mob.rewardSpawningWeight < 0 || mob.rewardSpawningWeight > 10000
+          || ![0.5,1,3,5].includes(Number(mob?.rewardMonkEnergy))
+          || rewardClassName.length < 1 || rewardClassName.length > 240
+          || rewardClassName !== String(nativeMob?.__className || "")) return false;
+    }
     if (!Number.isInteger(mob?.mobId) || mob.mobId < 1 || mobIds.has(mob.mobId)
       || !inBounds(mob?.pos) || mobPositions.has(mob.pos)
       || !Number.isInteger(mob?.hp) || mob.hp < 0
