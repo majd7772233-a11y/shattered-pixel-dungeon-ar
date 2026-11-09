@@ -5956,26 +5956,23 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
       fixture.before,fixture.after,[],[],10,levelSnapshot)).toBeNull();
 
-    const noLinkHero=makeHero({exp:0,energy:null});
-    noLinkHero.before.buffCount=1;
-    noLinkHero.before.buff_0=noLinkHero.before.buff_0;
-    noLinkHero.before.buffCooldown_0=0;
-    delete noLinkHero.before.buff_1;
-    delete noLinkHero.before.buffCooldown_1;
-    noLinkHero.after.buffCount=1;
-    noLinkHero.after.buff_0=noLinkHero.before.buff_0;
-    noLinkHero.after.buffCooldown_0=0;
-    noLinkHero.after.hp=0;
-    noLinkHero.after.combatBundle=JSON.stringify({
-      ...JSON.parse(noLinkHero.after.combatBundle),HP:0,HT:20,pos:9,
-      exp:JSON.parse(noLinkHero.before.combatBundle).exp
+    const liveLinkHero=makeHero({exp:0,energy:null});
+    liveLinkHero.after.hp=0;
+    liveLinkHero.after.combatBundle=JSON.stringify({
+      ...JSON.parse(liveLinkHero.after.combatBundle),HP:0,HT:20,pos:9
     });
+    // No linked Mob died: the LifeLink Buff must remain present and unchanged.
+    liveLinkHero.after.buffCount=2;
+    liveLinkHero.after.buff_0=liveLinkHero.before.buff_0;
+    liveLinkHero.after.buffCooldown_0=liveLinkHero.before.buffCooldown_0;
+    liveLinkHero.after.buff_1=liveLinkHero.before.buff_1;
+    liveLinkHero.after.buffCooldown_1=liveLinkHero.before.buffCooldown_1;
     expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
-      noLinkHero.before,noLinkHero.after,[],[],10,levelSnapshot))
+      liveLinkHero.before,liveLinkHero.after,[],[],10,levelSnapshot))
       .toEqual({allowExperienceChange:false,allowMonkEnergyChange:false});
     expect(mergeNativeLifeLinkDeathExperienceBundle(
-      noLinkHero.before.combatBundle,JSON.stringify({
-        ...JSON.parse(noLinkHero.after.combatBundle),exp:1
+      liveLinkHero.before.combatBundle,JSON.stringify({
+        ...JSON.parse(liveLinkHero.after.combatBundle),exp:1
       }),false)).toBeNull();
   });
 
