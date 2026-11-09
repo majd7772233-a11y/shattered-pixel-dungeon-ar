@@ -256,6 +256,53 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativePoisonConsumesPriorityTwoAndOneShieldsBeforeBarrier() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-all-shield-priorities", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-all-shield-priorities-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        hero.HP = 10;
+        com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal.WarriorShield warrior =
+                Buff.affect(hero, com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal.WarriorShield.class);
+        warrior.setShield(1);
+        Blocking.BlockBuff blocking = Buff.affect(hero, Blocking.BlockBuff.class);
+        blocking.setShield(1);
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.cleric.AscendedForm.AscendBuff ascend =
+                Buff.affect(hero, com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.cleric.AscendedForm.AscendBuff.class);
+        ascend.setShield(1);
+        com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.DivineIntervention.DivineShield divine =
+                Buff.affect(hero, com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.DivineIntervention.DivineShield.class);
+        divine.setShield(1);
+        Barrier barrier = Buff.affect(hero, Barrier.class);
+        barrier.setShield(2);
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(9f); // Native Poison damage is (int)(9 / 3) + 1 = 4.
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue(poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertEquals("All higher-priority shields absorb the four-point hit before Barrier", 10, hero.HP);
+        Assert.assertEquals("The lower-priority Barrier remains untouched", 2, barrier.shielding());
+        Assert.assertEquals(2, hero.shielding());
+        Assert.assertEquals("WarriorShield and AscendBuff remain attached after reaching zero", 0, warrior.shielding());
+        Assert.assertEquals(0, ascend.shielding());
+        Assert.assertNull("Blocking.BlockBuff detaches at zero", hero.buff(Blocking.BlockBuff.class));
+        Assert.assertNull("DivineShield detaches at zero", hero.buff(
+                com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.DivineIntervention.DivineShield.class));
+        Assert.assertFalse("A complete priority-ordered native result must not request resync",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertTrue("A valid multi-priority result must be published as one native Poison action",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.ACTION));
+    }
+
+    @Test
     public void nativePoisonHeroBuffTickPublishesLifeLinkedMobDamage() {
         TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();

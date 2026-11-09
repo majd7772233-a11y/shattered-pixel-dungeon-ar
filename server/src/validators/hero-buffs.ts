@@ -141,6 +141,8 @@ function nativeVialOfBloodMaxHealPerTurn(heroValue: any): number | null {
 const NATIVE_WAND_CHARGER = "com.shatteredpixel.shatteredpixeldungeon.items.wands.Wand$Charger";
 const NATIVE_BLOCK_BUFF = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking$BlockBuff";
 const NATIVE_WARRIOR_SHIELD = "com.shatteredpixel.shatteredpixeldungeon.items.BrokenSeal$WarriorShield";
+const NATIVE_ASCEND_BUFF = "com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.cleric.AscendedForm$AscendBuff";
+const NATIVE_DIVINE_SHIELD = "com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.DivineIntervention$DivineShield";
 const NATIVE_BERSERK_BUFF = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Berserk";
 const NATIVE_WAND_PREFIX = "com.shatteredpixel.shatteredpixeldungeon.items.wands.";
 const NATIVE_RING_OF_ENERGY = "com.shatteredpixel.shatteredpixeldungeon.items.rings.RingOfEnergy";
@@ -858,13 +860,25 @@ function isValidNativeWarriorShieldDamageActivation(
   return hpBefore <= halfHp || hpBefore + shieldBefore - damage <= halfHp;
 }
 
+function nativePoisonShieldPriority(className: string): number | null {
+  if (className === NATIVE_WARRIOR_SHIELD || className === NATIVE_BLOCK_BUFF) return 2;
+  if (className === NATIVE_ASCEND_BUFF || className === NATIVE_DIVINE_SHIELD) return 1;
+  if (className === NATIVE_BARRIER) return 0;
+  return null;
+}
+
+function nativePoisonShieldDetachesAtZero(className: string): boolean {
+  return className === NATIVE_BARRIER || className === NATIVE_BLOCK_BUFF
+    || className === NATIVE_DIVINE_SHIELD;
+}
+
 function nativePoisonShieldDamageRowLoss(
   before: NativeHeroBuffTickRow,
   after: NativeHeroBuffTickRow | undefined
 ): {oldShield:number,newShield:number} | null {
   const className = before.className;
-  const detachesAtZero = className === NATIVE_BARRIER || className === NATIVE_BLOCK_BUFF;
-  if (!detachesAtZero && className !== NATIVE_WARRIOR_SHIELD) return null;
+  const detachesAtZero = nativePoisonShieldDetachesAtZero(className);
+  if (nativePoisonShieldPriority(className) === null) return null;
 
   const oldShield = Number(before.data?.shielding);
   if (!Number.isInteger(oldShield) || oldShield < 1 || oldShield > 100000) return null;
@@ -875,7 +889,15 @@ function nativePoisonShieldDamageRowLoss(
   } else if (className === NATIVE_BLOCK_BUFF) {
     const left = Number(before.data?.left);
     if (!Number.isFinite(left) || left < 0 || left > 5.001) return null;
-  } else {
+  } else if (className === NATIVE_ASCEND_BUFF) {
+    const left = Number(before.data?.left);
+    const spellCasts = Number(before.data?.spell_casts);
+    const flashCasts = Number(before.data?.flash_casts);
+    if (!Number.isInteger(left) || left < 0 || left > 100000
+        || !Number.isInteger(spellCasts) || spellCasts < 0 || spellCasts > 100000
+        || !Number.isInteger(flashCasts) || flashCasts < 0 || flashCasts > 100000
+        || typeof before.data?.divine_intervention_cast !== "boolean") return null;
+  } else if (className === NATIVE_WARRIOR_SHIELD) {
     const cooldown = Number(before.data?.cooldown);
     const turnsSinceEnemies = Number(before.data?.turns_since_enemies);
     const initialShield = Number(before.data?.initial_shield);
@@ -907,11 +929,62 @@ function nativePoisonShieldDamageRowLoss(
     }
     if (!sameNativeItemValue(oldFields,newFields)) return null;
   } else if (!detachesAtZero) {
-    // WarriorShield explicitly survives at zero; Barrier and BlockBuff detach there.
+    // WarriorShield and AscendBuff persist at zero; Barrier, BlockBuff and DivineShield detach.
     return null;
   }
 
   return {oldShield,newShield};
+}
+
+/**
+ * Mirrors ShieldBuff.processDamage(): consume the complete higher-priority tiers before
+ * allowing any damage to reach a lower-priority shield. Equal-priority shields are checked
+ * as one tier because Java's stable ordering may depend on the native actor attachment order.
+ */
+function isValidNativePoisonShieldPriorityFlow(
+  beforeRows: NativeHeroBuffTickRow[],
+  afterRows: NativeHeroBuffTickRow[],
+  beforeState: any,
+  afterState: any,
+  warriorShieldActivated: boolean
+): boolean {
+  const addedWarriorShield = warriorShieldActivated
+    ? nativeWarriorShieldDamageMax(beforeState) : 0;
+  if (addedWarriorShield === null || !Number.isInteger(addedWarriorShield)
+      || addedWarriorShield < 0 || addedWarriorShield > 100000) return false;
+
+  const hpBefore = Number(beforeState?.hp), hpAfter = Number(afterState?.hp);
+  const aggregateBefore = Number(beforeState?.shielding), aggregateAfter = Number(afterState?.shielding);
+  const incomingDamage = hpBefore + aggregateBefore + addedWarriorShield - hpAfter - aggregateAfter;
+  if (!Number.isInteger(incomingDamage) || incomingDamage < 0 || incomingDamage > 100000) return false;
+
+  const afterByKey = new Map(afterRows.map(row=>[row.className+"#"+row.id,row]));
+  let remainingDamage = incomingDamage;
+  for (const priority of [2,1,0]) {
+    let available = 0, consumed = 0;
+    for (const row of beforeRows) {
+      if (nativePoisonShieldPriority(row.className) !== priority) continue;
+      const oldShield = Number(row.data?.shielding);
+      if (!Number.isInteger(oldShield) || oldShield < 0 || oldShield > 100000) return false;
+      const isActivatedWarrior = warriorShieldActivated && row.className === NATIVE_WARRIOR_SHIELD;
+      const effectiveShield = oldShield + (isActivatedWarrior ? addedWarriorShield : 0);
+      const after = afterByKey.get(row.className+"#"+row.id);
+      let newShield = 0;
+      if (after) {
+        newShield = Number(after.data?.shielding);
+        if (!Number.isInteger(newShield) || newShield < 0 || newShield > effectiveShield
+            || (nativePoisonShieldDetachesAtZero(row.className) && newShield === 0)) return false;
+      } else if (!nativePoisonShieldDetachesAtZero(row.className)) {
+        return false;
+      }
+      available += effectiveShield;
+      consumed += effectiveShield-newShield;
+    }
+    const expected = Math.min(remainingDamage,available);
+    if (consumed !== expected) return false;
+    remainingDamage -= expected;
+  }
+  return true;
 }
 
 function isValidNativeDamageRecoveryBuffTransition(
@@ -1173,6 +1246,10 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     ? Number(warriorShieldAfter?.data.shielding)-Number(warriorShieldBefore?.data.shielding) : 0;
   if (buffClass===nativePoisonClass
       && shieldBefore-shieldAfter !== nativePoisonShieldLoss-activatedWarriorShieldNetChange) return false;
+  if (buffClass===nativePoisonClass
+      && !isValidNativePoisonShieldPriorityFlow(
+        Array.from(beforeOtherRows.values()),Array.from(afterOtherRows.values()),
+        before.state,after.state,nativeWarriorShieldActivation)) return false;
   if (nativeDetachedLifeLinkActors.size!==nativeLifeLinkDeathActors.size
       || Array.from(nativeLifeLinkDeathActors).some(actorId=>!nativeDetachedLifeLinkActors.has(actorId))) return false;
   for (const [otherKey,row] of afterOtherRows) {

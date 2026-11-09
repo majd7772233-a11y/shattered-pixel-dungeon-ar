@@ -3241,6 +3241,64 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(after),tick(poison,44))).toBe(true);
 
+    // ShieldBuff.processDamage() consumes every priority-2 shield before Barrier (priority 0).
+    // This forged result spends WarriorShield + Barrier but leaves the equally high-priority
+    // Blocking shield intact. Aggregate HP/shield conservation alone would not detect the ordering violation.
+    const forgedHighPriorityBypass=stateWithBuff(poison,44,10,{left:5},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:1,buffCount:3,
+      buff_1:warriorRow(0),buffCooldown_1:0,
+      buff_2:blockRow(1),buffCooldown_2:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(forgedHighPriorityBypass),tick(poison,44))).toBe(false);
+
+    const ascendBuff="com.shatteredpixel.shatteredpixeldungeon.actors.hero.abilities.cleric.AscendedForm$AscendBuff";
+    const divineShield="com.shatteredpixel.shatteredpixeldungeon.actors.hero.spells.DivineIntervention$DivineShield";
+    const ascendRow=(shielding:number)=>JSON.stringify({buff:{
+      __className:ascendBuff,id:94,time:8,shielding,left:10,
+      spell_casts:0,flash_casts:0,divine_intervention_cast:false
+    }});
+    const divineRow=(shielding:number)=>JSON.stringify({buff:{
+      __className:divineShield,id:95,time:8,shielding
+    }});
+    const middlePrevious=stateWithBuff(poison,47,9,{left:6},{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:6,buffCount:6,
+      buff_1:warriorRow(1),buffCooldown_1:0,
+      buff_2:blockRow(1),buffCooldown_2:0,
+      buff_3:ascendRow(1),buffCooldown_3:0,
+      buff_4:divineRow(1),buffCooldown_4:0,
+      buff_5:barrierRow(2),buffCooldown_5:0
+    });
+    const middleBefore=stateWithBuff(poison,47,9,{left:6},{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:6,buffCount:6,
+      buff_1:warriorRow(1),buffCooldown_1:0,
+      buff_2:blockRow(1),buffCooldown_2:0,
+      buff_3:ascendRow(1),buffCooldown_3:0,
+      buff_4:divineRow(1),buffCooldown_4:0,
+      buff_5:barrierRow(2),buffCooldown_5:0
+    });
+    // Two priority-2 points and two priority-1 points are consumed before priority-0 Barrier.
+    // AscendBuff and WarriorShield remain attached at zero; BlockBuff and DivineShield detach.
+    const middleValid=stateWithBuff(poison,47,10,{left:5},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:2,buffCount:4,
+      buff_1:warriorRow(0),buffCooldown_1:0,
+      buff_2:ascendRow(0),buffCooldown_2:0,
+      buff_3:barrierRow(2),buffCooldown_3:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(middlePrevious),JSON.stringify(middleBefore),
+      JSON.stringify(middleValid),tick(poison,47))).toBe(true);
+
+    // Here priority 2 is depleted, but Barrier loses shield while both priority-1
+    // Cleric shields remain. That also contradicts the native descending-priority pipeline.
+    const forgedMiddlePriorityBypass=stateWithBuff(poison,47,10,{left:5},{
+      cooldown:1,buffCooldown_0:1,hp:10,shielding:2,buffCount:4,
+      buff_1:warriorRow(0),buffCooldown_1:0,
+      buff_2:ascendRow(1),buffCooldown_2:0,
+      buff_3:divineRow(1),buffCooldown_3:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(middlePrevious),JSON.stringify(middleBefore),
+      JSON.stringify(forgedMiddlePriorityBypass),tick(poison,47))).toBe(false);
+
     const forgedWarriorState=JSON.parse(JSON.stringify(after));
     forgedWarriorState.buff_1=warriorRow(0).replace('"cooldown":150','"cooldown":149');
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
