@@ -235,8 +235,10 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Validate native Monk base MonkEnergy gain and cap, and create the native MonkEnergy Buff with zero gain when Regeneration is disabled; reject Unencumbered Spirit and UnarmedAbilityTracker variants.
 - [x] Exercise a positive-EXP LifeLink Mob death through the real Java Poison/LifeLink runtime with a Monk Hero; assert native XP, energy, Mob removal, paired link detach and event ordering.
 - [ ] Validate level-up XP transitions, Hero.updateHT, talent/ability changes and item onHeroGainExp callbacks as one authoritative Hero transaction; currently rejected fail-closed.
-- [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
-- [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
-- [ ] Complete the remaining Phase 9 reconnect, expiry-boundary, simultaneous effect, consumable and detach-callback matrix.
-- [x] Exact-head CI on `b7d676bbc499d2ad79fc3df8e9bb9782c258dd2b`: [run 42613098751 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42613098751). Backend TypeScript build and 602 Vitest executions across six files passed; Android JVM tests and Debug APK compilation passed. This is not a deployed Worker or physical-device test.
+- [x] Native Java runtime: one Poison callback kills multiple linked Mobs and records one native reward path per death.
+- [x] Native Java runtime: the same Poison callback kills a linked Mob and then the one-HP local Hero; Mob `SYNC_MOB_STATE` precedes the Hero environment-death event, exactly two actions are emitted, and no late `BUFF_TICK` is published.
+- [x] Worker validator: lethal Poison with no linked Mob death still runs the complete Buff-transition check; LifeLink stays attached, XP/MonkEnergy stay fixed, and unrelated changes fail closed.
+- [ ] Add a Durable Object/MatchRoom integration test that executes the ordered multi-action death path and asserts SQL Mob rows, level snapshot, heaps, Hero state and reward claims atomically.
+- [x] Exact-head CI on `bacfecbe78bb4b425effde86390cf60cb750582c`: [run 42617329132 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42617329132). TypeScript build and 608 Vitest executions across six files passed (generated JS mirrors source cases); Android JVM tests and Debug APK compilation passed. This is not a deployed Worker or physical-device test.
+
 

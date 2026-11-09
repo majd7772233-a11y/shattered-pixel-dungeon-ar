@@ -84,11 +84,19 @@ For a linked Mob death, the later Hero validator correlates the same accepted ev
 
 For a Monk Hero, the validator also supports the exact base `MonkEnergy.gainEnergy(Mob)` reward and native energy cap when Unencumbered Spirit is absent and no UnarmedAbilityTracker is active. It uses the server-captured Mob reward class/properties to determine the gain and verifies the native Regeneration gate; when regeneration is disabled, the Buff may be created with zero added energy. Unencumbered Spirit multipliers and the tracker cap bypass remain fail-closed until their full native inputs and callbacks are represented.
 
-The Java runtime regression now kills a positive-EXP linked Rat while the Hero is a Monk and verifies the native XP and MonkEnergy results. Backend regressions cover exact XP, AscensionChallenge fallback, level-up rejection, Monk base/cap behavior, Regeneration-off creation, unsupported talent multipliers, and stale/forged/foreign reward evidence. Exact-head CI on `b7d676bbc499d2ad79fc3df8e9bb9782c258dd2b` passed [run 42613098751](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42613098751).
+The Java runtime regression now kills a positive-EXP linked Rat while the Hero is a Monk and verifies the native XP and MonkEnergy results. A second runtime regression confirms multiple linked Mob deaths in one Poison tick. Backend tests cover exact XP, AscensionChallenge fallback, level-up rejection, Monk base/cap behavior, Regeneration-off creation, unsupported talent multipliers, and stale/forged/foreign reward evidence.
 
-Hero death simultaneous with collateral Mob changes, multiple linked deaths in one tick, level-up/item callbacks, RemoteHero/player LifeLink, reconnect/expiry boundaries and remaining consumable/detach callback families are still open. No Worker deployment or physical-device multiplayer session has been performed.
+### Lethal Hero Poison after linked Mob damage in the same callback
 
-AI-only callbacks that do not produce the native SYNC_MOB_STATE event fail closed. RemoteHero/player LifeLink, cross-publisher Actor-ID mapping, reconnect gaps, and other unmodelled callback paths remain unsupported until they receive their own explicit identity and event contract. This is automated validation coverage, not proof of a deployed Worker or physical-device multiplayer session.
+The native scheduler can run `LifeLink` Mob damage from inside `Poison.act()`. If the linked Mob dies first and the Hero's own Poison damage is lethal later in that same callback, `Hero.damage()` emits the Hero environment-death `SYNC_HERO_STATE` immediately. Because the Hero is now dead, the publisher intentionally emits no later `BUFF_TICK`.
+
+The Worker uses the last accepted `HERO_BUFF_TICKED` sequence from the same sender as the baseline, then reads only later accepted same-sender `CHAR_DAMAGED` events whose source is native `LifeLink` and whose Actor IDs belong to the Hero's pre-death LifeLink rows. The accepted Mob death event already committed HP, removal and heaps; the Hero death handler only validates matching death/reward evidence and records idempotent reward claims. It never reapplies Mob writes.
+
+For one or more linked Mob deaths, the Hero validator computes the exact non-level-up XP and supported MonkEnergy changes from those accepted events, validates exact LifeLink detaches, and preserves the trusted Hero combat Bundle except for the proven `exp` field. When Poison kills the Hero without a linked Mob death, the same complete Buff-delta validator still runs: no LifeLink detach, XP/MonkEnergy gain or unrelated Buff/Bundle mutation is admitted. The native runtime test asserts the Mob event precedes the Hero death event and that no late `BUFF_TICK` is sent.
+
+Exact-head CI on `bacfecbe78bb4b425effde86390cf60cb750582c` passed [run 42617329132](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42617329132): Backend build and 608 Vitest executions across six files, plus Android JVM tests and Debug APK compilation.
+
+A transaction-level MatchRoom integration test for the combined ordered Mob/Hero death path is still open, as are level-up/item callbacks, Monk talent/ability variants, RemoteHero/player LifeLink, reconnect/expiry boundaries and remaining consumable/detach callback families. No Worker deployment or physical-device multiplayer session has been performed.
 
 ## 5. Mob turns and Actor scheduling
 
