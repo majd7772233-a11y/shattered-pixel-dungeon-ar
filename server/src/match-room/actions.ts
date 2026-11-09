@@ -22,7 +22,39 @@ export class MatchRoomActions extends MatchRoomSnapshots {
    * cannot commit Mob rows/rewards if Hero reconciliation, event insertion or deduplication fails.
    */
   protected async handleAction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
-    const storage: any = this.state.storage;
+    let payload: any = null;
+    try {
+      payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
+    } catch (_) {
+      payload = null;
+    }
+    const data = payload?.data;
+    const poisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
+    const hasNativePoisonLifeLinkBatch = payload?.action === "SYNC_HERO_STATE"
+      && data?.secondaryMobDeltas !== undefined
+      && ((data?.sourceType === "BUFF_TICK" && data?.buffClass === poisonClass)
+        || (data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
+          && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string"));
+
+    // Keep all non-Poison ACTIONs on the original path. Only the Mob+Hero effect batch
+    // requires a room-wide SQL transaction so the two native results cannot be split.
+    if (!hasNativePoisonLifeLinkBatch) {
+      this.handleActionInTransaction(ws, msg, session);
+      return;
+    }
+
+    const storage: any = this.state?.storage;
+    if (!storage || typeof storage.transactionSync !== "function") {
+      ws.send(JSON.stringify({
+        protocolVersion: "1.0.0",
+        messageType: "ERROR",
+        requestId: msg.requestId,
+        sequence: this.currentSequence,
+        payloadJson: JSON.stringify({ error: "ATOMIC_NATIVE_BATCH_UNAVAILABLE" })
+      }));
+      return;
+    }
+
     const checkpoint = {
       sequence: this.currentSequence,
       worldTime: this.worldTime,
@@ -30,11 +62,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     };
     this.nativeActionTransactionActive = true;
     try {
-      if (storage && typeof storage.transactionSync === "function") {
-        storage.transactionSync(() => this.handleActionInTransaction(ws, msg, session));
-      } else {
-        this.handleActionInTransaction(ws, msg, session);
-      }
+      storage.transactionSync(() => this.handleActionInTransaction(ws, msg, session));
     } catch (error) {
       this.currentSequence = checkpoint.sequence;
       this.worldTime = checkpoint.worldTime;
@@ -44,7 +72,6 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       this.nativeActionTransactionActive = false;
     }
   }
-
   /** Avoid opening a nested transaction for item-claim helpers inside handleAction. */
   private nativeActionTransactionStorage(): any {
     if (!this.nativeActionTransactionActive) return this.state.storage;
