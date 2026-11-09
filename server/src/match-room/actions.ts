@@ -1340,8 +1340,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const secondaryDeathPositions = (secondaryMobPayload?.deltas || [])
                 .filter((delta: any) => Number(delta.hpAfter) === 0)
                 .map((delta: any) => Number(delta.posAfter));
-              // No Mob HP, SQL row, death, or heap write belongs in BUFF_TICK: the prior
-              // SYNC_MOB_STATE event already committed that result exactly once.
+              // Commit the complete native LifeLink Mob result with this Hero Buff tick; the server
+              // validates and persists both sides as one ACTION transaction.
               const secondaryLootValid = secondaryMobPayload != null;
               // Non-publishers may report a Poison tick with no shared Mob side effect, but may
               // not author a LifeLink Mob mutation. A changed shared Mob is committed only with
@@ -1460,7 +1460,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               // A lethal Poison callback runs LifeLink Mob.damage() before Hero.damage().
               // Hero.damage() publishes the Hero death synchronously, then the Buff publisher
               // intentionally skips its later BUFF_TICK because the Hero is already dead.
-              // Reconstruct only that narrow same-sender event window from accepted Mob events.
+              // Validate the complete pre/post Mob batch captured by the same native Poison actor.
               const isPoisonHeroDeath = hp === 0 && data?.targetState === "DEAD"
                 && data?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
               let poisonDeathEvidenceValid = !isPoisonHeroDeath;

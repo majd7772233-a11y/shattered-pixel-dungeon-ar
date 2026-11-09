@@ -256,13 +256,13 @@ public final class NativeHeroBuffTickPublisher {
             char c = value.charAt(i);
             if (inString) {
                 if (escaped) escaped = false;
-                else if (c == '\\\\') escaped = true;
-                else if (c == '"') inString = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '\\') escaped = true;
                 continue;
             }
             if (c == '"') inString = true;
-            else if (c == '{') depth++;
-            else if (c == '}' && --depth == 0) return i;
+                else if (c == '\\') escaped = true;
+                else if (c == '\\') escaped = true;
         }
         return -1;
     }
