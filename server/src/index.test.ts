@@ -5820,7 +5820,7 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     })
   });
   const makeHero=(options:{
-    subClass?:string;level?:number;exp?:number;energy?:number|null;
+    subClass?:string;level?:number;exp?:number;expAfter?:number;energy?:number|null;
     includeAscension?:boolean;unencumberedSpirit?:number;poisonAfter?:boolean;
   }={})=>{
     const level=options.level ?? 1, subClass=options.subClass ?? "NONE";
