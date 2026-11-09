@@ -230,9 +230,13 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Allow the Hero's paired LifeLink detach only when the same linked Mob Actor ID has accepted zero-HP death evidence; reject detach without exact proof.
 - [x] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles and snapshots that still contain pre-damage state.
 - [x] Keep non-Poison timed Hero Buff expiry independent of LifeLink Mob resolution.
-- [ ] Validate positive-EXP Mob death side effects on Hero state (XP, level-up and MonkEnergy) as part of an authoritative transaction; current native death fixture uses `EXP=0`.
+- [x] Capture Mob reward class, enemy eligibility, EXP, maxLvl, spawningWeight and base MonkEnergy from the authoritative native level snapshot; copy them to the accepted Mob death event rather than trusting BUFF_TICK reward claims.
+- [x] Validate exact positive-EXP Hero XP from accepted linked Mob death events, including AscensionChallenge fallback, while keeping Hero level unchanged.
+- [x] Validate native Monk base MonkEnergy gain and cap, and create the native MonkEnergy Buff with zero gain when Regeneration is disabled; reject Unencumbered Spirit and UnarmedAbilityTracker variants.
+- [x] Exercise a positive-EXP LifeLink Mob death through the real Java Poison/LifeLink runtime with a Monk Hero; assert native XP, energy, Mob removal, paired link detach and event ordering.
+- [ ] Validate level-up XP transitions, Hero.updateHT, talent/ability changes and item onHeroGainExp callbacks as one authoritative Hero transaction; currently rejected fail-closed.
 - [ ] Test death of the local Hero and simultaneous linked-Mob callbacks as one atomic result.
 - [ ] Add RemoteHero/player LifeLink state and death contracts; until then these targets are rejected.
 - [ ] Complete the remaining Phase 9 reconnect, expiry-boundary, simultaneous effect, consumable and detach-callback matrix.
-- [x] Exact-head CI on `f2f01e814e558c5e59c8d1b7106d1cb4b57a8a2a`: [run 42606111312 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42606111312). This is not a deployed Worker or physical-device test.
+- [x] Exact-head CI on `b7d676bbc499d2ad79fc3df8e9bb9782c258dd2b`: [run 42613098751 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42613098751). Backend TypeScript build and 602 Vitest executions across six files passed; Android JVM tests and Debug APK compilation passed. This is not a deployed Worker or physical-device test.
 
