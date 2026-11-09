@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { MatchRoom } from "./index";
 import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
-import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas } from "../validators/combat-state";
+import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas, isValidNativeHeroStateJson } from "../validators/combat-state";
+import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 
 const PLAYER_ID = "publisher-player-001";
 const ENTITY_ID = "stable-linked-mob-0001";
@@ -415,6 +416,10 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       hpAfter: 19, htAfter: 20, posAfter: 25, shieldAfter: 0,
       buffsAfter: "[]", serializedBundleAfter: mobAfter
     };
+    expect(hasCompleteNativeLevelSnapshot(levelSnapshot)).toBe(true);
+    expect(isValidNativeHeroStateJson(JSON.stringify(afterHero), {
+      hp: 8, ht: 20, pos: 9, shielding: 0
+    })).toBe(true);
     const tickData = {
       sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
       actorClockBefore: 9, sequenceBefore: 0,
