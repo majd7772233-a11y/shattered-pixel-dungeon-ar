@@ -5927,7 +5927,7 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     const merged=mergeNativeLifeLinkDeathExperienceBundle(
       fixture.before.combatBundle,fixture.after.combatBundle,true);
     expect(JSON.parse(String(merged)).exp).toBe(2);
-    expect(JSON.parse(String(merged)).HP).toBe(9);
+    expect(JSON.parse(String(merged)).HP).toBeUndefined();
 
     const forgedExp={...fixture.after,combatBundle:JSON.stringify({
       ...JSON.parse(fixture.after.combatBundle),exp:3
@@ -5960,6 +5960,8 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     noLinkHero.before.buffCount=1;
     noLinkHero.before.buff_0=noLinkHero.before.buff_0;
     noLinkHero.before.buffCooldown_0=0;
+    delete noLinkHero.before.buff_1;
+    delete noLinkHero.before.buffCooldown_1;
     noLinkHero.after.buffCount=1;
     noLinkHero.after.buff_0=noLinkHero.before.buff_0;
     noLinkHero.after.buffCooldown_0=0;
