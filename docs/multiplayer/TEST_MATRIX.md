@@ -246,6 +246,7 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Native Hero Poison/Barrier: accept a Poison hit fully absorbed by Barrier with Hero HP unchanged and Barrier detached exactly at zero.
 - [x] Native Hero Poison/Barrier: accept partial Barrier absorption only when the Hero's aggregate shield loss equals the Barrier row loss and its partial-decay remainder remains unchanged.
 - [x] Native Hero Poison/Barrier: reject a missing Barrier with no aggregate shield loss, excess aggregate shield loss, or a forged partial-decay accumulator.
+- [x] Use Java's actual Bundle key `partial_lost_shield` in both Poison-damage and Barrier-actor tests; reject the incorrect `partialLostShield` camelCase alias.
 - [x] Native Hero Poison/Barrier: preserve Hunger's distinct native shield-bypass rule.
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
 - [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
@@ -253,5 +254,5 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Confirm full snapshot application after a rejected non-publisher Poison/LifeLink tick in a connected client, not only that the RESYNC request is sent.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `ca5f2738c5ab6326d599b740a980961ba8de2de1` passed [run 42691408672](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42691408672): TypeScript build + 634 Vitest executions across eight files and Android JVM tests + Debug APK compilation. Some TS/generated-JS suites mirror source cases. These MatchRoom tests use an in-memory SQL adapter; they do not run a deployed Worker, real Durable Object SQLite or physical devices.
+**Exact-head CI:** `4c036ff866e3ecbecb4746121da0d7f6072d3e34` passed [run 42695860586](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42695860586): TypeScript build + 634 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 

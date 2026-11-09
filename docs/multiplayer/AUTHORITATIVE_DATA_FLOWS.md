@@ -107,18 +107,19 @@ The server builds validation-only synthetic Mob damage evidence from the already
 The original Java `Char.damage()` path applies `ShieldBuff.processDamage()` to Poison damage (unlike Hunger, which native `ShieldBuff.processDamage()` explicitly bypasses). If a Hero has a `Barrier`, that same Poison callback may reduce its shield row or detach it at zero while leaving Hero HP unchanged.
 
 The server now admits this one exact side effect for a native Poison `BUFF_TICK`:
-- A surviving Barrier keeps its Actor ID, Actor time/cooldown and all non-shield bundle fields. Its shield value may only decrease; its `partialLostShield` decay remainder must remain unchanged.
+- A surviving Barrier keeps its Actor ID, Actor time/cooldown and all non-shield bundle fields. Its shield value may only decrease; its `partial_lost_shield` decay remainder must remain unchanged.
 - A depleted Barrier may disappear only when its row shield reaches zero. The outer Hero shield total must decrease by exactly the same amount as that Barrier row; unrelated shield loss cannot be hidden in the exception.
 - Hero HP and every unrelated Buff remain governed by the existing Poison tick rules. An unchanged aggregate shield with a missing Barrier, extra shield loss, or a forged partial-decay change is rejected.
 - Hunger remains on its native separate rule: starvation damage bypasses shields and cannot use this Poison/Barrier exception.
 
 The server tests cover a fully absorbed Poison hit that detaches the Barrier, a partial shield absorption with the remainder unchanged, and negative cases for missing shield loss, excess aggregate loss and a forged partial accumulator. A Java runtime regression runs the native Poison actor against a two-point Barrier and verifies that the Barrier absorbs the two-point hit without changing Hero HP.
+The serialized field name is taken directly from Java `Barrier.storeInBundle()`: `partial_lost_shield`. The backend rejects the non-native camelCase alias so test-only naming cannot mask a client/server wire mismatch.
 
 ### MatchRoom tests and verification boundary
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, rollback when the final event insert fails, and a forced transaction failure through the WebSocket message boundary that verifies a correlated ERROR. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `ca5f2738c5ab6326d599b740a980961ba8de2de1` passed [run 42691408672](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42691408672): TypeScript build and 634 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count. Some TypeScript/generated-JavaScript suites mirror cases; this execution count is not a count of unique scenarios.
+Exact-head CI on `4c036ff866e3ecbecb4746121da0d7f6072d3e34` passed [run 42695860586](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42695860586): TypeScript build and 634 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
 
