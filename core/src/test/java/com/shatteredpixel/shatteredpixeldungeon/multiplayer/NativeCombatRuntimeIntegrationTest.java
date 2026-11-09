@@ -2093,7 +2093,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage tick = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\\"action\\\":\\\"SYNC_HERO_STATE\\\""))
+                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The unsupported non-publisher tick must reach the server for fail-closed validation", tick);
         JsonValue data = new JsonReader().parse(tick.payloadJson).get("data");
