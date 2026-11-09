@@ -5967,7 +5967,8 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     noLinkHero.after.buffCooldown_0=0;
     noLinkHero.after.hp=0;
     noLinkHero.after.combatBundle=JSON.stringify({
-      ...JSON.parse(noLinkHero.after.combatBundle),HP:0,HT:20,pos:9
+      ...JSON.parse(noLinkHero.after.combatBundle),HP:0,HT:20,pos:9,
+      exp:JSON.parse(noLinkHero.before.combatBundle).exp
     });
     expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
       noLinkHero.before,noLinkHero.after,[],[],10,levelSnapshot))
