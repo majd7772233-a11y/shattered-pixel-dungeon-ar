@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from "vitest";
 import { MatchRoom } from "./index";
+import {
+  nativeHeroBuffLifeLinkMobActorIds, validateNativeLifeLinkEnvironmentDeathRewardTransition,
+  mergeNativeLifeLinkDeathExperienceBundle
+} from "../validators/hero-buffs";
+import {
+  isValidNativeEnvironmentDamage, isValidNativeHeroStateJson, isValidNativeCombatBuffs,
+  mergeNativeHeroState
+} from "../validators/combat-state";
 
 const PLAYER_ID = "publisher-player-001";
 const ENTITY_ID = "stable-linked-mob-0001";
@@ -289,6 +297,36 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.mobDeletes).toBe(1);
 
     const heroDeath = makeHeroAfterDeath(beforeHero);
+    const acceptedMobEvents = sql.events.filter(event => event.event_type === "CHAR_DAMAGED");
+    const rewardLevelSnapshot = JSON.parse(String(sql.roomMeta.get("levelSnapshot:1")));
+    const linkedActors = nativeHeroBuffLifeLinkMobActorIds(JSON.stringify(beforeHero));
+    const rewardContract = validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      JSON.stringify(beforeHero), JSON.stringify(heroDeath.state), acceptedMobEvents,
+      [7], 0, rewardLevelSnapshot);
+    const mergedHero = mergeNativeHeroState(
+      JSON.stringify(beforeHero), JSON.stringify(heroDeath.state),
+      {hp:0,ht:20,pos:9,shielding:0}, heroDeath.targetBuffs);
+    const mergedExperience = mergeNativeLifeLinkDeathExperienceBundle(
+      beforeHero.combatBundle, heroDeath.state.combatBundle, rewardContract?.allowExperienceChange === true);
+    const diagnostic = {
+      linkedActors,
+      acceptedMobEvents: acceptedMobEvents.map(event=>JSON.parse(String(event.payload))),
+      rewardContract, mergedHero: mergedHero !== null, mergedExperience,
+      nativeEnvironmentDamage: isValidNativeEnvironmentDamage({
+        sourceType:"ENVIRONMENT",sourceClass:POISON_CLASS,engineDamageResult:true,
+        targetHpBefore:9,targetHtBefore:20,targetHp:0,targetHt:20,
+        targetPosBefore:9,targetPosAfter:9,targetShieldBefore:0,targetShieldAfter:0,
+        targetState:"DEAD",damage:9,effectiveDamage:9,
+        targetBuffsBefore:heroDeath.targetBuffsBefore,targetBuffs:heroDeath.targetBuffs
+      },{pos:9,hp:9,ht:20,state:"ALIVE",levelSize:1024,levelWidth:32,
+        heroState:beforeHero,shielding:beforeHero.shielding}),
+      nativeHeroState: isValidNativeHeroStateJson(JSON.stringify(heroDeath.state),{hp:0,ht:20,pos:9,shielding:0}),
+      nativeBuffs: isValidNativeCombatBuffs(heroDeath.targetBuffs)
+    };
+    if (linkedActors?.length !== 1 || !rewardContract || !mergedHero || !mergedExperience
+        || !diagnostic.nativeEnvironmentDamage || !diagnostic.nativeHeroState || !diagnostic.nativeBuffs) {
+      throw new Error("Direct Hero death validation diagnostics: " + JSON.stringify(diagnostic));
+    }
     await room.handleAction(ws, actionMessage("lifelink-hero-death-001", {
       action: "SYNC_HERO_STATE",
       heroStateJson: JSON.stringify(heroDeath.state),
