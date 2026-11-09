@@ -718,7 +718,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     const order: string[] = [];
     fixture.room.broadcastWithFOV = vi.fn(() => { order.push("broadcast"); });
     const ws = {
-      send: vi.fn(() => { order.push("accepted"); }),
+      send: vi.fn((_message: string) => { order.push("accepted"); }),
       deserializeAttachment: () => fixture.session
     };
 

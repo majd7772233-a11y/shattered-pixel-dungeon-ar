@@ -86,10 +86,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     // has returned successfully. Keep MATCH_END persistence/sequence changes inside the transaction.
     this.nativeActionTransactionActive = true;
     room.broadcast = (...args: any[]) => {
-      deferredBroadcasts.push(() => originalBroadcast.apply(this, args));
+      deferredBroadcasts.push(() => originalBroadcast.apply(this, args as [NetworkMessage, WebSocket?]));
     };
     room.broadcastWithFOV = (...args: any[]) => {
-      deferredBroadcasts.push(() => originalBroadcastWithFov.apply(this, args));
+      deferredBroadcasts.push(() => originalBroadcastWithFov.apply(this, args as [string, string, any, WebSocket?]));
     };
     try {
       storage.transactionSync(() => this.handleActionInTransaction(transactionalWs, msg, session));
