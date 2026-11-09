@@ -92,7 +92,7 @@ On a non-publisher, the owner's local Poison actor may still predict the Hero-si
 
 ### Atomic MatchRoom commit
 
-The public `MatchRoom.handleAction()` wrapper recognizes every native `SYNC_HERO_STATE` `BUFF_TICK` carrying a string source class, safe Buff ID and trusted Hero pre-state envelope, plus the corresponding lethal Poison environment-death action carrying the Poison pre-state and secondary Mob batch. It runs the inner handler once inside `state.storage.transactionSync(...)`. The transaction includes Mob SQL updates/deletions and the level snapshot/heap, Hero state and player HP/state, stable Mob reward claims, the request replay record and final event, sequence and world-time advancement.
+The public `MatchRoom.handleAction()` wrapper recognizes every native `SYNC_HERO_STATE` `BUFF_TICK` carrying a string source class, safe Buff ID and trusted Hero pre-state envelope, plus the corresponding lethal Poison environment-death action carrying the Poison pre-state and secondary Mob batch. The Android full-snapshot regression now covers the recovery edge after a rejected non-publisher Poison/LifeLink tick: the client receives ERROR, requests RESYNC, then applies a complete server-format SNAPSHOT through `MessageRouter` and restores the authoritative local Hero HP/Buffs and stable Mob state. It runs the inner handler once inside `state.storage.transactionSync(...)`. The transaction includes Mob SQL updates/deletions and the level snapshot/heap, Hero state and player HP/state, stable Mob reward claims, the request replay record and final event, sequence and world-time advancement.
 
 If `transactionSync` is not available, the batch is rejected instead of falling back to split writes. If any statement or final event insertion throws, SQL rollback restores the rows, snapshots, claims and event log; the handler restores its in-memory sequence/world-time checkpoint. The outer `MatchRoomMessages.webSocketMessage()` catch now includes the parsed `requestId` and current room `sequence` in its ERROR response, allowing the sender to remove the pending request and request RESYNC after rollback. The transaction wrapper also queues `ACTION_ACCEPTED` and FOV/room broadcasts until commit succeeds; the FOV `excludeWs` is translated from the transactional proxy back to the original sender socket so the publisher does not receive its own event twice. If a post-write hook throws, rollback occurs before any success/event message is delivered. The wrapper covers supported native Hero Buff ticks generally and the special lethal Poison LifeLink environment-death batch. The strict source-specific Hero Buff validator still decides whether a result is admissible; wrapping an unsupported class does not authorize it. Actions outside these shapes retain their existing transaction behavior.
 
@@ -133,7 +133,7 @@ Every changed row still passes its class-specific identity, timing, native-field
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, rollback when the final event insert fails, and a forced transaction failure through the WebSocket message boundary that verifies a correlated ERROR. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `a6578d3ef57fb058aab5539096c877db8a3903ea` passed [run 42706884160](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42706884160): TypeScript build and 640 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
+Exact-head CI on `86b77bbf426ba1caf759a4696166defcb4cfced7` passed [run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314): TypeScript build and 640 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
 
@@ -158,7 +158,7 @@ Phase 3 is complete for implementation and automated acceptance, but future Acto
 
 ### Publication
 
-SPDLevelSnapshot exports state from the actual native game, including:
+SPDLevelSnapshot exports state from the actual native game, including: The serializer explicitly disables libGDX prototype elision with `Json.setUsePrototypes(false)`, because omitted default-valued fields such as `schemaVersion=1`/`branch=0` or empty required arrays make a complete snapshot fail the Android full-snapshot gate.
 - level depth/branch, dimensions, seed, lock/feeling, native Level metadata;
 - terrain/collision and exploration cells;
 - transitions and shared Mobs with stable IDs, native bundles, buffs and AI/scheduler fields;

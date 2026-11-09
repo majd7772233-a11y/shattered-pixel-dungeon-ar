@@ -173,10 +173,16 @@ Observed action branches include native combat sync, REVIVE, MOVE, LVL_TRANSITIO
 ### 4.5 READY, RESYNC, PING and CHAT
 
 - READY marks the current player ready and broadcasts readiness.
-- RESYNC sends a full SNAPSHOT assembled from stored room state.
+- RESYNC sends a full SNAPSHOT assembled from stored room state. Android's complete-snapshot gate also depends on the native level serializer preserving default-valued schema fields and explicit empty collections; `SPDLevelSnapshot.buildLevelJson()` now disables libGDX prototype elision so version/branch/default flags and required arrays reach the client.
 - PING returns a PING response.
 - CHAT is broadcast to room sockets.
 - Unknown/unhandled messages do not gain implicit gameplay authority.
+
+
+### 4.6 Android full-snapshot envelope regression
+
+After a non-publisher Poison/LifeLink Hero tick is rejected, Android requests RESYNC and must not acknowledge the optimistic state. A JVM integration now constructs a full server-format `SNAPSHOT` envelope, routes it through the real `MessageRouter`, and verifies that `WorldSnapshot` restores the saved Hero HP/native Buff clocks and the same stable Mob actor/HP. This test confirms client application behavior but does not call the live Worker `RESYNC` endpoint or Cloudflare Durable Object SQLite.
+
 
 ## 5. SQLite schema
 
