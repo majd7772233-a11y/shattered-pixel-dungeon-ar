@@ -302,6 +302,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       }
     }), session);
 
+    const heroActionResponse = JSON.parse(String(ws.send.mock.calls.at(-1)[0]));
+    expect(heroActionResponse).toMatchObject({ messageType: "ACTION_ACCEPTED" });
     expect(sql.events).toHaveLength(2);
     expect(sql.events.map(event => event.event_type)).toEqual(["CHAR_DAMAGED", "PLAYER_DAMAGED"]);
     const heroEvent = JSON.parse(String(sql.events[1].payload));
