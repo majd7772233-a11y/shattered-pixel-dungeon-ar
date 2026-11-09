@@ -305,10 +305,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     }), session);
 
     expect(ws.send).toHaveBeenCalledTimes(1);
-    const firstResponse = JSON.parse(String(ws.send.mock.calls[0][0]));
-    if (firstResponse.messageType !== "ACTION_ACCEPTED") {
-      throw new Error("Nonlethal Poison LifeLink response: " + JSON.stringify(firstResponse));
-    }
+    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
     expect(sql.events).toHaveLength(1);
     expect(sql.events[0].event_type).toBe("PLAYER_DAMAGED");
     const event = JSON.parse(String(sql.events[0].payload));
@@ -440,7 +437,10 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       }
     }), session);
 
-    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
+    const firstResponse = JSON.parse(String(ws.send.mock.calls[0][0]));
+    if (firstResponse.messageType !== "ACTION_ACCEPTED") {
+      throw new Error("Nonlethal Poison LifeLink response: " + JSON.stringify(firstResponse));
+    }
     expect(sql.events).toHaveLength(1);
     expect(sql.events[0].event_type).toBe("HERO_BUFF_TICKED");
     const event = JSON.parse(String(sql.events[0].payload));
