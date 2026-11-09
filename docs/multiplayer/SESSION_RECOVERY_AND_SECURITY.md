@@ -158,6 +158,11 @@ This evidence is still based on a deterministic in-memory SQL adapter. Real Dura
 A Poison tick may consume Hero Barrier shielding through the native `ShieldBuff.processDamage()` path without changing Hero HP. The authoritative validator permits only the exact Barrier row shield loss (or detach at zero) when the aggregate Hero shield decreases by the same amount. It leaves `partial_lost_shield` and other Buff state immutable, rejecting excess or unaccounted shield loss. Hunger remains distinct because native starvation damage bypasses shields. Backend and Java tests cover full absorption/detachment, partial absorption and forged shield/partial-state rejection.
 The decay accumulator is checked using the exact Java Bundle key `partial_lost_shield`; the validator does not accept a synthetic camelCase field name.
 
+### 8.4 Poison shield priority order and lower-tier bypass
+
+The same Poison transition is checked against native `ShieldBuff.processDamage()` priority order. Tier 2 (`WarriorShield`/`Blocking.BlockBuff`) must absorb its available amount before tier 1 (`AscendBuff`/`DivineShield`), and tier 1 must be exhausted before tier 0 (`Barrier`) can lose shield. The server derives the incoming damage from the Hero HP/aggregate-shield delta, not from a client-provided per-shield allocation. It validates each supported Buff's identity and class-specific Bundle fields and its native zero-shield lifecycle. A forged Barrier loss while BlockBuff or a Cleric shield remains is rejected even if the aggregate shield total would otherwise balance. Current Java and Backend regressions cover the supported three-tier set; new ShieldBuff classes require an explicit priority/lifecycle audit before admission.
+
+
 
 ## 9. Authority and ownership
 

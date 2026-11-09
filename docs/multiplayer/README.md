@@ -36,11 +36,13 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest tested implementation SHA: `4c036ff866e3ecbecb4746121da0d7f6072d3e34`; exact-head [CI run 42695860586](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42695860586) passed Backend TypeScript build/634 Vitest executions across eight files and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+Latest tested implementation SHA: `3291698d1fbbb6bc37611d1a8276bb2477c50b58`; exact-head [CI run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852) passed Backend TypeScript build/638 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
 
 The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, correlated WebSocket errors, and rollback-safe deferred broadcasts that preserve the original sender exclusion.
 
 Native Hero Poison ticks now also account for the exact Barrier damage side effect: a surviving Barrier may lose only the shield actually absorbed, with its partial-decay remainder untouched; it may detach at zero only when total Hero shield loss equals its old shield. Forged or unexplained aggregate shield loss and changes to the partial-decay remainder are rejected. Hunger remains distinct because its native starvation damage bypasses shields. Java and Backend regressions cover full Poison absorption/detach and partial absorption.
+
+Poison shield reconciliation also mirrors the native `ShieldBuff.processDamage()` priority tiers: WarriorShield/Blocking (2), AscendBuff/DivineShield (1), then Barrier (0). The validator derives incoming damage from HP/aggregate-shield conservation and rejects any lower-tier shield loss while higher-priority capacity remains. It enforces the native zero-shield lifecycle for each supported class. Backend tests include valid and forged lower-tier-bypass states, and the Java runtime suite executes the actual Poison actor with all three tiers active.
 The Barrier decay remainder is serialized by Java as `partial_lost_shield`; both server validators now use that exact key, and the backend test rejects the mistaken camelCase alias.
 
 A transaction exception returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. Action acceptance and room/FOV broadcasts are deferred until the scoped SQL transaction commits, so a later exception cannot leak an ACK or event for rolled-back state.
