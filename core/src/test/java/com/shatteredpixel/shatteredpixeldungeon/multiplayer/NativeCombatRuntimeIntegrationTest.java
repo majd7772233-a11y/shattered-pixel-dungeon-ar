@@ -359,8 +359,8 @@ public class NativeCombatRuntimeIntegrationTest {
         }
         Assert.assertEquals(new java.util.HashSet<>(Arrays.asList(
                 "linked-dead-native-mob-0002", "linked-dead-native-mob-0003")), deltaTargets);
-        Assert.assertTrue("The multi-death batch carries the final combined heap snapshot",
-                secondary.getString("heaps", "").length() > 0);
+        Assert.assertTrue("The multi-death batch carries a JSON array of final heaps",
+                secondary.get("heaps") != null && secondary.get("heaps").isArray());
     }
 
     @Test

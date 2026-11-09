@@ -1342,7 +1342,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 .map((delta: any) => Number(delta.posAfter));
               // Commit the complete native LifeLink Mob result with this Hero Buff tick; the server
               // validates and persists both sides as one ACTION transaction.
-              const secondaryLootValid = secondaryMobPayload != null;
+              const secondaryLootValid = secondaryMobPayload != null
+                && (secondaryDeathPositions.length === 0
+                  ? secondaryMobPayload.heaps === undefined
+                  : isValidNativeLootSnapshot(secondaryMobPayload.heaps, levelSnapshot?.heaps,
+                      secondaryDeathPositions, levelSize));
               // Non-publishers may report a Poison tick with no shared Mob side effect, but may
               // not author a LifeLink Mob mutation. A changed shared Mob is committed only with
               // its exact complete native bundle and, on death, the matching loot snapshot.
@@ -1414,8 +1418,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + session.playerId, storedHeroState);
 
-                // Evidence was already committed by preceding SYNC_MOB_STATE events.
-                // Never mutate Mob SQL rows, deaths, levelSnapshot, or heaps in BUFF_TICK.
+                // The complete Poison LifeLink batch is committed with this event.
+                // Both Hero and Mob state, heap drops, reward receipts and the sequence share one SQL transaction.
                 for (const rewardId of secondaryRewardIds || []) {
                   this.sql.exec("INSERT OR IGNORE INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
                     rewardId, session.playerId, String(msg.requestId || ""), this.currentDepth);
@@ -1467,6 +1471,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               let poisonDeathMobPayload: any = null;
               let poisonDeathLevelSnapshot: any = null;
               let poisonDeathMobRowsMatch = true;
+              let poisonDeathLootValid = true;
               let poisonDeathRewardContract: {allowExperienceChange:boolean;allowMonkEnergyChange:boolean} | null = null;
               let poisonDeathRewardIds: string[] = [];
               let poisonDeathEntityIds: string[] = [];
@@ -1515,6 +1520,14 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   .filter((delta: any) => Number(delta.hpAfter) === 0)
                   .map((delta: any) => ({ entityId: String(delta.entityId), hpAfter: 0 }));
                 poisonDeathEntityIds = deadDeltas.map((delta: any) => delta.entityId);
+                const poisonDeathPositions = (poisonDeathMobPayload?.deltas || [])
+                  .filter((delta: any) => Number(delta.hpAfter) === 0)
+                  .map((delta: any) => Number(delta.posAfter));
+                poisonDeathLootValid = poisonDeathMobPayload != null
+                  && (poisonDeathPositions.length === 0
+                    ? poisonDeathMobPayload.heaps === undefined
+                    : isValidNativeLootSnapshot(poisonDeathMobPayload.heaps,
+                        poisonDeathLevelSnapshot?.heaps, poisonDeathPositions, levelSize));
                 poisonDeathMobRowsMatch = poisonDeathMobPayload != null
                   && poisonDeathMobPayload.deltas.every((delta: any) => {
                     const saved = poisonDeathLevelSnapshot.mobs.find((mob: any) =>
@@ -1653,7 +1666,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 && Number(previousHeroState.shielding) === Number(data.targetShieldBefore)
                 && isValidNativeHeroStateJson(payload.heroStateJson, { hp, ht, pos, shielding: shield })
                 && isValidNativeCombatBuffs(data?.targetBuffs)
-                && poisonDeathEvidenceValid && poisonDeathMobRowsMatch && finalMergedJson != null
+                && poisonDeathEvidenceValid && poisonDeathMobRowsMatch && poisonDeathLootValid && finalMergedJson != null
                 && (pos === Number(playerRow.pos)
                   || (this.isValidCombatTargetPosition(pos, this.currentDepth)
                     && this.isCombatDestinationFree(pos, this.currentDepth, "PLAYER", session.playerId)));

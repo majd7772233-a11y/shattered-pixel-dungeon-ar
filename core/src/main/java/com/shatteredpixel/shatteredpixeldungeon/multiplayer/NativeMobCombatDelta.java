@@ -49,7 +49,7 @@ public final class NativeMobCombatDelta {
         // Keep the prototype default false so libGDX JSON emits the authoritative true value.
         public boolean complete;
         public List<Delta> deltas;
-        public String heaps;
+        public Object heaps;
     }
 
     public static Map<Integer, State> capture(Mob excludedTarget) {
@@ -140,7 +140,7 @@ public final class NativeMobCombatDelta {
         if (!payload.deltas.isEmpty()) {
             boolean secondaryDeath = false;
             for (Delta delta : payload.deltas) if (delta.hpAfter <= 0) secondaryDeath = true;
-            if (secondaryDeath) payload.heaps = SPDLevelSnapshot.currentHeapsJson();
+            if (secondaryDeath) payload.heaps = new Json().fromJson(ArrayList.class, SPDLevelSnapshot.currentHeapsJson());
         }
         return new Json().toJson(payload);
     }
