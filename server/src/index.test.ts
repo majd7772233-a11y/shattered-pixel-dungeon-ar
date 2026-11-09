@@ -3133,6 +3133,71 @@ describe("Native Hero Buff tick reconciliation", () => {
   });
 
 
+  it("serializes concurrent native Healing and Barrier ticks without cross-effect mutation",()=>{
+    const healing=buffs+"Healing", barrier=buffs+"Barrier";
+    const barrierRow=JSON.stringify({buff:{
+      __className:barrier,id:82,time:9,shielding:2,partialLostShield:0
+    }});
+    const previous=stateWithBuff(healing,31,9,{
+      left:5,percent:0.2,flat:0,healing_limited:false
+    },{
+      cooldown:2,buffCooldown_0:1,hp:10,shielding:2,
+      buffCount:2,buff_1:barrierRow,buffCooldown_1:0
+    });
+    const beforeHealing=stateWithBuff(healing,31,9,{
+      left:5,percent:0.2,flat:0,healing_limited:false
+    },{
+      cooldown:1,buffCooldown_0:0,hp:10,shielding:2,
+      buffCount:2,buff_1:barrierRow,buffCooldown_1:0
+    });
+    const afterHealing=stateWithBuff(healing,31,10,{
+      left:4,percent:0.2,flat:0,healing_limited:false
+    },{
+      cooldown:1,buffCooldown_0:1,hp:11,shielding:2,
+      buffCount:2,buff_1:barrierRow,buffCooldown_1:0
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(beforeHealing),
+      JSON.stringify(afterHealing),tick(healing,31))).toBe(true);
+
+    const healingRow=JSON.stringify({buff:{
+      __className:healing,id:31,time:10,left:4,percent:0.2,flat:0,healing_limited:false
+    }});
+    const afterBarrier=stateWithBuff(barrier,82,10,{
+      shielding:2,partialLostShield:0.1
+    },{
+      cooldown:1,buffCooldown_0:1,hp:11,shielding:2,
+      buffCount:2,buff_1:healingRow,buffCooldown_1:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterHealing),JSON.stringify(afterHealing),
+      JSON.stringify(afterBarrier),tick(barrier,82))).toBe(true);
+
+    const forgedHealing=stateWithBuff(barrier,82,10,{
+      shielding:2,partialLostShield:0.1
+    },{
+      cooldown:1,buffCooldown_0:1,hp:12,shielding:2,
+      buffCount:2,
+      buff_1:JSON.stringify({buff:{
+        __className:healing,id:31,time:10,left:3,percent:0.2,flat:0,healing_limited:false
+      }}),
+      buffCooldown_1:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(afterHealing),JSON.stringify(afterHealing),
+      JSON.stringify(forgedHealing),tick(barrier,82))).toBe(false);
+
+    const forgedBarrier=stateWithBuff(healing,31,10,{
+      left:4,percent:0.2,flat:0,healing_limited:false
+    },{
+      cooldown:1,buffCooldown_0:1,hp:11,shielding:0,
+      buffCount:2,
+      buff_1:JSON.stringify({buff:{
+        __className:barrier,id:82,time:10,shielding:0,partialLostShield:0
+      }}),
+      buffCooldown_1:1
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(beforeHealing),
+      JSON.stringify(forgedBarrier),tick(healing,31))).toBe(false);
+  });
+
   it("allows only inert native Foresight and Invulnerability to expire between Hero actor ticks",()=>{
     const hunger=buffs+"Hunger";
     for (const effect of ["Foresight","Invulnerability"]) {
