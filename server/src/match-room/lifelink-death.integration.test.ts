@@ -19,6 +19,35 @@ class MemoryMatchRoomSql {
   mobUpdates = 0;
   mobDeletes = 0;
   rewardClaimInsertAttempts = 0;
+  failEventInsert = false;
+
+  transactionSync<T>(callback: () => T): T {
+    const snapshot = {
+      roomMeta: new Map(this.roomMeta),
+      players: new Map(Array.from(this.players, ([key, value]) => [key, { ...value }])),
+      mobs: new Map(Array.from(this.mobs, ([key, value]) => [key, { ...value }])),
+      processedActions: new Map(Array.from(this.processedActions, ([key, value]) => [key, { ...value }])),
+      events: this.events.map(event => ({ ...event })),
+      rewardClaims: new Set(this.rewardClaims),
+      mobUpdates: this.mobUpdates,
+      mobDeletes: this.mobDeletes,
+      rewardClaimInsertAttempts: this.rewardClaimInsertAttempts
+    };
+    try {
+      return callback();
+    } catch (error) {
+      this.roomMeta = snapshot.roomMeta;
+      this.players = snapshot.players;
+      this.mobs = snapshot.mobs;
+      this.processedActions = snapshot.processedActions;
+      this.events = snapshot.events;
+      this.rewardClaims = snapshot.rewardClaims;
+      this.mobUpdates = snapshot.mobUpdates;
+      this.mobDeletes = snapshot.mobDeletes;
+      this.rewardClaimInsertAttempts = snapshot.rewardClaimInsertAttempts;
+      throw error;
+    }
+  }
 
   private cursor(rows: Row[] = []) {
     return { toArray: () => rows.map(row => ({ ...row })) };
@@ -125,6 +154,7 @@ class MemoryMatchRoomSql {
       return this.cursor();
     }
     if (query.startsWith("INSERT INTO events")) {
+      if (this.failEventInsert) throw new Error("forced event insert failure");
       this.events.push({
         sequence: Number(args[0]), sender_id: String(args[1]),
         event_type: String(args[2]), payload: String(args[3])
@@ -197,7 +227,11 @@ function makeRoom(sql: MemoryMatchRoomSql): any {
   room.worldTime = 0;
   room.gameMode = "COOP_DUNGEON";
   room.gameStatus = "PLAYING";
-  room.state = { id: { toString: () => "lifelink-match-test" }, getWebSockets: () => [] };
+  room.state = {
+    id: { toString: () => "lifelink-match-test" },
+    getWebSockets: () => [],
+    storage: { transactionSync: <T>(callback: () => T) => sql.transactionSync(callback) }
+  };
   room.broadcastWithFOV = vi.fn();
   room.checkMatchEndCondition = vi.fn();
   return room;
@@ -217,6 +251,178 @@ function acceptedMessage(ws: any, index: number): Row {
 }
 
 describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
+  it("commits the publisher's complete LifeLink batch and Hero death in one ACTION transaction", async () => {
+    const sql = new MemoryMatchRoomSql();
+    const beforeHero = makeHeroBefore();
+    const mobBundle = nativeMobBundle(1);
+    const savedMob = {
+      mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 1, ht: 20, shielding: 0,
+      state: "Hunting", serializedBundle: mobBundle, buffs: [],
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+      rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+      rewardSpawningWeight: 1, rewardMonkEnergy: 1
+    };
+    sql.roomMeta.set("levelPublisher", PLAYER_ID);
+    sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(beforeHero));
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify({
+      depth: 1, width: 32, height: 32, branch: 0, locked: false,
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heaps: [], mobs: [savedMob]
+    }));
+    sql.players.set(PLAYER_ID, {
+      player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+    });
+    sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 1, ht: 20, pos: 25 });
+
+    const room = makeRoom(sql);
+    const ws = { send: vi.fn() };
+    const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+    const heroDeath = makeHeroAfterDeath(beforeHero);
+    const mobDelta = {
+      entityId: ENTITY_ID, actorId: 7,
+      hpBefore: 1, htBefore: 20, posBefore: 25, shieldBefore: 0,
+      buffsBefore: "[]", hpAfter: 0, htAfter: 20, posAfter: 25, shieldAfter: 0,
+      buffsAfter: "[]", serializedBundleAfter: mobBundle
+    };
+
+    await room.handleAction(ws, actionMessage("lifelink-atomic-death-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(heroDeath.state),
+      data: {
+        sourceType: "ENVIRONMENT", sourceClass: POISON_CLASS, engineDamageResult: true,
+        targetHpBefore: 9, targetHtBefore: 20, targetHp: 0, targetHt: 20,
+        targetPosBefore: 9, targetPosAfter: 9,
+        targetShieldBefore: 0, targetShieldAfter: 0,
+        targetState: "DEAD", damage: 9, effectiveDamage: 9,
+        targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        sequenceBefore: 0, actorClockBefore: 9, buffClass: POISON_CLASS, buffId: 44,
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta], heaps: [] })
+      }
+    }), session);
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
+    expect(sql.events).toHaveLength(1);
+    expect(sql.events[0].event_type).toBe("PLAYER_DAMAGED");
+    const event = JSON.parse(String(sql.events[0].payload));
+    expect(event.nativeLifeLinkDeathEntityIds).toEqual([ENTITY_ID]);
+    expect(event.nativeLifeLinkAtomicBatch).toBe(true);
+    expect(event.secondaryMobDeltas.deltas).toHaveLength(1);
+    expect(sql.mobs.has(7)).toBe(false);
+    expect(JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))).mobs).toHaveLength(0);
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 0, ht: 20, pos: 9, state: "DEAD", deaths: 1 });
+    const storedHero = JSON.parse(String(sql.roomMeta.get("heroState:" + PLAYER_ID)));
+    expect(JSON.parse(String(storedHero.combatBundle)).exp).toBe(2);
+    expect(storedHero.buffCount).toBe(1);
+    expect(sql.rewardClaims).toEqual(new Set(["mob-kill:1:" + ENTITY_ID]));
+    expect(sql.rewardClaimInsertAttempts).toBe(1);
+
+    // Replaying either the same request or the same batch under a new request ID cannot
+    // commit the linked Mob death or its reward twice.
+    const acceptedCount = ws.send.mock.calls.length;
+    await room.handleAction(ws, actionMessage("lifelink-atomic-death-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(heroDeath.state),
+      data: {
+        sourceType: "ENVIRONMENT", sourceClass: POISON_CLASS, engineDamageResult: true,
+        targetHpBefore: 9, targetHtBefore: 20, targetHp: 0, targetHt: 20,
+        targetPosBefore: 9, targetPosAfter: 9, targetShieldBefore: 0, targetShieldAfter: 0,
+        targetState: "DEAD", damage: 9, effectiveDamage: 9,
+        targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        sequenceBefore: 0, actorClockBefore: 9, buffClass: POISON_CLASS, buffId: 44,
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta], heaps: [] })
+      }
+    }), session);
+    expect(JSON.parse(String(ws.send.mock.calls[acceptedCount][0])).messageType).toBe("ACTION_ACCEPTED");
+
+    await room.handleAction(ws, actionMessage("lifelink-atomic-death-002", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(heroDeath.state),
+      data: {
+        sourceType: "ENVIRONMENT", sourceClass: POISON_CLASS, engineDamageResult: true,
+        targetHpBefore: 9, targetHtBefore: 20, targetHp: 0, targetHt: 20,
+        targetPosBefore: 9, targetPosAfter: 9, targetShieldBefore: 0, targetShieldAfter: 0,
+        targetState: "DEAD", damage: 9, effectiveDamage: 9,
+        targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        sequenceBefore: 0, actorClockBefore: 9, buffClass: POISON_CLASS, buffId: 44,
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta], heaps: [] })
+      }
+    }), session);
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])).messageType).toBe("ERROR");
+    expect(sql.events).toHaveLength(1);
+    expect(sql.rewardClaimInsertAttempts).toBe(1);
+    expect(sql.players.get(PLAYER_ID)?.deaths).toBe(1);
+  });
+
+  it("rolls back Mob death, Hero death, heaps and reward claims when the final event insert fails", async () => {
+    const sql = new MemoryMatchRoomSql();
+    const beforeHero = makeHeroBefore();
+    const mobBundle = nativeMobBundle(1);
+    const savedMob = {
+      mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 1, ht: 20, shielding: 0,
+      state: "Hunting", serializedBundle: mobBundle, buffs: [],
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+      rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+      rewardSpawningWeight: 1, rewardMonkEnergy: 1
+    };
+    const levelSnapshot = {
+      depth: 1, width: 32, height: 32, branch: 0, locked: false,
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heaps: [], mobs: [savedMob]
+    };
+    sql.roomMeta.set("levelPublisher", PLAYER_ID);
+    sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(beforeHero));
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    sql.players.set(PLAYER_ID, {
+      player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+    });
+    sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 1, ht: 20, pos: 25 });
+
+    const room = makeRoom(sql);
+    const ws = { send: vi.fn() };
+    const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+    const heroDeath = makeHeroAfterDeath(beforeHero);
+    const mobDelta = {
+      entityId: ENTITY_ID, actorId: 7,
+      hpBefore: 1, htBefore: 20, posBefore: 25, shieldBefore: 0,
+      buffsBefore: "[]", hpAfter: 0, htAfter: 20, posAfter: 25, shieldAfter: 0,
+      buffsAfter: "[]", serializedBundleAfter: mobBundle
+    };
+    sql.failEventInsert = true;
+
+    await expect(room.handleAction(ws, actionMessage("lifelink-atomic-death-fail-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(heroDeath.state),
+      data: {
+        sourceType: "ENVIRONMENT", sourceClass: POISON_CLASS, engineDamageResult: true,
+        targetHpBefore: 9, targetHtBefore: 20, targetHp: 0, targetHt: 20,
+        targetPosBefore: 9, targetPosAfter: 9,
+        targetShieldBefore: 0, targetShieldAfter: 0,
+        targetState: "DEAD", damage: 9, effectiveDamage: 9,
+        targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        sequenceBefore: 0, actorClockBefore: 9, buffClass: POISON_CLASS, buffId: 44,
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta], heaps: [] })
+      }
+    }), session)).rejects.toThrow("forced event insert failure");
+
+    expect(sql.events).toHaveLength(0);
+    expect(sql.mobs.get(7)).toMatchObject({ hp: 1, ht: 20, pos: 25 });
+    expect(JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))).mobs).toHaveLength(1);
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, ht: 20, pos: 9, state: "ALIVE", deaths: 0 });
+    expect(JSON.parse(String(sql.roomMeta.get("heroState:" + PLAYER_ID))).hp).toBe(9);
+    expect(sql.rewardClaims.size).toBe(0);
+    expect(sql.rewardClaimInsertAttempts).toBe(0);
+    expect(room.currentSequence).toBe(0);
+    expect(room.worldTime).toBe(0);
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+
   it("commits the linked Mob event before Hero death and claims its reward once", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();
