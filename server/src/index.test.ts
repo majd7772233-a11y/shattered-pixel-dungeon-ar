@@ -3142,7 +3142,7 @@ describe("Native Hero Buff tick reconciliation", () => {
       left:5,percent:0.2,flat:0,healing_limited:false
     },{
       cooldown:2,buffCooldown_0:1,hp:10,shielding:2,
-      buffCount:2,buff_1:barrierRow,buffCooldown_1:0
+      buffCount:2,buff_1:barrierRow,buffCooldown_1:1
     });
     const beforeHealing=stateWithBuff(healing,31,9,{
       left:5,percent:0.2,flat:0,healing_limited:false
