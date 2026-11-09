@@ -291,6 +291,71 @@ function makeNonlethalPoisonFixture() {
   };
 }
 
+function makeNonlethalHealingFixture() {
+  const sql = new MemoryMatchRoomSql();
+  const previousHero = makeHeroBefore();
+  const previousCombat = JSON.parse(String(previousHero.combatBundle));
+  previousHero.hp = 8;
+  previousHero.cooldown = 2;
+  previousHero.buffCount = 1;
+  previousHero.buff_0 = JSON.stringify({ buff: {
+    __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
+    id: 52, time: 9, left: 22, percent: 0.2, flat: 0, healing_limited: false
+  }});
+  previousHero.buffCooldown_0 = 1;
+  delete previousHero.buff_1;
+  delete previousHero.buffCooldown_1;
+  previousCombat.HP = 8;
+  previousHero.combatBundle = JSON.stringify(previousCombat);
+
+  const beforeHero = JSON.parse(JSON.stringify(previousHero));
+  beforeHero.cooldown = 1;
+  beforeHero.buffCooldown_0 = 0;
+
+  const afterHero = JSON.parse(JSON.stringify(beforeHero));
+  afterHero.hp = 12;
+  afterHero.buff_0 = JSON.stringify({ buff: {
+    __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
+    id: 52, time: 10, left: 18, percent: 0.2, flat: 0, healing_limited: false
+  }});
+  afterHero.buffCooldown_0 = 1;
+  const afterCombat = JSON.parse(String(beforeHero.combatBundle));
+  afterCombat.HP = 12;
+  afterHero.combatBundle = JSON.stringify(afterCombat);
+
+  const levelSnapshot = {
+    schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+    entrancePos: 0, exitPos: 1023, seed: 123456, locked: false, feeling: "NONE",
+    levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+    heroStateJson: JSON.stringify(beforeHero), nativeLevelMetadataBundle: "native-level-metadata",
+    tiles: Array.from({ length: 1024 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+      flammable: false, secret: false, avoid: false, water: false,
+      discoverable: false, openSpace: false
+    })),
+    transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+    mobs: [], visitedPositions: [], mappedPositions: []
+  };
+  sql.roomMeta.set("levelPublisher", PLAYER_ID);
+  sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(previousHero));
+  sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+  sql.players.set(PLAYER_ID, {
+    player_id: PLAYER_ID, pos: 9, hp: 8, ht: 20, state: "ALIVE", deaths: 0
+  });
+
+  const tickData = {
+    sourceType: "BUFF_TICK",
+    buffClass: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing",
+    buffId: 52, actorClockBefore: 9, sequenceBefore: 0,
+    heroStateBeforeJson: JSON.stringify(beforeHero),
+    secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] })
+  };
+  const room = makeRoom(sql);
+  const ws = { send: vi.fn() };
+  const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+  return { sql, previousHero, beforeHero, afterHero, levelSnapshot, tickData, room, ws, session };
+}
+
 function makeRoom(sql: MemoryMatchRoomSql): any {
   // Exercise the real MatchRoom prototype/handler without invoking the production
   // Durable Object constructor or its level-generation/migration side effects.
@@ -325,6 +390,48 @@ function acceptedMessage(ws: any, index: number): Row {
 }
 
 describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
+  it("rolls back a non-Poison Hero Healing Buff tick when event insertion fails", async () => {
+    const fixture = makeNonlethalHealingFixture();
+    expect(hasCompleteNativeLevelSnapshot(fixture.levelSnapshot)).toBe(true);
+    expect(isValidNativeHeroBuffTick(
+      JSON.stringify(fixture.previousHero),
+      fixture.tickData.heroStateBeforeJson,
+      JSON.stringify(fixture.afterHero),
+      fixture.tickData,
+      fixture.levelSnapshot,
+      [],
+      [],
+      []
+    )).toBe(true);
+    fixture.sql.failEventInsert = true;
+    const ws = {
+      send: vi.fn(),
+      deserializeAttachment: () => fixture.session
+    };
+    const requestId = "hero-healing-buff-atomic-rollback-001";
+
+    await fixture.room.webSocketMessage(ws, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(fixture.afterHero),
+      data: fixture.tickData
+    })));
+
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    const response = JSON.parse(String(ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe(requestId);
+    expect(response.sequence).toBe(0);
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("forced event insert failure");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.size).toBe(0);
+    expect(fixture.sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, ht: 20, pos: 9, state: "ALIVE" });
+    const storedHero = JSON.parse(String(fixture.sql.roomMeta.get("heroState:" + PLAYER_ID)));
+    expect(storedHero.hp).toBe(8);
+    expect(JSON.parse(String(storedHero.buff_0)).buff).toMatchObject({ time: 9, left: 22 });
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+  });
+
   it("commits the publisher's complete LifeLink batch and Hero death in one ACTION transaction", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();

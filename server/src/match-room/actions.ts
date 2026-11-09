@@ -18,8 +18,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   private nativeActionTransactionActive = false;
 
   /**
-   * One ACTION is one Durable Object SQL transaction. In particular, a Poison LifeLink batch
-   * cannot commit Mob rows/rewards if Hero reconciliation, event insertion or deduplication fails.
+   * Native Hero Buff ticks and lethal Poison LifeLink batches use one Durable Object SQL transaction.
+   * This keeps Hero state, player HP, event/deduplication/sequence updates and any linked Mob rows atomic.
    */
   protected async handleAction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
     let payload: any = null;
@@ -30,15 +30,21 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     }
     const data = payload?.data;
     const poisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
-    const hasNativePoisonLifeLinkBatch = payload?.action === "SYNC_HERO_STATE"
+    const isNativeHeroBuffTick = payload?.action === "SYNC_HERO_STATE"
+      && data?.sourceType === "BUFF_TICK"
+      && typeof data?.buffClass === "string"
+      && Number.isSafeInteger(Number(data?.buffId))
+      && typeof data?.heroStateBeforeJson === "string";
+    const isLethalPoisonLifeLinkBatch = payload?.action === "SYNC_HERO_STATE"
       && data?.secondaryMobDeltas !== undefined
-      && ((data?.sourceType === "BUFF_TICK" && data?.buffClass === poisonClass)
-        || (data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
-          && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string"));
+      && data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
+      && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string";
+    const requiresAtomicNativeHeroTick = isNativeHeroBuffTick || isLethalPoisonLifeLinkBatch;
 
-    // Keep all non-Poison ACTIONs on the original path. Only the Mob+Hero effect batch
-    // requires a room-wide SQL transaction so the two native results cannot be split.
-    if (!hasNativePoisonLifeLinkBatch) {
+    // Every accepted native Hero Buff tick changes authoritative Hero/actor state and appends
+    // a sequenced event. Commit those writes together and defer ACK/FOV broadcasts until commit.
+    // Lethal Poison LifeLink is included separately because it joins Hero death with Mob/loot rows.
+    if (!requiresAtomicNativeHeroTick) {
       this.handleActionInTransaction(ws, msg, session);
       return;
     }
