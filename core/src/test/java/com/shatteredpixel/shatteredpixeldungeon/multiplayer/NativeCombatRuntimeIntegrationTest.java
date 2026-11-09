@@ -218,6 +218,65 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativePoisonHeroBuffTickPublishesLinkedMobDeathAndDetachesLink() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-life-link-death", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"poison-life-link-death-token\\","
+                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Rat linked = addRat(hero.pos + 1, 1);
+        linked.EXP = 0;
+        manager.registerServerEntityId(linked.id(), "linked-dead-native-mob-0001");
+        LifeLink link = Buff.prolong(hero, LifeLink.class, 10f);
+        link.object = linked.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(3f);
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue("The native Poison actor completes after its LifeLink target dies", poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertFalse("The native death callback removes the linked Mob from the level",
+                level.mobs.contains(linked));
+        Assert.assertNull("Char.damage() detaches the Hero's LifeLink when the linked target dies",
+                hero.buff(LifeLink.class));
+
+        java.util.List<NetworkMessage> actions = new ArrayList<>();
+        for (NetworkMessage message : transport.sent) {
+            if (message.messageType == MessageType.ACTION) actions.add(message);
+        }
+        Assert.assertEquals("The committed Mob death must precede the Hero Buff summary", 2, actions.size());
+        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
+        Assert.assertNotNull(mobData);
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
+                mobData.getString("sourceClass", ""));
+        Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
+        Assert.assertTrue("The native Mob death event carries the post-death loot snapshot",
+                mobData.get("heaps") != null);
+
+        JsonValue buffAction = new JsonReader().parse(actions.get(1).payloadJson);
+        JsonValue buffData = buffAction == null ? null : buffAction.get("data");
+        Assert.assertNotNull(buffData);
+        JsonValue secondary = new JsonReader().parse(buffData.getString("secondaryMobDeltas", ""));
+        JsonValue deltas = secondary == null ? null : secondary.get("deltas");
+        Assert.assertNotNull(deltas);
+        Assert.assertEquals(1, deltas.size);
+        Assert.assertEquals(linked.id(), deltas.get(0).getInt("actorId", -1));
+        Assert.assertEquals("linked-dead-native-mob-0001", deltas.get(0).getString("entityId", ""));
+        Assert.assertEquals(1, deltas.get(0).getInt("hpBefore", -1));
+        Assert.assertEquals(0, deltas.get(0).getInt("hpAfter", -1));
+        Assert.assertTrue(deltas.get(0).getString("serializedBundleBefore", "").length() > 0);
+        Assert.assertEquals(deltas.get(0).getString("serializedBundleBefore", ""),
+                deltas.get(0).getString("serializedBundleAfter", ""));
+    }
+
+    @Test
     public void nativeHeroBuffTickPublisherCapturesAuditedFlavourExpiryActors() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-audited-flavour-expiry", "client-publisher", new TestTransport());
