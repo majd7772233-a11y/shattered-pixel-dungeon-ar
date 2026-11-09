@@ -129,6 +129,20 @@ Hero.die(...) avoids deleting a multiplayer run as though it were a completed lo
 
 Any change to Hero.damage(), die(), revive, Buff callbacks or item consumption must inspect Char.java, Mob.java, Actor.java, InterlevelScene.java, NativeHeroBuffTickPublisher, Worker validation and the matching JVM/server regressions.
 
+
+### 4.5 Poison/LifeLink Mob callback batching
+
+`NativeHeroBuffTickPublisher` captures a full Mob combat pre-state when it begins a native Poison actor tick. During that capture, `MultiplayerManager.sendAction()` buffers the normal `SYNC_MOB_STATE` publication for a `LifeLink`-source Mob callback on the level publisher. It does not change `Char.damage()`, LifeLink damage, death, rewards or heap generation; it prevents that partial result from reaching the server as a separate commit.
+
+At the end of a nonlethal Poison tick, `NativeMobCombatDelta.changedSince()` captures the complete linked Mob delta and the Hero Buff publisher sends it with the Hero result in one `SYNC_HERO_STATE` / `BUFF_TICK` action. If the same callback kills the Hero, `Hero.damage()` publishes the environment-death result first; `MultiplayerManager` enriches that action with the captured Poison pre-state, sequence baseline and Mob delta. No later Buff tick is sent after Hero death.
+
+A removed linked Mob is represented by a stable-entity tombstone with zero HP and its trusted pre-death bundle. If any linked Mob dies, the payload carries the final native heap snapshot as a JSON array. The Worker validates the complete result and commits Hero, Mob, heap and reward state in one scoped Durable Object SQL transaction.
+
+This path is publisher-only for shared Mob writes. Actor IDs are local to a native SPD process; a non-publisher must not use its local `LifeLink.object` value to author shared Mob state. Keep non-publisher and RemoteHero/player LifeLink behavior fail-closed until a separate authority/identity design is implemented and tested.
+
+The Java runtime integration tests assert one ACTION for multiple linked Mob deaths, a complete Mob delta list and an array-shaped final heap payload. MatchRoom integration tests are described in `TEST_MATRIX.md`; they use an in-memory SQL adapter and do not replace real Worker or device verification.
+
+
 ## 5. RemoteHero and RemotePlayer
 
 Sources:

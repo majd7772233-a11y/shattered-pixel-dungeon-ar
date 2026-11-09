@@ -34,6 +34,14 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
+## Active Phase 9 continuation checkpoint — 2026-11-09
+
+Latest exact tested branch HEAD: `644c221efd7996f8efe4a3be337ad0eafa612d4d`; exact-head [CI run 42662905179](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179) passed Backend TypeScript build/622 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+
+The native Poison LifeLink path now buffers publisher-side Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, non-publisher rejection and rollback after a final event insert failure. See `AUTHORITATIVE_DATA_FLOWS.md`, `SERVER_VALIDATION_AND_STORAGE.md`, `ANDROID_NATIVE_INTEGRATION.md`, `TEST_MATRIX.md` and `SESSION_RECOVERY_AND_SECURITY.md`.
+
+The integration adapter is in-memory, not Cloudflare's actual SQLite runtime. No Worker deployment smoke test or physical two-device multiplayer run has been performed. RemoteHero/player LifeLink, level-up XP/item callbacks, talent variants, authority handoff, additional simultaneous effects, reconnect/expiry and broader malformed/replay/resync remain open.
+
 ## Source-of-truth hierarchy
 
 1. The exact source tree at the active branch HEAD is implementation truth.

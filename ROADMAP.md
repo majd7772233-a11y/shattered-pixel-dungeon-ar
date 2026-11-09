@@ -81,6 +81,20 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
+### Active continuation checkpoint — 2026-11-09 (Poison LifeLink batch atomicity verified; Phase 9 remains OPEN)
+
+- **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. No new branch and no merge to `main`.
+- **Exact tested code/test HEAD:** `644c221efd7996f8efe4a3be337ad0eafa612d4d`; exact-HEAD GitHub Actions [run 42662905179 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179). Backend TypeScript build and 622 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. Mirrored TS/JS suites mean executions are not unique scenario counts.
+- **Publisher-side Poison capture:** LifeLink Mob callbacks during a native Poison actor tick are buffered by `MultiplayerManager` instead of being emitted as separate `SYNC_MOB_STATE` writes. `NativeMobCombatDelta` carries complete publisher-local before/after Mob deltas, stable entity IDs, bundles, Buff/shield values and a JSON-array loot snapshot.
+- **Single-request outcomes:** nonlethal Poison submits one `SYNC_HERO_STATE` / `BUFF_TICK` action with Hero and linked Mob results. If the same Poison callback kills the local Hero, the Hero environment-death action is enriched with the same pre-state/baseline/Mob batch because no later Buff tick will occur.
+- **Scoped SQL transaction:** `MatchRoom.handleAction` wraps exactly these publisher Poison LifeLink batch shapes in `state.storage.transactionSync`. Mob rows/deletions, level snapshot/heaps, Hero/player HP and state, reward claims, event, deduplication record, sequence and world time are committed together. If storage cannot provide `transactionSync`, the batch is rejected; a thrown error rolls SQL back and restores the in-memory sequence/world-time checkpoint. Other action families retain their existing transaction behavior.
+- **Validation/authority:** trusted Hero LifeLink Actor IDs are resolved through the complete authoritative level snapshot to stable Mob entities. Mob SQL pre-state, native bundles, HP/HT/position/shields/Buffs, dead-Mob tombstones, exact allowed loot cells and trusted reward inputs are checked before commit. Non-publishers cannot author LifeLink Mob deltas from process-local Actor IDs.
+- **Integration regressions:** actual MatchRoom handler tests cover nonlethal publisher tick + Mob damage, replay via a fresh request ID, lethal Hero death, rollback on final event insertion failure, forged unrelated heap positions and non-publisher rejection. They use a deterministic in-memory SQL adapter, not the actual Cloudflare Durable Object SQLite runtime.
+- **Wire/diagnostic fixes:** the native Mob delta now emits `heaps` as an array; JSON object-end parsing handles escaped strings/nested braces; native Buff failures return specific validation error codes.
+- **Fail-closed exclusions:** level-up XP and `Hero.earnExp()` item callbacks, Unencumbered Spirit, UnarmedAbilityTracker, RemoteHero/player LifeLink and non-publisher Mob writes remain unsupported. No protected Java file (`Hero.java`, `Mob.java`, `WorldSnapshot.java`) was changed.
+- **Remaining Phase 9 work:** real Durable Object/SQLite integration, crash/restart/authority handoff, XP level-up/item callbacks, Monk talent/ability variants, RemoteHero links, reconnect/expiry edges, more consumables and overlapping DOT/HoT/shield/detach callbacks, malformed/replay/resync. No live Worker smoke test or physical two-device match has been performed.
+
+
 ### Historical Batch 2 documentation checkpoint — 2026-11-08 (superseded by source-refactor Stages 1–3)
 
 - **Documentation HEAD before Batch 2:** eb2075b3f09ca4779773140b7e6539a6655f6824.
@@ -103,7 +117,7 @@ The historical documentation batches established the technical references now in
 - **No gameplay code was changed by this audit.** Live Worker deployment and physical two-device play remain unverified and stay within Phases 22 and 23.
 
 
-### Active continuation checkpoint — 2026-10-31
+### Historical continuation checkpoint — 2026-10-31 (superseded by 2026-11-09)
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`.
 - **Working branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless the user asks.
@@ -395,20 +409,20 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 
 ### Acceptance criteria
 
-### Progress checkpoint — 2026-11-09 (MatchRoom lethal Poison + LifeLink path verified; Phase 9 remains OPEN)
+### Progress checkpoint — 2026-11-09 (publisher Poison LifeLink batches atomic; Phase 9 remains OPEN)
 
-- **Exact tested gameplay HEAD:** `768485f5222fd5d8cf2285211af367f8fcf5b773` on `multiplayer-framework-core-14118577486727081892`; no `main` merge.
-- **Exact-HEAD automated acceptance:** [GitHub Actions run 42620080111 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42620080111). TypeScript build and 610 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. Some TypeScript/generated-JavaScript suites mirror cases, so execution count is not a count of distinct scenarios.
-- Native LifeLink Mob damage commits exactly once through `SYNC_MOB_STATE` / accepted `CHAR_DAMAGED`; later Hero `BUFF_TICK` only correlates the accepted event and never reapplies Mob HP, SQL, death, snapshot or heaps.
-- The local Hero may die during the same Poison callback after one or more linked Mob callbacks. The Java runtime tests confirm ordered Mob actions followed by the Hero environment-death action, exactly two actions and no post-death `BUFF_TICK`. A multi-target LifeLink Mob death in one Poison tick is also covered.
-- The Worker reconstructs this narrow same-sender window from the sender's latest accepted `HERO_BUFF_TICKED` baseline and accepted `CHAR_DAMAGED` events after it. It checks the original LifeLink Actor IDs, stable entity identities, death evidence, exact XP/MonkEnergy reward inputs and idempotent reward claims. It does not repeat the Mob death transaction.
-- **Lethal Poison proof-gate fix:** `poisonDeathEvidenceValid` was initialized to false for lethal Poison and was never promoted when the explicit evidence-validation branch began, so even valid event windows were rejected. It now starts true only inside that narrowly classified path; malformed sequence/evidence, invalid Buff/reward contracts or duplicate claims still flip it to false.
-- **MatchRoom handler integration:** `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` for the Mob event and subsequent Hero death using a deterministic in-memory SQL adapter. It verifies Mob row deletion and level-snapshot removal once, then the `PLAYER_DAMAGED` event, persisted Hero XP, one reward claim, same-request idempotency and rejection of replay with a new request ID.
-- **Scope of that integration:** it validates the real handler branches and their ordered successful result, but does not run a Cloudflare Durable Object or its SQLite engine and does not prove one transaction spans both separate requests. Crash, rejection or rollback between those events remains an explicit gap.
-- The Hero death handler preserves the trusted Hero Bundle and merges only validated non-level-up `exp`; outer vitals and Buff deltas remain independently validated. Even when no linked Mob dies, the complete Hero Buff transition validator runs: LifeLink detach, XP/MonkEnergy changes and unrelated state mutations are rejected.
-- Positive-EXP reward validation includes the native AscensionChallenge fallback formula and base MonkEnergy cap/Regeneration behavior. Level-ups, `Hero.earnExp()` item callbacks, Unencumbered Spirit, UnarmedAbilityTracker and RemoteHero/player links remain fail-closed.
-- **Protected files:** `Hero.java`, `Mob.java`, and `WorldSnapshot.java` were not modified.
-- **Remaining Phase 9 gaps:** real Durable Object/SQLite integration and failure recovery between the two ordered requests; XP item callbacks and level-up transaction; Monk talent/ability variants; RemoteHero/player LifeLink; reconnect and expiry edges; broader consumable and overlapping DOT/HoT/shield/detach callbacks; malformed/replay/resync. No Worker deployment/smoke test or physical two-device match has been performed. Phase 9 remains OPEN.
+- **Exact tested gameplay HEAD:** `644c221efd7996f8efe4a3be337ad0eafa612d4d` on `multiplayer-framework-core-14118577486727081892`; exact-HEAD [CI run 42662905179 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179).
+- **CI evidence:** TypeScript build and 622 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. TypeScript/generated-JavaScript suites mirror cases, so 622 is an execution count, not 622 unique scenarios.
+- Native LifeLink Mob callbacks produced inside the publisher's Poison actor are buffered rather than sent as separate `SYNC_MOB_STATE` commits. The complete before/after data is included in `NativeMobCombatDelta`, including publisher-local Actor IDs, stable entity IDs, native bundles, Buff/shield values, and a JSON-array heap snapshot when a Mob dies.
+- A nonlethal Poison tick emits one `SYNC_HERO_STATE` / `BUFF_TICK` action containing both the Hero result and the complete linked Mob delta. A lethal local-Hero Poison callback attaches that same pre-state, sequence baseline and Mob batch to the Hero environment-death action; it does not wait for a post-death Buff tick.
+- `MatchRoom.handleAction` wraps these two exact Poison batch shapes in `state.storage.transactionSync`. Mob SQL updates/deletions, the level snapshot and heaps, Hero/player HP state, reward receipts, the final event, `processed_actions`, sequence and world time share the request transaction. If `transactionSync` is not available, the batch is rejected. If a write/event insert throws, SQL rolls back and the handler restores its in-memory sequence/world-time checkpoint. This is deliberately scoped; it does not make every action transactional.
+- The server resolves LifeLink Actor IDs only from the trusted Hero pre-state and complete level snapshot, then validates the stable server Mob identities and SQL before-state. It checks native post-bundles, HP/HT/position/shields/Buffs, death tombstones, loot only at dead Mob cells and trusted reward metadata. Non-publishers cannot author LifeLink Mob deltas from process-local Actor IDs.
+- The lethal publisher branch builds synthetic Mob-damage evidence from the validated batch and trusted pre-death Mob snapshot; the same evidence drives exact non-level-up XP and supported base MonkEnergy checks. Level-up/item callbacks and unsupported talent/ability variants remain rejected. The legacy non-publisher lethal evidence branch only correlates already-accepted events and does not write Mob state.
+- `server/src/match-room/lifelink-death.integration.test.ts` covers publisher nonlethal and lethal flows, replay using a fresh request ID, forged heap positions, non-publisher rejection and rollback when final event insertion fails. The in-memory SQL adapter models the HP-only Hero update, transaction rollback and all asserted rows. This exercises the MatchRoom handler, but is not a real Cloudflare Durable Object SQLite test.
+- **Wire fixes:** `NativeMobCombatDelta.Payload.heaps` is an object/JSON array, not a JSON string; `findObjectEnd()` handles nested objects and escaped quotes/backslashes; native Buff rejection responses report the first failed validation precondition.
+- **Protected files:** `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged.
+- **Still open for Phase 9:** real Durable Object/SQLite restart/failure validation, publisher authority handoff, level-up XP and item callbacks, Monk talent/ability variants, RemoteHero/player LifeLink, reconnect/expiry boundaries, more consumables/detach paths and simultaneous DOT/HoT/shield effects, and broader malformed/replay/resync testing. No Worker deployment smoke test or physical two-device match was run. Phase 9 remains OPEN.
+
 
 ### Progress checkpoint — 2026-11-02 (Phase 9 remains OPEN)
 

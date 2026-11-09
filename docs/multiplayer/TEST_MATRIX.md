@@ -220,26 +220,27 @@ Existing backend tests must continue importing the root compatibility surface fr
 These are deterministic Worker-handler integration tests. They do not instantiate a Cloudflare Durable Object runtime, deploy a Worker or prove a physical two-device match. The root test suites continue to use the public `./index` compatibility path.
 
 
-## Phase 9 — LifeLink Mob damage in Poison ticks (2026-11-09)
+## Phase 9 — Poison LifeLink Mob batching and transaction coverage (2026-11-09)
 
-- [x] Capture native Mob before/after state around the original Poison actor tick without recreating the split-damage formula in TypeScript.
-- [x] Capture the publisher's sequence baseline before the native Poison tick and include publisher-local Actor IDs plus the native pre-bundle in the later evidence payload.
-- [x] Commit the authoritative Mob effect exactly once through `SYNC_MOB_STATE`; make the later `BUFF_TICK` correlation-only with no second Mob SQL, snapshot, death or heap writes.
-- [x] Bind evidence to a same-sender accepted `CHAR_DAMAGED` event with native LifeLink source during the captured Poison tick and after `sequenceBefore`; require the baseline to include the sender's latest accepted `HERO_BUFF_TICKED`; validate Actor ID, stable entity ID, trusted pre-bundle, post-bundle, HP/HT/position/shield/Buffs, and the already-committed snapshot.
-- [x] Cover live and dead linked Mob targets; require death to be already committed/removed and final heaps to match.
-- [x] Allow the Hero's paired LifeLink detach only when the same linked Mob Actor ID has accepted zero-HP death evidence; reject detach without exact proof.
-- [x] Reject duplicate/stale/foreign events, unlinked Actors, forged bundles and snapshots that still contain pre-damage state.
-- [x] Keep non-Poison timed Hero Buff expiry independent of LifeLink Mob resolution.
-- [x] Capture Mob reward class, enemy eligibility, EXP, maxLvl, spawningWeight and base MonkEnergy from the authoritative native level snapshot; copy them to the accepted Mob death event rather than trusting BUFF_TICK reward claims.
-- [x] Validate exact positive-EXP Hero XP from accepted linked Mob death events, including AscensionChallenge fallback, while keeping Hero level unchanged.
-- [x] Validate native Monk base MonkEnergy gain and cap, and create the native MonkEnergy Buff with zero gain when Regeneration is disabled; reject Unencumbered Spirit and UnarmedAbilityTracker variants.
-- [x] Exercise a positive-EXP LifeLink Mob death through the real Java Poison/LifeLink runtime with a Monk Hero; assert native XP, energy, Mob removal, paired link detach and event ordering.
-- [ ] Validate level-up XP transitions, Hero.updateHT, talent/ability changes and item onHeroGainExp callbacks as one authoritative Hero transaction; currently rejected fail-closed.
-- [x] Native Java runtime: one Poison callback kills multiple linked Mobs and records one native reward path per death.
-- [x] Native Java runtime: the same Poison callback kills a linked Mob and then the one-HP local Hero; Mob `SYNC_MOB_STATE` precedes the Hero environment-death event, exactly two actions are emitted, and no late `BUFF_TICK` is published.
-- [x] Worker validator: lethal Poison with no linked Mob death still runs the complete Buff-transition check; LifeLink stays attached, XP/MonkEnergy stay fixed, and unrelated changes fail closed.
-- [x] MatchRoom handler integration: execute the ordered Mob `SYNC_MOB_STATE` then Hero lethal-Poison `SYNC_HERO_STATE` through the actual `MatchRoom.handleAction`; verify one Mob SQL deletion, level-snapshot removal, ordered `CHAR_DAMAGED` / `PLAYER_DAMAGED` events, persisted validated XP, one reward claim, same-request idempotency, and new-request replay rejection (deterministic in-memory SQL adapter).
-- [ ] Exercise the same two-request flow against a real Cloudflare Durable Object SQLite runtime, including failure/rollback/restart between the Mob and Hero commits; the in-memory adapter does not prove cross-message atomicity.
-- [x] Exact-head CI on `768485f5222fd5d8cf2285211af367f8fcf5b773`: [run 42620080111 — Backend and Android jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42620080111). TypeScript build and 610 Vitest executions across eight files passed; some TS/generated-JS suites mirror cases. Android JVM tests and Debug APK compilation passed. This is not a deployed Worker or physical-device test.
+- [x] Capture native Mob before/after combat state around the original Poison actor tick; keep native SPD damage/reward/loot formulas authoritative.
+- [x] Buffer publisher-side `LifeLink` Mob `SYNC_MOB_STATE` messages while the native Poison capture is active, so no independent Mob commit can survive ahead of the Hero result.
+- [x] Send nonlethal Poison Hero and secondary Mob results in one `SYNC_HERO_STATE` / `BUFF_TICK` ACTION.
+- [x] Attach the same captured Mob batch to the lethal Hero Poison environment-death ACTION, because Hero death prevents a later `BUFF_TICK`.
+- [x] Validate sequence freshness, trusted Hero pre-state, publisher-local Actor IDs, stable Mob entity IDs, Mob SQL pre-state, exact native bundles, HP/HT/position/shield/Buffs, death tombstones and dead-cell-only heap changes.
+- [x] Use trusted level-snapshot Mob metadata for class, reward eligibility, EXP, maxLvl, spawningWeight and base MonkEnergy; reject level-ups and unsupported reward callbacks.
+- [x] Commit Mob SQL/snapshot/loot, Hero/player HP state, reward receipts, request replay record, event and sequence within one scoped `state.storage.transactionSync` action.
+- [x] Reject the batch if atomic storage is unavailable; restore SQL and the handler's sequence/world-time checkpoint on thrown writes.
+- [x] Reject non-publisher LifeLink Mob deltas because Actor IDs are process-local and cannot be mapped across devices from a client assertion.
+- [x] MatchRoom integration: accepted nonlethal publisher batch updates Hero+Mob together and rejects stale replay under a fresh request ID.
+- [x] MatchRoom integration: lethal publisher Hero-death batch and prior lethal rollback coverage.
+- [x] MatchRoom integration: reject a forged loot heap outside all dead linked Mob positions.
+- [x] MatchRoom integration: reject non-publisher linked Mob writes without changing either state.
+- [x] MatchRoom integration: force final event insertion failure and verify Mob rows, level snapshot, Hero state, rewards, event log, sequence and world time roll back together.
+- [x] Native Java runtime: multiple linked Mob deaths in one Poison tick are included in one ACTION; final heaps are serialized as a JSON array.
+- [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
+- [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
+- [ ] Validate level-up XP, `Hero.updateHT()`, talent/ability and item `onHeroGainExp` callbacks as one authoritative batch; currently fail-closed.
+- [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
+**Exact-head CI:** `644c221efd7996f8efe4a3be337ad0eafa612d4d` passed [run 42662905179](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179): TypeScript build + 622 Vitest executions across eight files and Android JVM tests + Debug APK compilation. Some TS/generated-JS suites mirror source cases. These MatchRoom tests use an in-memory SQL adapter; they do not run a deployed Worker, real Durable Object SQLite or physical devices.
 

@@ -137,6 +137,16 @@ The alarm is a Durable Object recovery mechanism; it is not a client-side timer.
 
 Review whether database mutation, sequence increment, events insert, processed_actions insert, claim creation/release and broadcast are safely ordered for each specific action. The code has explicit transactionSync use in some claim/migration helpers; do not assume every action's multiple SQL statements are wrapped in one common transaction.
 
+
+### 8.1 Poison LifeLink batch rollback and replay
+
+Publisher Poison LifeLink Mob callbacks are not committed as separate `SYNC_MOB_STATE` requests. The Mob deltas travel in the same Hero Buff tick or lethal Hero environment-death request. For these two payload shapes only, MatchRoom uses `state.storage.transactionSync` so a partial Mob write cannot survive if Hero validation, reward insertion, event insertion or deduplication fails. The in-memory handler checkpoint restores sequence/world time when the transaction throws.
+
+The accepted request ID and sequence belong to the whole batch. A retry with the same request replays its stored result; a new request ID cannot reuse the old Mob pre-state or the previous Hero Buff sequence baseline. The integration tests cover fresh-ID stale replay rejection and rollback after forced final event insertion failure.
+
+This evidence is still based on a deterministic in-memory SQL adapter. Real Durable Object SQLite commit/rollback behavior, crash/restart recovery and live Worker behavior remain unverified. Do not generalize the atomicity guarantee to actions outside the specific Poison LifeLink wrapper.
+
+
 ## 9. Authority and ownership
 
 The current model includes:
@@ -147,6 +157,9 @@ The current model includes:
 - stable server entity IDs mapped to local Actor IDs.
 
 A player being connected does not make that player the owner of every world action. Worker validation must ensure that the correct authority is submitting the correct request and target. Authority handoff and durable recovery are separate roadmap scope.
+
+Poison LifeLink is a special publisher-owned batch: the server resolves the Hero's local Actor IDs through the trusted complete level snapshot and requires the level publisher for linked Mob writes. A non-publisher's process-local Actor ID is not a shared identity and is rejected with `BUFF_TICK_MOB_AUTHORITY_REQUIRED`; reconnect or publisher handoff must not infer a new mapping from stale client state. RemoteHero/player LifeLink remains unsupported.
+
 
 ## 10. Field-of-view disclosure
 
