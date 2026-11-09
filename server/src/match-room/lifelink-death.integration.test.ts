@@ -358,6 +358,101 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.players.get(PLAYER_ID)?.deaths).toBe(1);
   });
 
+  it("commits a nonlethal Poison tick and its linked Mob damage as one publisher transaction", async () => {
+    const sql = new MemoryMatchRoomSql();
+    const beforeHero = makeHeroBefore();
+    const previousHero = JSON.parse(JSON.stringify(beforeHero));
+    const afterHero = JSON.parse(JSON.stringify(beforeHero));
+    afterHero.hp = 8;
+    afterHero.buff_0 = JSON.stringify({ buff: {
+      __className: POISON_CLASS, id: 44, time: 10, left: 8
+    }});
+    afterHero.buffCooldown_0 = 1;
+    const afterCombat = JSON.parse(String(beforeHero.combatBundle));
+    afterCombat.HP = 8;
+    afterHero.combatBundle = JSON.stringify(afterCombat);
+
+    const mobBefore = nativeMobBundle(20);
+    const mobAfter = nativeMobBundle(19);
+    const savedMob = {
+      mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 20, ht: 20, shielding: 0,
+      state: "Hunting", serializedBundle: mobBefore, buffs: [],
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+      rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+      rewardSpawningWeight: 1, rewardMonkEnergy: 1
+    };
+    sql.roomMeta.set("levelPublisher", PLAYER_ID);
+    sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(previousHero));
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify({
+      depth: 1, width: 32, height: 32, branch: 0, locked: false,
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heaps: [], mobs: [savedMob]
+    }));
+    sql.players.set(PLAYER_ID, {
+      player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+    });
+    sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 25 });
+
+    const room = makeRoom(sql);
+    const ws = { send: vi.fn() };
+    const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+    const mobDelta = {
+      entityId: ENTITY_ID, actorId: 7,
+      hpBefore: 20, htBefore: 20, posBefore: 25, shieldBefore: 0,
+      buffsBefore: "[]", serializedBundleBefore: mobBefore,
+      hpAfter: 19, htAfter: 20, posAfter: 25, shieldAfter: 0,
+      buffsAfter: "[]", serializedBundleAfter: mobAfter
+    };
+
+    await room.handleAction(ws, actionMessage("lifelink-poison-buff-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(afterHero),
+      data: {
+        sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
+        actorClockBefore: 9, sequenceBefore: 0,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta] })
+      }
+    }), session);
+
+    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ACTION_ACCEPTED");
+    expect(sql.events).toHaveLength(1);
+    expect(sql.events[0].event_type).toBe("HERO_BUFF_TICKED");
+    const event = JSON.parse(String(sql.events[0].payload));
+    expect(event.nativeLifeLinkAtomicBatch).toBe(true);
+    expect(event.secondaryMobDeltas.deltas).toHaveLength(1);
+    expect(sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
+    const savedLevel = JSON.parse(String(sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 19, ht: 20, pos: 25 });
+    expect(savedLevel.mobs[0].serializedBundle).toBe(mobAfter);
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, ht: 20, pos: 9, state: "ALIVE" });
+    const storedHero = JSON.parse(String(sql.roomMeta.get("heroState:" + PLAYER_ID)));
+    expect(storedHero.hp).toBe(8);
+    expect(JSON.parse(String(storedHero.buff_0)).buff).toMatchObject({ time: 10, left: 8 });
+    expect(sql.rewardClaims.size).toBe(0);
+    expect(room.currentSequence).toBe(1);
+
+    // The accepted Hero Buff sequence and new Mob pre-state make the same batch stale,
+    // even when the client retries it with a fresh request ID.
+    await room.handleAction(ws, actionMessage("lifelink-poison-buff-002", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(afterHero),
+      data: {
+        sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
+        actorClockBefore: 9, sequenceBefore: 0,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta] })
+      }
+    }), session);
+
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])).messageType).toBe("ERROR");
+    expect(sql.events).toHaveLength(1);
+    expect(sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, state: "ALIVE" });
+    expect(room.currentSequence).toBe(1);
+  });
+
   it("rejects a LifeLink death batch that adds a heap outside every dead Mob cell", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();
