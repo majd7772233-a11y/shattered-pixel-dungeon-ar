@@ -358,6 +358,72 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.players.get(PLAYER_ID)?.deaths).toBe(1);
   });
 
+  it("rejects a LifeLink death batch that adds a heap outside every dead Mob cell", async () => {
+    const sql = new MemoryMatchRoomSql();
+    const beforeHero = makeHeroBefore();
+    const mobBundle = nativeMobBundle(1);
+    const savedMob = {
+      mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 1, ht: 20, shielding: 0,
+      state: "Hunting", serializedBundle: mobBundle, buffs: [],
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+      rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+      rewardSpawningWeight: 1, rewardMonkEnergy: 1
+    };
+    sql.roomMeta.set("levelPublisher", PLAYER_ID);
+    sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(beforeHero));
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify({
+      depth: 1, width: 32, height: 32, branch: 0, locked: false,
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heaps: [], mobs: [savedMob]
+    }));
+    sql.players.set(PLAYER_ID, {
+      player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+    });
+    sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 1, ht: 20, pos: 25 });
+
+    const room = makeRoom(sql);
+    const ws = { send: vi.fn() };
+    const session = { playerId: PLAYER_ID, sessionToken: "session-token" };
+    const heroDeath = makeHeroAfterDeath(beforeHero);
+    const mobDelta = {
+      entityId: ENTITY_ID, actorId: 7,
+      hpBefore: 1, htBefore: 20, posBefore: 25, shieldBefore: 0,
+      buffsBefore: "[]", hpAfter: 0, htAfter: 20, posAfter: 25, shieldAfter: 0,
+      buffsAfter: "[]", serializedBundleAfter: mobBundle
+    };
+    const unrelatedHeap = {
+      pos: 100, type: "HEAP", seen: false, haunted: false,
+      hidden: false, autoExplored: false, items: []
+    };
+
+    await room.handleAction(ws, actionMessage("lifelink-atomic-forged-loot-001", {
+      action: "SYNC_HERO_STATE",
+      heroStateJson: JSON.stringify(heroDeath.state),
+      data: {
+        sourceType: "ENVIRONMENT", sourceClass: POISON_CLASS, engineDamageResult: true,
+        targetHpBefore: 9, targetHtBefore: 20, targetHp: 0, targetHt: 20,
+        targetPosBefore: 9, targetPosAfter: 9,
+        targetShieldBefore: 0, targetShieldAfter: 0,
+        targetState: "DEAD", damage: 9, effectiveDamage: 9,
+        targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs,
+        heroStateBeforeJson: JSON.stringify(beforeHero),
+        sequenceBefore: 0, actorClockBefore: 9, buffClass: POISON_CLASS, buffId: 44,
+        secondaryMobDeltas: JSON.stringify({
+          complete: true, deltas: [mobDelta], heaps: [unrelatedHeap]
+        })
+      }
+    }), session);
+
+    expect(JSON.parse(String(ws.send.mock.calls[0][0])).messageType).toBe("ERROR");
+    expect(sql.events).toHaveLength(0);
+    expect(sql.mobs.get(7)).toMatchObject({ hp: 1, ht: 20, pos: 25 });
+    expect(JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))).mobs).toHaveLength(1);
+    expect(JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))).heaps).toEqual([]);
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 9, state: "ALIVE", deaths: 0 });
+    expect(sql.rewardClaims.size).toBe(0);
+  });
+
   it("rolls back Mob death, Hero death, heaps and reward claims when the final event insert fails", async () => {
     const sql = new MemoryMatchRoomSql();
     const beforeHero = makeHeroBefore();
