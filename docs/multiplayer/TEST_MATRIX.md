@@ -248,11 +248,16 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Native Hero Poison/Barrier: reject a missing Barrier with no aggregate shield loss, excess aggregate shield loss, or a forged partial-decay accumulator.
 - [x] Use Java's actual Bundle key `partial_lost_shield` in both Poison-damage and Barrier-actor tests; reject the incorrect `partialLostShield` camelCase alias.
 - [x] Native Hero Poison/Barrier: preserve Hunger's distinct native shield-bypass rule.
+- [x] Native Hero Poison/ShieldBuff: validate native descending priorities—tier 2 (`WarriorShield`/`Blocking.BlockBuff`), tier 1 (`AscendBuff`/`DivineShield`), tier 0 (`Barrier`).
+- [x] Native Hero Poison/ShieldBuff: derive incoming damage from HP/aggregate-shield conservation and require each higher tier to absorb its available amount before a lower tier can lose shield.
+- [x] Native Hero Poison/ShieldBuff: reject forged Barrier consumption while priority-2 or priority-1 capacity remains; reject forged aggregate/row mismatches.
+- [x] Native Hero Poison/ShieldBuff: enforce zero-shield lifecycle (WarriorShield/AscendBuff persist; BlockBuff/DivineShield/Barrier detach).
+- [x] Java runtime: run the original Poison actor with all three shield-priority tiers active and verify priority-2/priority-1 absorption leaves Barrier unchanged.
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
 - [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
 - [ ] Validate level-up XP, `Hero.updateHT()`, talent/ability and item `onHeroGainExp` callbacks as one authoritative batch; currently fail-closed.
 - [ ] Confirm full snapshot application after a rejected non-publisher Poison/LifeLink tick in a connected client, not only that the RESYNC request is sent.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `4c036ff866e3ecbecb4746121da0d7f6072d3e34` passed [run 42695860586](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42695860586): TypeScript build + 634 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
+**Exact-head CI:** `3291698d1fbbb6bc37611d1a8276bb2477c50b58` passed [run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852): TypeScript build + 638 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 
