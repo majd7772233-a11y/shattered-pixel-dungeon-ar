@@ -5959,7 +5959,8 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     const liveLinkHero=makeHero({exp:0,energy:null});
     liveLinkHero.after.hp=0;
     liveLinkHero.after.combatBundle=JSON.stringify({
-      ...JSON.parse(liveLinkHero.after.combatBundle),HP:0,HT:20,pos:9
+      ...JSON.parse(liveLinkHero.after.combatBundle),HP:0,HT:20,pos:9,
+      exp:JSON.parse(liveLinkHero.before.combatBundle).exp
     });
     // No linked Mob died: the LifeLink Buff must remain present and unchanged.
     liveLinkHero.after.buffCount=2;
