@@ -220,6 +220,78 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativePoisonLifeLinkMobDeathPrecedesTheSameTickHeroDeathEvent() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-life-link-hero-death", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-life-link-hero-death-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Rat linked = addRat(hero.pos + 1, 1);
+        linked.EXP = 2;
+        hero.subClass = com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.MONK;
+        hero.HP = 1;
+        int heroExpBefore = hero.exp;
+        manager.registerServerEntityId(linked.id(), "linked-dead-native-mob-hero-0001");
+        level.heroFOV[linked.pos] = true;
+
+        LifeLink link = Buff.append(hero, LifeLink.class, 10f);
+        link.object = linked.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(3f);
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+
+        Assert.assertTrue("The native Poison actor completes its lethal callback", poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertFalse("The linked Mob dies before the Hero's own share of Poison", level.mobs.contains(linked));
+        Assert.assertFalse("The same Poison callback kills the one-HP Hero", hero.isAlive());
+        Assert.assertEquals("Mob.destroy() awards XP before Hero.damage() marks the Hero dead",
+                heroExpBefore + 2, hero.exp);
+        MonkEnergy energy = hero.buff(MonkEnergy.class);
+        Assert.assertNotNull("The native Monk reward is present in the final death snapshot", energy);
+        Assert.assertEquals(1f, energy.energy, 0.001f);
+
+        java.util.List<NetworkMessage> actions = new ArrayList<>();
+        for (NetworkMessage message : transport.sent) {
+            if (message.messageType == MessageType.ACTION) actions.add(message);
+        }
+        Assert.assertEquals("Death during periodic damage emits Mob then Hero events, never a late Buff tick",
+                2, actions.size);
+
+        JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
+        JsonValue mobData = mobAction == null ? null : mobAction.get("data");
+        Assert.assertNotNull(mobData);
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
+                mobData.getString("sourceClass", ""));
+        Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
+        Assert.assertEquals("linked-dead-native-mob-hero-0001", mobData.getString("entityId", ""));
+
+        JsonValue heroAction = new JsonReader().parse(actions.get(1).payloadJson);
+        JsonValue heroData = heroAction == null ? null : heroAction.get("data");
+        Assert.assertNotNull(heroData);
+        Assert.assertEquals("ENVIRONMENT", heroData.getString("sourceType", ""));
+        Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison",
+                heroData.getString("sourceClass", ""));
+        Assert.assertEquals("DEAD", heroData.getString("targetState", ""));
+        Assert.assertEquals(0, heroData.getInt("targetHp", -1));
+        Assert.assertTrue("The final Hero state carries the already-earned native EXP",
+                heroAction.getString("heroStateJson", "").contains("\"exp\":2"));
+        Assert.assertTrue("The final Hero state carries the MonkEnergy Buff",
+                heroAction.getString("heroStateJson", "").contains("MonkEnergy"));
+        Assert.assertFalse("No post-death BUFF_TICK may be emitted",
+                actions.stream().anyMatch(message -> {
+                    JsonValue value = new JsonReader().parse(message.payloadJson);
+                    JsonValue data = value == null ? null : value.get("data");
+                    return data != null && "BUFF_TICK".equals(data.getString("sourceType", ""));
+                }));
+    }
+
+    @Test
     public void nativePoisonHeroBuffTickPublishesMultipleLinkedMobDeathsInOneTick() {
         TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();
