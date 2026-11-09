@@ -245,6 +245,7 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] MatchRoom transaction scope: every source-shaped native Hero `BUFF_TICK` uses `transactionSync`, not only Poison/LifeLink; source-specific validators remain fail-closed.
 - [x] MatchRoom integration: force Healing's final event insert to fail after Hero/player HP and Buff writes, and verify SQL state, event, processed request and sequence all roll back with a correlated ERROR.
 - [x] Android non-publisher regression: local Poison/LifeLink leaves Mob HP unchanged, publishes an empty secondary Mob delta for server rejection, and triggers RESYNC when the Hero tick is rejected.
+- [x] Native full-snapshot JSON: disable libGDX prototype elision so `schemaVersion=1`, `branch=0`, default flags, zero-valued tile fields and explicit empty arrays survive serialization; assert required fields before `MessageRouter` application.
 - [x] Native Hero Poison/Barrier: accept a Poison hit fully absorbed by Barrier with Hero HP unchanged and Barrier detached exactly at zero.
 - [x] Native Hero Poison/Barrier: accept partial Barrier absorption only when the Hero's aggregate shield loss equals the Barrier row loss and its partial-decay remainder remains unchanged.
 - [x] Native Hero Poison/Barrier: reject a missing Barrier with no aggregate shield loss, excess aggregate shield loss, or a forged partial-decay accumulator.
@@ -258,8 +259,9 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
 - [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
 - [ ] Validate level-up XP, `Hero.updateHT()`, talent/ability and item `onHeroGainExp` callbacks as one authoritative batch; currently fail-closed.
-- [ ] Confirm full snapshot application after a rejected non-publisher Poison/LifeLink tick in a connected client, not only that the RESYNC request is sent.
+- [x] Android JVM recovery: after a non-publisher Poison/LifeLink ERROR, feed a complete server-format `SNAPSHOT` through `MessageRouter`; verify predicted Hero HP is undone, stable Mob actor/HP remain authoritative, Poison and LifeLink Buff objects/clocks restore, and sequence advances.
+- [ ] Verify the same resync response against a live Worker/Cloudflare Durable Object SQLite session; the current Android test constructs a deterministic server-shaped envelope locally.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `a6578d3ef57fb058aab5539096c877db8a3903ea` passed [run 42706884160](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42706884160): TypeScript build + 640 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
+**Exact-head CI:** `86b77bbf426ba1caf759a4696166defcb4cfced7` passed [run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314): TypeScript build + 640 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 
