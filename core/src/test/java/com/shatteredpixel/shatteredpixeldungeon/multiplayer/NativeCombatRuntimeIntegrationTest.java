@@ -220,6 +220,92 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void nativePoisonHeroBuffTickPublishesMultipleLinkedMobDeathsInOneTick() {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("native-poison-multiple-life-link-deaths", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-multiple-life-link-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Rat first = addRat(hero.pos + 1, 1);
+        first.EXP = 2;
+        Rat second = addRat(hero.pos + 2, 1);
+        second.EXP = 3;
+        hero.subClass = com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroSubClass.MONK;
+        int heroExpBefore = hero.exp;
+        manager.registerServerEntityId(first.id(), "linked-dead-native-mob-0002");
+        manager.registerServerEntityId(second.id(), "linked-dead-native-mob-0003");
+        level.heroFOV[first.pos] = true;
+        level.heroFOV[second.pos] = true;
+
+        LifeLink firstLink = Buff.append(hero, LifeLink.class, 10f);
+        firstLink.object = first.id();
+        LifeLink secondLink = Buff.append(hero, LifeLink.class, 10f);
+        secondLink.object = second.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(3f);
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue("One native Poison tick resolves both LifeLink targets", poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertFalse(level.mobs.contains(first));
+        Assert.assertFalse(level.mobs.contains(second));
+        Assert.assertEquals("Both native Mob.destroy() callbacks award EXP once",
+                heroExpBefore + 5, hero.exp);
+        MonkEnergy energy = hero.buff(MonkEnergy.class);
+        Assert.assertNotNull(energy);
+        Assert.assertEquals("Both eligible Rat deaths grant one native Monk energy each",
+                2f, energy.energy, 0.001f);
+        Assert.assertFalse("The complete multi-target result must not request fallback resync",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        java.util.List<NetworkMessage> actions = new ArrayList<>();
+        for (NetworkMessage message : transport.sent) {
+            if (message.messageType == MessageType.ACTION) actions.add(message);
+        }
+        Assert.assertEquals("Each native Mob death is committed before one Hero Buff summary", 3, actions.size());
+        java.util.Set<String> committedTargets = new java.util.HashSet<>();
+        for (int i = 0; i < 2; i++) {
+            JsonValue mobAction = new JsonReader().parse(actions.get(i).payloadJson);
+            JsonValue mobData = mobAction == null ? null : mobAction.get("data");
+            Assert.assertNotNull(mobData);
+            Assert.assertEquals("com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink",
+                    mobData.getString("sourceClass", ""));
+            Assert.assertEquals(0, mobData.getInt("hpAfter", -1));
+            committedTargets.add(mobData.getString("entityId", ""));
+        }
+        Assert.assertEquals(new java.util.HashSet<>(Arrays.asList(
+                "linked-dead-native-mob-0002", "linked-dead-native-mob-0003")), committedTargets);
+
+        JsonValue heroAction = new JsonReader().parse(actions.get(2).payloadJson);
+        JsonValue heroData = heroAction == null ? null : heroAction.get("data");
+        Assert.assertNotNull(heroData);
+        Assert.assertEquals("BUFF_TICK", heroData.getString("sourceType", ""));
+        JsonValue secondary = new JsonReader().parse(heroData.getString("secondaryMobDeltas", ""));
+        JsonValue deltas = secondary == null ? null : secondary.get("deltas");
+        Assert.assertNotNull(deltas);
+        Assert.assertEquals("The later Hero tick correlates both deaths without replaying either",
+                2, deltas.size);
+        java.util.Set<String> deltaTargets = new java.util.HashSet<>();
+        for (JsonValue delta = deltas.child; delta != null; delta = delta.next) {
+            Assert.assertEquals(1, delta.getInt("hpBefore", -1));
+            Assert.assertEquals(0, delta.getInt("hpAfter", -1));
+            Assert.assertTrue(delta.getString("serializedBundleBefore", "").length() > 0);
+            Assert.assertEquals(delta.getString("serializedBundleBefore", ""),
+                    delta.getString("serializedBundleAfter", ""));
+            deltaTargets.add(delta.getString("entityId", ""));
+        }
+        Assert.assertEquals(committedTargets, deltaTargets);
+        Assert.assertTrue("The multi-death correlation carries the final combined heap snapshot",
+                secondary.getString("heaps", "").length() > 0);
+    }
+
+    @Test
     public void nativePoisonHeroBuffTickPublishesLinkedMobDeathAndDetachesLink() {
         TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();
