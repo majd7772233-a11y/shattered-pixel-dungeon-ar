@@ -2328,7 +2328,7 @@ public class NativeCombatRuntimeIntegrationTest {
                 + new Json().toJson(authoritativeHeroStateJson) + "}]";
         String snapshotPayload = "{\"sequence\":1,\"seed\":123456,\"depth\":1,"
                 + "\"gameMode\":\"COOP_DUNGEON\",\"players\":" + playersJson
-                + ",\"mobs\":" + mobRows.toString()
+                + ",\"mobs\":" + mobRows.toJson(com.badlogic.gdx.utils.JsonWriter.OutputType.json)
                 + ",\"events\":[],\"worldTime\":0,\"level\":" + levelJson + "}";
 
         JsonValue encodedSnapshot = new JsonReader().parse(snapshotPayload);
