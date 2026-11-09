@@ -142,6 +142,8 @@ This path is publisher-only for shared Mob writes. Actor IDs are local to a nati
 
 The Java runtime integration tests assert one ACTION for multiple linked Mob deaths, a complete Mob delta list and an array-shaped final heap payload. MatchRoom integration tests are described in `TEST_MATRIX.md`; they use an in-memory SQL adapter and do not replace real Worker or device verification.
 
+On a non-publisher, shared Mob periodic damage is blocked by `Mob.damage()`, including the LifeLink callback. The local Hero's Poison actor can still predict the divided Hero-side damage and send a Hero `BUFF_TICK` with a complete but empty secondary Mob delta. The server rejects it with `BUFF_TICK_MOB_AUTHORITY_REQUIRED` because that peer's `LifeLink.object` Actor ID is not authoritative. When the corresponding `SYNC_HERO_STATE` request receives an ERROR, `MultiplayerManager` requests a full RESYNC. A JVM regression verifies the Mob HP guard, empty delta and RESYNC request; it does not yet verify application of the returned full snapshot. This is fail-closed fallback, not supported remote LifeLink execution.
+
 
 ## 5. RemoteHero and RemotePlayer
 

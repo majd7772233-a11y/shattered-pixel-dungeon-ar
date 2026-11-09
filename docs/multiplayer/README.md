@@ -36,11 +36,14 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest exact tested branch HEAD: `644c221efd7996f8efe4a3be337ad0eafa612d4d`; exact-head [CI run 42662905179](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42662905179) passed Backend TypeScript build/622 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+Latest tested implementation SHA: `e85b1768b6b42cb9165fd6e344bd9a1fa1f755e9`; exact-head [CI run 42675202175](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42675202175) passed Backend TypeScript build/624 Vitest executions and Android JVM tests/Debug APK compilation. The subsequent documentation commit synchronizes the new non-publisher test coverage; Phase 9 remains open.
 
-The native Poison LifeLink path now buffers publisher-side Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, non-publisher rejection and rollback after a final event insert failure. See `AUTHORITATIVE_DATA_FLOWS.md`, `SERVER_VALIDATION_AND_STORAGE.md`, `ANDROID_NATIVE_INTEGRATION.md`, `TEST_MATRIX.md` and `SESSION_RECOVERY_AND_SECURITY.md`.
+The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with both changed and empty Mob deltas. Android coverage verifies that an unsupported non-publisher LifeLink tick leaves shared Mob HP unchanged and requests RESYNC after server rejection.
+
+A non-publisher cannot run the shared Mob portion of Poison LifeLink because its local Actor ID is not an authoritative shared identity. Its Hero tick is rejected even if it sends an empty Mob delta; the client requests a fresh snapshot. The current test checks the request, not end-to-end snapshot application. Actual delegated cross-client LifeLink support remains open.
 
 The integration adapter is in-memory, not Cloudflare's actual SQLite runtime. No Worker deployment smoke test or physical two-device multiplayer run has been performed. RemoteHero/player LifeLink, level-up XP/item callbacks, talent variants, authority handoff, additional simultaneous effects, reconnect/expiry and broader malformed/replay/resync remain open.
+
 
 ## Source-of-truth hierarchy
 

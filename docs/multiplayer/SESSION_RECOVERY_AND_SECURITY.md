@@ -159,6 +159,8 @@ The current model includes:
 A player being connected does not make that player the owner of every world action. Worker validation must ensure that the correct authority is submitting the correct request and target. Authority handoff and durable recovery are separate roadmap scope.
 
 Poison LifeLink is a special publisher-owned batch: the server resolves the Hero's local Actor IDs through the trusted complete level snapshot and requires the level publisher for linked Mob writes. A non-publisher's process-local Actor ID is not a shared identity and is rejected with `BUFF_TICK_MOB_AUTHORITY_REQUIRED`; reconnect or publisher handoff must not infer a new mapping from stale client state. RemoteHero/player LifeLink remains unsupported.
+ For a non-publisher Poison tick with LifeLink, even an empty Mob delta is rejected because its local Actor IDs cannot authorize shared state. The returned ERROR for `SYNC_HERO_STATE` causes the client to request RESYNC. Only the request path is regression-tested so far; remote snapshot application after this specific rejection still needs an end-to-end test.
+
 
 
 ## 10. Field-of-view disclosure
