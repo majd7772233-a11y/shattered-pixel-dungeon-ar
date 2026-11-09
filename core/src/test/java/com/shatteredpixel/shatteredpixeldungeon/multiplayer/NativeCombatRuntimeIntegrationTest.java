@@ -223,8 +223,8 @@ public class NativeCombatRuntimeIntegrationTest {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-poison-life-link-death", "client-publisher", transport);
         NetworkMessage session = new NetworkMessage(MessageType.SESSION,
-                "{\\"playerId\\":\\"client-publisher\\",\\"sessionToken\\":\\"poison-life-link-death-token\\","
-                        + "\\"isLevelPublisher\\":true,\\"sequence\\":1}");
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"poison-life-link-death-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1}");
         session.sequence = 1L;
         manager.onMessageReceived(session);
 
