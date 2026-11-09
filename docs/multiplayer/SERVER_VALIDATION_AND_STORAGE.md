@@ -345,6 +345,22 @@ For a surviving Barrier, the row must retain its ID, time/cooldown and all field
 The matching tests cover full Barrier absorption/detachment, partial consumption, and rejection of a vanished Barrier without aggregate shield loss, excess total shield loss, and a forged partial-decay remainder. The Java runtime test executes Poison against a two-point Barrier and checks the native Hero HP/shield result. Hunger's shield bypass remains separately enforced.
 
 
+
+### 6.3 Native Poison ShieldBuff priority conservation
+
+The current native ShieldBuff rows use these descending priorities in `ShieldBuff.processDamage()`:
+
+- **2:** `BrokenSeal$WarriorShield`, `Blocking$BlockBuff`.
+- **1:** `AscendedForm$AscendBuff`, `DivineIntervention$DivineShield`.
+- **0:** `Barrier` and generic shields.
+
+For a Poison Hero tick, the validator derives the integer incoming damage from `HP_before + aggregateShield_before - HP_after - aggregateShield_after`, adding the exact native WarriorShield shield activation if that callback occurred. It aggregates capacity/consumption within each tier and requires the higher tier to absorb its full capacity before a lower tier can change. It does not accept a client-selected distribution merely because the aggregate Hero shield total balances.
+
+The per-row validator still verifies identity, time/cooldown and every immutable Bundle field. Zero-shield lifecycle is native-specific: WarriorShield and AscendBuff stay attached at zero; BlockBuff, DivineShield and Barrier detach. Equal-priority rows are treated as a tier aggregate to avoid imposing an order not guaranteed by Java's same-priority comparator. Any unrecognized ShieldBuff class is rejected as a Poison side effect until its priority and lifecycle are added deliberately.
+
+Backend tests cover valid priority-tier consumption and forged attempts to spend Barrier before priority-2 or priority-1 capacity. The Android JVM regression executes the actual Poison actor with all tiers active. Exact-head CI at `3291698d1fbbb6bc37611d1a8276bb2477c50b58` passed [run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852).
+
+
 ## 7. Pending locks and deadlines
 
 - Pending native combat is reserved by request, attacker and optional target keys. A previous reservation older than 15 seconds may be cleared; a fresh conflicting reservation is rejected.

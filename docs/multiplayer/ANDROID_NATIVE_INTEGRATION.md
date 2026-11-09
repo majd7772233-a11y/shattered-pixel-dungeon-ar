@@ -155,6 +155,12 @@ The Barrier Bundle stores its decay remainder under the exact key `partial_lost_
 The Java regression `nativePoisonDamageConsumesConcurrentBarrierWithoutChangingHeroHp` executes the original Poison actor with a two-point Barrier and verifies that the shield absorbs the hit, Barrier detaches at zero and Hero HP stays unchanged. Backend tests also reject a missing/forged aggregate shield loss and a changed `partial_lost_shield`. This does not relax the existing separate Hunger shield-bypass rule.
 
 
+### 4.7 Poison against multiple native ShieldBuff priorities
+
+The Java engine sorts shields before applying Poison damage: `WarriorShield` and `Blocking.BlockBuff` are priority 2; Cleric `AscendBuff` and `DivineShield` are priority 1; `Barrier` is priority 0. The server validates the same order and derives the incoming damage from Hero HP and total shield conservation. It rejects a lower-priority row losing shield while a higher-priority row still has capacity.
+
+The regression `nativePoisonConsumesPriorityTwoAndOneShieldsBeforeBarrier` executes the original native Poison actor with all three tiers active. It checks that priority 2 and then priority 1 absorb the hit before Barrier, and that zero-shield Buffs follow their native detach rules. The test keeps Hero HP above the WarriorShield activation threshold to avoid initializing UI textures in the headless JVM environment; it tests shield consumption, not the separate automatic activation visual callback.
+
 ## 5. RemoteHero and RemotePlayer
 
 Sources:

@@ -115,11 +115,25 @@ The server now admits this one exact side effect for a native Poison `BUFF_TICK`
 The server tests cover a fully absorbed Poison hit that detaches the Barrier, a partial shield absorption with the remainder unchanged, and negative cases for missing shield loss, excess aggregate loss and a forged partial accumulator. A Java runtime regression runs the native Poison actor against a two-point Barrier and verifies that the Barrier absorbs the two-point hit without changing Hero HP.
 The serialized field name is taken directly from Java `Barrier.storeInBundle()`: `partial_lost_shield`. The backend rejects the non-native camelCase alias so test-only naming cannot mask a client/server wire mismatch.
 
+### Native ShieldBuff priority ordering during Poison
+
+The original `ShieldBuff.processDamage()` sorts active shields in descending order before applying the remaining damage:
+
+| Native priority | Current native classes | Zero-shield lifecycle |
+|---|---|---|
+| 2 | `BrokenSeal$WarriorShield`, `Blocking$BlockBuff` | WarriorShield stays attached; BlockBuff detaches |
+| 1 | `AscendedForm$AscendBuff`, `DivineIntervention$DivineShield` | AscendBuff stays attached; DivineShield detaches |
+| 0 | `Barrier` / generic shields | Barrier detaches |
+
+The server recovers the incoming Poison damage from the Hero's HP and aggregate-shield before/after totals (including the exact native WarriorShield activation amount when it triggers). It then aggregates the changed rows by priority and requires each tier to consume `min(remainingDamage, availableShield)` before the next tier can lose shield. Equal-priority rows are checked as one tier because Java's comparator can preserve native attachment order among equal-priority actors.
+
+Every changed row still passes its class-specific identity, timing, native-field and detach checks. Unsupported or newly added ShieldBuff subclasses do not inherit this exception until their priority and zero-shield behavior are audited. Backend tests include valid tier consumption and forged bypasses of both priority 2 and priority 1; a Java runtime test executes the original Poison actor with all three tiers active.
+
 ### MatchRoom tests and verification boundary
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, rollback when the final event insert fails, and a forced transaction failure through the WebSocket message boundary that verifies a correlated ERROR. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `4c036ff866e3ecbecb4746121da0d7f6072d3e34` passed [run 42695860586](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42695860586): TypeScript build and 634 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
+Exact-head CI on `3291698d1fbbb6bc37611d1a8276bb2477c50b58` passed [run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852): TypeScript build and 638 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
 
