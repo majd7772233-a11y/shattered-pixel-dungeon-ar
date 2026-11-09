@@ -123,6 +123,11 @@ class MemoryMatchRoomSql {
       }
       return this.cursor();
     }
+    if (query.startsWith("UPDATE players SET hp = ? WHERE player_id = ?")) {
+      const row = this.players.get(String(args[1]));
+      if (row) row.hp = Number(args[0]);
+      return this.cursor();
+    }
     if (query.startsWith("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?")) {
       const row = this.players.get(String(args[4]));
       if (row) {
