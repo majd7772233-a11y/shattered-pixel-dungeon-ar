@@ -261,7 +261,7 @@ public class NativeCombatRuntimeIntegrationTest {
             if (message.messageType == MessageType.ACTION) actions.add(message);
         }
         Assert.assertEquals("Death during periodic damage emits Mob then Hero events, never a late Buff tick",
-                2, actions.size);
+                2, actions.size());
 
         JsonValue mobAction = new JsonReader().parse(actions.get(0).payloadJson);
         JsonValue mobData = mobAction == null ? null : mobAction.get("data");
