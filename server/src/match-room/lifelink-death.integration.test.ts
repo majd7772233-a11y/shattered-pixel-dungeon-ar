@@ -384,13 +384,22 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       rewardClassName: RAT_CLASS, rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
       rewardSpawningWeight: 1, rewardMonkEnergy: 1
     };
+    const levelSnapshot = {
+      schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+      entrancePos: 0, exitPos: 1023, seed: 123456, locked: false, feeling: "NONE",
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heroStateJson: JSON.stringify(beforeHero), nativeLevelMetadataBundle: "native-level-metadata",
+      tiles: Array.from({ length: 1024 }, (_, pos) => ({
+        pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+        flammable: false, secret: false, avoid: false, water: false,
+        discoverable: false, openSpace: false
+      })),
+      transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+      mobs: [savedMob], visitedPositions: [], mappedPositions: []
+    };
     sql.roomMeta.set("levelPublisher", PLAYER_ID);
     sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(previousHero));
-    sql.roomMeta.set("levelSnapshot:1", JSON.stringify({
-      depth: 1, width: 32, height: 32, branch: 0, locked: false,
-      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
-      heaps: [], mobs: [savedMob]
-    }));
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
     sql.players.set(PLAYER_ID, {
       player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
     });
@@ -405,11 +414,6 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       buffsBefore: "[]", serializedBundleBefore: mobBefore,
       hpAfter: 19, htAfter: 20, posAfter: 25, shieldAfter: 0,
       buffsAfter: "[]", serializedBundleAfter: mobAfter
-    };
-    const levelSnapshot = {
-      depth: 1, width: 32, height: 32, branch: 0, locked: false,
-      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
-      heaps: [], mobs: [savedMob]
     };
     const tickData = {
       sourceType: "BUFF_TICK", buffClass: POISON_CLASS, buffId: 44,
