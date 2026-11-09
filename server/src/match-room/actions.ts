@@ -1442,9 +1442,14 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                       ? JSON.parse(String(savedLevelRow.value)) : null;
                   } catch (_) { rewardLevelSnapshot = null; }
                   if (poisonDeathEvidenceValid) {
-                    poisonDeathRewardContract = validateNativeLifeLinkEnvironmentDeathRewardTransition(
-                      previousHeroRow?.value, payload.heroStateJson, acceptedLifeLinkEvents,
-                      deadActorIds, sequenceBefore, rewardLevelSnapshot);
+                    // With no linked Mob death there is no native kill reward to reconcile.
+                    // Keep EXP/MonkEnergy fixed; the ordinary environment-damage validator
+                    // and mergeNativeHeroState continue to validate the lethal Hero callback.
+                    poisonDeathRewardContract = deadActorIds.length === 0
+                      ? {allowExperienceChange:false,allowMonkEnergyChange:false}
+                      : validateNativeLifeLinkEnvironmentDeathRewardTransition(
+                          previousHeroRow?.value, payload.heroStateJson, acceptedLifeLinkEvents,
+                          deadActorIds, sequenceBefore, rewardLevelSnapshot);
                     if (!poisonDeathRewardContract) poisonDeathEvidenceValid = false;
                   }
                   if (poisonDeathEvidenceValid && deadDeltas.length > 0) {
