@@ -2332,6 +2332,32 @@ public class NativeCombatRuntimeIntegrationTest {
                 + ",\"events\":[],\"worldTime\":0,\"level\":" + levelJson + "}";
 
         JsonValue encodedSnapshot = new JsonReader().parse(snapshotPayload);
+        JsonValue encodedLevel = encodedSnapshot == null ? null : encodedSnapshot.get("level");
+        Assert.assertNotNull("The full RESYNC envelope must include the native level object", encodedLevel);
+        Assert.assertEquals("Full native level schema must be version 1", 1, encodedLevel.getInt("schemaVersion", -1));
+        for (String collection : new String[]{
+                "tiles", "transitions", "heaps", "traps", "blobs", "plants", "mobs",
+                "visitedPositions", "mappedPositions"
+        }) {
+            Assert.assertTrue("The full native level must include array " + collection,
+                    encodedLevel.get(collection) != null && encodedLevel.get(collection).isArray());
+        }
+        Assert.assertTrue("The full native level must include restorable metadata",
+                encodedLevel.getString("nativeLevelMetadataBundle", "").length() > 0);
+        Assert.assertNotNull("The test must retain its live Dungeon level during snapshot application", Dungeon.level);
+        JsonValue encodedLevelMobs = encodedLevel.get("mobs");
+        for (JsonValue rootMob = encodedSnapshot.get("mobs").child; rootMob != null; rootMob = rootMob.next) {
+            int rootMobId = rootMob.getInt("mobId", rootMob.getInt("mob_id", -1));
+            boolean matchingNativeMob = false;
+            for (JsonValue levelMob = encodedLevelMobs.child; levelMob != null; levelMob = levelMob.next) {
+                if (levelMob.getInt("mobId", levelMob.getInt("mob_id", -1)) == rootMobId) {
+                    matchingNativeMob = true;
+                    break;
+                }
+            }
+            Assert.assertTrue("Every live Mob row in the snapshot envelope must match a native Mob bundle: " + rootMobId,
+                    matchingNativeMob);
+        }
         JsonValue encodedPlayers = encodedSnapshot == null ? null : encodedSnapshot.get("players");
         Assert.assertNotNull("The RESYNC payload must include the player rows", encodedPlayers);
         Assert.assertTrue(encodedPlayers.isArray());
