@@ -231,6 +231,10 @@ public class NativeCombatRuntimeIntegrationTest {
         Rat linked = addRat(hero.pos + 1, 1);
         linked.EXP = 0;
         manager.registerServerEntityId(linked.id(), "linked-dead-native-mob-0001");
+        // Mob.die() logs a localized message for deaths outside the Hero FOV. Keep the
+        // linked target visible so this headless test exercises the callback without loading
+        // locale resources that are not part of the unit-test runtime.
+        level.heroFOV[linked.pos] = true;
         LifeLink link = Buff.prolong(hero, LifeLink.class, 10f);
         link.object = linked.id();
         Poison poison = Buff.affect(hero, Poison.class);
