@@ -2258,6 +2258,123 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void rejectedNonPublisherPoisonLifeLinkTickRestoresHeroBuffsAndMobFromFullSnapshot() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-non-publisher-poison-snapshot", "client-peer", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-peer\",\"sessionToken\":\"poison-snapshot-token\","
+                        + "\"isLevelPublisher\":false,\"sequence\":1,\"seed\":123456,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+        Assert.assertFalse(manager.isLevelPublisher());
+
+        Rat linked = addRat(hero.pos + 1, 20);
+        String linkedEntityId = "nonpublisher-poison-snapshot-mob-0001";
+        manager.registerServerEntityId(linked.id(), linkedEntityId);
+        LifeLink lifeLink = Buff.prolong(hero, LifeLink.class, 10f);
+        lifeLink.object = linked.id();
+        Poison poison = Buff.affect(hero, Poison.class);
+        poison.set(9f);
+
+        int authoritativeHeroHp = hero.HP;
+        int authoritativeMobHp = linked.HP;
+        String authoritativeHeroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        JsonValue expectedPoison = findBuffState(authoritativeHeroStateJson, Poison.class.getName());
+        JsonValue expectedLifeLink = findBuffState(authoritativeHeroStateJson, LifeLink.class.getName());
+        Assert.assertNotNull(expectedPoison);
+        Assert.assertNotNull(expectedLifeLink);
+        float expectedPoisonLeft = expectedPoison.getFloat("left", -1f);
+        float expectedPoisonActorTime = expectedPoison.getFloat("time", -1f);
+        float expectedLifeLinkActorTime = expectedLifeLink.getFloat("time", -1f);
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(poison);
+        Assert.assertNotNull(capture);
+        Assert.assertTrue(poison.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertEquals("The optimistic non-publisher tick must not mutate the shared Mob",
+                authoritativeMobHp, linked.HP);
+        Assert.assertEquals("The rejected local prediction is visible until an authoritative snapshot arrives",
+                authoritativeHeroHp - 2, hero.HP);
+
+        NetworkMessage tick = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull(tick);
+        NetworkMessage rejected = new NetworkMessage();
+        rejected.messageType = MessageType.ERROR;
+        rejected.requestId = tick.requestId;
+        rejected.sequence = 1L;
+        rejected.payloadJson = "{\"error\":\"BUFF_TICK_MOB_AUTHORITY_REQUIRED\"}";
+        manager.onMessageReceived(rejected);
+
+        Assert.assertTrue("A rejected Hero tick must request a full authoritative snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        // Build the same full SNAPSHOT envelope the MatchRoom RESYNC path returns. The saved
+        // player Hero state is the pre-tick authority; the level carries all native world rows.
+        String levelJson = SPDLevelSnapshot.currentLevelJson();
+        Assert.assertNotNull(levelJson);
+        JsonValue levelData = new JsonReader().parse(levelJson);
+        Assert.assertNotNull(levelData);
+        JsonValue mobRows = levelData.get("mobs");
+        Assert.assertNotNull(mobRows);
+        String playersJson = "[{\"player_id\":\"client-peer\",\"class_name\":\"WARRIOR\","
+                + "\"pos\":" + hero.pos + ",\"hp\":" + authoritativeHeroHp
+                + ",\"ht\":" + hero.HT + ",\"state\":\"ALIVE\",\"hero_state_json\":"
+                + new Json().toJson(authoritativeHeroStateJson) + "}]";
+        String snapshotPayload = "{\"sequence\":1,\"seed\":123456,\"depth\":1,"
+                + "\"gameMode\":\"COOP_DUNGEON\",\"players\":" + playersJson
+                + ",\"mobs\":" + mobRows.toString()
+                + ",\"events\":[],\"worldTime\":0,\"level\":" + levelJson + "}";
+
+        NetworkMessage snapshot = new NetworkMessage();
+        snapshot.messageType = MessageType.SNAPSHOT;
+        snapshot.senderId = "SERVER";
+        snapshot.sequence = 1L;
+        snapshot.payloadJson = snapshotPayload;
+        manager.onMessageReceived(snapshot);
+
+        // Snapshot parsing is transport-thread safe, but native state replacement is queued
+        // onto the render thread. A second queued task acts as a FIFO completion barrier.
+        CountDownLatch snapshotApplied = new CountDownLatch(1);
+        Game.runOnRenderThread(snapshotApplied::countDown);
+        Assert.assertTrue("The authoritative SNAPSHOT must finish applying on the render thread",
+                snapshotApplied.await(5, TimeUnit.SECONDS));
+
+        Assert.assertEquals("The rejected Hero HP delta must be rolled back by the server snapshot",
+                authoritativeHeroHp, hero.HP);
+        Assert.assertEquals("The native Mob must remain at its authoritative pre-tick HP",
+                authoritativeMobHp, linked.HP);
+        Assert.assertSame("Stable entity reconciliation must keep the same native Mob actor",
+                linked, findMobByServerId(manager, linkedEntityId));
+
+        Poison restoredPoison = hero.buff(Poison.class);
+        LifeLink restoredLifeLink = hero.buff(LifeLink.class);
+        Assert.assertNotNull("The native Poison Buff must be restored from the authoritative Hero bundle", restoredPoison);
+        Assert.assertNotNull("The native LifeLink Buff must be restored from the authoritative Hero bundle", restoredLifeLink);
+        Assert.assertEquals("LifeLink must still reference the same local Mob Actor after full restoration",
+                linked.id(), restoredLifeLink.object);
+
+        String restoredHeroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        JsonValue restoredPoisonState = findBuffState(restoredHeroStateJson, Poison.class.getName());
+        JsonValue restoredLifeLinkState = findBuffState(restoredHeroStateJson, LifeLink.class.getName());
+        Assert.assertNotNull(restoredPoisonState);
+        Assert.assertNotNull(restoredLifeLinkState);
+        Assert.assertEquals("Poison's remaining duration must not restart or consume a second tick",
+                expectedPoisonLeft, restoredPoisonState.getFloat("left", -1f), 0.001f);
+        Assert.assertEquals("Poison's native actor clock must be restored exactly",
+                expectedPoisonActorTime, restoredPoisonState.getFloat("time", -1f), 0.001f);
+        Assert.assertEquals("LifeLink's native expiry clock must be restored exactly",
+                expectedLifeLinkActorTime, restoredLifeLinkState.getFloat("time", -1f), 0.001f);
+        Assert.assertEquals("A successfully restored snapshot advances the accepted sequence",
+                1L, manager.getLastSequence());
+    }
+
+    @Test
     public void publisherAppliesAndPublishesNativePeriodicMobDamage() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
@@ -2948,6 +3065,20 @@ public class NativeCombatRuntimeIntegrationTest {
         @Override public void disconnect() { connected = false; }
         @Override public boolean isConnected() { return connected; }
         @Override public String getTransportType() { return "TEST"; }
+    }
+
+    private static JsonValue findBuffState(String encodedHeroState, String className) {
+        if (encodedHeroState == null || encodedHeroState.isEmpty()) return null;
+        JsonValue heroState = new JsonReader().parse(encodedHeroState);
+        int buffCount = Math.max(0, Math.min(256, heroState.getInt("buffCount", 0)));
+        for (int i = 0; i < buffCount; i++) {
+            String encodedBuff = heroState.getString("buff_" + i, "");
+            if (encodedBuff.isEmpty()) continue;
+            JsonValue envelope = new JsonReader().parse(encodedBuff);
+            JsonValue buff = envelope == null ? null : envelope.get("buff");
+            if (buff != null && className.equals(buff.getString("__className", ""))) return buff;
+        }
+        return null;
     }
 
     private WorldSnapshot makeSnapshotWithMob(long sequence, Mob authoritativeMob, String entityId) {
