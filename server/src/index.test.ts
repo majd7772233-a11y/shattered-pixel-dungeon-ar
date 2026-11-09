@@ -5956,6 +5956,26 @@ describe("Native LifeLink death XP and MonkEnergy reward transition", () => {
     expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
       fixture.before,fixture.after,[],[],10,levelSnapshot)).toBeNull();
 
+    const liveLinkHero=makeHero({exp:0,expAfter:0,energy:null});
+    liveLinkHero.after.hp=0;
+    liveLinkHero.after.combatBundle=JSON.stringify({
+      ...JSON.parse(liveLinkHero.after.combatBundle),HP:0,HT:20,pos:9
+    });
+    // Hero.damage() runs inside Poison.act(); neither Poison's duration nor LifeLink
+    // may be advanced/removed before this intermediate lethal Hero snapshot is sent.
+    liveLinkHero.after.buffCount=2;
+    liveLinkHero.after.buff_0=liveLinkHero.before.buff_0;
+    liveLinkHero.after.buffCooldown_0=liveLinkHero.before.buffCooldown_0;
+    liveLinkHero.after.buff_1=liveLinkHero.before.buff_1;
+    liveLinkHero.after.buffCooldown_1=liveLinkHero.before.buffCooldown_1;
+    expect(validateNativeLifeLinkEnvironmentDeathRewardTransition(
+      liveLinkHero.before,liveLinkHero.after,[],[],10,levelSnapshot))
+      .toEqual({allowExperienceChange:false,allowMonkEnergyChange:false});
+    expect(mergeNativeLifeLinkDeathExperienceBundle(
+      liveLinkHero.before.combatBundle,JSON.stringify({
+        ...JSON.parse(liveLinkHero.after.combatBundle),exp:1
+      }),false)).toBeNull();
+
     const noRewardHero=makeHero({exp:0,energy:null});
     expect(mergeNativeLifeLinkDeathExperienceBundle(
       noRewardHero.before.combatBundle,JSON.stringify({
