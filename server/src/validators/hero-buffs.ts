@@ -377,6 +377,103 @@ export function validateNativeLifeLinkDeathRewardTransition(
   };
 }
 
+/**
+ * Validates the final Hero state emitted by Hero.damage() when Poison kills the Hero
+ * after its native LifeLink Mob callbacks. Unlike a normal BUFF_TICK, this callback is
+ * emitted before Poison.act() returns, so its clock and Poison timer have not advanced.
+ */
+export function validateNativeLifeLinkEnvironmentDeathRewardTransition(
+  beforeValue: unknown, afterValue: unknown, acceptedEventsValue: unknown,
+  deadActorIdsValue: unknown, sequenceBeforeValue: unknown, levelValue: unknown
+): NativeLifeLinkDeathRewardContract | null {
+  const before = nativeHeroBuffTickState(beforeValue);
+  const after = nativeHeroBuffTickState(afterValue);
+  const deadActorIds = deadActorIdsValue;
+  const sequenceBefore = Number(sequenceBeforeValue);
+  if (!before || !after || !Array.isArray(deadActorIds) || deadActorIds.length > 512
+      || !Number.isSafeInteger(sequenceBefore) || sequenceBefore < 0
+      || Number(before.state.hp) <= 0 || Number(after.state.hp) !== 0
+      || Number(before.state.ht) !== Number(after.state.ht)
+      || Number(before.state.pos) !== Number(after.state.pos)
+      || Number(after.state.shielding) < 0
+      || Number(after.state.shielding) > Number(before.state.shielding)
+      || Math.abs(after.clock-before.clock) > 0.06
+      || Number(after.state.cooldown) !== Number(before.state.cooldown)) return null;
+
+  const contract = validateNativeLifeLinkDeathRewardTransition(
+    beforeValue, afterValue,
+    { buffClass: NATIVE_POISON, sequenceBefore },
+    acceptedEventsValue, deadActorIds, levelValue);
+  if (!contract) return null;
+
+  // Hero.damage() may change only HP/shield, the exact native damage callbacks,
+  // linked LifeLink removals proven by accepted Mob death events, MonkEnergy, and
+  // the XP field proven by native Mob.destroy() rewards. Inventory/run progress,
+  // equipment, talents, level, scheduler state, and every other combat field stay fixed.
+  const stableBefore = nativeHeroBuffTickStableState(before.state, "", contract.allowExperienceChange);
+  const stableAfter = nativeHeroBuffTickStableState(after.state, "", contract.allowExperienceChange);
+  if (!stableBefore || !stableAfter || !sameNativeItemValue(stableBefore, stableAfter)) return null;
+
+  const oldRows = nativeHeroBuffTickRowsByKey(before.rows);
+  const newRows = nativeHeroBuffTickRowsByKey(after.rows);
+  const dead = new Set<number>();
+  for (const value of deadActorIds) {
+    const actorId = Number(value);
+    if (!Number.isInteger(actorId) || actorId < 1 || dead.has(actorId)) return null;
+    dead.add(actorId);
+  }
+  const detached = new Set<number>();
+  const damageSideEffectRemovals = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Drowsy",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Frost",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicalSleep"
+  ]);
+  const damageProduced = Number(after.state.hp) < Number(before.state.hp)
+    || Number(after.state.shielding) < Number(before.state.shielding);
+
+  for (const [key, row] of oldRows) {
+    const next = newRows.get(key);
+    if (row.className === NATIVE_LIFE_LINK && !next) {
+      const actorId = Number(row.data?.object);
+      if (!dead.has(actorId) || detached.has(actorId)) return null;
+      detached.add(actorId);
+      continue;
+    }
+    if (row.className === NATIVE_MONK_ENERGY && contract.allowMonkEnergyChange) continue;
+    if ([ "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Charm",
+          "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Terror",
+          "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Dread" ].includes(row.className)
+        && isValidNativeDamageRecoveryBuffTransition(row, next)) continue;
+    if (!next && damageProduced && damageSideEffectRemovals.has(row.className)) continue;
+    if (!next || row.bundle !== next.bundle || row.cooldown !== next.cooldown) return null;
+  }
+  for (const [key, row] of newRows) {
+    if (oldRows.has(key)) continue;
+    if (!(contract.allowMonkEnergyChange && row.className === NATIVE_MONK_ENERGY)) return null;
+  }
+  if (detached.size !== dead.size || Array.from(dead).some(actorId => !detached.has(actorId))) return null;
+  return contract;
+}
+
+/** Preserves the trusted native Hero Bundle and copies EXP only after the reward contract passes. */
+export function mergeNativeLifeLinkDeathExperienceBundle(
+  beforeValue: unknown, reportedValue: unknown, allowExperienceChange: boolean
+): string | null {
+  const before = parseNativeBundleObject(beforeValue);
+  const reported = parseNativeBundleObject(reportedValue);
+  const beforeExp = Number(before?.exp), reportedExp = Number(reported?.exp);
+  if (!before || !reported || typeof allowExperienceChange !== "boolean"
+      || !Number.isInteger(beforeExp) || beforeExp < 0
+      || !Number.isInteger(reportedExp) || reportedExp < 0
+      || reportedExp < beforeExp) return null;
+  const beforeWithoutExp = { ...before }, reportedWithoutExp = { ...reported };
+  delete beforeWithoutExp.exp;
+  delete reportedWithoutExp.exp;
+  if (!sameNativeItemValue(beforeWithoutExp, reportedWithoutExp)
+      || (!allowExperienceChange && reportedExp !== beforeExp)) return null;
+  return JSON.stringify({ ...before, exp: allowExperienceChange ? reportedExp : beforeExp });
+}
+
 function nativeWandRingChargeMultiplier(hero: any, inventory: any[], rows: NativeHeroBuffTickRow[]): number | null {
   const magicImmune = rows.some(row => row.className === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MagicImmune");
   if (magicImmune) return 1;
