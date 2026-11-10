@@ -785,7 +785,10 @@ public class Item implements Bundlable {
 		
 		final float delay = castDelay(user, cell);
         final boolean publishMissileLanding = multiplayerHero && enemy == null;
-        final boolean publishMissileCombatImpact = multiplayerHero && enemy != null;
+        final boolean publishNativeSpiritArrowCombat = multiplayerHero && enemy != null
+                && user.hasPendingNativeSpiritArrowAttack();
+        final boolean publishMissileCombatImpact = multiplayerHero && enemy != null
+                && !publishNativeSpiritArrowCombat;
         final int sourcePosBefore = user.pos;
         final int sourceDepthBefore = Dungeon.depth;
         final float sourceCooldownBefore = user.cooldown();
@@ -855,6 +858,7 @@ public class Item implements Bundlable {
 									Buff.affect(curUser, Talent.ImprovisedProjectileCooldown.class, 50f);
 								}
 							}
+							if (publishNativeSpiritArrowCombat) user.finishNativeSpiritArrowAttack(enemy);
 							if (user.buff(Talent.LethalMomentumTracker.class) != null){
 								user.buff(Talent.LethalMomentumTracker.class).detach();
 								user.next();

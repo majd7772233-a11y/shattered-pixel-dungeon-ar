@@ -26,6 +26,11 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Char;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow;
+import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatJson;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.SPDLevelSnapshot;
+import java.util.HashMap;
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ActionIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.ui.BuffIndicator;
@@ -37,9 +42,12 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 
 	public int object = 0;
 	public float percentDmgBonus = 0;
+	/** Stable server Mob identity; object remains a process-local SPD Actor ID. */
+	public String serverEntityId = "";
 
 	private static final String OBJECT    = "object";
 	private static final String BONUS    = "bonus";
+	private static final String SERVER_ENTITY_ID = "server_entity_id";
 
 	public static final float DURATION = 4f;
 
@@ -50,6 +58,9 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 	public void set(int object, float bonus){
 		this.object = object;
 		this.percentDmgBonus = bonus;
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		String stableId = manager.isMultiplayerActive() ? manager.getServerEntityId(object) : null;
+		serverEntityId = stableId == null ? "" : stableId;
 	}
 	
 	@Override
@@ -69,6 +80,7 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 		super.storeInBundle( bundle );
 		bundle.put( OBJECT, object );
 		bundle.put( BONUS, percentDmgBonus );
+		bundle.put( SERVER_ENTITY_ID, serverEntityId == null ? "" : serverEntityId );
 	}
 
 	@Override
@@ -76,6 +88,7 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 		super.restoreFromBundle( bundle );
 		object = bundle.getInt( OBJECT );
 		percentDmgBonus = bundle.getFloat( BONUS );
+		serverEntityId = bundle.contains(SERVER_ENTITY_ID) ? bundle.getString(SERVER_ENTITY_ID) : "";
 	}
 
 	@Override
@@ -132,11 +145,50 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 		int cell = QuickSlotButton.autoAim(ch, arrow);
 		if (cell == -1) return;
 		
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (manager.isMultiplayerActive()) {
+			// SPEED schedules a three-hit asynchronous flurry. It remains fail-closed until
+			// the protocol can represent all three native outcomes in one authority sequence.
+			if ("SPEED".equals(String.valueOf(bow.augment)) || !(ch instanceof Mob)) {
+				manager.requestResync(manager.getLastSequence());
+				return;
+			}
+			String stableEntityId = manager.getServerEntityId(object);
+			String bowItemId = bow.multiplayerItemId();
+			if (stableEntityId == null || stableEntityId.length() < 8 || stableEntityId.length() > 80
+					|| bowItemId == null || bowItemId.isEmpty()) {
+				manager.requestResync(manager.getLastSequence());
+				return;
+			}
+			serverEntityId = stableEntityId;
+			String bowBundle = SPDLevelSnapshot.currentItemBundle(bow);
+			HashMap<String, Object> details = new HashMap<>();
+			details.put("formatVersion", 1);
+			details.put("markBuffId", id());
+			details.put("markBonus", percentDmgBonus);
+			details.put("targetEntityId", stableEntityId);
+			details.put("bowItemId", bowItemId);
+			String before = SPDLevelSnapshot.currentHeroStateJson(hero);
+			if (!hero.beginNativeSpiritArrowAttack(before, NativeCombatJson.strictWriter().toJson(details),
+					bowBundle, id())) {
+				manager.requestResync(manager.getLastSequence());
+				return;
+			}
+		}
 		bow.sniperSpecial = true;
 		bow.sniperSpecialBonusDamage = percentDmgBonus;
-		
-		arrow.cast(hero, cell);
-		detach();
+		try {
+			arrow.cast(hero, cell);
+			if (!manager.isMultiplayerActive()) detach();
+		} catch (RuntimeException error) {
+			bow.sniperSpecial = false;
+			if (manager.isMultiplayerActive()) {
+				hero.cancelNativeSpiritArrowAttack(id());
+				manager.requestResync(manager.getLastSequence());
+			} else {
+				detach();
+			}
+		}
 		
 	}
 }

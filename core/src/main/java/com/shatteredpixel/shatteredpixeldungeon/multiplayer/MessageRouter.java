@@ -5,6 +5,8 @@ import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndResurrect;
@@ -77,6 +79,8 @@ public final class MessageRouter {
             String attackWeaponMode = stringValue(payload.get("attackWeaponMode"), "EQUIPPED");
             String attackWeaponBundle = stringValue(payload.get("attackWeaponBundle"), "");
             JsonValue projectileMutationValue = payload.get("projectileMutation");
+            JsonValue spiritArrowValue = payload.get("spiritArrow");
+            boolean spiritArrowAttack = "SPIRIT_ARROW".equals(attackWeaponMode);
             boolean throwWithImpact = "THROWN".equals(attackWeaponMode)
                     && projectileMutationValue != null && projectileMutationValue.isObject();
             String projectileMutationJson = throwWithImpact ? projectileMutationValue.toString() : null;
@@ -87,6 +91,11 @@ public final class MessageRouter {
             String projectileSourceItemId = throwWithImpact ? stringValue(projectileMutationValue.get("itemId"), null) : null;
             int projectileSourceQuantity = throwWithImpact ? intValue(projectileMutationValue.get("sourceQuantityBefore"), -1) : -1;
             if ("THROWN".equals(attackWeaponMode) && !throwWithImpact) {
+                manager.requestResync(manager.getLastSequence());
+                return;
+            }
+            if (spiritArrowAttack && (spiritArrowValue == null || !spiritArrowValue.isObject()
+                    || projectileMutationValue != null)) {
                 manager.requestResync(manager.getLastSequence());
                 return;
             }
@@ -104,10 +113,12 @@ public final class MessageRouter {
                 return;
             }
             com.shatteredpixel.shatteredpixeldungeon.actors.Char target;
+            Integer resolvedTargetLocalActorId = null;
             if ("PLAYER".equals(targetType)) {
                 target = Dungeon.hero;
             } else {
                 Integer localMobId = manager.getLocalActorIdForServerEntity(targetEntityId);
+                resolvedTargetLocalActorId = localMobId;
                 if (localMobId == null) {
                     manager.requestResync(manager.getLastSequence());
                     return;
@@ -168,6 +179,33 @@ public final class MessageRouter {
                     manager.requestResync(manager.getLastSequence());
                     return;
                 }
+            } else if (spiritArrowAttack) {
+                chosenWeapon = SPDLevelSnapshot.findOwnedAttackWeapon(remoteHero, attackWeaponBundle);
+                if (!(chosenWeapon instanceof SpiritBow)) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                SpiritBow bow = (SpiritBow) chosenWeapon;
+                SnipersMark mark = remoteHero.buff(SnipersMark.class);
+                int expectedMarkId = intValue(spiritArrowValue.get("markBuffId"), -1);
+                float expectedMarkBonus = floatValue(spiritArrowValue.get("markBonus"), Float.NaN);
+                String expectedMarkEntityId = stringValue(spiritArrowValue.get("targetEntityId"), "");
+                String expectedBowItemId = stringValue(spiritArrowValue.get("bowItemId"), "");
+                if (mark == null || mark.id() != expectedMarkId || expectedMarkId < 1
+                        || resolvedTargetLocalActorId == null
+                        || !targetEntityId.equals(expectedMarkEntityId)
+                        || !targetEntityId.equals(mark.serverEntityId)
+                        || !Float.isFinite(expectedMarkBonus)
+                        || Math.abs(mark.percentDmgBonus - expectedMarkBonus) > 0.0001f
+                        || !bow.multiplayerItemId().equals(expectedBowItemId)
+                        || !("NONE".equals(String.valueOf(bow.augment))
+                            || "DAMAGE".equals(String.valueOf(bow.augment)))) {
+                    manager.requestResync(manager.getLastSequence());
+                    return;
+                }
+                // The mark stores a process-local Actor ID. Rebind only the transient authority
+                // copy after the server has validated its stable entity ID against the level.
+                mark.object = resolvedTargetLocalActorId;
             } else if (!"EQUIPPED".equals(attackWeaponMode) && !"UNARMED".equals(attackWeaponMode)) {
                 manager.requestResync(manager.getLastSequence());
                 return;
@@ -205,6 +243,20 @@ public final class MessageRouter {
                 } else if ("THROWN".equals(attackWeaponMode)) {
                     remoteHero.shoot(target,
                             (com.shatteredpixel.shatteredpixeldungeon.items.weapon.missiles.MissileWeapon) chosenWeapon);
+                } else if (spiritArrowAttack) {
+                    SpiritBow bow = (SpiritBow) chosenWeapon;
+                    SnipersMark mark = remoteHero.buff(SnipersMark.class);
+                    bow.sniperSpecial = true;
+                    bow.sniperSpecialBonusDamage = mark.percentDmgBonus;
+                    if (!remoteHero.beginNativeSpiritArrowAttack(attackerStateBefore,
+                            spiritArrowValue.toString(), attackWeaponBundle, mark.id())) {
+                        bow.sniperSpecial = false;
+                        manager.requestResync(manager.getLastSequence());
+                        return;
+                    }
+                    remoteHero.shoot(target, bow.knockArrow());
+                    bow.sniperSpecial = false;
+                    remoteHero.finishNativeSpiritArrowAttack(target);
                 } else {
                     if ("ABILITY".equals(attackWeaponMode)) remoteHero.belongings.abilityWeapon = chosenWeapon;
                     remoteHero.attack(target, damageMultiplier, damageBonus, accuracyMultiplier);

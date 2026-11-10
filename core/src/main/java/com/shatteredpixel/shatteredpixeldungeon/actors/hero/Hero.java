@@ -217,6 +217,10 @@ public class Hero extends Char {
 	private String pendingNativeProjectileItemId;
 	private String pendingNativeProjectileResultItemId;
 	private int pendingNativeProjectileCell = -1;
+	private String pendingNativeSpiritArrowHeroStateBefore;
+	private String pendingNativeSpiritArrowDataJson;
+	private String pendingNativeSpiritArrowBowBundle;
+	private int pendingNativeSpiritArrowBuffId = -1;
 
 	public static boolean isNativeAttackInProgress() { return nativeAttackInProgress; }
 
@@ -279,6 +283,71 @@ public class Hero extends Char {
 	public String pendingNativeProjectileItemId() { return pendingNativeProjectileItemId; }
 	public String pendingNativeProjectileResultItemId() { return pendingNativeProjectileResultItemId; }
 	public int pendingNativeProjectileCell() { return pendingNativeProjectileCell; }
+
+	/** Defers one native SnipersMark/SpiritArrow result until SPD resolves the virtual arrow. */
+	public boolean beginNativeSpiritArrowAttack(String heroStateBefore, String spiritArrowJson,
+			String bowBundle, int markBuffId) {
+		MultiplayerManager manager = MultiplayerManager.getInstance();
+		if (!manager.isMultiplayerActive() || heroStateBefore == null || heroStateBefore.isEmpty()
+				|| spiritArrowJson == null || spiritArrowJson.isEmpty() || bowBundle == null || bowBundle.isEmpty()
+				|| markBuffId < 1 || pendingNativeSpiritArrowDataJson != null
+				|| pendingNativeProjectileMutationJson != null || deferNativeCombatReport) return false;
+		pendingNativeSpiritArrowHeroStateBefore = heroStateBefore;
+		pendingNativeSpiritArrowDataJson = spiritArrowJson;
+		pendingNativeSpiritArrowBowBundle = bowBundle;
+		pendingNativeSpiritArrowBuffId = markBuffId;
+		beginNativeCombatReportDeferral();
+		return true;
+	}
+
+	public boolean hasPendingNativeSpiritArrowAttack() {
+		return pendingNativeSpiritArrowDataJson != null;
+	}
+
+	/** Called after the native attack and any projectile-side procs have completed. */
+	public void finishNativeSpiritArrowAttack(Char target) {
+		if (pendingNativeSpiritArrowDataJson == null) return;
+		String updated = deferredNativeCombatAction;
+		if (updated != null && target != null) {
+			com.badlogic.gdx.utils.Json json = new com.badlogic.gdx.utils.Json();
+			updated = replaceNativeJsonField(updated, "targetBuffs",
+					json.toJson(SPDLevelSnapshot.currentCombatBuffsJson(target)));
+			if (target instanceof Mob && target.HP > 0) {
+				updated = replaceNativeJsonField(updated, "targetMobBundleAfter",
+						json.toJson(SPDLevelSnapshot.currentMobBundle((Mob) target)));
+			} else if (target instanceof Hero) {
+				updated = replaceNativeJsonField(updated, "targetHeroStateJson",
+						json.toJson(SPDLevelSnapshot.currentHeroStateJson((Hero) target)));
+			}
+		}
+		SnipersMark mark = buff(SnipersMark.class);
+		if (mark != null && mark.id() == pendingNativeSpiritArrowBuffId) mark.detach();
+		clearNativeSpiritArrowAttack();
+		if (updated == null) {
+			deferredNativeCombatAction = null;
+			finishNativeCombatReportDeferral();
+			MultiplayerManager manager = MultiplayerManager.getInstance();
+			manager.requestResync(manager.getLastSequence());
+			return;
+		}
+		deferredNativeCombatAction = updated;
+		finishNativeCombatReportDeferral();
+	}
+
+	public void cancelNativeSpiritArrowAttack(int markBuffId) {
+		if (pendingNativeSpiritArrowDataJson == null || pendingNativeSpiritArrowBuffId != markBuffId) return;
+		clearNativeSpiritArrowAttack();
+		deferredNativeCombatAction = null;
+		finishNativeCombatReportDeferral();
+	}
+
+	private void clearNativeSpiritArrowAttack() {
+		pendingNativeSpiritArrowHeroStateBefore = null;
+		pendingNativeSpiritArrowDataJson = null;
+		pendingNativeSpiritArrowBowBundle = null;
+		pendingNativeSpiritArrowBuffId = -1;
+	}
+
 
 	/** Publishes combat only after SPD has resolved missile stick/drop/consumption. */
 	public void finishNativeProjectileMutation(String outcome, Char target) {
@@ -817,12 +886,17 @@ public class Hero extends Char {
 		java.util.Map<Integer, com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeMobCombatDelta.State> secondaryMobStateBefore =
 				java.util.Collections.emptyMap();
 		if (shouldPublish) {
-			attackWeaponMode = belongings != null && belongings.thrownWeapon != null ? "THROWN"
+			boolean spiritArrowAttack = pendingNativeSpiritArrowDataJson != null
+					&& attackWeapon instanceof com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow.SpiritArrow;
+			attackWeaponMode = spiritArrowAttack ? "SPIRIT_ARROW"
+					: belongings != null && belongings.thrownWeapon != null ? "THROWN"
 					: belongings != null && belongings.abilityWeapon != null ? "ABILITY"
 					: belongings != null && belongings.weapon() != null ? "EQUIPPED" : "UNARMED";
-			attackWeaponBundle = attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
-			attackerStateBefore = pendingNativeProjectileHeroStateBefore == null
-					? SPDLevelSnapshot.currentHeroStateJson(this) : pendingNativeProjectileHeroStateBefore;
+			attackWeaponBundle = spiritArrowAttack ? pendingNativeSpiritArrowBowBundle
+					: attackWeapon == null ? "" : SPDLevelSnapshot.currentItemBundle(attackWeapon);
+			attackerStateBefore = spiritArrowAttack ? pendingNativeSpiritArrowHeroStateBefore
+					: pendingNativeProjectileHeroStateBefore == null
+						? SPDLevelSnapshot.currentHeroStateJson(this) : pendingNativeProjectileHeroStateBefore;
 			targetBuffsBefore = enemy == null ? "[]" : SPDLevelSnapshot.currentCombatBuffsJson(enemy);
 			targetHeroStateBefore = enemy instanceof Hero ? SPDLevelSnapshot.currentHeroStateJson((Hero) enemy) : "";
 			// Secondary procs (life-link, thorns and similar native effects) can touch any
@@ -929,6 +1003,7 @@ public class Hero extends Char {
 					+ ",\"engineActionCost\":" + attackDelay()
 					+ extraLoot
 					+ (pendingNativeProjectileMutationJson == null ? "" : ",\"projectileMutation\":" + pendingNativeProjectileMutationJson)
+					+ (pendingNativeSpiritArrowDataJson == null ? "" : ",\"spiritArrow\":" + pendingNativeSpiritArrowDataJson)
 					+ "}";
 			nativeCombatAction = action;
 			nativeCombatTargetType = targetType;
