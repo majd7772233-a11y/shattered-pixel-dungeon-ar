@@ -3576,7 +3576,7 @@ describe("Native Hero Buff tick reconciliation", () => {
   it("accepts only native FlavourBuff timer expiry and rejects early or side-effecting removal",()=>{
     const safe=["Chill","Cripple","Slow","Speed","Weakness","Recharging",
       "Adrenaline","Bless","Daze","Foresight","Invulnerability","FrostImbue",
-      "Charm","Terror","Stamina","Vertigo",
+      "Amok","Charm","Terror","Stamina","Vertigo",
       "BlobImmunity","HeroDisguise","Hex","Sleep","Vulnerable"];
     for (const name of safe) {
       const cls=buffs+name;
@@ -3591,6 +3591,25 @@ describe("Native Hero Buff tick reconciliation", () => {
       const notDue=stateWithBuff(cls,120,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
       expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),JSON.stringify(notDue),tick(cls,120))).toBe(false);
     }
+  });
+  it("accepts only a due native Amok expiry on the Hero with no unrelated state changes",()=>{
+    const cls=buffs+"Amok";
+    const previous=stateWithBuff(cls,131,9,{}, {cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(cls,131,9,{}, {cooldown:1,buffCooldown_0:0,hp:10});
+    const after:any={...before,buffCount:0};
+    delete after.buff_0;
+    delete after.buffCooldown_0;
+
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(after),tick(cls,131))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...after,hp:9}),tick(cls,131))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...after,shielding:1}),tick(cls,131))).toBe(false);
+
+    const notDue=stateWithBuff(cls,131,10,{}, {cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(notDue),tick(cls,131))).toBe(false);
   });
   it("validates Barrier decay only as one shield point or unchanged shielding",()=>{
     const cls=buffs+"Barrier";

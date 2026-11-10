@@ -1087,6 +1087,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   const oldRows = nativeHeroBuffTickRowsByKey(previous.rows), preRows = nativeHeroBuffTickRowsByKey(before.rows);
   const afterRows = nativeHeroBuffTickRowsByKey(after.rows);
   const expirable = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",
@@ -1313,6 +1314,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
     return hpBefore === ht && additions.length === 0;
   }
   const simpleExpiry = new Set([
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",

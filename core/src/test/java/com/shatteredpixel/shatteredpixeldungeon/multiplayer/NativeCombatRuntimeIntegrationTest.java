@@ -17,6 +17,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Blob;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing;
@@ -591,7 +592,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Buff[] effects = new Buff[] {
                 new Foresight(),
                 new Invulnerability(),
-                new FrostImbue()
+                new FrostImbue(),
+                new Amok()
         };
         for (Buff effect : effects) {
             Assert.assertNotNull(effect);
@@ -603,6 +605,45 @@ public class NativeCombatRuntimeIntegrationTest {
             // reliably releases the publisher's single-event capture guard.
             NativeHeroBuffTickPublisher.publish(capture);
         }
+    }
+
+    @Test
+    public void nativeHeroAmokExpiryPublishesHeroBuffRemovalWithoutMobAggroMutation() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-hero-amok-expiry", "client-publisher", transport);
+
+        Assert.assertNotEquals("The Hero must not take Amok's enemy-to-enemy Mob aggro reset path",
+                Char.Alignment.ENEMY, hero.alignment);
+        Rat mob = addRat(hero.pos + 1, 20);
+        int mobHpBefore = mob.HP;
+        String mobStateBefore = mob.state;
+        Amok amok = Buff.affect(hero, Amok.class);
+        Assert.assertNotNull(amok);
+
+        NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(amok);
+        Assert.assertNotNull("Hero-targeted Amok expiry must be captured", capture);
+        Assert.assertTrue("The original native Buff.act() must detach Amok", amok.act());
+        NativeHeroBuffTickPublisher.publish(capture);
+
+        Assert.assertNull("The native actor must remove only the Hero's Amok row", hero.buff(Amok.class));
+        Assert.assertEquals("Hero-targeted Amok expiry must not damage the Mob", mobHpBefore, mob.HP);
+        Assert.assertEquals("Hero-targeted Amok expiry must not change Mob AI state", mobStateBefore, mob.state);
+        NetworkMessage action = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("\\\"action\\\":\\\"SYNC_HERO_STATE\\\""))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("The Amok expiry must be sent as a native Hero Buff tick", action);
+        JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
+        Assert.assertEquals("BUFF_TICK", data.getString("sourceType", ""));
+        Assert.assertEquals(Amok.class.getName(), data.getString("buffClass", ""));
+        JsonValue before = new JsonReader().parse(data.getString("heroStateBeforeJson", ""));
+        JsonValue after = new JsonReader().parse(new JsonReader().parse(action.payloadJson)
+                .getString("heroStateJson", ""));
+        Assert.assertTrue(before.getInt("buffCount") > after.getInt("buffCount"));
+        Assert.assertFalse("Amok expiry must not publish a shared Mob delta",
+                data.getString("secondaryMobDeltas", "").contains("\\"actorId\\\""));
     }
 
     @Test
