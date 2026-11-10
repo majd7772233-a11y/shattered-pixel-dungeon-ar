@@ -51,6 +51,8 @@ import com.shatteredpixel.shatteredpixeldungeon.items.keys.IronKey;
 import com.shatteredpixel.shatteredpixeldungeon.items.quest.CorpseDust;
 import com.shatteredpixel.shatteredpixeldungeon.items.bags.Bag;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.melee.Dagger;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow;
+import com.shatteredpixel.shatteredpixeldungeon.items.weapon.Weapon;
 import com.shatteredpixel.shatteredpixeldungeon.items.potions.PotionOfHealing;
 import com.shatteredpixel.shatteredpixeldungeon.items.scrolls.ScrollOfIdentify;
 import com.shatteredpixel.shatteredpixeldungeon.journal.Catalog;
@@ -648,6 +650,93 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull(secondary);
         Assert.assertEquals("Hero Amok expiry carries no shared Mob mutations", 0,
                 secondary.get("deltas").size);
+    }
+
+    @Test
+    public void nativeSnipersMarkSpiritArrowReportBindsTheRealEquippedBowBundleAndStableTarget() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-snipers-mark-spirit-arrow", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"spirit-arrow-native-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Rat mob = addRat(hero.pos + 1, 20);
+        String targetEntityId = "stable-spirit-arrow-target-001";
+        manager.registerServerEntityId(mob.id(), targetEntityId);
+        SpiritBow bow = new SpiritBow();
+        bow.setMultiplayerItemId("stable-spirit-arrow-bow-001");
+        bow.augment = Weapon.Augment.DAMAGE;
+        hero.belongings.weapon = bow;
+        SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
+        mark.set(mob.id(), 0.5f);
+
+        String heroStateBefore = SPDLevelSnapshot.currentHeroStateJson(hero);
+        String bowBundle = SPDLevelSnapshot.currentItemBundle(bow);
+        HashMap<String, Object> details = new HashMap<>();
+        details.put("formatVersion", 1);
+        details.put("markBuffId", mark.id());
+        details.put("markBonus", mark.percentDmgBonus);
+        details.put("targetEntityId", targetEntityId);
+        details.put("bowItemId", bow.multiplayerItemId());
+        Assert.assertTrue("The native Hero must accept one pending SpiritArrow report",
+                hero.beginNativeSpiritArrowAttack(heroStateBefore,
+                        NativeCombatJson.strictWriter().toJson(details), bowBundle, mark.id()));
+        try {
+            JsonValue before = new JsonReader().parse(heroStateBefore);
+            JsonValue bowRows = new JsonReader().parse(before.getString("inventoryItemsJson", ""));
+            JsonValue equippedBow = null;
+            for (JsonValue row = bowRows.child; row != null; row = row.next) {
+                if (bow.multiplayerItemId().equals(row.getString("itemId", ""))) equippedBow = row;
+            }
+            Assert.assertNotNull("The saved Hero state must contain the actual SpiritBow inventory row", equippedBow);
+            Assert.assertTrue("The marked bow must be equipped in the native inventory index",
+                    equippedBow.getBoolean("equipped", false));
+            Assert.assertEquals(bowBundle, equippedBow.getString("serializedBundle", ""));
+
+            JsonValue parsedBow = new JsonReader().parse(bowBundle).get("item");
+            Assert.assertEquals(SpiritBow.class.getName(), parsedBow.getString("__className", ""));
+            Assert.assertEquals(bow.multiplayerItemId(), parsedBow.getString("multiplayer_item_id", ""));
+            Assert.assertEquals("DAMAGE", parsedBow.getString("augment", ""));
+            JsonValue savedMark = findBuffState(heroStateBefore, SnipersMark.class.getName());
+            Assert.assertNotNull("The saved Hero state must include the exact SnipersMark", savedMark);
+            Assert.assertEquals(mark.id(), savedMark.getInt("id", -1));
+            Assert.assertEquals(0.5f, savedMark.getFloat("bonus", -1f), 0.0001f);
+            Assert.assertEquals(targetEntityId, savedMark.getString("server_entity_id", ""));
+
+            // Hero.shoot() executes the original SPD attack synchronously; the pending native
+            // deferral keeps its report until the same completion hook used by SpiritArrow impact.
+            hero.shoot(mob, bow.knockArrow());
+            hero.finishNativeSpiritArrowAttack(mob);
+            Assert.assertFalse(hero.hasPendingNativeSpiritArrowAttack());
+            Assert.assertNull("The consumed mark must detach only after the native arrow outcome",
+                    hero.buff(SnipersMark.class));
+
+            NetworkMessage action = transport.sent.stream()
+                    .filter(message -> message.messageType == MessageType.ACTION
+                            && message.payloadJson != null
+                            && message.payloadJson.contains("\"action\":\"ATTACK\""))
+                    .findFirst().orElse(null);
+            Assert.assertNotNull("SpiritArrow must publish a native ATTACK after the native hit pipeline", action);
+            JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
+            Assert.assertEquals("SPIRIT_ARROW", data.getString("attackWeaponMode", ""));
+            Assert.assertEquals(bowBundle, data.getString("attackWeaponBundle", ""));
+            JsonValue arrow = data.get("spiritArrow");
+            Assert.assertNotNull(arrow);
+            Assert.assertEquals(1, arrow.getInt("formatVersion", 0));
+            Assert.assertEquals(mark.id(), arrow.getInt("markBuffId", -1));
+            Assert.assertEquals(0.5f, arrow.getFloat("markBonus", -1f), 0.0001f);
+            Assert.assertEquals(targetEntityId, arrow.getString("targetEntityId", ""));
+            Assert.assertEquals(bow.multiplayerItemId(), arrow.getString("bowItemId", ""));
+            Assert.assertEquals(heroStateBefore, data.getString("attackerStateBefore", ""));
+            Assert.assertEquals(targetEntityId, data.getString("targetEntityId", ""));
+            Assert.assertTrue("SpiritArrow remains a native ranged outcome", data.getBoolean("engineRanged", false));
+        } finally {
+            if (hero.hasPendingNativeSpiritArrowAttack()) hero.cancelNativeSpiritArrowAttack(mark.id());
+            mark.detach();
+        }
     }
 
     @Test
