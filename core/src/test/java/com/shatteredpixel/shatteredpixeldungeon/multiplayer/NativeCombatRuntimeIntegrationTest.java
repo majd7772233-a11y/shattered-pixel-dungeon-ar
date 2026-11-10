@@ -632,7 +632,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage action = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\\\"action\\\":\\\"SYNC_HERO_STATE\\\""))
+                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The Amok expiry must be sent as a native Hero Buff tick", action);
         JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
@@ -642,8 +642,10 @@ public class NativeCombatRuntimeIntegrationTest {
         JsonValue after = new JsonReader().parse(new JsonReader().parse(action.payloadJson)
                 .getString("heroStateJson", ""));
         Assert.assertTrue(before.getInt("buffCount") > after.getInt("buffCount"));
-        Assert.assertFalse("Amok expiry must not publish a shared Mob delta",
-                data.getString("secondaryMobDeltas", "").contains("\\"actorId\\\""));
+        JsonValue secondary = new JsonReader().parse(data.getString("secondaryMobDeltas", ""));
+        Assert.assertNotNull(secondary);
+        Assert.assertEquals("Hero Amok expiry carries no shared Mob mutations", 0,
+                secondary.get("deltas").size);
     }
 
     @Test
