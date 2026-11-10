@@ -2596,7 +2596,7 @@ public class NativeCombatRuntimeIntegrationTest {
         NetworkMessage report = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
-                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\""))
+                        && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
                         && message.payloadJson.contains("\"sourceType\":\"MOB\""))
                 .findFirst().orElse(null);
         Assert.assertNotNull("The publisher must submit a native mob-to-player outcome", report);
