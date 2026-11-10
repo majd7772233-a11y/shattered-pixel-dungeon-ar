@@ -133,9 +133,15 @@ Every changed row still passes its class-specific identity, timing, native-field
 
 `server/src/match-room/lifelink-death.integration.test.ts` invokes the actual `MatchRoom.handleAction` path with a deterministic in-memory SQL adapter. Coverage includes nonlethal and lethal publisher batches, fresh-ID replay rejection, unrelated/forged heap positions, non-publisher rejection, rollback when the final event insert fails, and a forced transaction failure through the WebSocket message boundary that verifies a correlated ERROR. Native Java runtime tests verify one ACTION for multiple linked Mob deaths and the proper heap-array wire shape.
 
-Exact-head CI on `86b77bbf426ba1caf759a4696166defcb4cfced7` passed [run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314): TypeScript build and 640 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
+Exact-head CI on `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02` passed [run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459): TypeScript build and 642 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
 
 The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
+
+
+
+### Hero-targeted Amok expiry
+
+`NativeHeroBuffTickPublisher` now captures the source tick for `Amok` when its target is the local Hero. This does not reproduce or modify native Mob AI: the original `Amok.detach()` only resets enemy-to-enemy aggro when the target is aligned as an enemy, whereas the local Hero is an ally. The backend therefore accepts only removal of the due Hero Amok row with all other Hero/Mob state unchanged. Amok is deliberately omitted from the set of Buff rows that may expire incidentally between another Buff's before/previous snapshots; only its own `BUFF_TICK` may remove it. The Android runtime test executes the original Buff actor and proves no Mob HP or AI-state change.
 
 
 ## 5. Mob turns and Actor scheduling

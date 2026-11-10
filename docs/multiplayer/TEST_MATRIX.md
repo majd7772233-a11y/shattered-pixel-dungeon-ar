@@ -256,6 +256,8 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Native Hero Poison/ShieldBuff: reject forged Barrier consumption while priority-2 or priority-1 capacity remains; reject forged aggregate/row mismatches.
 - [x] Native Hero Poison/ShieldBuff: enforce zero-shield lifecycle (WarriorShield/AscendBuff persist; BlockBuff/DivineShield/Barrier detach).
 - [x] Java runtime: run the original Poison actor with all three shield-priority tiers active and verify priority-2/priority-1 absorption leaves Barrier unchanged.
+- [x] Native Hero Amok expiry: only a due local-Hero `Amok` source tick may remove the row; a different Hero Buff tick cannot silently expire it as a background side effect.
+- [x] Native Java Amok runtime: execute the original Hero-targeted `Amok.act()`, publish one `BUFF_TICK`, and verify Mob HP and Mob AI state are unchanged because the Hero is not an enemy Amok target.
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
 - [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
 - [ ] Validate level-up XP, `Hero.updateHT()`, talent/ability and item `onHeroGainExp` callbacks as one authoritative batch; currently fail-closed.
@@ -263,5 +265,5 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Verify the same resync response against a live Worker/Cloudflare Durable Object SQLite session; the current Android test constructs a deterministic server-shaped envelope locally.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `86b77bbf426ba1caf759a4696166defcb4cfced7` passed [run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314): TypeScript build + 640 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
+**Exact-head CI:** `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02` passed [run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459): TypeScript build + 642 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 

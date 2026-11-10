@@ -165,7 +165,15 @@ The regression `nativePoisonConsumesPriorityTwoAndOneShieldsBeforeBarrier` execu
 
 `NativeHeroBuffTickPublisher.publish()` uses the `SYNC_HERO_STATE` / `BUFF_TICK` envelope for every supported local Hero Buff tick, including Healing, Hunger, Poison, Barrier and the source-specific expiry/charging transitions. MatchRoom wraps every such source-shaped Buff tick in `state.storage.transactionSync`, not only Poison/LifeLink, so Hero bundle/player HP, the sequenced event and request record commit or roll back together. `ACTION_ACCEPTED` and FOV/room broadcasts are held until commit succeeds.
 
-This is a transaction-boundary change, not an expansion of the accepted effect list: the backend still validates each Buff class against its native transition rules and rejects unsupported transitions. The Healing integration regression forces event insertion to fail after Hero/player writes and verifies that stored HP and Healing Buff state roll back. Exact-head CI at `86b77bbf426ba1caf759a4696166defcb4cfced7` passed Backend 640 Vitest executions and Android JVM/Debug APK compilation ([run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314)).
+This is a transaction-boundary change, not an expansion of the accepted effect list: the backend still validates each Buff class against its native transition rules and rejects unsupported transitions. The Healing integration regression forces event insertion to fail after Hero/player writes and verifies that stored HP and Healing Buff state roll back. Exact-head CI at `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02` passed Backend 642 Vitest executions and Android JVM/Debug APK compilation ([run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459)).
+
+
+### 4.9 Hero-targeted Amok expiry
+
+The Hero Buff publisher admits native `Amok` as a timed Hero Buff tick. This is narrowly scoped to `Buff.target == Dungeon.hero`: native `Amok.detach()` performs the enemy-to-enemy Mob aggro reset only when its target alignment is `ENEMY`; the local Hero is not an enemy, so the Hero-targeted path only removes the Hero's Amok row. The Java test executes the original `Amok.act()`, publishes the resulting `BUFF_TICK`, and verifies that a nearby Mob's HP and native `AiState` reference remain unchanged.
+
+The backend accepts Amok only as its own due source tick, with unchanged Hero HP/shield and unrelated Buff/inventory state. It is intentionally excluded from the set of rows that may disappear between a previous Hero state and another Buff's pre-state; this prevents a malicious/incorrect Amok removal from being hidden inside a different Buff event. Other Amok targets and their Mob aggro callbacks are not authorized through this Hero-only tick path.
+
 
 ## 5. RemoteHero and RemotePlayer
 

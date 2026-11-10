@@ -36,9 +36,10 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active Phase 9 continuation checkpoint — 2026-11-09
 
-Latest tested implementation SHA: `86b77bbf426ba1caf759a4696166defcb4cfced7`; exact-head [CI run 42716166314](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42716166314) passed Backend TypeScript build/640 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+Latest tested implementation SHA: `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02`; exact-head [CI run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459) passed Backend TypeScript build/642 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
 
 The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, correlated WebSocket errors, and rollback-safe deferred broadcasts that preserve the original sender exclusion.
+Hero Buff coverage now includes safe due `Amok` expiry when Amok targets the local Hero; the native enemy-only Mob aggro reset is not run, and the Android test confirms the Mob HP/AiState are unchanged. Amok cannot disappear incidentally inside another Buff tick.
 
 Native Hero Poison ticks now also account for the exact Barrier damage side effect: a surviving Barrier may lose only the shield actually absorbed, with its partial-decay remainder untouched; it may detach at zero only when total Hero shield loss equals its old shield. Forged or unexplained aggregate shield loss and changes to the partial-decay remainder are rejected. Hunger remains distinct because its native starvation damage bypasses shields. Java and Backend regressions cover full Poison absorption/detach and partial absorption.
 
