@@ -356,6 +356,92 @@ function makeNonlethalHealingFixture() {
   return { sql, previousHero, beforeHero, afterHero, levelSnapshot, tickData, room, ws, session };
 }
 
+const ATTACKER_ID = "spirit-arrow-attacker-001";
+const PUBLISHER_ID = "spirit-arrow-publisher-001";
+const SPIRIT_BOW_CLASS = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow";
+const SNIPERS_MARK_CLASS = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark";
+
+function makeSpiritArrowForwardFixture() {
+  const sql = new MemoryMatchRoomSql();
+  const targetMobBundle = nativeMobBundle(20);
+  const targetMob = {
+    mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 20, ht: 20, shielding: 0,
+    state: "Hunting", serializedBundle: targetMobBundle, buffs: [],
+    defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+    targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false
+  };
+  const bowItemId = "stable-spirit-bow-001";
+  const bowBundle = JSON.stringify({ item: {
+    __className: SPIRIT_BOW_CLASS, multiplayer_item_id: bowItemId, augment: "DAMAGE"
+  }});
+  const markBuffId = 77;
+  const markBundle = JSON.stringify({ buff: {
+    __className: SNIPERS_MARK_CLASS, id: markBuffId, time: 5, object: 42,
+    bonus: 0.5, server_entity_id: ENTITY_ID
+  }});
+  const heroBefore = {
+    hp: 20, ht: 20, pos: 9, shielding: 0, cooldown: 1,
+    combatBundle: JSON.stringify({ id: 11, time: 10, STR: 10, buffs: [JSON.parse(markBundle).buff] }),
+    inventoryBundle: JSON.stringify({ weapon: JSON.parse(bowBundle).item, inventory: [] }),
+    inventoryItemsJson: JSON.stringify([{
+      itemId: bowItemId, className: SPIRIT_BOW_CLASS, quantity: 1, level: 0,
+      cursed: false, cursedKnown: false, stackable: false, equipped: true,
+      serializedBundle: bowBundle
+    }]),
+    buffCount: 1, buff_0: markBundle, buffCooldown_0: 1,
+    notesBundle: "{}", questStateBundle: "{}",
+    ironKeyCount: 0, crystalKeyCount: 0, wornKeyCount: 0, goldenKeyCount: 0
+  };
+  const levelSnapshot = {
+    schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+    entrancePos: 0, exitPos: 1023, seed: 123456, locked: false, feeling: "NONE",
+    levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+    heroStateJson: JSON.stringify(heroBefore), nativeLevelMetadataBundle: "{}",
+    tiles: Array.from({ length: 1024 }, (_, pos) => ({
+      pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+      flammable: false, secret: false, avoid: false, water: false,
+      discoverable: false, openSpace: false
+    })),
+    transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+    mobs: [targetMob], visitedPositions: [], mappedPositions: []
+  };
+  const spiritArrow = {
+    formatVersion: 1, markBuffId, markBonus: 0.5,
+    targetEntityId: ENTITY_ID, bowItemId
+  };
+  const attackData = {
+    targetType: "MOB", targetId: 42, targetEntityId: ENTITY_ID,
+    targetPos: 25, attackerPos: 9,
+    attackerStateBefore: JSON.stringify(heroBefore),
+    attackWeaponMode: "SPIRIT_ARROW", attackWeaponBundle: bowBundle,
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1,
+    engineRanged: true, spiritArrow
+  };
+  sql.roomMeta.set("levelPublisher", PUBLISHER_ID);
+  sql.roomMeta.set("heroState:" + ATTACKER_ID, JSON.stringify(heroBefore));
+  sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+  sql.players.set(ATTACKER_ID, {
+    player_id: ATTACKER_ID, pos: 9, hp: 20, ht: 20, state: "ALIVE", deaths: 0
+  });
+  sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 25 });
+  const room = makeRoom(sql);
+  const attackerSession = { playerId: ATTACKER_ID, sessionToken: "attacker-session" };
+  const publisherSession = { playerId: PUBLISHER_ID, sessionToken: "publisher-session" };
+  const senderWs = {
+    send: vi.fn(),
+    deserializeAttachment: () => attackerSession
+  };
+  const authorityWs = {
+    send: vi.fn(),
+    deserializeAttachment: () => publisherSession
+  };
+  room.state.getWebSockets = () => [authorityWs];
+  return {
+    sql, room, attackerSession, publisherSession, senderWs, authorityWs,
+    heroBefore, levelSnapshot, bowBundle, spiritArrow, attackData, targetMobBundle
+  };
+}
+
 function makeRoom(sql: MemoryMatchRoomSql): any {
   // Exercise the real MatchRoom prototype/handler without invoking the production
   // Durable Object constructor or its level-generation/migration side effects.
@@ -390,6 +476,68 @@ function acceptedMessage(ws: any, index: number): Row {
 }
 
 describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
+  it("forwards the exact trusted SnipersMark SpiritArrow intent to the level publisher", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    expect(hasCompleteNativeLevelSnapshot(fixture.levelSnapshot)).toBe(true);
+    const requestId = "spirit-arrow-authority-request-001";
+
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK",
+      data: fixture.attackData,
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+    const forwarded = JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0]));
+    expect(forwarded.messageType).toBe("COMBAT_REQUEST");
+    expect(forwarded.requestId).toBe(requestId);
+    const payload = JSON.parse(String(forwarded.payloadJson));
+    expect(payload.attackWeaponMode).toBe("SPIRIT_ARROW");
+    expect(payload.attackWeaponBundle).toBe(fixture.bowBundle);
+    expect(payload.spiritArrow).toEqual(fixture.spiritArrow);
+    expect(payload.targetType).toBe("MOB");
+    expect(payload.targetEntityId).toBe(ENTITY_ID);
+
+    const pending = JSON.parse(String(fixture.sql.roomMeta.get("pendingCombat:" + requestId)));
+    expect(pending.attackWeaponMode).toBe("SPIRIT_ARROW");
+    expect(pending.spiritArrow).toEqual(fixture.spiritArrow);
+    expect(pending.attackWeaponBundle).toBe(fixture.bowBundle);
+    expect(pending.targetEntityId).toBe(ENTITY_ID);
+    expect(pending.authorityId).toBe(PUBLISHER_ID);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.senderWs.send).not.toHaveBeenCalled();
+  });
+
+  it("rejects SpiritArrow authority requests when the trusted mark points at another Mob", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const forgedHero = {
+      ...fixture.heroBefore,
+      buff_0: JSON.stringify({ buff: {
+        __className: SNIPERS_MARK_CLASS, id: 77, time: 5, object: 42,
+        bonus: 0.5, server_entity_id: "stable-unrelated-mob-0001"
+      }})
+    };
+    fixture.attackData.attackerStateBefore = JSON.stringify(forgedHero);
+    const requestId = "spirit-arrow-forged-mark-001";
+
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK", data: fixture.attackData,
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+
+    expect(fixture.authorityWs.send).not.toHaveBeenCalled();
+    expect(fixture.sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
+    expect(JSON.parse(String(fixture.senderWs.send.mock.calls[0][0])).messageType).toBe("ERROR");
+    expect(JSON.parse(String(JSON.parse(String(fixture.senderWs.send.mock.calls[0][0])).payloadJson)).error)
+      .toBe("INVALID_NATIVE_SPIRIT_ARROW_INTENT");
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(0);
+  });
+
+
   it("rolls back a non-Poison Hero Healing Buff tick when event insertion fails", async () => {
     const fixture = makeNonlethalHealingFixture();
     expect(hasCompleteNativeLevelSnapshot(fixture.levelSnapshot)).toBe(true);
