@@ -131,8 +131,97 @@ export function classifyRequestReplay(existing: any, playerId: string): "NEW" | 
   return String(existing.player_id) === playerId ? "REPLAY" : "CONFLICT";
 }
 
+const NATIVE_SPIRIT_BOW = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow";
+const NATIVE_SPIRIT_ARROW_MARK = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark";
+const NATIVE_SPIRIT_ARROW_MARKER_KEYS = ["bowItemId","formatVersion","markBonus","markBuffId","targetEntityId"];
+
+function isValidNativeSpiritArrowMetadata(data: any): boolean {
+  const details = data?.spiritArrow;
+  if (!details || typeof details !== "object" || Array.isArray(details)
+      || Object.keys(details).sort().join(",") !== NATIVE_SPIRIT_ARROW_MARKER_KEYS.join(",")
+      || details.formatVersion !== 1
+      || !Number.isInteger(details.markBuffId) || details.markBuffId < 1 || details.markBuffId > 2147483647
+      || typeof details.markBonus !== "number" || !Number.isFinite(details.markBonus)
+      || details.markBonus < 0 || details.markBonus > 1
+      || typeof details.targetEntityId !== "string" || !/^[A-Za-z0-9._:-]{8,80}$/.test(details.targetEntityId)
+      || typeof details.bowItemId !== "string" || !/^[A-Za-z0-9._:-]{8,80}$/.test(details.bowItemId)
+      || data?.targetType !== "MOB" || data?.targetEntityId !== details.targetEntityId
+      || data?.projectileMutation != null
+      || typeof data?.attackWeaponBundle !== "string" || data.attackWeaponBundle.length < 2
+      || data.attackWeaponBundle.length > 200000) return false;
+  return true;
+}
+
+/**
+ * Validates the native SnipersMark/SpiritBow identity against the attacker's trusted pre-state
+ * and the complete shared-level snapshot. The server never calculates arrow damage; the level
+ * publisher runs the original SPD pipeline after this exact intent has been reserved.
+ */
+export function isValidNativeSpiritArrowAttackIntent(
+  data: any, heroStateValue: unknown, levelSnapshotValue: unknown
+): boolean {
+  if (!isValidNativeSpiritArrowMetadata(data)) return false;
+  let hero: any = heroStateValue, level: any = levelSnapshotValue;
+  try {
+    if (typeof hero === "string") hero = JSON.parse(hero);
+    if (typeof level === "string") level = JSON.parse(level);
+  } catch (_) { return false; }
+  if (!hero || typeof hero !== "object" || Array.isArray(hero)
+      || !level || typeof level !== "object" || !Array.isArray(level.mobs)
+      || level.mobs.length > 512) return false;
+
+  const targetEntityId = String(data.spiritArrow.targetEntityId);
+  const targetMatches = level.mobs.filter((mob: any) => String(mob?.entityId || "") === targetEntityId);
+  if (targetMatches.length !== 1) return false;
+  const target = targetMatches[0];
+  if (!Number.isInteger(target.mobId) || target.mobId < 1
+      || !Number.isInteger(target.pos) || target.pos < 0
+      || !Number.isInteger(target.hp) || target.hp <= 0
+      || Number(data.targetPos) !== Number(target.pos)) return false;
+
+  const bowId = String(data.spiritArrow.bowItemId);
+  const bowBundle = parseNativeBundleObject(data.attackWeaponBundle);
+  const bowItem = bowBundle?.item;
+  if (!bowItem || String(bowItem.__className || "") !== NATIVE_SPIRIT_BOW
+      || String(bowItem.multiplayer_item_id || "") !== bowId
+      || !["NONE","DAMAGE"].includes(String(bowItem.augment || ""))) return false;
+
+  if (typeof hero.inventoryItemsJson !== "string" || hero.inventoryItemsJson.length < 2
+      || hero.inventoryItemsJson.length > 200000) return false;
+  let inventory: any[];
+  try { inventory = JSON.parse(hero.inventoryItemsJson); } catch (_) { return false; }
+  if (!Array.isArray(inventory) || inventory.length > 1024) return false;
+  const bowRows = inventory.filter((row: any) => String(row?.itemId || "") === bowId);
+  if (bowRows.length !== 1) return false;
+  const bowRow = bowRows[0];
+  if (String(bowRow.className || "") !== NATIVE_SPIRIT_BOW || bowRow.equipped !== true
+      || bowRow.serializedBundle !== data.attackWeaponBundle) return false;
+
+  if (!Number.isInteger(hero.buffCount) || hero.buffCount < 0 || hero.buffCount > 256) return false;
+  const matchingMarks: any[] = [];
+  for (let i=0;i<hero.buffCount;i++) {
+    const serializedBundle = hero["buff_"+i];
+    const cooldown = Number(hero["buffCooldown_"+i]);
+    if (typeof serializedBundle !== "string" || serializedBundle.length < 2 || serializedBundle.length > 200000
+        || !Number.isFinite(cooldown) || cooldown < 0 || cooldown > 100000) return false;
+    const decoded = parseNativeBundleObject(serializedBundle);
+    const buff = decoded?.buff;
+    if (String(buff?.__className || "") === NATIVE_SPIRIT_ARROW_MARK) matchingMarks.push(buff);
+  }
+  if (matchingMarks.length !== 1) return false;
+  const mark = matchingMarks[0];
+  return Number(mark.id) === Number(data.spiritArrow.markBuffId)
+    && Number.isInteger(mark.object) && mark.object > 0 && mark.object <= 2147483647
+    && Number.isFinite(Number(mark.time)) && Number(mark.time) > 0
+    && Number.isFinite(Number(mark.bonus)) && Number(mark.bonus) === Number(data.spiritArrow.markBonus)
+    && String(mark.server_entity_id || "") === targetEntityId
+    // SpiritArrow uses the native shot path with no external combat modifiers.
+    && data.damageMultiplier === 1 && data.damageBonus === 0 && data.accuracyMultiplier === 1
+    && data.engineRanged === true;
+}
+
 export function isValidNativeAttackIntent(data: any): boolean {
-  if (!data || !["EQUIPPED", "THROWN", "ABILITY", "UNARMED"].includes(String(data.attackWeaponMode))
+  if (!data || !["EQUIPPED", "THROWN", "ABILITY", "UNARMED", "SPIRIT_ARROW"].includes(String(data.attackWeaponMode))
     || typeof data.attackWeaponBundle !== "string" || data.attackWeaponBundle.length > 200000
     || typeof data.damageMultiplier !== "number" || !Number.isFinite(data.damageMultiplier)
     || data.damageMultiplier < 0 || data.damageMultiplier > 10
@@ -140,9 +229,11 @@ export function isValidNativeAttackIntent(data: any): boolean {
     || data.damageBonus < -10000 || data.damageBonus > 100000
     || typeof data.accuracyMultiplier !== "number" || !Number.isFinite(data.accuracyMultiplier)
     || data.accuracyMultiplier < 0 || data.accuracyMultiplier > 100) return false;
-  if ((data.attackWeaponMode === "THROWN" || data.attackWeaponMode === "ABILITY")
-    && data.attackWeaponBundle.length === 0) return false;
+  if ((data.attackWeaponMode === "THROWN" || data.attackWeaponMode === "ABILITY"
+      || data.attackWeaponMode === "SPIRIT_ARROW") && data.attackWeaponBundle.length === 0) return false;
   if (data.attackWeaponMode === "UNARMED" && data.attackWeaponBundle.length !== 0) return false;
+  if (data.attackWeaponMode === "SPIRIT_ARROW") return isValidNativeSpiritArrowMetadata(data);
+  if (data.spiritArrow != null) return false;
   return true;
 }
 
@@ -151,7 +242,10 @@ export function hasMatchingNativeAttackIntent(reported: any, expected: any): boo
     ? reported?.projectileMutation == null
     : reported?.projectileMutation != null
       && sameNativeItemValue(reported.projectileMutation, expected.projectileMutation);
-  return isValidNativeAttackIntent(reported) && expected != null && projectileMatches
+  const spiritArrowMatches = expected?.attackWeaponMode === "SPIRIT_ARROW"
+    ? reported?.spiritArrow != null && sameNativeItemValue(reported.spiritArrow, expected.spiritArrow)
+    : reported?.spiritArrow == null && expected?.spiritArrow == null;
+  return isValidNativeAttackIntent(reported) && expected != null && projectileMatches && spiritArrowMatches
     && reported.attackWeaponMode === expected.attackWeaponMode
     && reported.attackWeaponBundle === expected.attackWeaponBundle
     && reported.damageMultiplier === expected.damageMultiplier

@@ -1594,6 +1594,85 @@ describe('Native attack intent contract', () => {
     damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1
   };
 
+  const spiritBowClass = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow";
+  const spiritMarkClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark";
+  const spiritTargetId = "stable-sniper-target-001";
+  const spiritBowId = "stable-spirit-bow-001";
+  const spiritArrowFixture = (augment="DAMAGE") => {
+    const bowBundle = JSON.stringify({ item: {
+      __className:spiritBowClass, multiplayer_item_id:spiritBowId, augment
+    }});
+    const markBundle = JSON.stringify({ buff: {
+      __className:spiritMarkClass, id:77, time:5, object:42, bonus:0.5,
+      server_entity_id:spiritTargetId
+    }});
+    const heroBefore = {
+      hp:20, ht:20, pos:9, shielding:0, buffCount:1,
+      buff_0:markBundle, buffCooldown_0:1, cooldown:1,
+      combatBundle:JSON.stringify({id:11,time:10,STR:10,buffs:[JSON.parse(markBundle).buff]}),
+      inventoryBundle:JSON.stringify({weapon:JSON.parse(bowBundle).item,inventory:[]}),
+      inventoryItemsJson:JSON.stringify([{
+        itemId:spiritBowId, className:spiritBowClass, quantity:1, level:0,
+        cursed:false,cursedKnown:false,stackable:false,equipped:true,
+        serializedBundle:bowBundle
+      }])
+    };
+    const level = { depth:1, mobs:[{
+      mobId:42, entityId:spiritTargetId, name:"Rat", pos:25, hp:12, ht:12
+    }] };
+    const details = {
+      formatVersion:1, markBuffId:77, markBonus:0.5,
+      targetEntityId:spiritTargetId, bowItemId:spiritBowId
+    };
+    const data = {
+      attackWeaponMode:"SPIRIT_ARROW", attackWeaponBundle:bowBundle,
+      damageMultiplier:1, damageBonus:0, accuracyMultiplier:1,
+      targetType:"MOB", targetEntityId:spiritTargetId, targetPos:25, engineRanged:true,
+      projectileMutation:null, spiritArrow:details
+    };
+    return { bowBundle, markBundle, heroBefore, level, details, data };
+  };
+
+  it("accepts only an equipped native SpiritBow, matching active SnipersMark, and the marked live Mob", () => {
+    const f = spiritArrowFixture();
+    expect(isValidNativeAttackIntent(f.data)).toBe(true);
+    expect(isValidNativeSpiritArrowAttackIntent(f.data, f.heroBefore, f.level)).toBe(true);
+    expect(isValidNativeAttackIntent({ ...f.data, spiritArrow:undefined })).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent({ ...f.data,
+      spiritArrow:{...f.details,markBonus:0.75} }, f.heroBefore, f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent({ ...f.data,
+      spiritArrow:{...f.details,targetEntityId:"stable-other-mob-001"},targetEntityId:"stable-other-mob-001" },
+      f.heroBefore, f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent({ ...f.data,
+      attackWeaponBundle:JSON.stringify({item:{__className:spiritBowClass,multiplayer_item_id:spiritBowId,augment:"SPEED"}}) },
+      f.heroBefore, f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent({ ...f.data,
+      attackWeaponBundle:JSON.stringify({item:{__className:spiritBowClass,multiplayer_item_id:"stable-forged-bow-001",augment:"DAMAGE"}}) },
+      f.heroBefore, f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent({ ...f.data,targetPos:24 }, f.heroBefore, f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent(f.data,
+      {...f.heroBefore,buff_0:JSON.stringify({buff:{__className:spiritMarkClass,id:77,time:5,object:42,bonus:0.5,server_entity_id:"stable-other-mob-001"}})},
+      f.level)).toBe(false);
+    expect(isValidNativeSpiritArrowAttackIntent(f.data, f.heroBefore, {
+      ...f.level, mobs:[{...f.level.mobs[0],hp:0}]
+    })).toBe(false);
+  });
+
+  it("binds SpiritArrow mark/bow metadata to the reserved publisher invocation", () => {
+    const f = spiritArrowFixture();
+    const pending = {
+      ...f.data, spiritArrow:{...f.details}, projectileMutation:null
+    };
+    expect(hasMatchingNativeAttackIntent(f.data,pending)).toBe(true);
+    expect(hasMatchingNativeAttackIntent({...f.data,
+      spiritArrow:{...f.details,markBuffId:78}},pending)).toBe(false);
+    expect(hasMatchingNativeAttackIntent({...f.data,
+      spiritArrow:{...f.details,bowItemId:"stable-other-bow-001"}},pending)).toBe(false);
+    expect(hasMatchingNativeAttackIntent({...f.data,spiritArrow:undefined},pending)).toBe(false);
+    expect(hasMatchingNativeAttackIntent({...f.data,spiritArrow:f.details},
+      {...pending,attackWeaponMode:"EQUIPPED"})).toBe(false);
+  });
+
   it('accepts explicit native modes and bounded attack parameters', () => {
     expect(isValidNativeAttackIntent(standard)).toBe(true);
     expect(isValidNativeAttackIntent({ ...standard, attackWeaponMode: 'UNARMED', attackWeaponBundle: '' })).toBe(true);

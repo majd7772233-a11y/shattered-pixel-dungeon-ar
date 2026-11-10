@@ -2310,6 +2310,29 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 payloadJson: JSON.stringify({ error: "INVALID_NATIVE_ATTACK_INTENT" }) }));
               return;
             }
+            if (payload.data.attackWeaponMode === "SPIRIT_ARROW") {
+              const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+                "heroState:" + session.playerId).toArray()[0];
+              const levelRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+                "levelSnapshot:" + this.currentDepth).toArray()[0];
+              const playerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?",
+                session.playerId).toArray()[0];
+              let levelSnapshot: any = null;
+              try { levelSnapshot = levelRow && typeof levelRow.value === "string"
+                ? JSON.parse(String(levelRow.value)) : null; } catch (_) {}
+              const attackerStateBefore = payload.data?.attackerStateBefore;
+              const preStateMatches = !!trustedHeroRow && typeof trustedHeroRow.value === "string"
+                && !!playerRow && String(playerRow.state) === "ALIVE"
+                && hasMatchingNativeHeroStateSnapshot(attackerStateBefore, String(trustedHeroRow.value))
+                && Number(payload.data?.attackerPos) === Number(playerRow.pos);
+              if (targetType !== "MOB" || !preStateMatches || !hasCompleteNativeLevelSnapshot(levelSnapshot)
+                  || !isValidNativeSpiritArrowAttackIntent(payload.data, attackerStateBefore, levelSnapshot)) {
+                ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                  requestId: msg.requestId, sequence: this.currentSequence,
+                  payloadJson: JSON.stringify({ error: "INVALID_NATIVE_SPIRIT_ARROW_INTENT" }) }));
+                return;
+              }
+            }
             if (payload.data.attackWeaponMode === "THROWN" || payload.data.projectileMutation != null) {
               const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
               const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
@@ -2390,6 +2413,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   damageBonus: payload.data.damageBonus,
                   accuracyMultiplier: payload.data.accuracyMultiplier,
                   projectileMutation: payload.data.projectileMutation,
+                  spiritArrow: payload.data.spiritArrow,
                   attackerStateBefore, attackerStateAfter: payload.heroStateJson
                 };
                 if (!this.reservePendingCombat(pending)) {
@@ -2416,7 +2440,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                       damageMultiplier: payload.data.damageMultiplier,
                       damageBonus: payload.data.damageBonus,
                       accuracyMultiplier: payload.data.accuracyMultiplier,
-                      projectileMutation: payload.data.projectileMutation
+                      projectileMutation: payload.data.projectileMutation,
+                      spiritArrow: payload.data.spiritArrow
                     })
                   }));
                 }
