@@ -18,6 +18,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire;
 import com.shatteredpixel.shatteredpixeldungeon.actors.blobs.ToxicGas;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark;
+import com.shatteredpixel.shatteredpixeldungeon.ui.ActionIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing;
@@ -646,6 +648,65 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertNotNull(secondary);
         Assert.assertEquals("Hero Amok expiry carries no shared Mob mutations", 0,
                 secondary.get("deltas").size);
+    }
+
+    @Test
+    public void nativeHeroSnipersMarkExpiryPublishesHeroBuffRemovalAndClearsActionIndicator() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-hero-snipers-mark-expiry", "client-publisher", transport);
+
+        Rat mob = addRat(hero.pos + 1, 20);
+        int mobHpBefore = mob.HP;
+        Object mobStateBefore = mob.state;
+        SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
+        mark.set(mob.id(), 0.35f);
+
+        try {
+            Assert.assertSame("SnipersMark must expose its local action while active",
+                    mark, ActionIndicator.action);
+            NativeHeroBuffTickPublisher.TickCapture capture = NativeHeroBuffTickPublisher.capture(mark);
+            Assert.assertNotNull("Hero-targeted SnipersMark expiry must be captured", capture);
+            Assert.assertTrue("The original native FlavourBuff.act() must detach the mark", mark.act());
+            NativeHeroBuffTickPublisher.publish(capture);
+
+            Assert.assertNull("The native actor must remove only the Hero's SnipersMark row",
+                    hero.buff(SnipersMark.class));
+            Assert.assertNull("SnipersMark.detach() must clear its local ActionIndicator",
+                    ActionIndicator.action);
+            Assert.assertEquals("Hero SnipersMark expiry must not damage a shared Mob", mobHpBefore, mob.HP);
+            Assert.assertSame("Hero SnipersMark expiry must not mutate Mob AI state", mobStateBefore, mob.state);
+
+            NetworkMessage action = transport.sent.stream()
+                    .filter(message -> message.messageType == MessageType.ACTION
+                            && message.payloadJson != null
+                            && message.payloadJson.contains("\\"action\\":\\"SYNC_HERO_STATE\\""))
+                    .findFirst().orElse(null);
+            Assert.assertNotNull("The mark expiry must be sent as a native Hero Buff tick", action);
+            JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
+            Assert.assertEquals("BUFF_TICK", data.getString("sourceType", ""));
+            Assert.assertEquals(SnipersMark.class.getName(), data.getString("buffClass", ""));
+            JsonValue before = new JsonReader().parse(data.getString("heroStateBeforeJson", ""));
+            boolean foundMark = false;
+            for (int i = 0; i < before.getInt("buffCount", 0); i++) {
+                JsonValue envelope = new JsonReader().parse(before.getString("buff_" + i, ""));
+                JsonValue buff = envelope == null ? null : envelope.get("buff");
+                if (buff != null && SnipersMark.class.getName().equals(buff.getString("__className", ""))) {
+                    Assert.assertEquals("The expiry preserves the marked native Actor ID",
+                            mob.id(), buff.getInt("object", -1));
+                    Assert.assertEquals("The expiry preserves the native damage bonus",
+                            0.35f, buff.getFloat("bonus", -1f), 0.0001f);
+                    foundMark = true;
+                }
+            }
+            Assert.assertTrue("The pre-state must contain the exact native SnipersMark data", foundMark);
+            JsonValue after = new JsonReader().parse(new JsonReader().parse(action.payloadJson)
+                    .getString("heroStateJson", ""));
+            Assert.assertTrue(before.getInt("buffCount") > after.getInt("buffCount"));
+        } finally {
+            // A failed assertion must not leak the process-wide UI action into the next JVM test.
+            ActionIndicator.clearAction(mark);
+        }
     }
 
     @Test

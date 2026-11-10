@@ -65,6 +65,7 @@ public final class NativeHeroBuffTickPublisher {
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok".equals(name)
+                || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Foresight".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invulnerability".equals(name)
                 || "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.FrostImbue".equals(name)

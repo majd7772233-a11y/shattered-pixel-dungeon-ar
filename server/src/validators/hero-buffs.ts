@@ -1314,6 +1314,7 @@ export function isValidNativeHeroBuffTick(previousValue: unknown, beforeValue: u
   }
   const simpleExpiry = new Set([
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok",
+    "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Haste",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Invisibility",
     "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Chill",

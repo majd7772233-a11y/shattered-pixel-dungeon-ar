@@ -3611,6 +3611,49 @@ describe("Native Hero Buff tick reconciliation", () => {
     expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
       JSON.stringify(notDue),tick(cls,131))).toBe(false);
   });
+  it("accepts only a due native SnipersMark expiry on the Hero and never an incidental removal",()=>{
+    const mark=buffs+"SnipersMark", haste=buffs+"Haste";
+    const previous=stateWithBuff(mark,141,9,{object:77,bonus:0.35},
+      {cooldown:2,buffCooldown_0:1,hp:10});
+    const before=stateWithBuff(mark,141,9,{object:77,bonus:0.35},
+      {cooldown:1,buffCooldown_0:0,hp:10});
+    const expired:any={...before,buffCount:0};
+    delete expired.buff_0;
+    delete expired.buffCooldown_0;
+
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(expired),tick(mark,141))).toBe(true);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...expired,hp:9}),tick(mark,141))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...expired,shielding:1}),tick(mark,141))).toBe(false);
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify({...expired,inventoryBundle:"forged-inventory"}),tick(mark,141))).toBe(false);
+
+    const changedMark=stateWithBuff(mark,141,9,{object:78,bonus:0.35},
+      {cooldown:1,buffCooldown_0:0,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(changedMark),
+      JSON.stringify(expired),tick(mark,141))).toBe(false);
+    const notDue=stateWithBuff(mark,141,10,{object:77,bonus:0.35},
+      {cooldown:1,buffCooldown_0:1,hp:10});
+    expect(isValidNativeHeroBuffTick(JSON.stringify(previous),JSON.stringify(before),
+      JSON.stringify(notDue),tick(mark,141))).toBe(false);
+
+    const otherPrevious=stateWithBuff(haste,142,9,{},{
+      cooldown:2,buffCooldown_0:1,hp:10,buffCount:2,
+      buff_1:JSON.stringify({buff:{__className:mark,id:143,time:9,object:77,bonus:0.35}}),
+      buffCooldown_1:0
+    });
+    const otherBefore=stateWithBuff(haste,142,9,{},{
+      cooldown:1,buffCooldown_0:0,hp:10
+    });
+    const otherAfter=stateWithBuff(haste,142,10,{},{
+      cooldown:1,buffCooldown_0:1,hp:10
+    });
+    expect(isValidNativeHeroBuffTick(JSON.stringify(otherPrevious),JSON.stringify(otherBefore),
+      JSON.stringify(otherAfter),tick(haste,142))).toBe(false);
+  });
+
   it("validates Barrier decay only as one shield point or unchanged shielding",()=>{
     const cls=buffs+"Barrier";
     const previous=stateWithBuff(cls,50,9,{shielding:5,partial_lost_shield:0.7},{cooldown:2,buffCooldown_0:1,hp:10,shielding:5});
