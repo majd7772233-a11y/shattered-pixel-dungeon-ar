@@ -680,7 +680,7 @@ public class NativeCombatRuntimeIntegrationTest {
             NetworkMessage action = transport.sent.stream()
                     .filter(message -> message.messageType == MessageType.ACTION
                             && message.payloadJson != null
-                            && message.payloadJson.contains("\\"action\\":\\"SYNC_HERO_STATE\\""))
+                            && message.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\""))
                     .findFirst().orElse(null);
             Assert.assertNotNull("The mark expiry must be sent as a native Hero Buff tick", action);
             JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
