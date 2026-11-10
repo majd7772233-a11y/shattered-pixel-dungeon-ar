@@ -160,7 +160,8 @@ function isValidNativeSpiritArrowMetadata(data: any): boolean {
 export function isValidNativeSpiritArrowAttackIntent(
   data: any, heroStateValue: unknown, levelSnapshotValue: unknown
 ): boolean {
-  if (!isValidNativeSpiritArrowMetadata(data)) return false;
+  if (data?.attackWeaponMode !== "SPIRIT_ARROW" || !isValidNativeSpiritArrowMetadata(data)
+      || !Number.isInteger(data.targetPos)) return false;
   let hero: any = heroStateValue, level: any = levelSnapshotValue;
   try {
     if (typeof hero === "string") hero = JSON.parse(hero);
