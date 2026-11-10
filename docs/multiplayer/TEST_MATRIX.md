@@ -258,6 +258,9 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Java runtime: run the original Poison actor with all three shield-priority tiers active and verify priority-2/priority-1 absorption leaves Barrier unchanged.
 - [x] Native Hero Amok expiry: only a due local-Hero `Amok` source tick may remove the row; a different Hero Buff tick cannot silently expire it as a background side effect.
 - [x] Native Java Amok runtime: execute the original Hero-targeted `Amok.act()`, publish one `BUFF_TICK`, and verify Mob HP and Mob AI state are unchanged because the Hero is not an enemy Amok target.
+- [x] Native Hero SnipersMark expiry: execute the original local-Hero `FlavourBuff.act()`, verify the Hero Buff and `ActionIndicator` are cleared, preserve the target Actor ID/bonus in the pre-state, and confirm Mob HP/AI are unchanged.
+- [x] Backend SnipersMark expiry: accept only its own due source tick; reject early removal, changed target Actor ID, changed HP/shield/inventory, and implicit disappearance during a different Hero Buff tick.
+- [ ] Validate `SnipersMark.doAction()` and SpiritArrow target/damage replication as a separate stable-identity native combat path; expiry coverage does not claim that action is synchronized.
 - [ ] Exercise the same handler against the actual Cloudflare Durable Object SQLite runtime, including real transaction rollback and Worker crash/restart.
 - [ ] Cover authority handoff/disconnect while a Poison capture is active, plus RemoteHero/player LifeLink if that feature is intentionally supported.
 - [ ] Validate level-up XP, `Hero.updateHT()`, talent/ability and item `onHeroGainExp` callbacks as one authoritative batch; currently fail-closed.
@@ -265,5 +268,5 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [ ] Verify the same resync response against a live Worker/Cloudflare Durable Object SQLite session; the current Android test constructs a deterministic server-shaped envelope locally.
 - [ ] Expand integration coverage to more overlapping DOT/HoT/shield/detach families, reconnect/expiry boundaries and malformed/replay/resync cases.
 
-**Exact-head CI:** `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02` passed [run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459): TypeScript build + 642 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
+**Exact-head CI:** `b68b66e686b98dbf343997202b215e2c828b7b89` passed [run 42777941791](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791): TypeScript build + 644 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 

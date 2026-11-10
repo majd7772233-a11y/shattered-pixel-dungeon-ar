@@ -165,7 +165,7 @@ The regression `nativePoisonConsumesPriorityTwoAndOneShieldsBeforeBarrier` execu
 
 `NativeHeroBuffTickPublisher.publish()` uses the `SYNC_HERO_STATE` / `BUFF_TICK` envelope for every supported local Hero Buff tick, including Healing, Hunger, Poison, Barrier and the source-specific expiry/charging transitions. MatchRoom wraps every such source-shaped Buff tick in `state.storage.transactionSync`, not only Poison/LifeLink, so Hero bundle/player HP, the sequenced event and request record commit or roll back together. `ACTION_ACCEPTED` and FOV/room broadcasts are held until commit succeeds.
 
-This is a transaction-boundary change, not an expansion of the accepted effect list: the backend still validates each Buff class against its native transition rules and rejects unsupported transitions. The Healing integration regression forces event insertion to fail after Hero/player writes and verifies that stored HP and Healing Buff state roll back. Exact-head CI at `aa88f5988475eec7e6c7d8c495ba9f7159dbcf02` passed Backend 642 Vitest executions and Android JVM/Debug APK compilation ([run 42774422459](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42774422459)).
+This is a transaction-boundary change, not an expansion of the accepted effect list: the backend still validates each Buff class against its native transition rules and rejects unsupported transitions. The Healing integration regression forces event insertion to fail after Hero/player writes and verifies that stored HP and Healing Buff state roll back. Exact-head CI at `b68b66e686b98dbf343997202b215e2c828b7b89` passed Backend 644 Vitest executions and Android JVM/Debug APK compilation ([run 42777941791](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791)).
 
 
 ### 4.9 Hero-targeted Amok expiry
@@ -173,6 +173,16 @@ This is a transaction-boundary change, not an expansion of the accepted effect l
 The Hero Buff publisher admits native `Amok` as a timed Hero Buff tick. This is narrowly scoped to `Buff.target == Dungeon.hero`: native `Amok.detach()` performs the enemy-to-enemy Mob aggro reset only when its target alignment is `ENEMY`; the local Hero is not an enemy, so the Hero-targeted path only removes the Hero's Amok row. The Java test executes the original `Amok.act()`, publishes the resulting `BUFF_TICK`, and verifies that a nearby Mob's HP and native `AiState` reference remain unchanged.
 
 The backend accepts Amok only as its own due source tick, with unchanged Hero HP/shield and unrelated Buff/inventory state. It is intentionally excluded from the set of rows that may disappear between a previous Hero state and another Buff's pre-state; this prevents a malicious/incorrect Amok removal from being hidden inside a different Buff event. Other Amok targets and their Mob aggro callbacks are not authorized through this Hero-only tick path.
+
+
+
+### 4.10 Hero-targeted SnipersMark expiry
+
+`NativeHeroBuffTickPublisher` admits `SnipersMark` only when the native actor target is the local `Dungeon.hero`; it captures the full Hero pre-state and actor clock and publishes the native due expiry as a `SYNC_HERO_STATE` / `BUFF_TICK`. The actual `FlavourBuff.act()` remains authoritative. `SnipersMark.detach()` clears `ActionIndicator.action` and removes the Hero Buff row; the multiplayer layer does not synthesize the expiry.
+
+The Android JVM regression creates a Hero-targeted mark with a real local Mob Actor ID and a 0.35 damage-bonus value, executes the original `mark.act()`, and verifies that the Hero row and local action indicator are removed while the nearby Mob HP and `AiState` object remain unchanged. It also inspects the transmitted pre-state to ensure the exact marked Actor ID and bonus are preserved.
+
+This is intentionally an expiry-only contract. It does not validate `SnipersMark.doAction()`, SpiritBow/SpiritArrow targeting, the marked Mob's identity across publishers, or the resulting arrow damage; those paths remain unaudited and must not be assumed synchronized by this tick.
 
 
 ## 5. RemoteHero and RemotePlayer

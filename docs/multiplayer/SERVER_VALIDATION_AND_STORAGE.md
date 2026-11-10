@@ -341,6 +341,12 @@ The in-memory integration adapter verifies rollback for both Poison LifeLink and
 The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the parsed request ID before dispatch and includes it plus the current room sequence in its outer `ERROR` response when a handler throws. During these native Hero Buff transactions, `ACTION_ACCEPTED`, FOV event delivery and room broadcasts are deferred until `transactionSync` succeeds. The original sender socket is restored as the FOV exclusion after leaving the proxy-based transaction context; a rollback cannot leak an acceptance or phantom event.
 
 
+### 6.1.1 Source-specific Hero FlavourBuff expiry: SnipersMark
+
+`SnipersMark` is admitted through the existing simple-expiry branch only as its own native Hero `BUFF_TICK`. It must be due at the authoritative Hero actor clock, absent from the post-state, and the request must preserve HP, shielding and the stable Hero inventory/state checks performed by the common validator. Its target Actor ID and bonus remain unchanged in the serialized pre-state, and SnipersMark is intentionally absent from the cross-tick `expirable` set. Consequently, a Haste or other unrelated Buff event cannot silently remove the mark. This validates cleanup of the Hero-side action indicator only; it does not authorize a SpiritArrow action or client-asserted Mob target/damage.
+
+
+
 ### 6.2 Poison damage against a native Hero Barrier
 
 The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
