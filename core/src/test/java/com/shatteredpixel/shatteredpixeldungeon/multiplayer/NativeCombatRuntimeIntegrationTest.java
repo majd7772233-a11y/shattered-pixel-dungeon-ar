@@ -617,7 +617,7 @@ public class NativeCombatRuntimeIntegrationTest {
                 Char.Alignment.ENEMY, hero.alignment);
         Rat mob = addRat(hero.pos + 1, 20);
         int mobHpBefore = mob.HP;
-        String mobStateBefore = mob.state;
+        Object mobStateBefore = mob.state;
         Amok amok = Buff.affect(hero, Amok.class);
         Assert.assertNotNull(amok);
 
@@ -628,7 +628,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertNull("The native actor must remove only the Hero's Amok row", hero.buff(Amok.class));
         Assert.assertEquals("Hero-targeted Amok expiry must not damage the Mob", mobHpBefore, mob.HP);
-        Assert.assertEquals("Hero-targeted Amok expiry must not change Mob AI state", mobStateBefore, mob.state);
+        Assert.assertSame("Hero-targeted Amok expiry must not change Mob AI state", mobStateBefore, mob.state);
         NetworkMessage action = transport.sent.stream()
                 .filter(message -> message.messageType == MessageType.ACTION
                         && message.payloadJson != null
