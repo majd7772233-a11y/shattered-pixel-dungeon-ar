@@ -39,7 +39,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 - **Latest repository/documentation HEAD:** `90cadbb56aa67b53eb68bbcb87a94648b6db77ce` (this status refresh is docs-only).
 - **Latest gameplay code/test SHA:** `377fa362772fb5367b548f44686e129493b1be14`; all commits after it through the current repository HEAD are Markdown-only.
-- **Exact repository-head CI:** [43228606923 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923).
+- **Exact repository-head CI:** [43231618201 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201).
 - **Backend:** TypeScript build, Phase 7 schema and SpiritArrow schema passed; 8 Vitest files / 652 executions passed.
 - **Android:** 88 JVM tests; two SpiritArrow failures at `:core:test`; `assembleDebug` not reached.
 - **Open tests:** `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` and `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce` fail after `SnipersMark.doAction()` with `resync=true` and `missileCreated=false`; cause not yet separated between begin guard and cast exception.

@@ -2,9 +2,9 @@
 
 - **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 - **Only working branch:** `multiplayer-framework-core-14118577486727081892`. Never switch to master, merge, or create another branch.
-- **Latest repository/documentation HEAD:** `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23` — `Refresh multiplayer README handoff status` (2026-11-12 13:34:31 UTC).
+- **Latest repository/documentation HEAD:** `a81edaeb7113d684a41719ac6385628e6c13aa11` — `Refresh multiplayer README handoff status` (2026-11-12 13:34:31 UTC).
 - **Latest gameplay code/test SHA:** `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup` (2026-11-12 12:00:08 UTC). The compare from this SHA to repository HEAD confirms all later commits are Markdown-only; no gameplay source/tests changed after it.
-- **Exact repository-head CI:** [Workflow 43228606923 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923) on `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23`.
+- **Exact repository-head CI:** [Workflow 43231618201 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201) on `a81edaeb7113d684a41719ac6385628e6c13aa11`.
 - **Backend:** TypeScript build, Phase 7 native mutation schema, and SpiritArrow schema validators passed; 8 Vitest files / 652 executions passed. This is an execution count, not 652 unique scenarios.
 - **Android:** 88 JVM tests; two SpiritArrow tests fail at `:core:test`. Gradle did not reach `assembleDebug`; no passing Debug APK is established on this HEAD.
 - **Failing tests:** `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` — `Pending SpiritArrow missing; resync=true, missileCreated=false`. `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce` — `SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false`.

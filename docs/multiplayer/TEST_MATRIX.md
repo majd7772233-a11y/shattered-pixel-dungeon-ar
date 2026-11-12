@@ -301,8 +301,8 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 
 ### Exact-head verification
 
-- Repository/documentation HEAD: `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23`.
+- Repository/documentation HEAD: `a81edaeb7113d684a41719ac6385628e6c13aa11`.
 - Gameplay code/test SHA: `377fa362772fb5367b548f44686e129493b1be14`; commits after it are Markdown-only.
-- Exact repository-head [CI 43228606923](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923): Backend passed (8 files / 652 executions and both schema validators); Android failed (88 JVM tests, 2 SpiritArrow failures at `:core:test`); `assembleDebug` not reached.
+- Exact repository-head [CI 43231618201](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201): Backend passed (8 files / 652 executions and both schema validators); Android failed (88 JVM tests, 2 SpiritArrow failures at `:core:test`); `assembleDebug` not reached.
 - Last green pre-9-C baseline: `0a70053addd976fc6d4330af52330d7593ee1bc4` / [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325), historical only.
 

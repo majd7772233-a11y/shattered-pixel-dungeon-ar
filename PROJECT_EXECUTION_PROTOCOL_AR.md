@@ -121,14 +121,14 @@
 
 - المستودع: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 - الفرع الوحيد: `multiplayer-framework-core-14118577486727081892`
-- Latest repository/documentation HEAD: `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23` — `Refresh multiplayer README handoff status`.
+- Latest repository/documentation HEAD: `a81edaeb7113d684a41719ac6385628e6c13aa11` — `Refresh multiplayer README handoff status`.
 - Latest gameplay code/test SHA: `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup`.
 - المقارنة بينهما تؤكد أن commits اللاحقة للـgameplay SHA كانت Markdown-only.
 - عدد ملفات Markdown الحالي: **21**؛ يجب إعادة scan وقراءة جميعها في المحادثة الجديدة، إضافة إلى أي MD مستجد.
 
 ### CI على الرأس الحالي
 
-- Exact repository HEAD CI: [43228606923 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923).
+- Exact repository HEAD CI: [43231618201 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201).
 - Backend: TypeScript build ناجح؛ Phase 7 native mutation schema validator ناجح؛ SpiritArrow schema validator ناجح؛ 8 ملفات Vitest و652 تنفيذًا ناجحًا. العدد executions وليس 652 سيناريو فريدًا.
 - Android: 88 JVM tests، منها فشلان في `:core:test`. لم يصل Gradle إلى `assembleDebug`.
 - الفشل الأول: `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` — `Pending SpiritArrow missing; resync=true, missileCreated=false`.
