@@ -304,6 +304,11 @@ public class Hero extends Char {
 		return pendingNativeSpiritArrowDataJson != null;
 	}
 
+	/** Read-only diagnostic for native asynchronous action guards and integration tests. */
+	public boolean hasDeferredNativeCombatReport() {
+		return deferNativeCombatReport;
+	}
+
 	/** Called after the native attack and any projectile-side procs have completed. */
 	public void finishNativeSpiritArrowAttack(Char target) {
 		if (pendingNativeSpiritArrowDataJson == null) return;

@@ -688,6 +688,7 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.belongings.weapon = bow;
         SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
         mark.set(mob.id(), 0.5f);
+        assertNativeSpiritArrowCaptureCanStart(hero, mark, bow, "stable-spirit-arrow-target-001");
 
         TestAttackSprite heroSprite = new TestAttackSprite();
         heroSprite.ch = hero;
@@ -781,6 +782,7 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.belongings.weapon = bow;
         SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
         mark.set(mob.id(), 0.5f);
+        assertNativeSpiritArrowCaptureCanStart(hero, mark, bow, "stable-spirit-arrow-cancel-001");
 
         TestAttackSprite heroSprite = new TestAttackSprite();
         heroSprite.ch = hero;
@@ -3194,6 +3196,43 @@ public class NativeCombatRuntimeIntegrationTest {
         targetSprite.ch = target;
         target.sprite = targetSprite;
     }
+
+    private void assertNativeSpiritArrowCaptureCanStart(
+            Hero hero, SnipersMark mark, SpiritBow bow, String targetEntityId) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        String heroBefore = SPDLevelSnapshot.currentHeroStateJson(hero);
+        String bowBundle = SPDLevelSnapshot.currentItemBundle(bow);
+        java.util.Map<String, Object> details = new java.util.HashMap<>();
+        details.put("formatVersion", 1);
+        details.put("markBuffId", mark.id());
+        details.put("markBonus", 0.5f);
+        details.put("targetEntityId", targetEntityId);
+        details.put("bowItemId", bow.multiplayerItemId());
+        String detailsJson = NativeCombatJson.strictWriter().toJson(details);
+
+        Assert.assertTrue("SpiritArrow preflight requires an active multiplayer session", manager.isMultiplayerActive());
+        Assert.assertFalse("SpiritArrow preflight must not inherit an earlier report deferral",
+                hero.hasDeferredNativeCombatReport());
+        Assert.assertFalse("SpiritArrow preflight must not overlap a generic projectile mutation",
+                hero.hasPendingNativeProjectileMutation());
+        Assert.assertFalse("SpiritArrow preflight must not overlap a pending SpiritArrow",
+                hero.hasPendingNativeSpiritArrowAttack());
+        Assert.assertFalse("SpiritArrow preflight Hero state must be present", heroBefore.isEmpty());
+        Assert.assertFalse("SpiritArrow preflight bow bundle must be present", bowBundle.isEmpty());
+        Assert.assertTrue("beginNativeSpiritArrowAttack must accept the exact SnipersMark payload: "
+                        + "heroBytes=" + heroBefore.length()
+                        + ", detailsBytes=" + detailsJson.length()
+                        + ", bowBundleBytes=" + bowBundle.length()
+                        + ", markBuffId=" + mark.id()
+                        + ", bowItemId=" + bow.multiplayerItemId(),
+                hero.beginNativeSpiritArrowAttack(heroBefore, detailsJson, bowBundle, mark.id()));
+        Assert.assertTrue(hero.hasDeferredNativeCombatReport());
+        Assert.assertTrue(hero.hasPendingNativeSpiritArrowAttack());
+        hero.cancelNativeSpiritArrowAttack(mark.id());
+        Assert.assertFalse(hero.hasDeferredNativeCombatReport());
+        Assert.assertFalse(hero.hasPendingNativeSpiritArrowAttack());
+    }
+
 
     private Rat addRat(int pos, int hp) {
         return addMob(new Rat(), pos, hp);
