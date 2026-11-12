@@ -85,6 +85,13 @@ class MemoryMatchRoomSql {
       return this.cursor(row && Number(row.depth) === Number(args[1])
         ? [{ hp: row.hp, ht: row.ht, pos: row.pos }] : []);
     }
+    if (query.startsWith("SELECT pos FROM players WHERE player_id = ?")) {
+      const row = this.players.get(String(args[0]));
+      return this.cursor(row ? [{ pos: row.pos }] : []);
+    }
+    if (query.startsWith("SELECT solid, los_blocking FROM level_tiles WHERE depth = ? AND pos = ?")) {
+      return this.cursor([]);
+    }
     if (query.startsWith("SELECT pos, hp, ht, state FROM players WHERE player_id = ?")
         || query.startsWith("SELECT pos,hp,ht,state FROM players WHERE player_id = ?")) {
       const row = this.players.get(String(args[0]));
@@ -140,6 +147,10 @@ class MemoryMatchRoomSql {
       if (row) row.deaths = Number(row.deaths || 0) + 1;
       return this.cursor();
     }
+    if (query.startsWith("DELETE FROM room_meta WHERE key = ?")) {
+      this.roomMeta.delete(String(args[0]));
+      return this.cursor();
+    }
     if (query.startsWith("INSERT INTO room_meta (key,value) VALUES (?,?)")
         || query.startsWith("INSERT INTO room_meta (key, value) VALUES (?,?)")) {
       this.roomMeta.set(String(args[0]), String(args[1]));
@@ -174,9 +185,9 @@ class MemoryMatchRoomSql {
   }
 }
 
-function nativeMobBundle(hp: number): string {
+function nativeMobBundle(hp: number, pos: number = 25): string {
   return JSON.stringify({ mob: {
-    __className: RAT_CLASS, id: 7, time: 9, HP: hp, HT: 20, pos: 25, max_lvl: 29, buffs: []
+    __className: RAT_CLASS, id: 7, time: 9, HP: hp, HT: 20, pos, max_lvl: 29, buffs: []
   }});
 }
 
@@ -363,9 +374,9 @@ const SNIPERS_MARK_CLASS = "com.shatteredpixel.shatteredpixeldungeon.actors.buff
 
 function makeSpiritArrowForwardFixture() {
   const sql = new MemoryMatchRoomSql();
-  const targetMobBundle = nativeMobBundle(20);
+  const targetMobBundle = nativeMobBundle(20, 17);
   const targetMob = {
-    mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 25, hp: 20, ht: 20, shielding: 0,
+    mobId: 7, entityId: ENTITY_ID, name: "Rat", pos: 17, hp: 20, ht: 20, shielding: 0,
     state: "Hunting", serializedBundle: targetMobBundle, buffs: [],
     defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
     targetCell: -1, targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false
@@ -411,7 +422,7 @@ function makeSpiritArrowForwardFixture() {
   };
   const attackData = {
     targetType: "MOB", targetId: 42, targetEntityId: ENTITY_ID,
-    targetPos: 25, attackerPos: 9,
+    targetPos: 17, attackerPos: 9,
     attackerStateBefore: JSON.stringify(heroBefore),
     attackWeaponMode: "SPIRIT_ARROW", attackWeaponBundle: bowBundle,
     damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1,
@@ -423,7 +434,7 @@ function makeSpiritArrowForwardFixture() {
   sql.players.set(ATTACKER_ID, {
     player_id: ATTACKER_ID, pos: 9, hp: 20, ht: 20, state: "ALIVE", deaths: 0
   });
-  sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 25 });
+  sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 17 });
   const room = makeRoom(sql);
   const attackerSession = { playerId: ATTACKER_ID, sessionToken: "attacker-session" };
   const publisherSession = { playerId: PUBLISHER_ID, sessionToken: "publisher-session" };
@@ -435,7 +446,7 @@ function makeSpiritArrowForwardFixture() {
     send: vi.fn(),
     deserializeAttachment: () => publisherSession
   };
-  room.state.getWebSockets = () => [authorityWs];
+  room.state.getWebSockets = () => [authorityWs, senderWs];
   return {
     sql, room, attackerSession, publisherSession, senderWs, authorityWs,
     heroBefore, levelSnapshot, bowBundle, spiritArrow, attackData, targetMobBundle
@@ -508,6 +519,116 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.sql.events).toHaveLength(0);
     expect(fixture.room.currentSequence).toBe(0);
     expect(fixture.senderWs.send).not.toHaveBeenCalled();
+  });
+
+  it("commits the publisher's native SpiritArrow result and returns its sequenced event to the requester", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    // Use the real inherited FOV broadcaster so the accepted event is delivered to the
+    // requester socket while the publisher socket is excluded as the sender.
+    delete fixture.room.broadcastWithFOV;
+    const requestId = "spirit-arrow-authority-roundtrip-001";
+
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK",
+      data: fixture.attackData,
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+    const forwarded = JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0]));
+    expect(forwarded.messageType).toBe("COMBAT_REQUEST");
+    expect(forwarded.requestId).toBe(requestId);
+
+    const afterMobBundle = nativeMobBundle(15, 17);
+    const authorityResult = {
+      combatRequestId: requestId,
+      attackerId: ATTACKER_ID,
+      targetType: "MOB",
+      targetEntityId: ENTITY_ID,
+      targetPos: 17,
+      targetPosAfter: 17,
+      targetHpBefore: 20,
+      targetHtBefore: 20,
+      targetHp: 15,
+      targetHt: 20,
+      damage: 5,
+      targetShieldBefore: 0,
+      targetShieldAfter: 0,
+      targetBuffsBefore: "[]",
+      targetBuffs: "[]",
+      targetMobBundleAfter: afterMobBundle,
+      engineResult: true,
+      engineHit: true,
+      engineRanged: true,
+      attackKind: "RANGED",
+      engineDistance: 8,
+      engineActionCost: 1,
+      combatSchemaVersion: 1,
+      combatDepth: 1,
+      secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] }),
+      attackWeaponMode: "SPIRIT_ARROW",
+      attackWeaponBundle: fixture.bowBundle,
+      damageMultiplier: 1,
+      damageBonus: 0,
+      accuracyMultiplier: 1,
+      spiritArrow: fixture.spiritArrow
+    };
+
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_MOB_STATE",
+      data: authorityResult,
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+
+    // The publisher receives its own correlated ACTION_ACCEPTED; the requester receives only
+    // the sequenced result event. It must not receive a second copy of the publisher's request.
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(2);
+    const publisherAck = JSON.parse(String(fixture.authorityWs.send.mock.calls[1][0]));
+    expect(publisherAck.messageType).toBe("ACTION_ACCEPTED");
+    expect(publisherAck.requestId).toBe(requestId);
+    expect(publisherAck.sequence).toBe(1);
+
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const eventMessage = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(eventMessage.messageType).toBe("EVENT_BATCH");
+    expect(eventMessage.sequence).toBe(1);
+    const events = JSON.parse(String(eventMessage.payloadJson));
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe("PLAYER_ATTACKED");
+    expect(events[0].sequence).toBe(1);
+    expect(events[0].action).toMatchObject({
+      combatRequestId: requestId,
+      attackerId: ATTACKER_ID,
+      targetId: ENTITY_ID,
+      targetType: "MOB",
+      targetPos: 17,
+      targetHpBefore: 20,
+      targetHp: 15,
+      targetHt: 20,
+      damage: 5,
+      attackKind: "RANGED",
+      engineResolved: true
+    });
+    expect(events[0].action.attackerStateJson).toBeTruthy();
+
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 15, ht: 20, pos: 17 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs).toHaveLength(1);
+    expect(savedLevel.mobs[0]).toMatchObject({
+      mobId: 7, entityId: ENTITY_ID, hp: 15, ht: 20, pos: 17, serializedBundle: afterMobBundle
+    });
+    expect(fixture.sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatAttacker:" + ATTACKER_ID)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(false);
+    expect(fixture.sql.processedActions.get(requestId)).toMatchObject({
+      player_id: ATTACKER_ID, sequence: 1
+    });
+    expect(fixture.sql.events).toHaveLength(1);
+    expect(fixture.sql.events[0]).toMatchObject({
+      sequence: 1, sender_id: PUBLISHER_ID, event_type: "PLAYER_ATTACKED"
+    });
+    expect(fixture.room.currentSequence).toBe(1);
+    expect(fixture.room.worldTime).toBe(1);
   });
 
   it("rejects SpiritArrow authority requests when the trusted mark points at another Mob", async () => {
