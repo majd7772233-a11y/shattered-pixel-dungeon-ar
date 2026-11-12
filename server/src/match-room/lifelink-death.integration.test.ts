@@ -555,7 +555,10 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(forwarded.messageType).toBe("COMBAT_REQUEST");
     expect(forwarded.requestId).toBe(requestId);
 
-    const authorityResult = makeSpiritArrowAuthorityResult(fixture, requestId);
+    const afterMobBundle = nativeMobBundle(15, 17);
+    const authorityResult = makeSpiritArrowAuthorityResult(fixture, requestId, {
+      targetMobBundleAfter: afterMobBundle
+    });
 
     await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
       action: "SYNC_MOB_STATE",
