@@ -173,12 +173,12 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 
 ## 9. Current active branch checkpoint — 2026-11-12
 
-- Repository/documentation HEAD: `90cadbb56aa67b53eb68bbcb87a94648b6db77ce`; gameplay code/test SHA: `377fa362772fb5367b548f44686e129493b1be14` (all later commits are Markdown-only).
-- Exact-head workflow: [43228606923 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923).
-- Backend: TypeScript build passed; Phase 7 native-mutation schema and SpiritArrow schema validators passed; 8 Vitest files / 652 executions passed. This is an execution count, not 652 unique scenarios.
+- Branch: `multiplayer-framework-core-14118577486727081892`; latest gameplay code/test SHA: `377fa362772fb5367b548f44686e129493b1be14`. The live repository/documentation HEAD is tracked in GPT.md and ROADMAP.md.
+- Exact code/test-head workflow: [43231618201 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201).
+- Backend: TypeScript build passed; Phase 7 native mutation schema and SpiritArrow schema validators passed; 8 Vitest files / 652 executions passed. This is an execution count, not 652 unique scenarios.
 - Android: 88 JVM tests completed; two SpiritArrow tests failed and Gradle stopped at `:core:test`. `assembleDebug` was not reached.
 - Failures: `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` (`Pending SpiritArrow missing; resync=true, missileCreated=false`) and `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce` (`SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false`).
-- No passing Debug APK build is claimed on the current repository HEAD.
+- No passing Debug APK build is claimed for current SpiritArrow code.
 - Last green pre-9-C baseline: `0a70053addd976fc6d4330af52330d7593ee1bc4` / [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325); it predates SpiritArrow 9-C.
 - A green Backend job alone does not accept 9-C. Require Backend and Android JVM tests plus `assembleDebug` to pass on the exact final gameplay SHA.
 - No live Worker deployment smoke test or physical two-device match is claimed.
