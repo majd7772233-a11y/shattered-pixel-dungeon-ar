@@ -66,7 +66,7 @@ import com.watabou.noosa.Game;
 import com.watabou.noosa.Group;
 import com.watabou.noosa.Gizmo;
 import com.watabou.noosa.Visual;
-import com.watabou.noosa.particles.Tweener;
+import com.watabou.noosa.tweeners.Tweener;
 import com.watabou.utils.Callback;
 import com.watabou.utils.PointF;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
