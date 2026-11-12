@@ -816,14 +816,15 @@
             "EQUIPPED",
             "THROWN",
             "ABILITY",
-            "UNARMED"
+            "UNARMED",
+            "SPIRIT_ARROW"
           ],
           "description": "Original SPD attacking-weapon context captured at the attack site."
         },
         "attackWeaponBundle": {
           "type": "string",
           "maxLength": 200000,
-          "description": "Serialized native item Bundle matched against the trusted restored attacker inventory for THROWN/ABILITY modes."
+          "description": "Serialized native item Bundle matched against trusted inventory. Required and non-empty for THROWN, ABILITY and SPIRIT_ARROW."
         },
         "damageMultiplier": {
           "type": "number",
@@ -957,6 +958,50 @@
             "$ref": "#/definitions/NativeHeap"
           },
           "description": "Authoritative post-impact floor heaps, validated against the exact projectile landing mutation."
+        },
+        "engineRanged": {
+          "type": "boolean",
+          "description": "Whether the original Hero.attack pipeline treated this outcome as ranged; SpiritArrow requires true."
+        },
+        "spiritArrow": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "formatVersion",
+            "markBuffId",
+            "markBonus",
+            "targetEntityId",
+            "bowItemId"
+          ],
+          "properties": {
+            "formatVersion": {
+              "type": "integer",
+              "const": 1
+            },
+            "markBuffId": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "markBonus": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "targetEntityId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9._:-]{8,80}$"
+            },
+            "bowItemId": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9._:-]{8,80}$"
+            }
+          },
+          "description": "Exact native SnipersMark identity consumed by SpiritBow's SpiritArrow. The Worker binds the marked stable Mob entity and equipped SpiritBow item to the trusted Hero pre-state; it does not calculate arrow damage."
         }
       },
       "description": "Versioned native SPD combat result. Non-publisher mob attacks and all PvP attacks are resolved by the server-designated level publisher or target-player owner by executing the original Java combat pipeline; the Worker validates pending request identity, pre-state, geometry, result transitions, and replay protection. Only the authenticated level publisher may commit shared mob state and loot. The Worker does not independently reproduce SPD Java RNG.",
@@ -1016,6 +1061,55 @@
               "targetEntityId",
               "targetHeroStateJson"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "attackWeaponMode": {
+                "const": "SPIRIT_ARROW"
+              }
+            },
+            "required": [
+              "attackWeaponMode"
+            ]
+          },
+          "then": {
+            "required": [
+              "spiritArrow",
+              "engineRanged"
+            ],
+            "properties": {
+              "attackWeaponBundle": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 200000
+              },
+              "targetType": {
+                "const": "MOB"
+              },
+              "attackKind": {
+                "const": "RANGED"
+              },
+              "engineRanged": {
+                "const": true
+              },
+              "projectileMutation": {
+                "not": {}
+              }
+            },
+            "not": {
+              "required": [
+                "projectileMutation"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "spiritArrow"
+              ]
+            }
           }
         }
       ]
