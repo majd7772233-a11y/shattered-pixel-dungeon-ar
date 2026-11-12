@@ -110,6 +110,14 @@ public class NativeCombatRuntimeIntegrationTest {
         }, config);
         Assert.assertTrue("libGDX headless backend did not initialize",
                 ready.await(10, TimeUnit.SECONDS));
+        // ItemSprite/MissileSprite constructors resolve the normal items atlas. The headless
+        // runtime has no bundled asset files or GL context, so seed the same cache key with a
+        // 1x1 in-memory Pixmap. This keeps the original Item.cast -> MissileSprite path intact.
+        if (!com.watabou.gltextures.TextureCache.contains(
+                com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ITEMS)) {
+            com.watabou.gltextures.TextureCache.create(
+                    com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ITEMS, 1, 1);
+        }
     }
 
     @AfterClass
