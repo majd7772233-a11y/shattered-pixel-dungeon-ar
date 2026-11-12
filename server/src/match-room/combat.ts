@@ -208,10 +208,21 @@ export class MatchRoomCombat extends MatchRoomPersistence {
       }
     }
 
+    // WebSocket implementations may wrap the same accepted socket. Exclude by both
+    // object identity and authenticated player identity so the action author never receives
+    // its own sequenced EVENT_BATCH as a second copy of the request.
+    let excludedPlayerId: string | null = null;
+    if (excludeWs) {
+      try {
+        const excludedSession = excludeWs.deserializeAttachment() as SessionData | null;
+        excludedPlayerId = excludedSession?.playerId || null;
+      } catch (_) {}
+    }
+
     for (const ws of this.state.getWebSockets()) {
       if (ws === excludeWs) continue;
       const recipientSession = ws.deserializeAttachment() as SessionData | null;
-      if (!recipientSession) continue;
+      if (!recipientSession || (excludedPlayerId && recipientSession.playerId === excludedPlayerId)) continue;
 
       let sendToClient = true;
       if (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH") {

@@ -568,8 +568,10 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
     // The publisher receives its own correlated ACTION_ACCEPTED; the requester receives only
     // the sequenced result event. It must not receive a second copy of the publisher's request.
-    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(2);
-    const publisherAck = JSON.parse(String(fixture.authorityWs.send.mock.calls[1][0]));
+    const publisherMessages = fixture.authorityWs.send.mock.calls
+      .map(call => JSON.parse(String(call[0])) as { messageType: string; requestId?: string; sequence?: number });
+    expect(publisherMessages.map(message => message.messageType)).toEqual(["COMBAT_REQUEST", "ACTION_ACCEPTED"]);
+    const publisherAck = publisherMessages[1];
     expect(publisherAck.messageType, "Publisher authority result rejected: " + String(publisherAck.payloadJson || "")).toBe("ACTION_ACCEPTED");
     expect(publisherAck.requestId).toBe(requestId);
     expect(publisherAck.sequence).toBe(1);
@@ -634,7 +636,11 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(response.requestId).toBe(requestId);
     expect(response.sequence).toBe(0);
     expect(JSON.parse(String(response.payloadJson)).error).toBe("INVALID_ACTION");
-    expect(fixture.senderWs.send).not.toHaveBeenCalled();
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const requesterError = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(requesterError.messageType).toBe("ERROR");
+    expect(requesterError.requestId).toBe(requestId);
+    expect(requesterError.sequence).toBe(0);
     expect(fixture.sql.events).toHaveLength(0);
     expect(fixture.sql.processedActions.has(requestId)).toBe(false);
     expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
