@@ -208,9 +208,9 @@ SpiritArrow is **not** a new outer `MessageType` and is not a separate `NetworkA
 - `spiritArrow` is a strict object with no extra properties and requires `formatVersion`, `markBuffId`, `markBonus`, `targetEntityId` and `bowItemId`.
 - The conditional schema requires a Mob target and `attackKind: "RANGED"`, and rejects `projectileMutation` for this mode. Other modes cannot carry `spiritArrow`.
 
-The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`. At gameplay code/test SHA `377fa362772fb5367b548f44686e129493b1be14`, Backend CI prints `SpiritArrow native attack protocol schema: valid`; exact CI [43231618201](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201) remains red because two Android native lifecycle tests fail before missile creation.
+The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`. Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324) passes schema validation and Android JVM/assembleDebug; Backend fails the new MatchRoom publisher-result scenario with `INVALID_ACTION` after COMBAT_REQUEST forwarding.
 
-This proves schema structure and cross-field rules only. It does **not** prove that the local asynchronous `SnipersMark.doAction()`/MissileSprite callback works or that the full pending-authority → native resolution → accepted event → client reconciliation roundtrip is complete. The exact-head Android regressions currently fail before missile creation; see `TEST_MATRIX.md` and `ROADMAP.md`.
+Local `SnipersMark.doAction()/SpiritBow.cast()/MissileSprite` callback tests pass headlessly; the callback is manually invoked, not rendered. The simulated publisher `authorityResult` appears to omit `attackerPos`, which strict native combat validation requires and compares to trusted attacker position. Verify the native publisher serializer and all result guards. Full publisher callback and requester EVENT_BATCH reconciliation remain unproven.
 
 
 ## 9. Identity and sequence fields

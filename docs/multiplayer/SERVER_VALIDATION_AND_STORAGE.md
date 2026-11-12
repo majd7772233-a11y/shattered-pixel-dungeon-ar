@@ -347,6 +347,16 @@ The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the p
 
 
 
+
+### 6.1.2 SpiritArrow publisher-result validation — 9-C partial
+
+The Worker validates SpiritArrow metadata against trusted Hero/Bow/SnipersMark/Mob identities and MatchRoom reserves/forwards pending combat to the level publisher. Separate intent and forwarding tests pass.
+
+A new MatchRoom integration test joins requester ATTACK, COMBAT_REQUEST forwarding and a synthetic publisher SYNC_MOB_STATE response. The response receives `INVALID_ACTION`. The test's `authorityResult` appears to omit `attackerPos`; `hasStrictNativeCombatFields()` requires it and `isValidNativeCombatEvent()` matches it to the trusted player position. Verify all `authorityValid` predicates and actual native result serialization before changing fixture/server; do not weaken validation.
+
+This fixture does not execute Android MessageRouter, RemoteHero asynchronous missile completion or requester EVENT_BATCH application. Those remain required for 9-C.
+
+
 ### 6.2 Poison damage against a native Hero Barrier
 
 The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
