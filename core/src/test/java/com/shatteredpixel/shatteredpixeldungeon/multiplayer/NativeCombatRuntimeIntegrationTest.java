@@ -113,10 +113,15 @@ public class NativeCombatRuntimeIntegrationTest {
         // ItemSprite/MissileSprite constructors resolve the normal items atlas. The headless
         // runtime has no bundled asset files or GL context, so seed the same cache key with a
         // 1x1 in-memory Pixmap. This keeps the original Item.cast -> MissileSprite path intact.
-        if (!com.watabou.gltextures.TextureCache.contains(
-                com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ITEMS)) {
-            com.watabou.gltextures.TextureCache.create(
-                    com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ITEMS, 1, 1);
+        seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ITEMS, 1, 1);
+        // The first real ranged hit initializes FloatingText, which resolves its icon atlas
+        // through TextureFilm before the hit can complete.
+        seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Effects.TEXT_ICONS, 7, 8);
+    }
+
+    private static void seedHeadlessTexture(Object key, int width, int height) {
+        if (!com.watabou.gltextures.TextureCache.contains(key)) {
+            com.watabou.gltextures.TextureCache.create(key, width, height);
         }
     }
 
