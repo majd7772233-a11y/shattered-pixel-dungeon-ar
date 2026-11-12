@@ -149,7 +149,8 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 		if (manager.isMultiplayerActive()) {
 			// SPEED schedules a three-hit asynchronous flurry. It remains fail-closed until
 			// the protocol can represent all three native outcomes in one authority sequence.
-			if ("SPEED".equals(String.valueOf(bow.augment)) || !(ch instanceof Mob)) {
+			String augment = String.valueOf(bow.augment);
+			if (!(augment.equals("NONE") || augment.equals("DAMAGE")) || !(ch instanceof Mob)) {
 				manager.requestResync(manager.getLastSequence());
 				return;
 			}
@@ -174,6 +175,7 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 				manager.requestResync(manager.getLastSequence());
 				return;
 			}
+			arrow.bindNativeSpiritArrowCompletion(hero, id(), stableEntityId);
 		}
 		bow.sniperSpecial = true;
 		bow.sniperSpecialBonusDamage = percentDmgBonus;

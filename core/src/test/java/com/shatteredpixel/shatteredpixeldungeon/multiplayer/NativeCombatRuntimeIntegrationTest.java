@@ -63,7 +63,14 @@ import com.shatteredpixel.shatteredpixeldungeon.levels.traps.FrostTrap;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Plant;
 import com.shatteredpixel.shatteredpixeldungeon.plants.Firebloom;
 import com.watabou.noosa.Game;
+import com.watabou.noosa.Group;
+import com.watabou.noosa.Gizmo;
+import com.watabou.noosa.Visual;
+import com.watabou.noosa.particles.Tweener;
+import com.watabou.utils.Callback;
+import com.watabou.utils.PointF;
 import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
+import com.shatteredpixel.shatteredpixeldungeon.sprites.MissileSprite;
 import com.watabou.utils.Bundle;
 import com.watabou.utils.Random;
 import com.watabou.utils.SparseArray;
@@ -653,7 +660,7 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void nativeSnipersMarkSpiritArrowReportBindsTheRealEquippedBowBundleAndStableTarget() {
+    public void nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
         manager.startSession("native-snipers-mark-spirit-arrow", "client-publisher", transport);
@@ -663,63 +670,53 @@ public class NativeCombatRuntimeIntegrationTest {
         session.sequence = 1L;
         manager.onMessageReceived(session);
 
+        Arrays.fill(level.heroFOV, true);
         Rat mob = addRat(hero.pos + 1, 20);
         String targetEntityId = "stable-spirit-arrow-target-001";
         manager.registerServerEntityId(mob.id(), targetEntityId);
-        SpiritBow bow = new SpiritBow();
+        SilentSpiritBow bow = new SilentSpiritBow();
         bow.setMultiplayerItemId("stable-spirit-arrow-bow-001");
         bow.augment = Weapon.Augment.DAMAGE;
         hero.belongings.weapon = bow;
         SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
         mark.set(mob.id(), 0.5f);
 
+        TestAttackSprite heroSprite = new TestAttackSprite();
+        heroSprite.ch = hero;
+        heroSprite.visible = true;
+        CapturingMissileGroup group = new CapturingMissileGroup();
+        group.add(heroSprite);
+        hero.sprite = heroSprite;
+        heroSprite.parent = group;
+
         String heroStateBefore = SPDLevelSnapshot.currentHeroStateJson(hero);
         String bowBundle = SPDLevelSnapshot.currentItemBundle(bow);
-        HashMap<String, Object> details = new HashMap<>();
-        details.put("formatVersion", 1);
-        details.put("markBuffId", mark.id());
-        details.put("markBonus", mark.percentDmgBonus);
-        details.put("targetEntityId", targetEntityId);
-        details.put("bowItemId", bow.multiplayerItemId());
-        Assert.assertTrue("The native Hero must accept one pending SpiritArrow report",
-                hero.beginNativeSpiritArrowAttack(heroStateBefore,
-                        NativeCombatJson.strictWriter().toJson(details), bowBundle, mark.id()));
         try {
-            JsonValue before = new JsonReader().parse(heroStateBefore);
-            JsonValue bowRows = new JsonReader().parse(before.getString("inventoryItemsJson", ""));
-            JsonValue equippedBow = null;
-            for (JsonValue row = bowRows.child; row != null; row = row.next) {
-                if (bow.multiplayerItemId().equals(row.getString("itemId", ""))) equippedBow = row;
-            }
-            Assert.assertNotNull("The saved Hero state must contain the actual SpiritBow inventory row", equippedBow);
-            Assert.assertTrue("The marked bow must be equipped in the native inventory index",
-                    equippedBow.getBoolean("equipped", false));
-            Assert.assertEquals(bowBundle, equippedBow.getString("serializedBundle", ""));
+            mark.doAction();
+            Assert.assertTrue("SnipersMark must retain the pending report until the missile completes",
+                    hero.hasPendingNativeSpiritArrowAttack());
+            Assert.assertNotNull("The real SpiritBow.cast path must create a MissileSprite", group.missile);
+            Assert.assertFalse("No ATTACK is published while the arrow is in flight",
+                    transport.sent.stream().anyMatch(m -> m.messageType == MessageType.ACTION
+                            && m.payloadJson != null && m.payloadJson.contains("\"action\":\"ATTACK\"")));
 
-            JsonValue parsedBow = new JsonReader().parse(bowBundle).get("item");
-            Assert.assertEquals(SpiritBow.class.getName(), parsedBow.getString("__className", ""));
-            Assert.assertEquals(bow.multiplayerItemId(), parsedBow.getString("multiplayer_item_id", ""));
-            Assert.assertEquals("DAMAGE", parsedBow.getString("augment", ""));
-            JsonValue savedMark = findBuffState(heroStateBefore, SnipersMark.class.getName());
-            Assert.assertNotNull("The saved Hero state must include the exact SnipersMark", savedMark);
-            Assert.assertEquals(mark.id(), savedMark.getInt("id", -1));
-            Assert.assertEquals(0.5f, savedMark.getFloat("bonus", -1f), 0.0001f);
-            Assert.assertEquals(targetEntityId, savedMark.getString("server_entity_id", ""));
-
-            // Hero.shoot() executes the original SPD attack synchronously; the pending native
-            // deferral keeps its report until the same completion hook used by SpiritArrow impact.
-            hero.shoot(mob, bow.knockArrow());
-            hero.finishNativeSpiritArrowAttack(mob);
-            Assert.assertFalse(hero.hasPendingNativeSpiritArrowAttack());
-            Assert.assertNull("The consumed mark must detach only after the native arrow outcome",
+            // This is the completion callback installed by SpiritArrow.cast and invoked by
+            // MissileSprite.onComplete after the visual flight. A duplicate completion must be inert.
+            group.missile.onComplete(null);
+            group.missile.onComplete(null);
+            Assert.assertFalse("The asynchronous native report must be closed by the missile callback",
+                    hero.hasPendingNativeSpiritArrowAttack());
+            Assert.assertNull("The mark is consumed only after native attack resolution",
                     hero.buff(SnipersMark.class));
+            Assert.assertFalse("The bow's temporary sniper state must be cleared", bow.sniperSpecial);
 
-            NetworkMessage action = transport.sent.stream()
+            java.util.List<NetworkMessage> attacks = transport.sent.stream()
                     .filter(message -> message.messageType == MessageType.ACTION
                             && message.payloadJson != null
                             && message.payloadJson.contains("\"action\":\"ATTACK\""))
-                    .findFirst().orElse(null);
-            Assert.assertNotNull("SpiritArrow must publish a native ATTACK after the native hit pipeline", action);
+                    .collect(java.util.stream.Collectors.toList());
+            Assert.assertEquals("A single missile completion may publish only one native result", 1, attacks.size());
+            NetworkMessage action = attacks.get(0);
             JsonValue data = new JsonReader().parse(action.payloadJson).get("data");
             Assert.assertEquals("SPIRIT_ARROW", data.getString("attackWeaponMode", ""));
             Assert.assertEquals(bowBundle, data.getString("attackWeaponBundle", ""));
@@ -736,6 +733,60 @@ public class NativeCombatRuntimeIntegrationTest {
         } finally {
             if (hero.hasPendingNativeSpiritArrowAttack()) hero.cancelNativeSpiritArrowAttack(mark.id());
             mark.detach();
+            hero.sprite = null;
+            group.destroy();
+        }
+    }
+
+    @Test
+    public void nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("native-spirit-arrow-cancel-target-loss", "client-publisher", transport);
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-publisher\",\"sessionToken\":\"spirit-arrow-cancel-token\","
+                        + "\"isLevelPublisher\":true,\"sequence\":1,\"depth\":1}");
+        session.sequence = 1L;
+        manager.onMessageReceived(session);
+
+        Arrays.fill(level.heroFOV, true);
+        Rat mob = addRat(hero.pos + 1, 20);
+        manager.registerServerEntityId(mob.id(), "stable-spirit-arrow-cancel-001");
+        SilentSpiritBow bow = new SilentSpiritBow();
+        bow.setMultiplayerItemId("stable-spirit-arrow-cancel-bow-001");
+        bow.augment = Weapon.Augment.DAMAGE;
+        hero.belongings.weapon = bow;
+        SnipersMark mark = Buff.prolong(hero, SnipersMark.class, SnipersMark.DURATION);
+        mark.set(mob.id(), 0.5f);
+
+        TestAttackSprite heroSprite = new TestAttackSprite();
+        heroSprite.ch = hero;
+        heroSprite.visible = true;
+        CapturingMissileGroup group = new CapturingMissileGroup();
+        group.add(heroSprite);
+        hero.sprite = heroSprite;
+        heroSprite.parent = group;
+
+        try {
+            mark.doAction();
+            Assert.assertTrue(hero.hasPendingNativeSpiritArrowAttack());
+            mob.pos += 2;
+            group.missile.onComplete(null);
+
+            Assert.assertFalse("A disappeared marked target cancels the pending native result",
+                    hero.hasPendingNativeSpiritArrowAttack());
+            Assert.assertSame("An unaccepted mark remains available for the restored authoritative state",
+                    mark, hero.buff(SnipersMark.class));
+            Assert.assertTrue("The client requests a fresh authoritative snapshot",
+                    transport.sent.stream().anyMatch(m -> m.messageType == MessageType.RESYNC));
+            Assert.assertFalse("A target mismatch must never publish a local attack",
+                    transport.sent.stream().anyMatch(m -> m.messageType == MessageType.ACTION
+                            && m.payloadJson != null && m.payloadJson.contains("\"action\":\"ATTACK\"")));
+        } finally {
+            if (hero.hasPendingNativeSpiritArrowAttack()) hero.cancelNativeSpiritArrowAttack(mark.id());
+            mark.detach();
+            hero.sprite = null;
+            group.destroy();
         }
     }
 
@@ -3297,6 +3348,51 @@ public class NativeCombatRuntimeIntegrationTest {
     private static final class TestAttackSprite extends CharSprite {
         @Override public void attack(int cell) {
             // The test invokes native completion manually; no render-thread animation is needed.
+        }
+        @Override public void zap(int cell) {
+            // The headless test drives the captured MissileSprite completion callback directly.
+        }
+        @Override public void idle() {
+            // Do not require animation assets in the headless integration environment.
+        }
+    }
+
+    private static final class SilentSpiritBow extends SpiritBow {
+        @Override public SpiritArrow knockArrow() {
+            return new SpiritArrow() {
+                @Override public void throwSound() {
+                    // Audio is intentionally absent from the headless runtime test.
+                }
+            };
+        }
+    }
+
+    private static final class CapturingMissileGroup extends Group {
+        TestMissileSprite missile;
+
+        @Override
+        public synchronized Gizmo recycle(Class<? extends Gizmo> type) {
+            if (type == MissileSprite.class) {
+                missile = new TestMissileSprite();
+                return add(missile);
+            }
+            return super.recycle(type);
+        }
+    }
+
+    private static final class TestMissileSprite extends MissileSprite {
+        private Callback completion;
+
+        @Override
+        public void reset(PointF from, PointF to, Item item, Callback listener) {
+            // Keep the callback registered by the real SpiritArrow.cast path without touching GL assets.
+            completion = listener;
+        }
+
+        @Override
+        public void onComplete(Tweener tweener) {
+            kill();
+            if (completion != null) completion.call();
         }
     }
 

@@ -362,8 +362,37 @@ public class SpiritBow extends Weapon {
 			return SpiritBow.this.STRReq();
 		}
 
+		private Hero nativeReportHero;
+		private int nativeReportMarkBuffId = -1;
+		private String nativeReportTargetEntityId;
+		private boolean nativeReportCompleted;
+
+		/**
+		 * Binds the asynchronous missile completion to the native SnipersMark transaction.
+		 * The expected shared target is stable across devices; a local Actor ID is never sent.
+		 */
+		public void bindNativeSpiritArrowCompletion(Hero user, int markBuffId, String targetEntityId) {
+			if (user == null || markBuffId < 1 || targetEntityId == null
+					|| !targetEntityId.matches("[A-Za-z0-9._:-]{8,80}")
+					|| nativeReportHero != null || nativeReportCompleted) {
+				throw new IllegalArgumentException("Invalid native SpiritArrow completion binding");
+			}
+			nativeReportHero = user;
+			nativeReportMarkBuffId = markBuffId;
+			nativeReportTargetEntityId = targetEntityId;
+		}
+
 		@Override
 		protected void onThrow( int cell ) {
+			// MissileSprite invokes this callback only after the visual arrow reaches its target.
+			// Keep the normal single-player path unchanged; multiplayer waits here for the real
+			// SPD result and publishes it exactly once.
+			if (nativeReportCompleted) return;
+			if (nativeReportHero != null) {
+				completeNativeSpiritArrow(cell);
+				return;
+			}
+
 			Char enemy = Actor.findChar( cell );
 			if (enemy == null || enemy == curUser) {
 				parent = null;
@@ -373,6 +402,49 @@ public class SpiritBow extends Weapon {
 					Splash.at(cell, 0xCC99FFFF, 1);
 				}
 				if (sniperSpecial && SpiritBow.this.augment != Augment.SPEED) sniperSpecial = false;
+			}
+		}
+
+		private void completeNativeSpiritArrow(int cell) {
+			nativeReportCompleted = true;
+			Hero reportHero = nativeReportHero;
+			int markBuffId = nativeReportMarkBuffId;
+			String expectedEntityId = nativeReportTargetEntityId;
+			com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager manager =
+					com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager.getInstance();
+			try {
+				Char enemy = Actor.findChar(cell);
+				com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark mark =
+						reportHero == null ? null : reportHero.buff(
+								com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark.class);
+				boolean targetStillMatches = reportHero != null && curUser == reportHero && reportHero.isAlive()
+						&& reportHero.belongings != null && reportHero.belongings.weapon() == SpiritBow.this
+						&& mark != null && mark.id() == markBuffId
+						&& expectedEntityId.equals(mark.serverEntityId)
+						&& enemy instanceof com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob
+						&& expectedEntityId.equals(manager.getServerEntityId(enemy.id()))
+						&& (SpiritBow.this.augment == Augment.NONE || SpiritBow.this.augment == Augment.DAMAGE);
+				if (!targetStillMatches) {
+					parent = null;
+					SpiritBow.this.sniperSpecial = false;
+					Splash.at(cell, 0xCC99FFFF, 1);
+					reportHero.cancelNativeSpiritArrowAttack(markBuffId);
+					manager.requestResync(manager.getLastSequence());
+					return;
+				}
+
+				if (!reportHero.shoot(enemy, this)) Splash.at(cell, 0xCC99FFFF, 1);
+				if (sniperSpecial && SpiritBow.this.augment != Augment.SPEED) sniperSpecial = false;
+				reportHero.finishNativeSpiritArrowAttack(enemy);
+			} catch (RuntimeException error) {
+				SpiritBow.this.sniperSpecial = false;
+				if (reportHero != null) reportHero.cancelNativeSpiritArrowAttack(markBuffId);
+				manager.requestResync(manager.getLastSequence());
+				throw error;
+			} finally {
+				nativeReportHero = null;
+				nativeReportMarkBuffId = -1;
+				nativeReportTargetEntityId = null;
 			}
 		}
 
