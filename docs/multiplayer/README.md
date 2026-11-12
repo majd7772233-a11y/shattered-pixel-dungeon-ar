@@ -37,14 +37,17 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-12
 
 - **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Live HEAD:** `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup`.
-- **Exact-head CI:** [43213971129 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129). Backend build/schema checks/652 executions passed; Android had 88 tests with 2 failures in `:core:test`, so Debug APK compilation did not run.
-- **Last green baseline:** `0a70053addd976fc6d4330af52330d7593ee1bc4`, [43198856325 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325); it precedes the SpiritArrow lifecycle/schema commits and is not current-head evidence.
+- **Latest repository/documentation HEAD:** `b2260e3243a9f9adc9f12540521ba9cd91080a7c` — `Document SpiritArrow schema, test matrix and active CI failure` (Markdown-only).
+- **Latest gameplay code/test SHA:** `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup`. The two docs commits after it did not alter gameplay code/tests.
+- **Latest exact repository-head CI:** [43219359083 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43219359083). Backend TypeScript build, both schema validations and 652 executions across eight files passed; Android had 88 JVM tests with two failures in `:core:test`; `assembleDebug` was not reached.
+- **Latest exact code/test CI:** [43213971129 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129) on `377fa362772fb5367b548f44686e129493b1be14`.
+- **Last green pre-9-C baseline:** `0a70053addd976fc6d4330af52330d7593ee1bc4`, [43198856325 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325); not current-head evidence.
 - **Phase state:** phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; phases 10–23 open.
-- **Next bounded slice:** 9-C — finish the local asynchronous SpiritArrow lifecycle and authority-result roundtrip. The protocol schema portion has been added: `SPIRIT_ARROW`, strict `spiritArrow` metadata and a static validation script now pass Backend CI.
+- **Current bounded slice:** 9-C — finish the local asynchronous SpiritArrow lifecycle and authority-result roundtrip. It remains incomplete. The protocol schema portion is complete and its static validator passes Backend CI.
 - **Current blocker:** two Android tests fail after `SnipersMark.doAction()` with `resync=true` and `missileCreated=false`. Determine whether `beginNativeSpiritArrowAttack()` returns false or `arrow.cast()` throws/cancels; current diagnostics do not distinguish those branches. Do not infer that the local missile callback succeeds.
-- **Remaining 9-C:** diagnose the pre-missile failure; get the actual local MissileSprite completion path to finish/cancel exactly once; prove miss/target disappearance/error/duplicate/cancel/stale/replay/resync; add request → authority → native resolution → accepted event → client reconciliation coverage. SPEED volley and non-Mob targets remain fail-closed.
-- Broader Phase 9 requirements are in `ROADMAP.md` and `PROJECT_EXECUTION_PROTOCOL_AR.md`. No live Worker deployment, actual Durable Object SQLite session or physical two-device match is claimed.
+- **Remaining 9-C:** diagnose the pre-missile failure; get the real local completion path to finish/cancel exactly once; prove miss/target disappearance/error/duplicate/cancel/stale/replay/resync; add request → authority → native resolution → accepted event → client reconciliation coverage. SPEED volley and non-Mob targets remain fail-closed.
+- **Process:** the permanent one-coherent-slice-per-conversation workflow is in `PROJECT_EXECUTION_PROTOCOL_AR.md`. The branch currently contains 21 Markdown files; re-scan/read all Markdown at every new-chat start.
+- No live Worker deployment, actual Durable Object SQLite session or physical two-device match is claimed.
 
 
 ## Source-of-truth hierarchy

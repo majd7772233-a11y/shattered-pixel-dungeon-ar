@@ -173,10 +173,13 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 
 ## 9. Current active branch checkpoint — 2026-11-12
 
-- Live branch HEAD: `377fa362772fb5367b548f44686e129493b1be14`; latest exact-head [CI run 43213971129](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129) is **failure**.
-- Backend job: TypeScript build succeeded; both static schema validators succeeded; 8 Vitest files and 652 executions passed.
-- Android job: the `./gradlew test assembleDebug --no-daemon` command failed at `:core:test`; 88 tests completed, two SpiritArrow lifecycle regressions failed before MissileSprite creation. `assembleDebug` was therefore not reached.
-- Last green code baseline before the SpiritArrow attempt: `0a70053addd976fc6d4330af52330d7593ee1bc4`, [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325).
-- This branch CI does not deploy the Worker or prove a two-device match. The deploy workflow remains scoped to master/main pushes or manual dispatch.
-- Do not claim the current head has a green Android build or a passing APK compile. Re-run exact-head CI after the 9-C fix and require both jobs to pass.
+- Latest repository/documentation HEAD: `b2260e3243a9f9adc9f12540521ba9cd91080a7c` — `Document SpiritArrow schema, test matrix and active CI failure` (docs-only commit).
+- Latest gameplay code/test HEAD: `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup`. No gameplay code/test changes were made by the subsequent documentation commits.
+- Latest exact repository-HEAD [CI run 43219359083](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43219359083): **failure**.
+- Exact code/test HEAD [CI run 43213971129](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129): **failure** for the same Android regressions.
+- Backend job: TypeScript build succeeded; Phase 7 native-mutation schema and SpiritArrow schema validators succeeded; 8 Vitest files and 652 executions passed.
+- Android job: 88 JVM tests completed, two SpiritArrow lifecycle tests failed before MissileSprite creation. Gradle stopped at `:core:test`; `assembleDebug` was not reached.
+- Last green code/test baseline before the SpiritArrow attempt: `0a70053addd976fc6d4330af52330d7593ee1bc4`, [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325); it predates the current 9-C changes.
+- No live Worker deployment or physical two-device match is claimed. The deploy workflow remains scoped to `master`/`main` pushes or manual dispatch.
+- Do not claim the current branch has a green Android build or a passing APK compile. Re-run exact-head CI after the 9-C fix and require both jobs to pass.
 
