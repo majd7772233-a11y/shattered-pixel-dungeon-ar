@@ -672,6 +672,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Arrays.fill(level.heroFOV, true);
         Rat mob = addRat(hero.pos + 1, 20);
+        attachHeadlessTargetSprite(mob);
         String targetEntityId = "stable-spirit-arrow-target-001";
         manager.registerServerEntityId(mob.id(), targetEntityId);
         SilentSpiritBow bow = new SilentSpiritBow();
@@ -763,6 +764,7 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Arrays.fill(level.heroFOV, true);
         Rat mob = addRat(hero.pos + 1, 20);
+        attachHeadlessTargetSprite(mob);
         manager.registerServerEntityId(mob.id(), "stable-spirit-arrow-cancel-001");
         SilentSpiritBow bow = new SilentSpiritBow();
         bow.setMultiplayerItemId("stable-spirit-arrow-cancel-bow-001");
@@ -3173,6 +3175,15 @@ public class NativeCombatRuntimeIntegrationTest {
 
     private DeathCountingRat addDeathCountingRat(int pos, int hp) {
         return addMob(new DeathCountingRat(), pos, hp);
+    }
+
+    private void attachHeadlessTargetSprite(Mob target) {
+        // Item.cast() feeds enemy.sprite into the real MissileSprite.reset(Visual, Visual, ...)
+        // overload. Give the headless Mob a lightweight native CharSprite so the test exercises
+        // the original asynchronous cast path rather than failing on a missing render object.
+        TestAttackSprite targetSprite = new TestAttackSprite();
+        targetSprite.ch = target;
+        target.sprite = targetSprite;
     }
 
     private Rat addRat(int pos, int hp) {
