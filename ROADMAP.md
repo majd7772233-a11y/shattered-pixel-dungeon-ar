@@ -62,6 +62,12 @@ A numbered phase is **one indivisible milestone**, not a collection of separatel
 - Work on the named branch. Never merge into main unless explicitly instructed.
 - Update ROADMAP.md and GPT.md whenever implementation, phase status, architecture, risks or verification changes.
 
+
+### Conversation slicing rule
+
+A parent phase is still indivisible for acceptance/status, but work is delivered through bounded conversation subphases (for example 9-C). Each conversation owns one coherent slice with explicit scope, files, acceptance criteria and tests. A passed slice is recorded as passed; it does not make the parent phase Complete. The next slice starts only in a new conversation after the user sends the handoff prompt. See PROJECT_EXECUTION_PROTOCOL_AR.md. This execution method does not renumber or replace the 23 phases.
+
+
 ## Documentation Governance — Continuous and Outside the Gameplay Phase Plan
 
 The multiplayer documentation set lives under docs/multiplayer/. It is not a new product subsystem and must not add, renumber, compress, or silently move any of the 23 gameplay phases.
@@ -80,6 +86,19 @@ The multiplayer documentation set lives under docs/multiplayer/. It is not a new
 The historical documentation batches established the technical references now indexed in `docs/multiplayer/README.md`. They are complete and are not a current implementation track.
 
 ## Current Verified Status
+
+### Active project checkpoint — 2026-11-12
+
+- **Repository/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892. Do not merge to master.
+- **Latest verified gameplay source/test SHA:** 55822c0df55b302b5497f5383004758396bab625; commit message: Tighten native SpiritArrow target and mode validation.
+- **Exact-head CI:** [workflow 42798096407 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42798096407). Backend TypeScript build and 652 test executions across eight files passed. Android JVM tests and Debug APK compilation passed (BUILD SUCCESSFUL, 57 Gradle tasks). Mirrored/generated TS/JS files mean this is an execution count, not 652 unique scenarios.
+- **Parent phase state:** phases 1–8 complete for implementation and automated acceptance; Phase 9 partial/open; phases 10–23 open.
+- **Next conversation slice:** 9-C — SpiritArrow asynchronous lifecycle, protocol-schema parity and authority result roundtrip. Exact scope and tests are in PROJECT_EXECUTION_PROTOCOL_AR.md.
+- **SpiritArrow current state:** stable Bow/SnipersMark/target metadata, backend intent validation, MatchRoom pending authority reservation/forwarding, publisher-side MessageRouter simulation and separate validator/forwarding/native-report tests exist. However, the local asynchronous arrow callback does not call finishNativeSpiritArrowAttack; current Java test calls finish manually. Also protocol/schema.json lacks the SPIRIT_ARROW enum and spiritArrow property. A complete initial request→publisher native resolve→accepted event→client reconciliation test is absent.
+- **Other Phase 9 remaining:** actual Cloudflare Durable Object SQLite rollback/restart; publisher authority handoff/disconnect; level-up XP and item callbacks; Monk talent/ability variants; RemoteHero/player LifeLink; more consumables and overlapping DOT/HoT/shield/detach effects; reconnect/expiry/malformed/replay/resync edge coverage. Unsupported branches remain fail-closed.
+- **Release boundary:** no current-branch Worker deployment smoke test and no physical two-device session are claimed; those are phases 22 and 23.
+- **Conversation execution:** one bounded subphase per conversation; all Markdown reread; HEAD/last commit/CI verified; docs updated continuously; Arabic handoff required. See PROJECT_EXECUTION_PROTOCOL_AR.md.
+
 
 ### Active continuation checkpoint — 2026-11-09 (Poison LifeLink batch atomicity verified; Phase 9 remains OPEN)
 
@@ -382,6 +401,19 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23. Phase 9 is now in progress but remains open; its work items and acceptance criteria below are intentionally unchecked.
 
 ## Phase 9 — Native Buffs, Consumable Effects and Timed State
+
+### Active continuation checkpoint — 2026-11-12
+
+Parent Phase 9 remains OPEN. The next bounded conversation slice is 9-C — SpiritArrow asynchronous lifecycle, schema parity and authority-result roundtrip.
+
+Verified at gameplay SHA 55822c0df55b302b5497f5383004758396bab625, exact-head CI [42798096407](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42798096407): Backend build and 652 executions across eight files passed; Android JVM tests and Debug APK compilation passed.
+
+The SpiritArrow path is PARTIAL: stable Bow/mark/target metadata, server intent validation, MatchRoom authority reservation/forwarding, publisher-side MessageRouter simulation, backend validator/forwarding tests and a manual native report fixture exist. **Do not treat it as complete:** local SnipersMark.doAction begins a deferred report then starts asynchronous arrow.cast, but the real local projectile completion callback does not call finishNativeSpiritArrowAttack. The Java regression manually calls finish after hero.shoot. The protocol schema also lacks SPIRIT_ARROW in attackWeaponMode and has no spiritArrow object. No single end-to-end test covers initial request → authority pending → publisher native resolve → accepted result → client reconciliation.
+
+**9-C acceptance:** connect the local async callback to exactly-once finish/cancel; add schema parity; test actual SnipersMark.doAction/MissileSprite callback without manual finish; test publisher authority roundtrip and accepted result; cover miss/target disappearing/error/duplicate/cancel/stale/replay/resync. Keep SPEED volley and unsupported target classes fail-closed.
+
+After 9-C continue the remaining Phase 9 items: real Durable Object SQLite crash/restart; authority handoff/disconnect; XP level-up/item callbacks; Monk variants; RemoteHero/player LifeLink; more consumables and concurrent effect/detach cases; reconnect/expiry/malformed/replay/resync. Do not start Phase 10 until all Phase 9 acceptance criteria are complete.
+
 
 **Priority:** P0 · **Dependencies:** phases 7–8 and the native scheduler/snapshot work in phases 1–3.
 

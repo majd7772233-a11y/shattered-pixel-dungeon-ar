@@ -34,29 +34,16 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
-## Active Phase 9 continuation checkpoint — 2026-11-09
+## Active project checkpoint — 2026-11-12
 
-Latest tested implementation SHA: `b68b66e686b98dbf343997202b215e2c828b7b89`; exact-head [CI run 42777941791](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791) passed Backend TypeScript build/644 Vitest executions and Android JVM tests/Debug APK compilation. Phase 9 remains open.
+- **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
+- **Latest verified gameplay SHA:** 55822c0df55b302b5497f5383004758396bab625; exact-head [CI 42798096407](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42798096407) passed Backend TypeScript build/652 executions across eight files and Android JVM tests/Debug APK compilation.
+- **Phase state:** phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; phases 10–23 open.
+- **Next slice:** 9-C — close the local asynchronous SpiritArrow lifecycle, repair schema parity for SPIRIT_ARROW/spiritArrow, and test the complete authority result roundtrip. Current Android test calls finish manually instead of running the real callback; protocol/schema.json still lacks the new enum/property.
+- Poison LifeLink/Barrier/ShieldBuff, atomic Hero Buff ticks, supported consumables, timed expiry, full snapshot restore, Amok and SnipersMark expiry are present in source/tests. Remaining Phase 9 work and limits are recorded in ROADMAP.md and PROJECT_EXECUTION_PROTOCOL_AR.md.
+- **Conversation execution:** one coherent subphase per conversation; at the start read every Markdown file and inspect latest Commit/CI; implement one slice, update docs, then stop with an Arabic handoff prompt. See PROJECT_EXECUTION_PROTOCOL_AR.md.
+- No current-branch Worker deployment smoke test or physical two-device session is claimed.
 
-The native publisher Poison LifeLink path buffers Mob callbacks and carries them in the same Hero `BUFF_TICK` or lethal Hero environment-death action. MatchRoom uses a scoped `state.storage.transactionSync` boundary to commit Hero, Mob, heaps, reward claims, event and sequence together. Integration coverage includes replay, forged loot, publisher rollback, non-publisher rejection with changed/empty Mob deltas, correlated WebSocket errors, and rollback-safe deferred broadcasts that preserve the original sender exclusion.
-Hero Buff coverage now includes safe due `Amok` expiry when Amok targets the local Hero and expiry-only `SnipersMark` cleanup on the local Hero. SnipersMark expiry clears the native local `ActionIndicator` while leaving Mob HP/AI unchanged; the server checks due timing and unchanged identity/bonus/HP/shield/inventory. This does not yet synchronize the marked Spirit Arrow action or its combat resolution; the native enemy-only Mob aggro reset is not run, and the Android test confirms the Mob HP/AiState are unchanged. Amok cannot disappear incidentally inside another Buff tick.
-
-Native Hero Poison ticks now also account for the exact Barrier damage side effect: a surviving Barrier may lose only the shield actually absorbed, with its partial-decay remainder untouched; it may detach at zero only when total Hero shield loss equals its old shield. Forged or unexplained aggregate shield loss and changes to the partial-decay remainder are rejected. Hunger remains distinct because its native starvation damage bypasses shields. Java and Backend regressions cover full Poison absorption/detach and partial absorption.
-
-Poison shield reconciliation also mirrors the native `ShieldBuff.processDamage()` priority tiers: WarriorShield/Blocking (2), AscendBuff/DivineShield (1), then Barrier (0). The validator derives incoming damage from HP/aggregate-shield conservation and rejects any lower-tier shield loss while higher-priority capacity remains. It enforces the native zero-shield lifecycle for each supported class. Backend tests include valid and forged lower-tier-bypass states, and the Java runtime suite executes the actual Poison actor with all three tiers active.
-The Barrier decay remainder is serialized by Java as `partial_lost_shield`; both server validators now use that exact key, and the backend test rejects the mistaken camelCase alias.
-
-A transaction exception returns a correlated `ERROR` with the original request ID and current room sequence; Android can clear the pending `SYNC_HERO_STATE` request and request RESYNC. Action acceptance and room/FOV broadcasts are deferred until the scoped SQL transaction commits, so a later exception cannot leak an ACK or event for rolled-back state.
-
-Every source-shaped native Hero `BUFF_TICK` now uses the same SQL transaction/deferred-message boundary, including non-Poison Healing, Hunger and Barrier ticks. Strict per-class validators remain the allowlist; the wrapper only makes each accepted tick atomic. A Healing integration regression forces the final event insert to fail and checks rollback of Hero HP, player HP, Buff state, event, processed request and sequence.
-
-A non-publisher cannot run the shared Mob portion of Poison LifeLink because its local Actor ID is not an authoritative shared identity. Its Hero tick is rejected even if it sends an empty Mob delta; the client requests a fresh snapshot. The current test checks the request, not end-to-end snapshot application. Actual delegated cross-client LifeLink support remains open. A JVM integration now drives a complete server-format `SNAPSHOT` through `MessageRouter` and verifies the local Hero returns to pre-tick HP, the same stable-ID Mob retains authoritative HP/Actor identity, and Poison/LifeLink Buff clocks restore. The fixture is deterministic and constructed in-test; it does not use a live Worker response. Actual delegated cross-client LifeLink support remains open.
-
-The integration adapter is in-memory, not Cloudflare's actual SQLite runtime. No Worker deployment smoke test or physical two-device multiplayer run has been performed. RemoteHero/player LifeLink, level-up XP/item callbacks, talent variants, authority handoff, additional simultaneous effects, reconnect/expiry and broader malformed/replay/resync remain open.
-
-
-
-`SPDLevelSnapshot.buildLevelJson()` now disables libGDX prototype elision, preserving default-valued fields and empty arrays required by the full-snapshot contract. The regression explicitly checks `schemaVersion=1`, `branch=0`, the false lock flag, tile position zero and the required native collections.
 
 ## Source-of-truth hierarchy
 
