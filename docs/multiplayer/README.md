@@ -36,18 +36,16 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Active project checkpoint — 2026-11-12
 
-- **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Latest repository/documentation HEAD:** `90cadbb56aa67b53eb68bbcb87a94648b6db77ce` (this status refresh is docs-only).
-- **Latest gameplay code/test SHA:** `377fa362772fb5367b548f44686e129493b1be14`; all commits after it through the current repository HEAD are Markdown-only.
-- **Exact repository-head CI:** [43231618201 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201).
-- **Backend:** TypeScript build, Phase 7 schema and SpiritArrow schema passed; 8 Vitest files / 652 executions passed.
-- **Android:** 88 JVM tests; two SpiritArrow failures at `:core:test`; `assembleDebug` not reached.
-- **Open tests:** `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` and `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce` fail after `SnipersMark.doAction()` with `resync=true` and `missileCreated=false`; cause not yet separated between begin guard and cast exception.
-- **Active slice:** 9-C only. Instrument `beginNativeSpiritArrowAttack()` guards and separately preserve `SpiritArrow.cast()` exceptions. Do not weaken guards. Then complete native callback lifecycle and full authority/result/requester reconciliation.
-- Phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; phases 10–23 open.
-- Permanent one-coherent-slice-per-conversation workflow is in `PROJECT_EXECUTION_PROTOCOL_AR.md`. The branch currently has 21 Markdown files; every new chat must re-scan and read all before code changes.
-- No live Worker deployment, actual Durable Object SQLite session, or physical two-device match is claimed.
-
+- Repo/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
+- Latest gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c`.
+- Exact CI [43242489324 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Backend 652 passed / 2 failed of 654 executions; Android JVM tests and assembleDebug pass.
+- 9-C local SpiritArrow `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` callback path now passes headlessly; callback is manually invoked, not a rendered animation. Target-moved cancellation/mark retention/RESYNC/no-ATTACK passes.
+- New MatchRoom attempt verifies requester ATTACK → pending reservation → COMBAT_REQUEST forwarding, then rejects synthetic publisher SYNC_MOB_STATE with `INVALID_ACTION`; it does not reach ACTION_ACCEPTED/EVENT_BATCH.
+- First visible fixture gap: `authorityResult` omits `attackerPos`, required by strict combat validation and matched to trusted player position. Verify all gates and actual native serialization; do not weaken validation.
+- Audit publisher MessageRouter's `remoteHero.shoot(target, bow.knockArrow())` followed immediately by `remoteHero.finishNativeSpiritArrowAttack(target)` against asynchronous MissileSprite completion.
+- Only active slice: 9-C. Phase 9 remains open. Follow `PROJECT_EXECUTION_PROTOCOL_AR.md`: one bounded slice per chat, read all 21 Markdown files, document continuously and hand off before stopping.
+- Last green local lifecycle baseline `6f912afb5d169370b44dae17a46cf2f10716ff51` / [CI 43240391766](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43240391766) predates the new MatchRoom test; it is not current CI.
+- No deployed Worker, real Durable Object SQLite, or physical two-device test claimed.
 
 ## Source-of-truth hierarchy
 

@@ -118,11 +118,13 @@ The schema is not self-enforcing. Java serialization/parsing and Worker validati
 
 ### 3.5.1 SpiritArrow attack contract — current 9-C status
 
-The existing `ATTACK`/native attack payload can now identify `attackWeaponMode=SPIRIT_ARROW` and carry a strict `spiritArrow` object bound to the equipped Bow item, SnipersMark Buff identity/bonus and stable Mob target entity. The server validates that intent and has separate pending-authority reservation/forwarding tests. A static schema validator runs during Backend CI.
+The existing ATTACK payload carries strict `SPIRIT_ARROW` metadata bound to Bow item identity, SnipersMark identity/bonus and stable Mob target identity. Backend intent validation, MatchRoom pending-combat reservation/forwarding and static schema validation exist.
 
-This protocol/schema and server-intent presence is not proof of a functioning native attack. The current local Java completion hook is not passing its runtime integration: two Android tests fail after `SnipersMark.doAction()` before a `MissileSprite` is created. The pending-report guard versus arrow-cast exception is not yet distinguished. Full native authority execution and requester reconciliation remain open.
-Current repository HEAD is `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23`; gameplay code/test SHA is `377fa362772fb5367b548f44686e129493b1be14`. Exact CI [43228606923](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923) has green Backend and red Android. Backend passes both schema checks and 652 executions across eight files; Android has two SpiritArrow JVM failures out of 88 and stops at `:core:test` before `assembleDebug`. The failure occurs before test MissileSprite creation. Phase 9-C remains the only active slice and is not accepted.
-Current gameplay code/test SHA `377fa362772fb5367b548f44686e129493b1be14` has exact CI [43231618201](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201) red: Backend passed 652 executions and both schema checks; Android has two SpiritArrow JVM failures out of 88 and stops at `:core:test` before `assembleDebug`. Both failures occur before test MissileSprite creation. Phase 9-C remains the only active slice and is not accepted.
+Local `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` callback tests pass headlessly, including duplicate-completion exactly-once behavior and target-moved cancellation/resync. The test manually invokes `MissileSprite.onComplete()`; it does not render an animation.
+
+Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324) on `7fe9b0164408cfde36b89a57551536bf6bbcd67c`: Android JVM/Debug APK pass; Backend build/schema pass but the new MatchRoom publisher-result test fails with `INVALID_ACTION` after COMBAT_REQUEST forwarding (652 passed / 2 failed).
+
+The synthetic authority result appears to omit `attackerPos`, required by strict combat validation and matched to trusted player position; inspect the full predicate chain and native publisher serializer. Also trace the MessageRouter publisher's immediate `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)` against asynchronous MissileSprite completion. Full requester → authority → accepted event → requester reconciliation remains unproven. Phase 9-C and Phase 9 remain open.
 
 
 ### 3.6 Android platform bridge

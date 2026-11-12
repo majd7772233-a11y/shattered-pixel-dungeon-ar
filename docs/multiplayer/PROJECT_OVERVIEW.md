@@ -74,18 +74,13 @@ That presence does not mean all features have passed end-to-end acceptance.
 
 ### Current verified checkpoint — 2026-11-12
 
-- Current branch: `multiplayer-framework-core-14118577486727081892`; latest gameplay code/test SHA: `377fa362772fb5367b548f44686e129493b1be14`. See GPT.md and ROADMAP.md for the latest documentation HEAD.
-- Exact-head CI for the current code/test SHA: [43231618201 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43231618201).
-- Backend: TypeScript build, Phase 7 schema, SpiritArrow schema and 652 executions across 8 Vitest files passed.
-- Android: 88 JVM tests with two SpiritArrow failures at `:core:test`; `assembleDebug` was not reached.
-- Failing tests: `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` and `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce`; both fail after `SnipersMark.doAction()` before test MissileSprite creation.
-- Last green pre-9-C baseline: `0a70053addd976fc6d4330af52330d7593ee1bc4` / [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325); historical only.
-- Phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; Phases 10–23 open.
-- 9-C is the only active slice. Schema/metadata and separate backend reservation/forwarding pieces exist; the local async lifecycle and complete authority-result/requester reconciliation remain unaccepted.
-- Root cause is unknown: distinguish `beginNativeSpiritArrowAttack()` returning false from `SpiritArrow.cast()` throwing/cancelling. Do not weaken guards.
-- No live Worker deployment smoke test or physical two-device match is claimed.
+- Current gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c` on `multiplayer-framework-core-14118577486727081892`.
+- Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Android JVM tests and Debug APK compile pass; Backend build/schema pass but the new MatchRoom SpiritArrow result test fails (`INVALID_ACTION`, 652 passed / 2 failed of 654 Vitest executions).
+- Local native SpiritArrow cast/MissileSprite callback and target-moved cancellation tests pass in a headless JVM harness; the completion callback is manually invoked, not rendered.
+- The MatchRoom test forwards requester ATTACK and creates pending authority reservation, then rejects synthetic publisher SYNC_MOB_STATE. Its result fixture appears to omit `attackerPos`; verify all guards and actual native result serialization.
+- Full requester → designated publisher native execution → accepted result/event → requester reconciliation remains open. Audit immediate publisher-side `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)`.
+- Phases 1–8 complete; Phase 9 partial/open; Phases 10–23 open. Only 9-C is active. No live Worker/device proof claimed.
 
-The detailed current Phase 9 accepted/rejected behavior and exact next action remain in the authoritative current checkpoint in GPT.md and the Phase 9 section of ROADMAP.md.
 
 ## 6. Modes and transports: do not infer readiness
 
