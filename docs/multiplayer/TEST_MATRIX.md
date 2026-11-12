@@ -282,13 +282,11 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 - [x] Android JVM tests and Debug APK compile pass on current exact HEAD.
 
 ### Current exact HEAD / CI
-- HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
-- [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; Vitest 654 passed / 4 failed of 658 executions across eight files; Android JVM and Debug APK pass.
-- Two distinct failures, mirrored TS/JS:
-  1. Positive authority result: publisher messages are `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then unexpected `ERROR`; requester EVENT_BATCH path is not verified because test stops at this assertion.
-  2. Forged-`attackerPos` negative result: server returns a correlated requester `ERROR`, while test expects no requester send. Omitted-`attackerPos` negative test already expects correlated ERROR and passes.
-- Positive helper already sends `attackerPos: 9`; Java native serialization asserts the RemoteHero position. Missing/forged fields stay rejected.
-- `f5f88a11` adds authenticated player-id exclusion to FOV broadcast; inspect post-ACK ERROR and sender/event routing.
+- **Branch HEAD (documentation-only):** `89ff19fc9369ca990ffac4f3105f6022a6985d22`; parent `9168284e67d353a956fc276e0ea8c00d1c685f1d`. The docs commit changes Markdown files only.
+- **Latest gameplay/test HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
+- Exact-head code/test CI [43290836162 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162); docs-head CI [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145). Both show Backend 654 passed / 4 failed of 658 Vitest executions; Android JVM and Debug APK pass.
+- Two distinct SpiritArrow failures are mirrored in TS/generated JS: publisher `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`; forged-`attackerPos` negative test expects no requester message but receives correlated `ERROR`.
+
 
 ### Remaining acceptance
 - [ ] Identify exact source/payload/recipient/requestId/sequence for ERROR after publisher ACK.

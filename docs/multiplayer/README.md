@@ -37,7 +37,9 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-12
 
 - Repo/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Live HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- Current branch HEAD (docs-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; it updates 13 Markdown files only.
+- Latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
+- CI on current docs HEAD [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145): same two distinct SpiritArrow test scenarios remain red (4 mirrored executions); Android JVM/Debug APK pass.
 - Exact-head [CI 43290836162 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; 8 Vitest files, 654 passed / 4 failed of 658 executions; Android JVM and Debug APK pass.
 - Two distinct failures mirrored in TS/JS: positive publisher result sees `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`; forged-`attackerPos` negative test receives a correlated requester `ERROR` despite expecting no response.
 - Positive result helper already has `attackerPos: 9`; Java verifies native RemoteHero reports its actual position. Missing/forged positions stay rejected.

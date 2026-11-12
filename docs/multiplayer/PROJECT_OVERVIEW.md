@@ -74,7 +74,8 @@ That presence does not mean all features have passed end-to-end acceptance.
 
 ### Current verified checkpoint — 2026-11-12
 
-- Exact live HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` on `multiplayer-framework-core-14118577486727081892`; latest commit adds a test-local `payloadJson` type.
+- Current branch HEAD (documentation-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
+- Docs-head CI [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145): Backend has 654 passed / 4 failed mirrored executions; Android JVM and Debug APK pass.
 - Exact-head CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; Vitest 654 passed / 4 failed of 658 executions across eight files; Android JVM and Debug APK pass.
 - Two actual failures mirrored in TypeScript/generated JavaScript: positive publisher result sends `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then unexpected `ERROR`; forged attacker-position negative test expects no sender reply but receives correlated `ERROR`.
 - Positive fixture contains `attackerPos: 9`; Java verifies native serialization equals `remoteHero.pos`. Missing/forged positions must remain rejected.

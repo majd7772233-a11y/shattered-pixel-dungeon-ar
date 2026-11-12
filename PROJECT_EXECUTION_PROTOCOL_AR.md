@@ -120,12 +120,14 @@
 ### المستودع والـHEAD
 - Repo: `majd7772233-a11y/shattered-pixel-dungeon-ar`.
 - Branch: `multiplayer-framework-core-14118577486727081892` فقط.
-- HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
-- آخر commitين: `f5f88a11` يحسن استثناء مرسل FOV بحسب هوية اللاعب الموثّقة، و`9168284e` يضبط النوع المحلي لـ`payloadJson` في الاختبار. راجع diff دائمًا؛ لا تعتمد على هذا الوصف بدل المصدر.
+- Current branch HEAD (docs-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22` — `Document exact Phase 9-C SpiritArrow handoff checkpoint`; parent `9168284e67d353a956fc276e0ea8c00d1c685f1d`. Changed 13 Markdown files only.
+- Latest gameplay/test SHA: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
 - يوجد 21 ملف Markdown حاليًا؛ افحص الشجرة واقرأ كلها، وأي MD جديد.
+
 
 ### CI المطابق
 - [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
+- Current docs-HEAD workflow [43294778145 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145); backend tests retain the same four mirrored failures, while Android JVM/Debug APK is green.
 - Backend TypeScript/schema build checks ناجحة.
 - Vitest: 8 ملفات، 654 ناجحة و4 فاشلة من 658 تنفيذًا؛ الفشل حالتان فقط مكررتان في TS والنسخة JS المولدة.
 - Android JVM tests و`assembleDebug` ناجحان.

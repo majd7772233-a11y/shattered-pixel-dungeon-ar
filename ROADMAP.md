@@ -89,7 +89,9 @@ The historical documentation batches established the technical references now in
 
 ### Active project checkpoint — 2026-11-12 (9-C SpiritArrow roundtrip still red)
 
-- **Live HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- **Current branch HEAD (documentation-only):** `89ff19fc9369ca990ffac4f3105f6022a6985d22`; parent `9168284e67d353a956fc276e0ea8c00d1c685f1d`. This commit updates only 13 Markdown files.
+- **Latest gameplay/test HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`.
+- **CI on the current docs HEAD:** [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145); Backend still has 654 passed / 4 failed Vitest executions, Android JVM/Debug APK pass. It reproduces the same two distinct SpiritArrow scenarios as code/test run [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
 - **Exact-head CI:** [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162). Backend TypeScript build/schema checks pass. Vitest: 8 files, **654 passed / 4 failed (658 executions)**; the four are two SpiritArrow scenarios mirrored between TS and generated JS. Android JVM tests and Debug APK compilation pass.
 - **Positive publisher roundtrip failure:** publisher socket receives `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an unexpected `ERROR`. The test stops at this message-list assertion, so requester EVENT_BATCH delivery/application is not yet proven.
 - **Forged-position negative failure:** the server correctly rejects forged `attackerPos` with a correlated requester `ERROR`, but the test still expects no requester message. The omitted-position negative test has already been updated to expect that error and passes.

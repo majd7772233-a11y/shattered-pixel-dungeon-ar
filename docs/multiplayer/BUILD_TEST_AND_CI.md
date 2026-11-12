@@ -173,7 +173,8 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 
 ## 9. Current active branch checkpoint — 2026-11-12
 
-- Branch: `multiplayer-framework-core-14118577486727081892`; exact HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
+- Current branch HEAD (documentation-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`. The docs commit does not modify source/tests.
+- Docs-head exact workflow [43294778145 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145); backend still reports 654 passed / 4 failed of 658 Vitest executions; Android JVM and Debug APK compile pass.
 - Latest commit: `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`; test-local `payloadJson` typing only.
 - Exact-head workflow [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
 - Backend TypeScript build/schema checks passed; Vitest 8 files, 654 passed / 4 failed of 658 executions. Failures are two distinct SpiritArrow MatchRoom cases mirrored in TypeScript/generated JavaScript.
