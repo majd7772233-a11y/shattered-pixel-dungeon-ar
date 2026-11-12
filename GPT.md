@@ -1,27 +1,28 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-12 (READ FIRST)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-12 (READ FIRST; VERIFIED LIVE STATE)
 
-- Repository: majd7772233-a11y/shattered-pixel-dungeon-ar
-- Only working branch: multiplayer-framework-core-14118577486727081892. Never merge to master/main or create another branch unless explicitly requested.
-- Latest repository/documentation HEAD audited: 8b384a4424b51aa6444efd0539edab2153ad0733 — Synchronize exact SpiritArrow checkpoint and Phase 9 acceptance; parent b2260e3243a9f9adc9f12540521ba9cd91080a7c. This commit changes Markdown only.
-- Latest gameplay code/test SHA: 377fa362772fb5367b548f44686e129493b1be14 — Diagnose native SpiritArrow mark action setup; parent 40f3085c93af1aeae5d6448552f410f41b90d516. The three commits after it through repository HEAD are documentation-only; no gameplay source or test changed after this SHA.
-- Exact repository-HEAD CI: Workflow 43221671603 — FAILURE (https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43221671603). Backend passed; Android failed in :core:test.
-- Exact gameplay code/test CI: Workflow 43213971129 — FAILURE (https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129).
-- Backend at repository HEAD: TypeScript build and both static schema validators passed; 8 Vitest files and 652 executions passed. This is an execution count, not 652 unique source scenarios.
-- Android at repository HEAD: 88 JVM tests completed, 2 failed. Gradle stopped at :core:test; assembleDebug was not reached, so no passing Debug APK is claimed.
-- Failing test 1: nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs — Pending SpiritArrow missing; resync=true, missileCreated=false.
-- Failing test 2: nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce — SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false.
-- Last green baseline before SpiritArrow 9-C changes: 0a70053addd976fc6d4330af52330d7593ee1bc4, CI 43198856325 (success). Historical only; it does not validate current SpiritArrow changes.
-- Phase state: phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; phases 10–23 open.
-- Only active slice: 9-C — SpiritArrow asynchronous lifecycle, protocol contract and authority-result roundtrip. It remains incomplete. This checkpoint handoff does not include code implementation.
-- Already present: stable Bow/mark/target metadata; SPIRIT_ARROW schema contract and static validator; backend validation; MatchRoom pending-authority reservation/forwarding; separate publisher-side MessageRouter tests; local SpiritArrow completion-context/callback attempt.
-- Not working/verified: actual SnipersMark.doAction() → SpiritArrow.cast() → MissileSprite.onComplete(). Both Android tests fail after doAction() and before a test MissileSprite is created. Evidence does not distinguish a rejected Hero.beginNativeSpiritArrowAttack() guard from a thrown SpiritArrow.cast() exception and catch/cancel path.
-- Next diagnostic requirement: separately expose beginNativeSpiritArrowAttack() returning false and SpiritArrow.cast() throwing; identify the exact failing guard or preserve the original exception. Do not guess, swallow exceptions or weaken authority/state guards.
-- Test harness caveat: CapturingMissileGroup/TestMissileSprite are headless test doubles. They capture the callback installed by SpiritArrow.cast() and manually invoke onComplete(); they do not render an actual missile animation. The current failures do not reach test MissileSprite creation.
-- Still within Phase 9 after 9-C: actual Durable Object SQLite rollback/restart/crash; publisher authority handoff/disconnect; XP/ Hero.updateHT()/item onHeroGainExp callbacks; Monk variants; RemoteHero/player LifeLink; additional consumables and overlapping DOT/HoT/shield/detach effects; reconnect/expiry/malformed/replay/resync.
-- Keep fail-closed: SpiritBow SPEED three-shot volley and non-Mob marked targets remain unsupported.
-- Release boundary: no live Worker smoke test, real Durable Object SQLite session or physical two-device session is claimed. Those remain release work in phases 22–23.
-- Permanent work rule: one coherent bounded slice per conversation. At the beginning of every new chat, fetch live HEAD/latest commit/diff and exact-head CI, scan the branch tree, and read all Markdown files (21 files currently known plus any new ones). Complete only the declared slice, update documentation continuously, run tests, verify exact-head CI, provide an Arabic handoff prompt, then stop.
-- Source of truth: procedure = PROJECT_EXECUTION_PROTOCOL_AR.md; phase scope/status = ROADMAP.md; continuation point = GPT.md; implementation = live source and exact-head tests.
+- **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
+- **Only working branch:** `multiplayer-framework-core-14118577486727081892`. Never switch to master, merge, or create another branch.
+- **Latest repository/documentation HEAD:** `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23` — `Refresh multiplayer README handoff status` (2026-11-12 13:34:31 UTC).
+- **Latest gameplay code/test SHA:** `377fa362772fb5367b548f44686e129493b1be14` — `Diagnose native SpiritArrow mark action setup` (2026-11-12 12:00:08 UTC). The compare from this SHA to repository HEAD confirms all later commits are Markdown-only; no gameplay source/tests changed after it.
+- **Exact repository-head CI:** [Workflow 43228606923 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923) on `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23`.
+- **Backend:** TypeScript build, Phase 7 native mutation schema, and SpiritArrow schema validators passed; 8 Vitest files / 652 executions passed. This is an execution count, not 652 unique scenarios.
+- **Android:** 88 JVM tests; two SpiritArrow tests fail at `:core:test`. Gradle did not reach `assembleDebug`; no passing Debug APK is established on this HEAD.
+- **Failing tests:** `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs` — `Pending SpiritArrow missing; resync=true, missileCreated=false`. `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce` — `SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false`.
+- **Last green pre-9-C baseline:** `0a70053addd976fc6d4330af52330d7593ee1bc4`, [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325). Historical only; it does not validate current SpiritArrow work.
+- **Phase status:** Phases 1–8 complete for implementation/automated acceptance; Phase 9 partial/open; Phases 10–23 open.
+- **Only active slice:** **9-C — SpiritArrow asynchronous lifecycle and authority-result roundtrip.** Do not start another Phase 9 slice or Phase 10 in the same conversation.
+- **Already present:** stable Bow item identity, SnipersMark ID/bonus and stable Mob target identity; strict `SPIRIT_ARROW` schema; backend intent validator and MatchRoom pending-authority reservation/forwarding; publisher-side MessageRouter tests; local SpiritArrow completion context/callback attempt.
+- **Not accepted:** real `SnipersMark.doAction() → SpiritArrow.cast() → MissileSprite.onComplete()` lifecycle and full request → authority → native result → accepted event → requester reconciliation roundtrip.
+- **Exact blocker:** after `SnipersMark.doAction()`, the pending report is missing, RESYNC is requested, and no test MissileSprite is created. The evidence does not distinguish `Hero.beginNativeSpiritArrowAttack()` returning false from `SpiritArrow.cast()` throwing and entering catch/cancel/resync.
+- **First task next conversation:** instrument both paths independently. Capture every begin-method guard value and whether it returned false; separately preserve the original `SpiritArrow.cast()` throwable/stack trace if it throws. Do not swallow exceptions, guess, or weaken guards.
+- **Current begin guards:** multiplayer active; nonempty Hero pre-state and SpiritArrow JSON; nonempty Bow bundle; positive mark Buff ID; no existing pending SpiritArrow; no pending generic projectile mutation; `deferNativeCombatReport == false`.
+- **Test harness caveat:** `CapturingMissileGroup`/`TestMissileSprite` are headless test doubles; they capture/manual-call completion but do not render a real animation. The current tests fail before the test MissileSprite exists.
+- **Remaining Phase 9 after 9-C:** real Durable Object SQLite rollback/restart/crash; publisher authority handoff/disconnect; level-up XP/`Hero.updateHT()`/item callbacks; Monk variants; RemoteHero/player LifeLink; remaining consumables and overlapping DOT/HoT/shield/detach; reconnect/expiry/malformed/replay/resync.
+- **Files already touched by 9-C:** `SnipersMark.java`, `Hero.java`, `Item.java`, `SpiritBow.java`, `MessageRouter.java`, `NativeHeroBuffTickPublisher.java`, `SPDLevelSnapshot.java`, `WorldSnapshot.java`, `NativeCombatRuntimeIntegrationTest.java`, protocol schema and server validator/MatchRoom/tests. Inspect the live diff before editing; do not rely on pre-9-C “protected/unmodified” notes.
+- **No release claim:** no live Worker deployment smoke test, real Durable Object SQLite session, or physical two-device match has been performed.
+- **Permanent process:** one bounded coherent subphase per conversation. At each new chat, verify live HEAD/commit/diff/CI, scan the branch tree and read every Markdown file (21 currently, plus new files). Implement only the declared slice; continuously document; run tests; verify exact final-SHA CI; provide Arabic handoff; then stop.
+- **Sources of truth:** procedure = `PROJECT_EXECUTION_PROTOCOL_AR.md`; phase scope/acceptance = `ROADMAP.md`; current technical continuation = this checkpoint; implementation truth = live source and exact-head tests.
+
 
 ## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
 
