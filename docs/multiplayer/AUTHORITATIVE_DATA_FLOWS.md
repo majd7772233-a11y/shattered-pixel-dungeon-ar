@@ -159,21 +159,23 @@ The Java regression checks the action indicator clear, preserved target Actor ID
 
 The originating player starts at native `SnipersMark.doAction()`. The local client resolves the equipped `SpiritBow`, marked Mob and stable server `targetEntityId`, obtains Bow item identity/Bundle, captures Hero pre-state and sends strict `spiritArrow` metadata inside the existing NativeAttackPayload.
 
-The schema and backend `isValidNativeSpiritArrowAttackIntent()` bind Bow/mark/target data to trusted Hero and level state. MatchRoom has pending combat reservation and COMBAT_REQUEST forwarding. A separate forwarding test verifies the request reaches the designated publisher and the pending identity is saved.
+The schema and Backend `isValidNativeSpiritArrowAttackIntent()` bind Bow/mark/target data to trusted Hero and level state. MatchRoom pending combat reservation and COMBAT_REQUEST forwarding pass independently.
 
-The local native lifecycle is covered: `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite`; pending report remains open in flight; registered callback manually invoked twice yields one ATTACK/cleanup. Target-moved test checks cancellation, mark retention, RESYNC and no ATTACK. This is headless callback coverage, not rendered animation or device validation.
+The local native lifecycle is covered headlessly: `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite`; pending report remains deferred; completion callback is manually invoked twice and yields one ATTACK/cleanup. Target-moved test checks cancellation, mark retention, RESYNC and no ATTACK. No animation is rendered.
 
-### Current MatchRoom roundtrip blocker
+### Exact-head authority roundtrip blocker
 
-A new MatchRoom test joins requester ATTACK, pending reservation and COMBAT_REQUEST forwarding with a synthetic publisher SYNC_MOB_STATE response. The server rejects the response with `INVALID_ACTION` before ACTION_ACCEPTED/EVENT_BATCH. Exact CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324) on `7fe9b0164408cfde36b89a57551536bf6bbcd67c` is Backend-red (652 passed / 2 failed Vitest executions); Android JVM and assembleDebug pass.
+Current HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`; exact CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) is Backend-red (654 passed / 4 failed Vitest executions across eight files; two scenarios mirrored in TS/JS). Android JVM and Debug APK pass.
 
-The synthetic `authorityResult` appears to omit `attackerPos`; `hasStrictNativeCombatFields()` requires an integer and `isValidNativeCombatEvent()` compares it with the trusted attacker position. Verify all `authorityValid` predicates and the actual native Hero result serializer before changing anything. Do not weaken validation.
+The positive MatchRoom test observes publisher socket messages `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an additional `ERROR`. It aborts before verifying requester EVENT_BATCH delivery/application. The forged-`attackerPos` negative test still expects no requester message, while the server returns a correlated `ERROR`; the omitted-position negative test is already aligned and passes.
+
+The positive helper contains `attackerPos: 9`; a Java delegated-RemoteHero regression verifies native serialization matches `remoteHero.pos`. The old “positive fixture omits attackerPos” hypothesis is stale. Inspect all `authorityValid` gates, exact ERROR payload/recipient/sequence, and event broadcast path without relaxing authority or position checks.
 
 ### Publisher asynchronous lifecycle still to audit
 
-The publisher MessageRouter branch currently calls `remoteHero.shoot(target, bow.knockArrow())` and immediately `remoteHero.finishNativeSpiritArrowAttack(target)`. Trace RemoteHero sprite/group lifecycle, Hero.shoot, SpiritArrow.cast and MissileSprite callback to establish whether it finalizes too early.
+MessageRouter invokes `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`. Trace `RemoteHero`, Hero deferred combat reporting, `SpiritArrow.onThrow()/completeNativeSpiritArrow()` and `MissileSprite.onComplete()` to establish whether the report is finalized too early.
 
-The MatchRoom test synthesizes the publisher response; it does not execute Android MessageRouter or the original requester applying the event. A joined requester → server reservation → actual publisher native callback → accepted event → requester reconciliation test remains required. 9-C and parent Phase 9 remain open.
+The MatchRoom fixture uses a synthetic publisher result; it does not execute Android MessageRouter or requester EVENT_BATCH application. A joined requester → reservation/COMBAT_REQUEST → actual publisher callback → accepted sequenced event → requester reconciliation remains required. 9-C and parent Phase 9 remain open.
 
 
 ## 5. Mob turns and Actor scheduling

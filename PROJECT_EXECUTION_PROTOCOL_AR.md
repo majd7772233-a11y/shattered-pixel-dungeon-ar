@@ -118,27 +118,35 @@
 ## 10. الحالة التقنية الحالية عند آخر تدقيق — 2026-11-12
 
 ### المستودع والـHEAD
-- Repo: `majd7772233-a11y/shattered-pixel-dungeon-ar`; branch: `multiplayer-framework-core-14118577486727081892`.
-- Current gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c` — `Align SpiritArrow fixture expectations and expose rejection code`; parent `59243da863f46151981ff2dae1e4c3559e122e53`.
-- Tree contains 21 Markdown files; each new chat must scan and read them all, plus new files.
-- No master/merge/new branch or unrelated work.
+- Repo: `majd7772233-a11y/shattered-pixel-dungeon-ar`.
+- Branch: `multiplayer-framework-core-14118577486727081892` فقط.
+- HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- آخر commitين: `f5f88a11` يحسن استثناء مرسل FOV بحسب هوية اللاعب الموثّقة، و`9168284e` يضبط النوع المحلي لـ`payloadJson` في الاختبار. راجع diff دائمًا؛ لا تعتمد على هذا الوصف بدل المصدر.
+- يوجد 21 ملف Markdown حاليًا؛ افحص الشجرة واقرأ كلها، وأي MD جديد.
 
-### CI الحالي
-- [43242489324 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324).
-- Backend TypeScript/schema pass; 8 Vitest files, 652 passed and 2 failed of 654 executions.
-- Android `./gradlew test assembleDebug --no-daemon` passed; JVM and Debug APK jobs succeeded.
-- Error: after COMBAT_REQUEST forwarding, synthetic publisher SYNC_MOB_STATE returns INVALID_ACTION, not ACTION_ACCEPTED.
-- First visible missing field: authorityResult omits attackerPos, required by hasStrictNativeCombatFields and matched with trusted player position. Inspect all gates and the native serializer; do not weaken validators.
+### CI المطابق
+- [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
+- Backend TypeScript/schema build checks ناجحة.
+- Vitest: 8 ملفات، 654 ناجحة و4 فاشلة من 658 تنفيذًا؛ الفشل حالتان فقط مكررتان في TS والنسخة JS المولدة.
+- Android JVM tests و`assembleDebug` ناجحان.
 
-### آخر baseline أخضر
-- `6f912afb5d169370b44dae17a46cf2f10716ff51` / [CI 43240391766](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43240391766) was green before the MatchRoom result test; historical only.
+### حالة 9-C
+- المسار الإيجابي: publisher socket يرى `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`؛ الاختبار يتوقف قبل إثبات EVENT_BATCH للطالب.
+- المسار السلبي للموضع المزوّر: الخادم يرسل ERROR مرتبطًا بالطلب إلى الطالب، والاختبار ما زال يتوقع عدم إرسال شيء. اختبار حذف الموضع تم تحديثه ويتوقع correlated ERROR ويمر.
+- الـpositive fixture يضع `attackerPos: 9` بالفعل؛ واختبار Java يفحص أن التقرير الأصلي من RemoteHero يساوي `remoteHero.pos`. لا تعاود فرضية أن هذا الحقل مفقود، ولا تضعف validation.
+- `f5f88a11` أضاف استثناء مرسل FOV بحسب playerId من WebSocket attachment إضافةً إلى object identity. افحص سبب ERROR بعد ACK وrecipient/sequence بدقة.
+- الاختبارات المحلية تصل إلى MissileSprite الأصلي في headless JVM وتستدعي completion يدويًا؛ لا تختبر animation مرسومة.
+- لا يزال ترتيب `finishNativeSpiritArrowAttack()` بعد `remoteHero.shoot()` بحاجة إلى تتبع مع MissileSprite callback وHero deferred report.
 
-### المرحلة والنقطة
-- Phases 1–8 complete; Phase 9 partial/open; Phases 10–23 open.
-- Active slice only: 9-C SpiritArrow asynchronous lifecycle and authority-result roundtrip.
-- Local callback/MissileSprite headless tests and target-moved cancellation pass. Callback is manually invoked.
-- MatchRoom requester ATTACK/pending reservation/COMBAT_REQUEST forwarding pass; simulated publisher result is rejected INVALID_ACTION.
-- Next: diagnose attackerPos and all authorityValid predicates using actual native result serialization; audit MessageRouter's immediate finish after remoteHero.shoot; then complete requester → publisher callback → accepted EVENT_BATCH → requester reconciliation.
+### التالي
+- شريحة واحدة فقط: 9-C SpiritArrow authority result، asynchronous completion، requester EVENT_BATCH reconciliation، hit/miss وinvalid target/Bow/mark، exceptions/cancel، duplicate/replay/resync.
+- Phase 9 تظل مفتوحة؛ Phase 10 لا تبدأ حتى اكتمال قبول Phase 9.
+- لا يوجد ادعاء Worker live smoke أو Durable Object SQLite/restart أو rendered animation أو physical two-device.
+
+### الالتزام بالخطة الدائمة
+- محادثة واحدة = شريحة مترابطة واحدة قابلة للاختبار، نحو نصف مرحلة عند الاقتضاء.
+- في كل محادثة جديدة: refetch HEAD/diff/CI، اقرأ كل Markdown، نفّذ الشريحة المطلوبة فقط، وثّق واختبر، ثم اكتب handoff عربي وتوقف. لا تبدأ الشريحة التالية تلقائيًا.
+
 
 ## 11. ملفات Markdown التي يجب قراءتها عند كل بداية
 

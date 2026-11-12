@@ -274,23 +274,32 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 
 ### Completed and verified
 - [x] Strict SPIRIT_ARROW schema and Backend validator.
-- [x] Backend intent validator, pending combat reservation/COMBAT_REQUEST forwarding; separate tests pass.
+- [x] Intent validator, pending combat reservation and COMBAT_REQUEST forwarding.
 - [x] Local `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` headless JVM path.
-- [x] Pending report remains in-flight; registered callback invoked twice yields one ATTACK/cleanup.
+- [x] Pending report deferred; callback manually invoked twice yields one ATTACK/cleanup.
 - [x] Target moved before completion: cancellation, mark retained, RESYNC and no ATTACK.
-- [x] Android JVM tests and `assembleDebug` pass on current HEAD.
+- [x] Java delegated-RemoteHero test verifies native report `attackerPos == remoteHero.pos`.
+- [x] Android JVM tests and Debug APK compile pass on current exact HEAD.
 
-### Current failure / not accepted
-- [ ] New MatchRoom test joins requester ATTACK, pending reservation/COMBAT_REQUEST forwarding and synthetic publisher SYNC_MOB_STATE; result is rejected with `INVALID_ACTION`, not ACTION_ACCEPTED; no EVENT_BATCH reached.
-- [ ] First visible gap: synthetic `authorityResult` omits `attackerPos`; `hasStrictNativeCombatFields()` requires it and `isValidNativeCombatEvent()` binds it to trusted player position. Verify all predicates and native result serializer; do not weaken validation.
-- [ ] Audit publisher MessageRouter: `remoteHero.shoot(target, bow.knockArrow())` followed immediately by `remoteHero.finishNativeSpiritArrowAttack(target)`; determine whether this finalizes before MissileSprite completion.
-- [ ] Joined end-to-end: requester ATTACK → MatchRoom reservation/COMBAT_REQUEST → real publisher native completion → accepted EVENT_BATCH → requester reconciliation.
-- [ ] Hit/miss, moved/removed target, invalid Bow/mark/entity, exception/cancel, duplicate callback, stale/replay and requester RESYNC.
-- [ ] Keep SPEED volley and non-Mob targets fail-closed.
+### Current exact HEAD / CI
+- HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; Vitest 654 passed / 4 failed of 658 executions across eight files; Android JVM and Debug APK pass.
+- Two distinct failures, mirrored TS/JS:
+  1. Positive authority result: publisher messages are `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then unexpected `ERROR`; requester EVENT_BATCH path is not verified because test stops at this assertion.
+  2. Forged-`attackerPos` negative result: server returns a correlated requester `ERROR`, while test expects no requester send. Omitted-`attackerPos` negative test already expects correlated ERROR and passes.
+- Positive helper already sends `attackerPos: 9`; Java native serialization asserts the RemoteHero position. Missing/forged fields stay rejected.
+- `f5f88a11` adds authenticated player-id exclusion to FOV broadcast; inspect post-ACK ERROR and sender/event routing.
+
+### Remaining acceptance
+- [ ] Identify exact source/payload/recipient/requestId/sequence for ERROR after publisher ACK.
+- [ ] Align forged-position negative test to correlated ERROR without relaxing rejection.
+- [ ] Prove `finishNativeSpiritArrowAttack()` timing against actual MissileSprite callback/deferred report.
+- [ ] Joined requester ATTACK → reservation/COMBAT_REQUEST → real publisher completion → accepted sequenced EVENT_BATCH → requester MessageRouter application.
+- [ ] Hit/miss, moved/removed target, invalid Bow/mark/entity, exception/cancel, duplicate, stale/replay and RESYNC.
+- [ ] Keep SPEED volley/non-Mob targets fail-closed.
 
 ### Evidence limits
-- Headless harness instantiates MissileSprite but calls `onComplete()` manually; no rendered animation.
-- MatchRoom roundtrip fixture synthesizes publisher response; it does not execute Android MessageRouter/requester event application.
-- CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): 8 Vitest files, 652 passed / 2 failed of 654; both failures are TS/generated-JS copies. Android JVM + Debug APK passed.
-- Last green local-lifecycle baseline `6f912afb5d169370b44dae17a46cf2f10716ff51` / [CI 43240391766](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43240391766), historical only.
+- MissileSprite created headlessly; completion manually invoked, not rendered.
+- MatchRoom publisher response remains synthetic; actual publisher MessageRouter and requester EVENT_BATCH application remain unproven.
+- No Worker smoke, Durable Object SQLite/restart, rendered animation or physical two-device proof.
 

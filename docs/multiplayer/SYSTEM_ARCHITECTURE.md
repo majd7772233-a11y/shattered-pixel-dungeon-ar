@@ -120,11 +120,14 @@ The schema is not self-enforcing. Java serialization/parsing and Worker validati
 
 The existing ATTACK payload carries strict `SPIRIT_ARROW` metadata bound to Bow item identity, SnipersMark identity/bonus and stable Mob target identity. Backend intent validation, MatchRoom pending-combat reservation/forwarding and static schema validation exist.
 
-Local `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` callback tests pass headlessly, including duplicate-completion exactly-once behavior and target-moved cancellation/resync. The test manually invokes `MissileSprite.onComplete()`; it does not render an animation.
+Local `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` callback tests pass headlessly; duplicate manual completion is exactly-once and target-moved cancellation requests RESYNC. Completion is manually invoked, not rendered.
 
-Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324) on `7fe9b0164408cfde36b89a57551536bf6bbcd67c`: Android JVM/Debug APK pass; Backend build/schema pass but the new MatchRoom publisher-result test fails with `INVALID_ACTION` after COMBAT_REQUEST forwarding (652 passed / 2 failed).
+Exact-head CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) on `9168284e67d353a956fc276e0ea8c00d1c685f1d`: Android JVM/Debug APK pass; Backend build/schema pass but Vitest has 654 passed / 4 failed executions (two SpiritArrow MatchRoom scenarios mirrored in TS/JS).
 
-The synthetic authority result appears to omit `attackerPos`, required by strict combat validation and matched to trusted player position; inspect the full predicate chain and native publisher serializer. Also trace the MessageRouter publisher's immediate `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)` against asynchronous MissileSprite completion. Full requester → authority → accepted event → requester reconciliation remains unproven. Phase 9-C and Phase 9 remain open.
+The positive result helper contains `attackerPos: 9`; Java verifies native RemoteHero serialization equals its actual position. Current failures: publisher sees `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then extra `ERROR`; forged-position negative case receives a correlated requester `ERROR` despite expecting no message. Keep position validation strict.
+
+Trace FOV exclusion by authenticated session and the post-ACK ERROR; also trace immediate MessageRouter `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)` against asynchronous MissileSprite completion. Full requester → authority → accepted event → requester reconciliation remains unproven. Phase 9-C and Phase 9 remain open.
+
 
 
 ### 3.6 Android platform bridge

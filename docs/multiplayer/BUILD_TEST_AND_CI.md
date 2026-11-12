@@ -173,13 +173,14 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 
 ## 9. Current active branch checkpoint — 2026-11-12
 
-- Branch: `multiplayer-framework-core-14118577486727081892`; gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c`.
-- Exact-head workflow: [43242489324 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324).
-- Backend: TypeScript/schema checks passed; 8 Vitest files, 652 passed / 2 failed (654 executions), both copies of the new MatchRoom SpiritArrow result test.
-- Failure: ATTACK/COMBAT_REQUEST forwarding succeeds; synthetic publisher SYNC_MOB_STATE result returns `INVALID_ACTION`, not ACTION_ACCEPTED; requester EVENT_BATCH is not reached.
-- First visible fixture omission: `attackerPos`, required by `hasStrictNativeCombatFields()` and compared with authoritative attacker position by `isValidNativeCombatEvent()`. Verify real native result serializer and all predicates.
-- Android: `./gradlew test assembleDebug --no-daemon`; JVM tests and `:android:assembleDebug` passed.
-- Local SpiritArrow callback path passes headlessly; completion manually invoked, not rendered.
-- Last green local-lifecycle SHA `6f912afb5d169370b44dae17a46cf2f10716ff51` / [CI 43240391766](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43240391766), historical only.
-- CI does not deploy Worker or prove Durable Object SQLite/restart/physical multiplayer.
+- Branch: `multiplayer-framework-core-14118577486727081892`; exact HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
+- Latest commit: `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`; test-local `payloadJson` typing only.
+- Exact-head workflow [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
+- Backend TypeScript build/schema checks passed; Vitest 8 files, 654 passed / 4 failed of 658 executions. Failures are two distinct SpiritArrow MatchRoom cases mirrored in TypeScript/generated JavaScript.
+- Positive path publisher socket sees `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an extra `ERROR`; the test stops before requester EVENT_BATCH is verified.
+- Forged-`attackerPos` negative test still expects no requester send, while server sends a correlated `ERROR`. Omitted-`attackerPos` negative test has already been aligned and passes.
+- Positive fixture includes `attackerPos: 9`; Java delegated-RemoteHero regression verifies the actual native report equals `remoteHero.pos`. Do not repeat the old missing-field hypothesis or weaken checks.
+- Android `./gradlew test assembleDebug --no-daemon`; JVM tests and Debug APK compile passed.
+- `f5f88a11` changed FOV sender exclusion to authenticated player ID as well as WebSocket object identity; trace remaining post-ACK ERROR.
+- No Worker deployment, Durable Object SQLite/restart, rendered projectile or physical two-device test is proved by CI.
 

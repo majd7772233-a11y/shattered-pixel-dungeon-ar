@@ -350,11 +350,14 @@ The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the p
 
 ### 6.1.2 SpiritArrow publisher-result validation — 9-C partial
 
-The Worker validates SpiritArrow metadata against trusted Hero/Bow/SnipersMark/Mob identities and MatchRoom reserves/forwards pending combat to the level publisher. Separate intent and forwarding tests pass.
+The Worker validates SpiritArrow metadata against trusted Hero/Bow/SnipersMark/Mob identities. MatchRoom reserves and forwards pending combat to the level publisher; those separate tests pass.
 
-A new MatchRoom integration test joins requester ATTACK, COMBAT_REQUEST forwarding and a synthetic publisher SYNC_MOB_STATE response. The response receives `INVALID_ACTION`. The test's `authorityResult` appears to omit `attackerPos`; `hasStrictNativeCombatFields()` requires it and `isValidNativeCombatEvent()` matches it to the trusted player position. Verify all `authorityValid` predicates and actual native result serialization before changing fixture/server; do not weaken validation.
+At HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, exact CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) reports 654 passed / 4 failed. The positive result helper already includes `attackerPos: 9`; Java verifies the RemoteHero native serializer uses its actual position. Keep `hasStrictNativeCombatFields()` and `isValidNativeCombatEvent()` strict.
+
+Current symptoms: publisher socket sees `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an extra `ERROR`; the forged-position negative test is correctly rejected but the requester is sent a correlated `ERROR` that the test does not yet expect. Inspect the exact error payload, recipient, sequence and post-accept broadcast path. The current test has not proven requester EVENT_BATCH application.
 
 This fixture does not execute Android MessageRouter, RemoteHero asynchronous missile completion or requester EVENT_BATCH application. Those remain required for 9-C.
+
 
 
 ### 6.2 Poison damage against a native Hero Barrier

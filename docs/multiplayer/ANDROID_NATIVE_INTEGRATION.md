@@ -186,15 +186,18 @@ This is intentionally an expiry-only contract. It does not validate `SnipersMark
 
 
 
-### 4.11 SpiritBow / SnipersMark / asynchronous SpiritArrow (9-C; local lifecycle passing, authority result blocked)
+### 4.11 SpiritBow / SnipersMark / asynchronous SpiritArrow (9-C; local lifecycle passes, authority roundtrip blocked)
 
-Local `SnipersMark.doAction()` resolves SpiritBow, mark and stable Mob identity, then retains the native Hero report. The local completion context validates the same Hero/Bow/mark/target and invokes native `Hero.shoot(enemy, arrow)`.
+Local `SnipersMark.doAction()` resolves SpiritBow, mark and stable Mob identity, then retains the native Hero report. The completion context validates the same Hero/Bow/mark/target and invokes native `Hero.shoot(enemy, arrow)`.
 
-Headless JVM coverage reaches original `SpiritBow.cast()` and constructs the real `MissileSprite`; it manually invokes the registered `onComplete()` twice and verifies one ATTACK/cleanup. Target movement before completion cancels, retains the mark, requests RESYNC and emits no ATTACK. This does not render an animation.
+Headless JVM coverage reaches original `SpiritBow.cast()` and constructs the real `MissileSprite`; it manually invokes `onComplete()` twice and verifies one ATTACK/cleanup. Target movement before completion cancels, retains the mark, requests RESYNC and emits no ATTACK. No rendered animation is tested.
 
-Exact HEAD CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Android JVM tests and `assembleDebug` pass; Backend build/schema pass but the MatchRoom authority-result test fails with `INVALID_ACTION` after COMBAT_REQUEST forwarding. Its synthetic result appears to omit `attackerPos`, required by strict combat validation.
+Exact HEAD CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Android JVM and `assembleDebug` pass; Backend build/schema pass but Vitest has 654 passed / 4 failed of 658 executions.
 
-The publisher MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately finishes the report. Trace RemoteHero sprite/group and MissileSprite callback before accepting this order. Full requester → publisher callback → accepted event → requester reconciliation remains open.
+The positive authority helper includes `attackerPos: 9`; the Java delegated-RemoteHero regression verifies the native report's position equals `remoteHero.pos`. Current failures: publisher receives `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an extra `ERROR`; forged-`attackerPos` negative test expects no requester reply but receives correlated `ERROR`. Keep missing/forged position checks strict.
+
+The publisher MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`. Trace Hero deferred report, `SpiritArrow.onThrow()/completeNativeSpiritArrow()` and `MissileSprite.onComplete()` before accepting this ordering. Actual publisher MessageRouter and requester EVENT_BATCH application remain unproven.
+
 
 
 ## 5. RemoteHero and RemotePlayer

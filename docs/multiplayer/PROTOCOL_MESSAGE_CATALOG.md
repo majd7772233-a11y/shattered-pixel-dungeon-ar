@@ -208,9 +208,12 @@ SpiritArrow is **not** a new outer `MessageType` and is not a separate `NetworkA
 - `spiritArrow` is a strict object with no extra properties and requires `formatVersion`, `markBuffId`, `markBonus`, `targetEntityId` and `bowItemId`.
 - The conditional schema requires a Mob target and `attackKind: "RANGED"`, and rejects `projectileMutation` for this mode. Other modes cannot carry `spiritArrow`.
 
-The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`. Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324) passes schema validation and Android JVM/assembleDebug; Backend fails the new MatchRoom publisher-result scenario with `INVALID_ACTION` after COMBAT_REQUEST forwarding.
+The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`.
 
-Local `SnipersMark.doAction()/SpiritBow.cast()/MissileSprite` callback tests pass headlessly; the callback is manually invoked, not rendered. The simulated publisher `authorityResult` appears to omit `attackerPos`, which strict native combat validation requires and compares to trusted attacker position. Verify the native publisher serializer and all result guards. Full publisher callback and requester EVENT_BATCH reconciliation remain unproven.
+At exact HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, [CI 43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) passes TypeScript/schema validation and Android JVM/Debug APK, but Backend Vitest is red (654 passed / 4 failed of 658 executions; two MatchRoom scenarios mirrored in TS/JS). The positive authority helper contains `attackerPos: 9`; Java verifies the native RemoteHero result uses `remoteHero.pos`, so the older omission theory is stale.
+
+The positive test currently observes publisher `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`; requester EVENT_BATCH is not verified because the test stops at the extra error. The forged-position negative case receives a correlated requester `ERROR`, while its expectation is stale. Trace error recipient/payload/sequence, authenticated FOV sender exclusion, all authority predicates and asynchronous native completion. Full publisher MessageRouter/requester event reconciliation remains unproven.
+
 
 
 ## 9. Identity and sequence fields

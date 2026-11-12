@@ -74,12 +74,15 @@ That presence does not mean all features have passed end-to-end acceptance.
 
 ### Current verified checkpoint — 2026-11-12
 
-- Current gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c` on `multiplayer-framework-core-14118577486727081892`.
-- Exact-head CI [43242489324](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Android JVM tests and Debug APK compile pass; Backend build/schema pass but the new MatchRoom SpiritArrow result test fails (`INVALID_ACTION`, 652 passed / 2 failed of 654 Vitest executions).
-- Local native SpiritArrow cast/MissileSprite callback and target-moved cancellation tests pass in a headless JVM harness; the completion callback is manually invoked, not rendered.
-- The MatchRoom test forwards requester ATTACK and creates pending authority reservation, then rejects synthetic publisher SYNC_MOB_STATE. Its result fixture appears to omit `attackerPos`; verify all guards and actual native result serialization.
-- Full requester → designated publisher native execution → accepted result/event → requester reconciliation remains open. Audit immediate publisher-side `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)`.
-- Phases 1–8 complete; Phase 9 partial/open; Phases 10–23 open. Only 9-C is active. No live Worker/device proof claimed.
+- Exact live HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d` on `multiplayer-framework-core-14118577486727081892`; latest commit adds a test-local `payloadJson` type.
+- Exact-head CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; Vitest 654 passed / 4 failed of 658 executions across eight files; Android JVM and Debug APK pass.
+- Two actual failures mirrored in TypeScript/generated JavaScript: positive publisher result sends `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then unexpected `ERROR`; forged attacker-position negative test expects no sender reply but receives correlated `ERROR`.
+- Positive fixture contains `attackerPos: 9`; Java verifies native serialization equals `remoteHero.pos`. Missing/forged positions must remain rejected.
+- Local SpiritArrow lifecycle passes headlessly with manually invoked MissileSprite completion; no rendered animation is tested.
+- Requester ATTACK, pending authority reservation and COMBAT_REQUEST forwarding pass separately; accepted event delivery and requester application remain unproven.
+- Trace MessageRouter immediate `finishNativeSpiritArrowAttack()` against MissileSprite callback and Hero deferred-report ordering.
+- Phases 1–8 complete; Phase 9 partial/open; Phases 10–23 open. Only 9-C active; no live Worker/device proof claimed.
+
 
 
 ## 6. Modes and transports: do not infer readiness

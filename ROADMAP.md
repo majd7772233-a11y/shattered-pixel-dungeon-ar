@@ -87,15 +87,21 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Active project checkpoint — 2026-11-12 (9-C authority-result blocked)
+### Active project checkpoint — 2026-11-12 (9-C SpiritArrow roundtrip still red)
 
-- Repo/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Current gameplay/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c`; parent `59243da863f46151981ff2dae1e4c3559e122e53`.
-- Exact CI [43242489324 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Backend 652 passed / 2 failed (8 files; 654 executions), Android JVM + assembleDebug pass.
-- ATTACK forwarding to COMBAT_REQUEST succeeds; synthetic publisher SYNC_MOB_STATE result returns INVALID_ACTION, not ACTION_ACCEPTED.
-- First visible missing field: authorityResult fixture omits attackerPos, required by strict combat validation and matched to trusted player position. Verify all gates and native serializer.
-- Last green local-lifecycle baseline: `6f912afb5d169370b44dae17a46cf2f10716ff51` / [CI 43240391766](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43240391766), historical only.
-- Phases 1–8 complete; Phase 9 open; Phases 10–23 open. Only active slice 9-C.
+- **Live HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- **Exact-head CI:** [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162). Backend TypeScript build/schema checks pass. Vitest: 8 files, **654 passed / 4 failed (658 executions)**; the four are two SpiritArrow scenarios mirrored between TS and generated JS. Android JVM tests and Debug APK compilation pass.
+- **Positive publisher roundtrip failure:** publisher socket receives `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an unexpected `ERROR`. The test stops at this message-list assertion, so requester EVENT_BATCH delivery/application is not yet proven.
+- **Forged-position negative failure:** the server correctly rejects forged `attackerPos` with a correlated requester `ERROR`, but the test still expects no requester message. The omitted-position negative test has already been updated to expect that error and passes.
+- **Important correction:** the positive `makeSpiritArrowAuthorityResult()` fixture already contains `attackerPos: 9`; Java delegated-RemoteHero test asserts native serialization equals `remoteHero.pos`. Missing/forged positions remain negative cases. Do not add the field again or weaken validation.
+- **Recent source fix:** commit `f5f88a11` changes FOV sender exclusion to use authenticated player ID from the socket attachment as well as object identity. Latest commit `9168284e` only types `payloadJson` in the test-local publisher message shape.
+- **Local lifecycle:** `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` passes headless tests; callback is manually invoked twice for exactly-once cleanup. Target movement cancels, retains mark, requests RESYNC and sends no ATTACK. No rendered animation is tested.
+- **Publisher timing risk:** MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`; trace Hero deferred report and MissileSprite callback before accepting this ordering.
+- **Only active slice:** Phase 9-C SpiritArrow asynchronous authority/result roundtrip. Phases 1–8 complete for implementation/automated acceptance; Phase 9 remains partial/open; Phases 10–23 open. Do not start Phase 10.
+- **Remaining in 9-C:** identify the post-ACK extra ERROR and its recipient/requestId/sequence; update forged-position negative assertion to correlated ERROR; prove publisher async completion order; then join requester ATTACK → COMBAT_REQUEST → real publisher completion → accepted sequenced EVENT_BATCH → requester application/reconciliation. Cover hit/miss, moved/removed target, invalid Bow/mark/entity, exceptions/cancel, duplicate, replay/stale and RESYNC. Keep SPEED/non-Mob targets fail-closed.
+- **Evidence limits:** no live Worker smoke, real Durable Object SQLite/restart, rendered projectile animation or physical two-device match is claimed.
+- **Permanent workflow:** one coherent bounded subphase per conversation (about half a phase when appropriate). Each new chat refetches HEAD/diff/CI, scans the tree and reads all 21 Markdown files plus new files, implements only the requested slice, updates code/tests/docs, verifies exact-head CI, writes a detailed Arabic handoff prompt and stops. Handoff never replaces fresh inspection.
+
 
 ### Active continuation checkpoint — 2026-11-09 (Poison LifeLink batch atomicity verified; Phase 9 remains OPEN)
 
@@ -397,23 +403,30 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23.
 
-### Active continuation checkpoint — 2026-11-12 (9-C local lifecycle green; publisher result blocked)
+### Active continuation checkpoint — 2026-11-12 (9-C SpiritArrow authority/result flow; exact HEAD red)
 
 Phase 9 remains OPEN; only 9-C is active. Do not start Phase 10.
 
-- Code/test HEAD: `7fe9b0164408cfde36b89a57551536bf6bbcd67c`; parent `59243da863f46151981ff2dae1e4c3559e122e53`.
-- CI [43242489324 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43242489324): Backend 8 files, 652 pass / 2 fail; Android JVM tests and assembleDebug pass.
-- Local SpiritArrow lifecycle: `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` construction; pending report stays open in flight; registered callback invoked twice yields one ATTACK/cleanup. Target movement before callback cancels, retains mark, requests RESYNC and emits no ATTACK.
-- Headless limit: MissileSprite class/callback are real; `onComplete()` is manually invoked, not rendered animation.
-- MatchRoom test: requester ATTACK, reservation and COMBAT_REQUEST forwarding succeed; synthetic publisher SYNC_MOB_STATE result gets INVALID_ACTION.
-- First visible mismatch: fixture authorityResult appears to omit `attackerPos`; strict validator requires it and binds it to trusted player position. Verify all predicates and native Hero serializer before change.
-- Publisher branch currently calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`; trace async callback ordering.
+- **Live HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
+- **Exact-head CI:** [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162). Backend TypeScript build/schema checks pass. Vitest: 8 files, **654 passed / 4 failed (658 executions)**; the four are two SpiritArrow scenarios mirrored between TS and generated JS. Android JVM tests and Debug APK compilation pass.
+- **Positive publisher roundtrip failure:** publisher socket receives `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an unexpected `ERROR`. The test stops at this message-list assertion, so requester EVENT_BATCH delivery/application is not yet proven.
+- **Forged-position negative failure:** the server correctly rejects forged `attackerPos` with a correlated requester `ERROR`, but the test still expects no requester message. The omitted-position negative test has already been updated to expect that error and passes.
+- **Important correction:** the positive `makeSpiritArrowAuthorityResult()` fixture already contains `attackerPos: 9`; Java delegated-RemoteHero test asserts native serialization equals `remoteHero.pos`. Missing/forged positions remain negative cases. Do not add the field again or weaken validation.
+- **Recent source fix:** commit `f5f88a11` changes FOV sender exclusion to use authenticated player ID from the socket attachment as well as object identity. Latest commit `9168284e` only types `payloadJson` in the test-local publisher message shape.
+- **Local lifecycle:** `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` passes headless tests; callback is manually invoked twice for exactly-once cleanup. Target movement cancels, retains mark, requests RESYNC and sends no ATTACK. No rendered animation is tested.
+- **Publisher timing risk:** MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`; trace Hero deferred report and MissileSprite callback before accepting this ordering.
+- **Only active slice:** Phase 9-C SpiritArrow asynchronous authority/result roundtrip. Phases 1–8 complete for implementation/automated acceptance; Phase 9 remains partial/open; Phases 10–23 open. Do not start Phase 10.
+- **Remaining in 9-C:** identify the post-ACK extra ERROR and its recipient/requestId/sequence; update forged-position negative assertion to correlated ERROR; prove publisher async completion order; then join requester ATTACK → COMBAT_REQUEST → real publisher completion → accepted sequenced EVENT_BATCH → requester application/reconciliation. Cover hit/miss, moved/removed target, invalid Bow/mark/entity, exceptions/cancel, duplicate, replay/stale and RESYNC. Keep SPEED/non-Mob targets fail-closed.
+- **Evidence limits:** no live Worker smoke, real Durable Object SQLite/restart, rendered projectile animation or physical two-device match is claimed.
+- **Permanent workflow:** one coherent bounded subphase per conversation (about half a phase when appropriate). Each new chat refetches HEAD/diff/CI, scans the tree and reads all 21 Markdown files plus new files, implements only the requested slice, updates code/tests/docs, verifies exact-head CI, writes a detailed Arabic handoff prompt and stops. Handoff never replaces fresh inspection.
+
 
 #### Immediate next task
-1. Diagnose exact failed authorityValid predicate (start with attackerPos, then inspect all required fields/actual native output); fix source-faithful payload without weakening validation.
-2. Pass TS and generated-JS test copies and full Backend CI.
-3. Trace RemoteHero async finish ordering.
-4. Add requester → reservation → actual publisher callback → accepted EVENT_BATCH → requester reconciliation test.
+1. Trace the positive path's post-accept sequence and find the source of the third `ERROR`; capture exact payload, recipient, request ID and sequence.
+2. Update the forged-`attackerPos` negative test to expect the correlated requester `ERROR`; keep missing/forged positions rejected.
+3. Trace `MessageRouter → RemoteHero → Hero.shoot/deferred report → SpiritArrow.onThrow/completeNativeSpiritArrow → MissileSprite.onComplete`; prove when the report is finalized.
+4. Join requester ATTACK → reservation/COMBAT_REQUEST → actual publisher completion → accepted EVENT_BATCH → requester application/reconciliation.
+5. Cover hit/miss, target invalidation, invalid Bow/mark/entity, exception/cancel, duplicate, stale/replay and RESYNC. Run backend and Android JVM/assembleDebug, then verify CI on exact final SHA.
 
 #### 9-C acceptance
 - [ ] Resolve publisher SYNC_MOB_STATE INVALID_ACTION with source-faithful result.
