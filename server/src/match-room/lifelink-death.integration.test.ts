@@ -569,7 +569,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     // The publisher receives its own correlated ACTION_ACCEPTED; the requester receives only
     // the sequenced result event. It must not receive a second copy of the publisher's request.
     const publisherMessages = fixture.authorityWs.send.mock.calls
-      .map(call => JSON.parse(String(call[0])) as { messageType: string; requestId?: string; sequence?: number });
+      .map(call => JSON.parse(String(call[0])) as { messageType: string; requestId?: string; sequence?: number; payloadJson?: string });
     expect(publisherMessages.map(message => message.messageType)).toEqual(["COMBAT_REQUEST", "ACTION_ACCEPTED"]);
     const publisherAck = publisherMessages[1];
     expect(publisherAck.messageType, "Publisher authority result rejected: " + String(publisherAck.payloadJson || "")).toBe("ACTION_ACCEPTED");
