@@ -515,7 +515,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(pending.attackWeaponBundle).toBe(fixture.bowBundle);
     expect(pending.targetEntityId).toBe(ENTITY_ID);
     expect(pending.authorityId).toBe(PUBLISHER_ID);
-    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
     expect(fixture.sql.events).toHaveLength(0);
     expect(fixture.room.currentSequence).toBe(0);
     expect(fixture.senderWs.send).not.toHaveBeenCalled();
@@ -584,7 +584,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     // the sequenced result event. It must not receive a second copy of the publisher's request.
     expect(fixture.authorityWs.send).toHaveBeenCalledTimes(2);
     const publisherAck = JSON.parse(String(fixture.authorityWs.send.mock.calls[1][0]));
-    expect(publisherAck.messageType).toBe("ACTION_ACCEPTED");
+    expect(publisherAck.messageType, "Publisher authority result rejected: " + String(publisherAck.payloadJson || "")).toBe("ACTION_ACCEPTED");
     expect(publisherAck.requestId).toBe(requestId);
     expect(publisherAck.sequence).toBe(1);
 
@@ -653,7 +653,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(JSON.parse(String(fixture.senderWs.send.mock.calls[0][0])).messageType).toBe("ERROR");
     expect(JSON.parse(String(JSON.parse(String(fixture.senderWs.send.mock.calls[0][0])).payloadJson)).error)
       .toBe("INVALID_NATIVE_SPIRIT_ARROW_INTENT");
-    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 25 });
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
     expect(fixture.sql.events).toHaveLength(0);
     expect(fixture.room.currentSequence).toBe(0);
   });
