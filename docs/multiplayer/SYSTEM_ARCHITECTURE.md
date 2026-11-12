@@ -121,6 +121,7 @@ The schema is not self-enforcing. Java serialization/parsing and Worker validati
 The existing `ATTACK`/native attack payload can now identify `attackWeaponMode=SPIRIT_ARROW` and carry a strict `spiritArrow` object bound to the equipped Bow item, SnipersMark Buff identity/bonus and stable Mob target entity. The server validates that intent and has separate pending-authority reservation/forwarding tests. A static schema validator runs during Backend CI.
 
 This protocol/schema and server-intent presence is not proof of a functioning native attack. The current local Java completion hook is not passing its runtime integration: two Android tests fail after `SnipersMark.doAction()` before a `MissileSprite` is created. The pending-report guard versus arrow-cast exception is not yet distinguished. Full native authority execution and requester reconciliation remain open.
+Current repository HEAD is `8eec2bd45b6922f9f6d9814e634ec9ffd7b77c23`; gameplay code/test SHA is `377fa362772fb5367b548f44686e129493b1be14`. Exact CI [43228606923](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43228606923) has green Backend and red Android. Backend passes both schema checks and 652 executions across eight files; Android has two SpiritArrow JVM failures out of 88 and stops at `:core:test` before `assembleDebug`. The failure occurs before test MissileSprite creation. Phase 9-C remains the only active slice and is not accepted.
 
 
 ### 3.6 Android platform bridge
