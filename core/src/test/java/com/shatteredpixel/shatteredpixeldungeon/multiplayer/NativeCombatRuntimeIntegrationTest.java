@@ -2452,6 +2452,18 @@ public class NativeCombatRuntimeIntegrationTest {
 
         Assert.assertTrue("The delegated native attack must hit", hit);
         Assert.assertFalse("The native mob must be killed", target.isAlive());
+        NetworkMessage authorityReport = transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.ACTION
+                        && message.payloadJson != null
+                        && message.payloadJson.contains("SYNC_MOB_STATE"))
+                .findFirst().orElse(null);
+        Assert.assertNotNull("RemoteHero must serialize the native publisher combat result", authorityReport);
+        JsonValue authorityData = new JsonReader().parse(authorityReport.payloadJson).get("data");
+        Assert.assertNotNull("The native combat result must include attackerPos", authorityData.get("attackerPos"));
+        Assert.assertEquals("attackerPos must come from the actual RemoteHero native pre-state",
+                remoteHero.pos, authorityData.getInt("attackerPos"));
+        Assert.assertEquals("The serialized attacker identity must be the delegated remote player",
+                "client-attacker", authorityData.getString("attackerId"));
         Assert.assertTrue("The actual remote attacker must receive native XP", remoteHero.exp > attackerExpBefore);
         Assert.assertEquals("The publisher must not receive another player's kill XP",
                 publisherExpBefore, hero.exp);

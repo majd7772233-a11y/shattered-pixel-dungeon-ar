@@ -453,6 +453,22 @@ function makeSpiritArrowForwardFixture() {
   };
 }
 
+function makeSpiritArrowAuthorityResult(fixture: any, requestId: string, overrides: Record<string, any> = {}) {
+  return {
+    combatRequestId: requestId, attackerId: ATTACKER_ID, attackerPos: 9,
+    targetType: "MOB", targetEntityId: ENTITY_ID, targetPos: 17, targetPosAfter: 17,
+    targetHpBefore: 20, targetHtBefore: 20, targetHp: 15, targetHt: 20, damage: 5,
+    targetShieldBefore: 0, targetShieldAfter: 0, targetBuffsBefore: "[]", targetBuffs: "[]",
+    targetMobBundleAfter: nativeMobBundle(15, 17),
+    engineResult: true, engineHit: true, engineRanged: true, attackKind: "RANGED",
+    engineDistance: 8, engineActionCost: 1, combatSchemaVersion: 1, combatDepth: 1,
+    secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] }),
+    attackWeaponMode: "SPIRIT_ARROW", attackWeaponBundle: fixture.bowBundle,
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1,
+    spiritArrow: fixture.spiritArrow, ...overrides
+  };
+}
+
 function makeRoom(sql: MemoryMatchRoomSql): any {
   // Exercise the real MatchRoom prototype/handler without invoking the production
   // Durable Object constructor or its level-generation/migration side effects.
@@ -539,40 +555,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(forwarded.messageType).toBe("COMBAT_REQUEST");
     expect(forwarded.requestId).toBe(requestId);
 
-    const afterMobBundle = nativeMobBundle(15, 17);
-    const authorityResult = {
-      combatRequestId: requestId,
-      attackerId: ATTACKER_ID,
-      targetType: "MOB",
-      targetEntityId: ENTITY_ID,
-      targetPos: 17,
-      targetPosAfter: 17,
-      targetHpBefore: 20,
-      targetHtBefore: 20,
-      targetHp: 15,
-      targetHt: 20,
-      damage: 5,
-      targetShieldBefore: 0,
-      targetShieldAfter: 0,
-      targetBuffsBefore: "[]",
-      targetBuffs: "[]",
-      targetMobBundleAfter: afterMobBundle,
-      engineResult: true,
-      engineHit: true,
-      engineRanged: true,
-      attackKind: "RANGED",
-      engineDistance: 8,
-      engineActionCost: 1,
-      combatSchemaVersion: 1,
-      combatDepth: 1,
-      secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] }),
-      attackWeaponMode: "SPIRIT_ARROW",
-      attackWeaponBundle: fixture.bowBundle,
-      damageMultiplier: 1,
-      damageBonus: 0,
-      accuracyMultiplier: 1,
-      spiritArrow: fixture.spiritArrow
-    };
+    const authorityResult = makeSpiritArrowAuthorityResult(fixture, requestId);
 
     await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
       action: "SYNC_MOB_STATE",
@@ -629,6 +612,61 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     });
     expect(fixture.room.currentSequence).toBe(1);
     expect(fixture.room.worldTime).toBe(1);
+  });
+
+  it("rejects a SpiritArrow publisher result when attackerPos is omitted", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "spirit-arrow-missing-attacker-pos-001";
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+    expect(JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0])).messageType).toBe("COMBAT_REQUEST");
+    const result: Record<string, any> = makeSpiritArrowAuthorityResult(fixture, requestId);
+    delete result.attackerPos;
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_MOB_STATE", data: result, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe(requestId);
+    expect(response.sequence).toBe(0);
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("INVALID_ACTION");
+    expect(fixture.senderWs.send).not.toHaveBeenCalled();
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.has(requestId)).toBe(false);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
+    expect(fixture.sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatAttacker:" + ATTACKER_ID)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(false);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+  });
+
+  it("rejects a SpiritArrow publisher result when attackerPos does not match trusted player position", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "spirit-arrow-forged-attacker-pos-001";
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+    expect(JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0])).messageType).toBe("COMBAT_REQUEST");
+    const result = makeSpiritArrowAuthorityResult(fixture, requestId, { attackerPos: 10 });
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_MOB_STATE", data: result, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe(requestId);
+    expect(response.sequence).toBe(0);
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("INVALID_ACTION");
+    expect(fixture.senderWs.send).not.toHaveBeenCalled();
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.has(requestId)).toBe(false);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
+    expect(fixture.sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatAttacker:" + ATTACKER_ID)).toBe(false);
+    expect(fixture.sql.roomMeta.has("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(false);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
   });
 
   it("rejects SpiritArrow authority requests when the trusted mark points at another Mob", async () => {
