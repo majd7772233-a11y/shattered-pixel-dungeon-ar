@@ -20,6 +20,7 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Amok;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark;
 import com.shatteredpixel.shatteredpixeldungeon.ui.ActionIndicator;
+import com.shatteredpixel.shatteredpixeldungeon.ui.TargetHealthIndicator;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Barrier;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.enchantments.Blocking;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Healing;
@@ -139,6 +140,8 @@ public class NativeCombatRuntimeIntegrationTest {
 
         level = new TestLevel();
         Dungeon.level = level;
+        // GameScene creates this singleton during its UI setup; native Item.cast() expects it.
+        new TargetHealthIndicator();
         hero = new Hero();
         hero.heroClass = HeroClass.WARRIOR;
         Talent.initClassTalents(hero);
@@ -154,6 +157,7 @@ public class NativeCombatRuntimeIntegrationTest {
     public void clearNativeWorld() {
         MultiplayerManager.getInstance().endSession();
         Actor.clear();
+        TargetHealthIndicator.instance = null;
         Dungeon.hero = null;
         Dungeon.level = null;
     }
@@ -673,6 +677,9 @@ public class NativeCombatRuntimeIntegrationTest {
         Arrays.fill(level.heroFOV, true);
         Rat mob = addRat(hero.pos + 1, 20);
         attachHeadlessTargetSprite(mob);
+        Assert.assertNotNull("The headless Item.cast target must have a CharSprite", mob.sprite);
+        Assert.assertNotNull("The headless scene must own the target health indicator singleton",
+                TargetHealthIndicator.instance);
         String targetEntityId = "stable-spirit-arrow-target-001";
         manager.registerServerEntityId(mob.id(), targetEntityId);
         SilentSpiritBow bow = new SilentSpiritBow();
@@ -765,6 +772,8 @@ public class NativeCombatRuntimeIntegrationTest {
         Arrays.fill(level.heroFOV, true);
         Rat mob = addRat(hero.pos + 1, 20);
         attachHeadlessTargetSprite(mob);
+        Assert.assertNotNull(mob.sprite);
+        Assert.assertNotNull(TargetHealthIndicator.instance);
         manager.registerServerEntityId(mob.id(), "stable-spirit-arrow-cancel-001");
         SilentSpiritBow bow = new SilentSpiritBow();
         bow.setMultiplayerItemId("stable-spirit-arrow-cancel-bow-001");

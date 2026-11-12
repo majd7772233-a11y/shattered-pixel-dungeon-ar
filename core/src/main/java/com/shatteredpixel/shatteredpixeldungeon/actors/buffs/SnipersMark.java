@@ -183,6 +183,8 @@ public class SnipersMark extends FlavourBuff implements ActionIndicator.Action {
 			arrow.cast(hero, cell);
 			if (!manager.isMultiplayerActive()) detach();
 		} catch (RuntimeException error) {
+			// Preserve the original SPD failure in diagnostics before fail-closed cancellation/resync.
+			com.watabou.noosa.Game.reportException(error);
 			bow.sniperSpecial = false;
 			if (manager.isMultiplayerActive()) {
 				hero.cancelNativeSpiritArrowAttack(id());
