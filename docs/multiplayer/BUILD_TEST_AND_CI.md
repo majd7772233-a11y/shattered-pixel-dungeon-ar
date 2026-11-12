@@ -13,7 +13,7 @@ Inspected server/package.json:
 | Script | Command | Purpose |
 |---|---|---|
 | build | tsc | Compile/type-check TypeScript according to tsconfig.json. |
-| test | node scripts/validate-phase7-native-mutation-schema.mjs && vitest run | Run static native-mutation/schema validation, then Vitest. |
+| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && vitest run | Run both static native schema contracts, then Vitest. |
 
 Normal backend validation sequence from repository root:
 
@@ -170,3 +170,13 @@ Stage 3 keeps `server/wrangler.jsonc`'s `main: src/index.ts` stable while moving
 The source-preservation audit reconciled all 200 original top-level declarations before the original `MatchRoom` class against the 15 destination modules using normalized declaration-text comparisons: 200/200 matched without text differences. The 118 historical validator/protocol/helper exports and the `MatchRoom` named export remain available. The separate Stage 2 inheritance chain still contains a single `MatchRoom` class and shares one Durable Object instance.
 
 Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: the Backend typecheck/build and full tests (including schema validation) succeeded, and Android JVM tests plus debug APK compilation succeeded. Backend reported 568 executions across six test files; generated/mirrored TypeScript and JavaScript outputs mean this is not 568 unique source scenarios. A green workflow is not a live Worker deployment or a physical-device multiplayer result. The deploy workflow remains scoped to `master`/`main` pushes or manual dispatch.
+
+## 9. Current active branch checkpoint — 2026-11-12
+
+- Live branch HEAD: `377fa362772fb5367b548f44686e129493b1be14`; latest exact-head [CI run 43213971129](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129) is **failure**.
+- Backend job: TypeScript build succeeded; both static schema validators succeeded; 8 Vitest files and 652 executions passed.
+- Android job: the `./gradlew test assembleDebug --no-daemon` command failed at `:core:test`; 88 tests completed, two SpiritArrow lifecycle regressions failed before MissileSprite creation. `assembleDebug` was therefore not reached.
+- Last green code baseline before the SpiritArrow attempt: `0a70053addd976fc6d4330af52330d7593ee1bc4`, [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325).
+- This branch CI does not deploy the Worker or prove a two-device match. The deploy workflow remains scoped to master/main pushes or manual dispatch.
+- Do not claim the current head has a green Android build or a passing APK compile. Re-run exact-head CI after the 9-C fix and require both jobs to pass.
+

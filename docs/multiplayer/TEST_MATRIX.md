@@ -270,3 +270,33 @@ These are deterministic Worker-handler integration tests. They do not instantiat
 
 **Exact-head CI:** `b68b66e686b98dbf343997202b215e2c828b7b89` passed [run 42777941791](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791): TypeScript build + 644 Vitest executions across eight files and Android JVM tests + Debug APK compilation.
 
+## Phase 9-C — SpiritArrow asynchronous lifecycle and authority roundtrip (2026-11-12; OPEN)
+
+### Completed pieces, not full acceptance
+
+- [x] Add `SPIRIT_ARROW` to `NativeAttackPayload.attackWeaponMode` and define strict `spiritArrow` metadata fields/conditional requirements in `protocol/schema.json`.
+- [x] Add `server/scripts/validate-spirit-arrow-schema.mjs` and run it through `npm test`; current exact-head Backend CI prints `SpiritArrow native attack protocol schema: valid`.
+- [x] Backend validator and MatchRoom pending authority reservation/forwarding paths exist with separate automated tests.
+- [x] Add local SpiritArrow completion context and attempt to finish the native report from the projectile completion hook; this is implementation presence only, not verified runtime acceptance.
+
+### Still failing / not yet accepted
+
+- [ ] Diagnose why `SnipersMark.doAction()` leaves no pending report and creates no MissileSprite in the two new JVM tests. Expose whether `beginNativeSpiritArrowAttack()` returned false or `SpiritArrow.cast()` threw/cancelled; retain the original exception.
+- [ ] Make the real local `SnipersMark.doAction()` → asynchronous `SpiritArrow.cast()` → `MissileSprite.onComplete()` route finish or cancel exactly once.
+- [ ] Prove the target-disappearing path cancels the pending report and restores/resyncs without applying a stale attack.
+- [ ] Cover native miss, target moved/removed, invalid mark/Bow/entity, duplicate callback, thrown exception, cancellation, stale/replay and reconnect/resync.
+- [ ] Add one end-to-end test for request → pending authority → designated publisher native execution → accepted event → requester reconciliation; existing validator/forwarding/MessageRouter tests are separate components, not proof of this roundtrip.
+- [ ] Keep SPEED's multi-arrow volley and non-Mob marked targets fail-closed.
+
+### Exact-head failure
+
+Live code HEAD: `377fa362772fb5367b548f44686e129493b1be14`; [CI run 43213971129](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129) is red.
+
+- Backend: build passed; both static schema validators passed; 8 files and 652 Vitest executions passed.
+- Android: 88 JVM tests completed, 2 failed:
+  - `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs`: `Pending SpiritArrow missing; resync=true, missileCreated=false`.
+  - `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce`: `SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false`.
+- Gradle failed at `:core:test`; `assembleDebug` was not reached. Do not mark APK build as passed.
+
+The last green baseline before this SpiritArrow change chain is `0a70053addd976fc6d4330af52330d7593ee1bc4`, [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325). The current red run supersedes that green result for the live branch HEAD.
+

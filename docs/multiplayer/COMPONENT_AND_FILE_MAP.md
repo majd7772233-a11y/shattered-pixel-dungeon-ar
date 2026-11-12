@@ -31,6 +31,8 @@ The audited tree contains 32 Java files:
 | NativeCombatAuthorityPolicy.java | Policy for native combat path selection. | Hero, MessageRouter, MultiplayerManager; align ownership rules with Worker authorization. |
 | NativeCombatJson.java | Strict JSON writer/helper for native combat payloads. | Hero, Mob, combat schema and Worker parser; wire changes require schema and negative tests. |
 | NativeHeroBuffTickPublisher.java | Captures native Hero timed-effect tick state and publishes before/after information. | Actor, Hero, Worker buff validators, NativeCombatRuntimeIntegrationTest; newly allowed effects need full side-effect coverage. |
+| SpiritBow.java | Native SpiritArrow generation and asynchronous projectile completion; multiplayer callback context is optional so solo SPD remains native. | SnipersMark, Hero pending report, stable Bow/Mob IDs; current async runtime tests are red before missile creation. |
+| SnipersMark.java | Local mark action/expiry, SpiritBow selection, marked target selection and bonus. | `Hero.beginNativeSpiritArrowAttack`, `SpiritArrow.cast`, stable entity mapping, cancel/resync; expiry and action are separate behaviors. |
 | NativeItemActionPublisher.java | Executes/wraps selected native item actions and publishes resulting state. | Hero, NativeItemUse, item classes, inventory and Worker mutation validators. |
 | NativeItemUse.java | Multiplayer native item-action context, support allowlist, preflight/rejection/finalization. | Food/Potion/Scroll/Wand/Item actions, NativeItemActionPublisher, Worker; ambiguous side effects stay fail-closed. |
 | NativeMobCombatDelta.java | Captures/serializes secondary Mob changes during native combat. | Hero, Mob, WorldSnapshot, Worker combat delta validators, rewards/loot. |
@@ -90,6 +92,7 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/validators/world-items.ts | DROP/PICKUP/THROW/projectile/alchemy validation and mutation helpers. | Keep all before/after comparisons and native side-effect checks. |
 | server/src/validators/hero-buffs.ts, world-state.ts and combat-state.ts | Hero/Mob Buff ticks, world snapshots/turns, HP/damage, Ankh and combat deltas/events. | Preserve fail-closed native state contracts and existing test coverage. |
 | server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
+| server/scripts/validate-spirit-arrow-schema.mjs | Static contract test for `SPIRIT_ARROW`, strict `spiritArrow` metadata and conditional ranged Mob rules. | Run in `npm test`; proves schema structure, not local projectile runtime or authority roundtrip. |
 | server/src/index.test.ts | Main backend validator/contract test suite, retained on the root `./index` import path. | Add focused positive/negative cases beside the affected validator/action domain. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |

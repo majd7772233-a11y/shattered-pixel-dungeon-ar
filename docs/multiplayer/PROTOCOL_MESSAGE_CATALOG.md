@@ -180,14 +180,14 @@ A snapshot or event record sequence must be applied monotonically. Stale/duplica
 
 ## 8. Protocol schema definitions
 
-protocol/schema.json defines these 13 object/scalar groups at the baseline:
+`protocol/schema.json` is Draft-07 and currently defines the shared envelope, native snapshots/items and combat payloads, including the SpiritArrow-specific extension inside `NativeAttackPayload`.
 
 | Definition | Purpose |
 |---|---|
 | NativeUseItemAction | DRINK, EAT, READ action discriminator |
 | NativeMobEntity | Stable ID, native Mob state, AI and scheduler fields |
 | NativeLevelSnapshot | Version, floor, dimensions, metadata, tiles, transitions and entity collections |
-| NativeAttackPayload | Native Hero attack request/result fields and secondary/projectile state |
+| NativeAttackPayload | Native Hero attack request/result fields, weapon context, secondary/projectile state and SpiritArrow extension |
 | NativeTile | Full native traversal/terrain/visibility flags |
 | NativeCombatOutcomeEvent | Sequenced combat outcome and native state |
 | NativeMobDamagePayload | Native Mob → Hero or related damage transition |
@@ -198,7 +198,20 @@ protocol/schema.json defines these 13 object/scalar groups at the baseline:
 | NativeHeap | Heap identity, state and items |
 | NativeItem | Stable item ID, class, quantity, serialized bundle, stackability and economic metadata |
 
-The schema is Draft-07. Native snapshots have strict required fields for full snapshots; optional fields must not be made required or optional without checking both Java export/restore and server admission.
+### 8.1 SpiritArrow contract inside NativeAttackPayload
+
+SpiritArrow is **not** a new outer `MessageType` and is not a separate `NetworkActionType`. It is an attack weapon mode carried inside the existing native attack request/result contract:
+
+- `attackWeaponMode: "SPIRIT_ARROW"` identifies the original native SpiritBow/SpiritArrow execution.
+- `attackWeaponBundle` binds the submitted bow Bundle to the trusted equipped item.
+- `engineRanged` must be `true`.
+- `spiritArrow` is a strict object with no extra properties and requires `formatVersion`, `markBuffId`, `markBonus`, `targetEntityId` and `bowItemId`.
+- The conditional schema requires a Mob target and `attackKind: "RANGED"`, and rejects `projectileMutation` for this mode. Other modes cannot carry `spiritArrow`.
+
+The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in the backend `npm test` script. At the live code HEAD `377fa362772fb5367b548f44686e129493b1be14`, Backend CI printed `SpiritArrow native attack protocol schema: valid`.
+
+This proves schema structure and cross-field rules only. It does **not** prove that the local asynchronous `SnipersMark.doAction()`/MissileSprite callback works or that the full pending-authority → native resolution → accepted event → client reconciliation roundtrip is complete. The exact-head Android regressions currently fail before missile creation; see `TEST_MATRIX.md` and `ROADMAP.md`.
+
 
 ## 9. Identity and sequence fields
 

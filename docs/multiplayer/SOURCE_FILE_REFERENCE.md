@@ -104,6 +104,8 @@ The package has 32 Java files:
 | NativeCombatAuthorityPolicy.java | Authority selection helper for native combat |
 | NativeCombatJson.java | Strict JSON writer for combat payloads |
 | NativeHeroBuffTickPublisher.java | Native Hero Buff tick capture/publish |
+| SpiritBow.java | Native SpiritArrow projectile and optional multiplayer completion context; verify asynchronous `MissileSprite.onComplete()` and native Hero report lifecycle. |
+| SnipersMark.java | Native SnipersMark expiry and `doAction()` Bow/marked-target selection. |
 | NativeItemActionPublisher.java | Selected native item action publication |
 | NativeItemUse.java | Item-use preflight and fail-closed allowlist |
 | NativeMobCombatDelta.java | Secondary native Mob delta capture |
@@ -168,6 +170,7 @@ server/ contains:
 - tsconfig.json;
 - wrangler.jsonc;
 - scripts/validate-phase7-native-mutation-schema.mjs;
+- scripts/validate-spirit-arrow-schema.mjs; (strict NativeAttackPayload SpiritArrow metadata/conditional schema parity).
 - src/index.ts (35-line Worker entry + compatibility facade);\n- src/worker.ts (default Worker request router);
 - src/match-room/ (base, persistence, combat, snapshots, actions, messages, final MatchRoom class);
 - src/protocol/types.ts;
@@ -182,7 +185,7 @@ server/ contains:
 
 | Path | Responsibility |
 |---|---|
-| protocol/schema.json | Draft-07 schema, protocol 1.0.0, envelope and native payload definitions |
+| protocol/schema.json | Draft-07 schema, protocol 1.0.0, envelope and native payload definitions, including `SPIRIT_ARROW`/`spiritArrow` conditional contract |
 | .github/workflows/multiplayer-ci.yml | Backend build/tests and Android JVM tests/debug APK compile |
 | .github/workflows/deploy-server.yml | Cloudflare Worker deployment from master/main or manual dispatch |
 | .github/workflows/release.yml | Release workflow; inspect before release changes |

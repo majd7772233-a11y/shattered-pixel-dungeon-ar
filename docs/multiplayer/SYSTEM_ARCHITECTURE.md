@@ -115,6 +115,14 @@ The top-level message envelope requires protocolVersion, messageType, and payloa
 
 The schema is not self-enforcing. Java serialization/parsing and Worker validation must implement the same semantics. Server admission must not rely on a client merely claiming that an operation was natively executed.
 
+
+### 3.5.1 SpiritArrow attack contract — current 9-C status
+
+The existing `ATTACK`/native attack payload can now identify `attackWeaponMode=SPIRIT_ARROW` and carry a strict `spiritArrow` object bound to the equipped Bow item, SnipersMark Buff identity/bonus and stable Mob target entity. The server validates that intent and has separate pending-authority reservation/forwarding tests. A static schema validator runs during Backend CI.
+
+This protocol/schema and server-intent presence is not proof of a functioning native attack. The current local Java completion hook is not passing its runtime integration: two Android tests fail after `SnipersMark.doAction()` before a `MissileSprite` is created. The pending-report guard versus arrow-cast exception is not yet distinguished. Full native authority execution and requester reconciliation remain open.
+
+
 ### 3.6 Android platform bridge
 
 android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java implements the core BluetoothTransport.NativeBluetoothProvider interface using Android Bluetooth APIs. This is a platform adapter. Verify its provider registration/injection path and current Android permission/manifest behavior before describing Bluetooth as ready.
