@@ -691,9 +691,21 @@ public class NativeCombatRuntimeIntegrationTest {
 
         String heroStateBefore = SPDLevelSnapshot.currentHeroStateJson(hero);
         String bowBundle = SPDLevelSnapshot.currentItemBundle(bow);
+        Assert.assertTrue("The multiplayer session should be active before using the mark", manager.isMultiplayerActive());
+        Assert.assertSame("The native equipped bow must be discoverable by Belongings", bow,
+                hero.belongings.getItem(SpiritBow.class));
+        Assert.assertSame("The mark must still resolve its native target actor", mob, Actor.findById(mark.object));
+        Assert.assertEquals("The target must be mapped to its stable server identity", targetEntityId,
+                manager.getServerEntityId(mark.object));
+        Assert.assertEquals("SnipersMark must persist the same stable target identity", targetEntityId,
+                mark.serverEntityId);
+        Assert.assertNotEquals("The marked target must be natively aimable",
+                -1, com.shatteredpixel.shatteredpixeldungeon.ui.QuickSlotButton.autoAim(mob, bow.knockArrow()));
         try {
             mark.doAction();
-            Assert.assertTrue("SnipersMark must retain the pending report until the missile completes",
+            Assert.assertTrue("SnipersMark must retain the pending report until the missile completes; resync="
+                            + transport.sent.stream().anyMatch(m -> m.messageType == MessageType.RESYNC)
+                            + ", bowSniper=" + bow.sniperSpecial + ", missileCreated=" + (group.missile != null),
                     hero.hasPendingNativeSpiritArrowAttack());
             Assert.assertNotNull("The real SpiritBow.cast path must create a MissileSprite", group.missile);
             Assert.assertFalse("No ATTACK is published while the arrow is in flight",
@@ -767,9 +779,17 @@ public class NativeCombatRuntimeIntegrationTest {
         hero.sprite = heroSprite;
         heroSprite.parent = group;
 
+        Assert.assertTrue(manager.isMultiplayerActive());
+        Assert.assertSame(bow, hero.belongings.getItem(SpiritBow.class));
+        Assert.assertSame(mob, Actor.findById(mark.object));
+        Assert.assertEquals("stable-spirit-arrow-cancel-001", manager.getServerEntityId(mark.object));
+        Assert.assertEquals("stable-spirit-arrow-cancel-001", mark.serverEntityId);
+        Assert.assertNotEquals(-1, com.shatteredpixel.shatteredpixeldungeon.ui.QuickSlotButton.autoAim(mob, bow.knockArrow()));
         try {
             mark.doAction();
-            Assert.assertTrue(hero.hasPendingNativeSpiritArrowAttack());
+            Assert.assertTrue("Pending SpiritArrow missing; resync="
+                    + transport.sent.stream().anyMatch(m -> m.messageType == MessageType.RESYNC)
+                    + ", missileCreated=" + (group.missile != null), hero.hasPendingNativeSpiritArrowAttack());
             mob.pos += 2;
             group.missile.onComplete(null);
 
