@@ -115,55 +115,39 @@
 - Phase 23: physical-device playtest بقيادة المستخدم، وهي الأخيرة.
 - إصلاح ظهر في Phase 23 يسجل كمتابعة جديدة بعد الخطة، ولا يخفى داخل مرحلة قديمة.
 
-## 10. الحالة التقنية عند إنشاء البروتوكول — 2026-11-12
+## 10. الحالة التقنية الحالية عند آخر تدقيق — 2026-11-12
 
-### المستودع والتحقق
+### المستودع والـHEAD والاختبارات
 
-- Repo: majd7772233-a11y/shattered-pixel-dungeon-ar
-- Branch: multiplayer-framework-core-14118577486727081892
-- آخر Gameplay code/test SHA: 55822c0df55b302b5497f5383004758396bab625
-- آخر Commit message: Tighten native SpiritArrow target and mode validation
-- Exact-head CI: [42798096407 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42798096407)
-- Backend: TypeScript build ناجح؛ 8 ملفات اختبار؛ 652 test executions ناجحة.
-- Android: JVM tests وassembleDebug ناجحان؛ BUILD SUCCESSFUL in 39s، و57 actionable tasks.
-- 652 هو عدد executions وليس عدد السيناريوهات الفريدة بسبب تكرار بعض TS/JS test outputs.
-- Phase 1–8 complete for implementation/automated acceptance؛ Phase 9 open؛ Phase 10–23 open.
-- لا يوجد ادعاء بعمل Worker deployment smoke test أو physical two-device test على هذا الـHEAD.
+- Repo: `majd7772233-a11y/shattered-pixel-dungeon-ar`
+- Branch الوحيد: `multiplayer-framework-core-14118577486727081892`
+- Live HEAD: `377fa362772fb5367b548f44686e129493b1be14`
+- آخر Commit: `Diagnose native SpiritArrow mark action setup` — 2026-11-12 12:00:08 UTC
+- Parent: `40f3085c93af1aeae5d6448552f410f41b90d516`
+- Exact-head CI: [43213971129 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129)
+- Backend: نجح TypeScript build؛ نجح مدقق Phase 7؛ نجح مدقق SpiritArrow schema؛ 8 ملفات و652 Vitest executions نجحت. العدد executions وليس عدد السيناريوهات المصدرية الفريدة عند وجود TS/JS outputs متطابقة.
+- Android: 88 JVM tests completed، و2 failed داخل `:core:test`; Gradle فشل، ولذلك لم يصل إلى `assembleDebug`. لا يوجد Debug APK نجاح على هذا الـHEAD.
+- Last green base: `0a70053addd976fc6d4330af52330d7593ee1bc4`; [CI 43198856325](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43198856325). هذا baseline قبل تنفيذ 9-C، وليس إثبات نجاح HEAD الحالي.
+- Phase 1–8 complete for implementation/automated acceptance؛ Phase 9 open؛ Phase 10–23 open. لا Worker deployment smoke test أو physical two-device test مدّعى.
 
-### Phase 9 — المنجز والمدعوم بالمصدر والاختبارات
+### الحالة الحالية للشريحة 9-C
 
-- Source-specific Hero Buff ticks/expiry مع pre/post state وactor clocks.
-- Wand.Charger/Recharging، والمسارات المدعومة من Food/Potion/Scroll.
-- Poison/Hunger/Dread/Drowsy وبعض shield/Berserk transitions المقبولة.
-- Barrier exact shield consumption وpartial_lost_shield وShieldBuff priority ordering.
-- Mob Buff expiry/restore والتعامل مع timers المتزامنة.
-- Poison LifeLink batch ضمن Hero tick أو lethal Hero environment action، مع validation/reward/loot، transaction rollback/replay/non-publisher rejection.
-- Atomic Hero Buff ticks، correlated errors، deferred ACK/FOV broadcasts بعد transaction commit.
-- Full snapshot JSON/restore، non-publisher Poison resync test.
-- Hero Amok expiry وSnipersMark expiry.
-- SpiritArrow بدأ جزئيًا: stable Bow/mark/target metadata، backend validator، MatchRoom authority pending/forwarding، remote MessageRouter authority simulation، validator/forwarding/native-report tests منفصلة.
+- stable SpiritBow/Bow item identity وSnipersMark Buff identity/bonus وstable marked Mob entity metadata موجودة.
+- يوجد Backend SpiritArrow validator، وMatchRoom pending authority reservation/forwarding، واختبارات منفصلة للـvalidator/forwarding، وremote MessageRouter publisher simulation.
+- تم توصيل local completion context داخل `SpiritBow.SpiritArrow` بمحاولة إنهاء التقرير عند `MissileSprite.onComplete()` بدل الاعتماد على استدعاء يدوي فقط. لكن الاختبارات الحقيقية تفشل قبل إنشاء MissileSprite، لذلك هذا callback لم يثبت عمليًا.
+- تم إصلاح schema parity من ناحية العقد: `NativeAttackPayload.attackWeaponMode` يحتوي `SPIRIT_ARROW`; و`spiritArrow` كائن صارم يتطلب `formatVersion`, `markBuffId`, `markBonus`, `targetEntityId`, `bowItemId`; وشرط `SPIRIT_ARROW` يفرض ranged Mob، `engineRanged=true`، وغياب `projectileMutation`. أضيف `server/scripts/validate-spirit-arrow-schema.mjs` وأصبح ضمن `npm test`. سجل Backend الحالي يقول إن schema valid.
+- آخر فشلين Android:
+  1. `nativeSnipersMarkSpiritArrowTargetDisappearingBeforeMissileCompletionCancelsAndResyncs`: `Pending SpiritArrow missing; resync=true, missileCreated=false`.
+  2. `nativeSnipersMarkSpiritArrowCompletesFromTheRealMissileCallbackExactlyOnce`: `SnipersMark must retain the pending report until the missile completes; resync=true, bowSniper=false, missileCreated=false`.
+- preconditions الأولية للاختبار (جلسة multiplayer، الـBow المجهز، Actor mark/target، stable entity mapping، autoAim) تمر. سبب الفشل بعد `doAction()` غير محسوم: قد يكون `beginNativeSpiritArrowAttack()` رفض أحد guards، أو exception من `arrow.cast()` أدى إلى cancel/reset وRESYNC. أضف تشخيصًا يميز المسارين ويظهر exception الأصلي قبل تعديل المنطق؛ لا تخمّن السبب ولا تضعف guards.
+- Commit chain بعد آخر green baseline: `c893e6949428a34a30a89e22234e7132ad71a74c` (local callback attempt)، `274459848197080fd70fff2479a2bced955f013a` (Tweener import fix)، `40f3085c93af1aeae5d6448552f410f41b90d516` (schema/static validator)، `377fa362772fb5367b548f44686e129493b1be14` (test diagnostics فقط).
 
-### Phase 9 — المتبقي المؤكد
+### الخطوة التالية وحدودها
 
-1. **SpiritArrow local async lifecycle:** SnipersMark.doAction() يبدأ beginNativeSpiritArrowAttack ثم arrow.cast() غير المتزامن. لا يوجد استدعاء من local projectile completion callback إلى finishNativeSpiritArrowAttack؛ الاستدعاء موجود في remote authority MessageRouter والاختبار فقط. اختبار Android الحالي يستدعي finish يدويًا بعد hero.shoot ولا يحاكي دورة اللاعب الحقيقية.
-2. **Protocol schema mismatch:** Java/server يستخدمان attackWeaponMode SPIRIT_ARROW وبيانات spiritArrow، لكن protocol/schema.json لا يتضمن SPIRIT_ARROW في enum ولا يعرف property spiritArrow.
-3. **No single end-to-end roundtrip test:** يلزم initial request → pending authority → publisher native execution → final accepted event → client reconciliation، لا اختبارات منفصلة فقط.
-4. اختبار miss/target-disappears/exception/cancel/duplicate callback/timeout وإغلاق pending report وBuff mark exactly-once.
-5. SPEED augment (three-shot volley) وأهداف غير Mob تظل fail-closed حتى عقد batch/authority مناسب.
-6. بقية المتطلبات: actual Durable Object SQLite rollback/restart/crash؛ authority handoff/disconnect؛ level-up XP/Hero.updateHT/item onHeroGainExp؛ Monk ability/talent variants؛ RemoteHero/player LifeLink؛ more consumables and overlapping DOT/HoT/shield/detach؛ reconnect/expiry/malformed/replay/resync.
+**الشريحة التالية داخل المحادثة الجديدة: استكمال 9-C فقط.** ابدأ بتحليل سبب رفض begin مقابل exception من cast؛ بعده أكمل real local async lifecycle → exactly-once finish/cancel → authority roundtrip → accepted event/client reconciliation. اختبر miss/target disappearing/error/duplicate/cancel/stale/replay/resync. أبق SPEED volley والأهداف غير Mob fail-closed. لا تبدأ شريحة جديدة أو Phase 10.
 
-### الشريحة التالية: 9-C
+بعد 9-C تبقى داخل Phase 9: actual Durable Object SQLite rollback/restart/crash؛ authority handoff/disconnect؛ level-up XP/Hero.updateHT/item onHeroGainExp؛ Monk variants؛ RemoteHero/player LifeLink؛ more consumables and overlapping DOT/HoT/shield/detach؛ reconnect/expiry/malformed/replay/resync. لا تُغلق Phase 9 حتى تُغلق جميع معايير ROADMAP.
 
-**9-C — إغلاق دورة SpiritArrow غير المتزامنة وعقدها البروتوكولي.**
-
-داخلها فقط:
-- ربط local projectile callback الحقيقي بإنهاء/إلغاء SpiritArrow exactly-once دون تغيير solo SPD behavior.
-- تحديث protocol/schema لـSPIRIT_ARROW وspiritArrow ومزامنته مع Java/server/tests.
-- اختبار Native runtime ينفذ SnipersMark.doAction وSpiritArrow.cast/MissileSprite callback الحقيقي، وليس finish يدويًا.
-- اختبار authority full roundtrip من الطلب إلى publisher إلى accepted result/reconciliation.
-- حالات miss/target disappearance/error/duplicate/cancel/stale/replay/resync.
-- إبقاء SPEED volley وunsupported targets fail-closed؛ لا توسّعها إلا إذا كان ذلك blocker مباشرًا ومختبرًا.
-بعد 9-C اختر شريحة Phase 9 التالية. لا تبدأ Phase10.
 
 ## 11. ملفات Markdown التي يجب قراءتها عند كل بداية
 

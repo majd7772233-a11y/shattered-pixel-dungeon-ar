@@ -154,6 +154,20 @@ This is deliberately narrower than synchronizing the mark's action: `SnipersMark
 The Java regression checks the action indicator clear, preserved target Actor ID/bonus in the transmitted pre-state, and unchanged nearby Mob HP/AI state. The backend regression rejects early expiry, a modified target ID, changed HP/shield/inventory, and implicit disappearance during a Haste tick.
 
 
+
+## 4.2 SpiritArrow intent, authority and asynchronous native result (9-C partial)
+
+The native starting point is `SnipersMark.doAction()`, not a new protocol message. The client identifies the equipped SpiritBow and marked Mob, maps the marked local Actor to its stable server `targetEntityId`, obtains the bow's stable item-instance ID and serialized Bundle, captures the Hero pre-state, and stores `spiritArrow` metadata under the existing attack contract. The attack declares `attackWeaponMode="SPIRIT_ARROW"`, `attackKind="RANGED"` and `engineRanged=true`.
+
+The backend now validates the strict metadata against the trusted Hero/Bow/SnipersMark/Mob state and MatchRoom has a pending native combat reservation/forwarding path. Separate validator, authority-forwarding and publisher-side MessageRouter tests exist. The schema contract is in `protocol/schema.json`; it is checked by `server/scripts/validate-spirit-arrow-schema.mjs` as part of backend `npm test`. This is a weapon mode inside `NativeAttackPayload`, not a new top-level message or NetworkActionType.
+
+The local native attempt retains a pending Hero report, calls the original asynchronous `SpiritArrow.cast()`, and binds the SpiritArrow completion hook to the projectile's actual completion. The intended completion revalidates the same Hero, bow item, mark Buff and stable target, then calls the original `Hero.shoot(enemy, arrow)` path and flushes the resulting native report exactly once. It must not calculate damage in TypeScript or bypass the SPD engine.
+
+**Current blocker and evidence:** at HEAD `377fa362772fb5367b548f44686e129493b1be14`, both local native runtime tests fail after `SnipersMark.doAction()` before a `MissileSprite` is created. The output reports `resync=true`, `missileCreated=false`; one says the pending report is missing, the other also says `bowSniper=false`. Current test output does not yet reveal whether `beginNativeSpiritArrowAttack()` rejected a guard or `arrow.cast()` threw and its catch cancelled the pending report. This must be diagnosed before implementing a speculative fix.
+
+The complete lifecycle remains unverified: local request and pending reservation; designated publisher native resolution; accepted result/event; requester reconciliation. Tests must cover hit/miss, target disappearing before completion, exceptions, duplicate callback, cancellation, stale/replayed request, invalid bow/mark/entity and resync. SPEED volley and unsupported non-Mob marked targets stay fail-closed. Phase 9 remains open.
+
+
 ## 5. Mob turns and Actor scheduling
 
 Actor scheduler is part of gameplay rules. Actor.java exposes multiplayer-specific classification and scheduler decisions: whether a shared actor is skipped on a non-publisher, whether its result should be published, and deferred publication when an actor is still resolving an attack.

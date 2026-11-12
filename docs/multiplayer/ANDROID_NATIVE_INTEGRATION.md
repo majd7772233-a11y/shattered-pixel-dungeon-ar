@@ -185,6 +185,22 @@ The Android JVM regression creates a Hero-targeted mark with a real local Mob Ac
 This is intentionally an expiry-only contract. It does not validate `SnipersMark.doAction()`, SpiritBow/SpiritArrow targeting, the marked Mob's identity across publishers, or the resulting arrow damage; those paths remain unaudited and must not be assumed synchronized by this tick.
 
 
+
+### 4.11 SpiritBow / SnipersMark / asynchronous SpiritArrow attempt (9-C; not yet passing)
+
+The native action starts at `SnipersMark.doAction()`. The multiplayer branch resolves the equipped `SpiritBow`, the marked local Actor and its stable server Mob entity ID, obtains the stable bow item ID and native bow Bundle, captures the Hero pre-state, and builds strict metadata containing `formatVersion`, `markBuffId`, `markBonus`, `targetEntityId` and `bowItemId`. It then calls `Hero.beginNativeSpiritArrowAttack(...)` to retain the pending native report and starts the original asynchronous `SpiritArrow.cast(hero, cell)` path.
+
+The recent implementation adds a completion context to `SpiritBow.SpiritArrow`. The context retains the local reporting Hero and the stable mark/target identity. Its `onThrow(cell)` completion hook calls the exact native `Hero.shoot(enemy, arrow)` result path and then attempts `Hero.finishNativeSpiritArrowAttack(enemy)` exactly once after identity/ownership rechecks. Invalidated targets or a failed completion cancel and request resync. This must preserve the single-player SpiritArrow path when no multiplayer report context is attached.
+
+**Current exact-head blocker:** at `377fa362772fb5367b548f44686e129493b1be14`, the two JVM tests intended to exercise the real action/callback fail after `SnipersMark.doAction()` with `resync=true` and `missileCreated=false`. One reports `Pending SpiritArrow missing`; the other reports `bowSniper=false` and `missileCreated=false`. Thus the test never reaches the captured `MissileSprite.onComplete()` callback. The initial test setup checks (multiplayer session, equipped bow instance, local mark/target, stable target mapping and valid aim cell) pass before `doAction()`.
+
+The current failure output does not distinguish whether `Hero.beginNativeSpiritArrowAttack(...)` returned false because one of its pending/deferral/state guards failed, or whether `SpiritArrow.cast(...)` threw and its catch path cleared `sniperSpecial`, cancelled the pending report and requested RESYNC. The next implementation pass must expose the actual branch and, if applicable, the original cast exception. Inspect every guard, pending projectile/deferral field and the headless missile/attack-sprite setup. Do not weaken authority or state checks merely to create a missile.
+
+Protocol metadata was added separately to `protocol/schema.json` and statically validated by the backend. Full request → authority reservation → publisher native execution → accepted result → requester reconciliation is still not proven by one test. Keep the three-shot SPEED volley and non-Mob marked targets fail-closed until their own native batch/authority semantics are implemented and tested.
+
+Exact-head CI [43213971129](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43213971129) currently fails these two Android JVM cases; Backend build/schema/tests pass. No APK compilation succeeded on this head because Gradle stopped at `:core:test`.
+
+
 ## 5. RemoteHero and RemotePlayer
 
 Sources:
