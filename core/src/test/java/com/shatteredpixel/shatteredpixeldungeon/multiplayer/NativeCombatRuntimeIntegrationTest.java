@@ -714,7 +714,10 @@ public class NativeCombatRuntimeIntegrationTest {
             mark.doAction();
             Assert.assertTrue("SnipersMark must retain the pending report until the missile completes; resync="
                             + transport.sent.stream().anyMatch(m -> m.messageType == MessageType.RESYNC)
-                            + ", bowSniper=" + bow.sniperSpecial + ", missileCreated=" + (group.missile != null),
+                            + ", bowSniper=" + bow.sniperSpecial
+                            + ", castStarted=" + bow.castStarted
+                            + ", castFailure=" + describeFailure(bow.castFailure)
+                            + ", missileCreated=" + (group.missile != null),
                     hero.hasPendingNativeSpiritArrowAttack());
             Assert.assertNotNull("The real SpiritBow.cast path must create a MissileSprite", group.missile);
             Assert.assertFalse("No ATTACK is published while the arrow is in flight",
@@ -802,6 +805,8 @@ public class NativeCombatRuntimeIntegrationTest {
             mark.doAction();
             Assert.assertTrue("Pending SpiritArrow missing; resync="
                     + transport.sent.stream().anyMatch(m -> m.messageType == MessageType.RESYNC)
+                    + ", castStarted=" + bow.castStarted
+                    + ", castFailure=" + describeFailure(bow.castFailure)
                     + ", missileCreated=" + (group.missile != null), hero.hasPendingNativeSpiritArrowAttack());
             mob.pos += 2;
             group.missile.onComplete(null);
@@ -3197,6 +3202,10 @@ public class NativeCombatRuntimeIntegrationTest {
         target.sprite = targetSprite;
     }
 
+    private static String describeFailure(RuntimeException failure) {
+        return failure == null ? "none" : failure.getClass().getName() + ": " + failure.getMessage();
+    }
+
     private void assertNativeSpiritArrowCaptureCanStart(
             Hero hero, SnipersMark mark, SpiritBow bow, String targetEntityId) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
@@ -3437,10 +3446,23 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     private static final class SilentSpiritBow extends SpiritBow {
+        boolean castStarted;
+        RuntimeException castFailure;
+
         @Override public SpiritArrow knockArrow() {
             return new SpiritArrow() {
                 @Override public void throwSound() {
                     // Audio is intentionally absent from the headless runtime test.
+                }
+
+                @Override public void cast(Hero user, int dst) {
+                    castStarted = true;
+                    try {
+                        super.cast(user, dst);
+                    } catch (RuntimeException failure) {
+                        castFailure = failure;
+                        throw failure;
+                    }
                 }
             };
         }
