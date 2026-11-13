@@ -178,7 +178,7 @@ public class MultiplayerManager implements TransportCallback {
             return;
         }
         String payload = snapshot.substring(0, snapshot.length() - 1)
-                + ",\\"publisherRebase\\":true,\\"publisherRebaseTerm\\":" + levelPublisherTerm + "}";
+                + ",\"publisherRebase\":true,\"publisherRebaseTerm\":" + levelPublisherTerm + "}";
         NetworkMessage message = new NetworkMessage();
         message.messageType = MessageType.LEVEL_DATA;
         message.senderId = localPlayerId;

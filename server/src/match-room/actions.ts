@@ -711,7 +711,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
             "heroState:" + session.playerId).toArray()[0];
           const connectedRows = this.sql.exec(
-            "SELECT player_id FROM players WHERE connected = 1 ORDER BY player_id ASC").toArray();
+            "SELECT player_id FROM players ORDER BY player_id ASC").toArray();
           const connectedHeroStates: PublisherRebaseHeroState[] = [];
           for (const player of connectedRows) {
             const playerId = String(player.player_id || "");

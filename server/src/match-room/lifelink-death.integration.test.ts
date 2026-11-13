@@ -568,6 +568,12 @@ function makeRoom(sql: MemoryMatchRoomSql): any {
   // Durable Object constructor or its level-generation/migration side effects.
   const room = Object.create(MatchRoom.prototype) as any;
   room.sql = sql as any;
+  const currentPublisher = sql.roomMeta.get("levelPublisher");
+  if (currentPublisher) {
+    const term = sql.roomMeta.get("levelPublisherTerm") || "1";
+    sql.roomMeta.set("levelPublisherTerm", term);
+    sql.roomMeta.set("levelPublisherReadyTerm", term);
+  }
   room.currentSequence = 0;
   room.currentDepth = 1;
   room.worldTime = 0;

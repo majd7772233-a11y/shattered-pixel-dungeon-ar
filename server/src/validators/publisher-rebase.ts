@@ -117,6 +117,5 @@ export function isValidNativePublisherRebase(
   }
   const expectedRemoteSet = new Set(expectedRemoteActorIds);
   return expectedRemoteSet.size === expectedRemoteActorIds.length
-    && submittedRemoteSet.size === expectedRemoteSet.size
     && Array.from(expectedRemoteSet).every(actorId => submittedRemoteSet.has(actorId));
 }
