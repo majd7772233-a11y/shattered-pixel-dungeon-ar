@@ -16,6 +16,7 @@ import { MatchRoomSnapshots } from "./snapshots";
 
 export class MatchRoomActions extends MatchRoomSnapshots {
   private nativeActionTransactionActive = false;
+  private nativeActionTransactionPeerMessages: Array<() => void> | null = null;
 
   /**
    * Native Hero Buff ticks and lethal Poison LifeLink batches use one Durable Object SQL transaction.
@@ -39,12 +40,16 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       && data?.secondaryMobDeltas !== undefined
       && data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
       && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string";
-    const requiresAtomicNativeHeroTick = isNativeHeroBuffTick || isLethalPoisonLifeLinkBatch;
+    const isNativeCombatAuthorityResult = payload?.action === "SYNC_MOB_STATE"
+      && typeof data?.combatRequestId === "string"
+      && typeof data?.targetEntityId === "string";
+    const requiresAtomicNativeAction = isNativeHeroBuffTick
+      || isLethalPoisonLifeLinkBatch || isNativeCombatAuthorityResult;
 
-    // Every accepted native Hero Buff tick changes authoritative Hero/actor state and appends
-    // a sequenced event. Commit those writes together and defer ACK/FOV broadcasts until commit.
-    // Lethal Poison LifeLink is included separately because it joins Hero death with Mob/loot rows.
-    if (!requiresAtomicNativeHeroTick) {
+    // Native Hero Buff ticks, delegated Mob combat outcomes and lethal Poison LifeLink batches
+    // update authoritative state and append sequenced events. Keep their SQL writes atomic and
+    // defer every ACK, owner error, and event broadcast until transactionSync has returned.
+    if (!requiresAtomicNativeAction) {
       this.handleActionInTransaction(ws, msg, session);
       return;
     }
@@ -66,7 +71,25 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       worldTime: this.worldTime,
       gameStatus: this.gameStatus
     };
+    let combatOwnerId: string | null = null;
+    let combatOwnerRequestId: string | null = null;
+    if (isNativeCombatAuthorityResult) {
+      const combatRequestKey = String(data.combatRequestId || msg.requestId || "");
+      const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+        "pendingCombat:" + combatRequestKey).toArray()[0];
+      try {
+        const pending = pendingRow && typeof pendingRow.value === "string"
+          ? JSON.parse(String(pendingRow.value)) : null;
+        if (pending && String(pending.requestId) === combatRequestKey
+            && String(pending.authorityId) === session.playerId
+            && typeof pending.attackerId === "string") {
+          combatOwnerId = pending.attackerId;
+          combatOwnerRequestId = String(pending.requestId);
+        }
+      } catch (_) {}
+    }
     const deferredSocketMessages: Array<string | ArrayBuffer> = [];
+    const deferredPeerMessages: Array<() => void> = [];
     const deferredBroadcasts: Array<() => void> = [];
     const targetWs = ws;
     const transactionalWs = new Proxy(ws, {
@@ -88,9 +111,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     let transactionCommitted = false;
 
     // WebSocket sends are external side effects: Cloudflare SQL can roll back, but a message
-    // already sent to a client cannot. Queue every outbound from this action until transactionSync
-    // has returned successfully. Keep MATCH_END persistence/sequence changes inside the transaction.
+    // already sent to a client cannot. Queue the action socket, delegated-owner errors and all
+    // broadcasts until transactionSync succeeds. MATCH_END persistence stays inside the transaction.
     this.nativeActionTransactionActive = true;
+    this.nativeActionTransactionPeerMessages = deferredPeerMessages;
     room.broadcast = (message: NetworkMessage, excludeWs?: WebSocket) => {
       deferredBroadcasts.push(() => originalBroadcast.call(this, message, excludeWs));
     };
@@ -107,9 +131,28 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       this.currentSequence = checkpoint.sequence;
       this.worldTime = checkpoint.worldTime;
       this.gameStatus = checkpoint.gameStatus;
+      // A publisher may have failed while committing another player's combat. The transaction
+      // has rolled back at this point, so return a correlated failure to the original requester
+      // as well as allowing webSocketMessage to report the failure to the publisher.
+      if (combatOwnerId && combatOwnerId !== session.playerId) {
+        const failureMessage = JSON.stringify({
+          protocolVersion: "1.0.0",
+          messageType: "ERROR",
+          requestId: combatOwnerRequestId || msg.requestId,
+          sequence: checkpoint.sequence,
+          payloadJson: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+        });
+        for (const peer of this.state.getWebSockets()) {
+          try {
+            const peerSession = peer.deserializeAttachment() as SessionData | null;
+            if (peerSession?.playerId === combatOwnerId) peer.send(failureMessage);
+          } catch (_) {}
+        }
+      }
       throw error;
     } finally {
       this.nativeActionTransactionActive = false;
+      this.nativeActionTransactionPeerMessages = null;
       if (hadOwnBroadcast) room.broadcast = ownBroadcast;
       else delete room.broadcast;
       if (hadOwnBroadcastWithFov) room.broadcastWithFOV = ownBroadcastWithFov;
@@ -122,9 +165,20 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       for (const data of deferredSocketMessages) {
         try { targetWs.send(data); } catch (_) {}
       }
+      for (const send of deferredPeerMessages) {
+        try { send(); } catch (_) {}
+      }
       for (const send of deferredBroadcasts) {
         try { send(); } catch (_) {}
       }
+    }
+  }
+  /** Queue direct sends to another player until an atomic native action commits. */
+  private sendNativeActionPeerMessage(peer: WebSocket, message: string): void {
+    if (this.nativeActionTransactionActive && this.nativeActionTransactionPeerMessages) {
+      this.nativeActionTransactionPeerMessages.push(() => peer.send(message));
+    } else {
+      peer.send(message);
     }
   }
   /** Avoid opening a nested transaction for item-claim helpers inside handleAction. */
@@ -3271,7 +3325,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           if (pendingCombatForCleanup && actionOwnerId !== session.playerId) {
             for (const peer of this.state.getWebSockets()) {
               const peerSession = peer.deserializeAttachment() as SessionData | null;
-              if (peerSession?.playerId === actionOwnerId) peer.send(errorMessage);
+              if (peerSession?.playerId === actionOwnerId) this.sendNativeActionPeerMessage(peer, errorMessage);
             }
           }
         }

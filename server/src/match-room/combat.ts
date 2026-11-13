@@ -198,13 +198,37 @@ export class MatchRoomCombat extends MatchRoomPersistence {
       : senderPos;
 
     let targetPos = -1;
-    const targetId = actionPayload.targetId || actionPayload.targetPlayerId;
+    const targetId = actionPayload.targetId ?? actionPayload.targetPlayerId;
+    const targetType = String(actionPayload.targetType || "");
+    const requiresVisibleTarget = targetType === "MOB" || targetType === "PLAYER"
+      || actionPayload.targetPlayerId !== undefined && actionPayload.targetPlayerId !== null;
     if (targetId !== undefined && targetId !== null) {
       const targetPlayer = this.sql.exec(`SELECT pos FROM players WHERE player_id = ?`, String(targetId)).toArray();
-      if (targetPlayer.length > 0) targetPos = Number(targetPlayer[0].pos);
-      else {
-        const targetMob = this.sql.exec(`SELECT pos FROM mobs WHERE mob_id = ? AND depth = ?`, Number(targetId), this.currentDepth).toArray();
-        if (targetMob.length > 0) targetPos = Number(targetMob[0].pos);
+      if (targetPlayer.length > 0) {
+        targetPos = Number(targetPlayer[0].pos);
+      } else {
+        const numericTargetId = Number(targetId);
+        if (Number.isSafeInteger(numericTargetId) && numericTargetId >= 0) {
+          const targetMob = this.sql.exec(`SELECT pos FROM mobs WHERE mob_id = ? AND depth = ?`,
+            numericTargetId, this.currentDepth).toArray();
+          if (targetMob.length > 0) targetPos = Number(targetMob[0].pos);
+        }
+
+        // Native combat events carry stable server entity IDs, not process-local Actor IDs.
+        // Resolve those IDs from the authoritative level snapshot for PvP target visibility.
+        if (targetPos < 0 && targetType === "MOB") {
+          const snapshotRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`,
+            `levelSnapshot:${this.currentDepth}`).toArray()[0];
+          try {
+            const snapshot = snapshotRow && typeof snapshotRow.value === "string"
+              ? JSON.parse(String(snapshotRow.value)) : null;
+            const matches = Array.isArray(snapshot?.mobs)
+              ? snapshot.mobs.filter((mob: any) => String(mob?.entityId || "") === String(targetId)) : [];
+            if (matches.length === 1 && Number.isInteger(Number(matches[0].pos))) {
+              targetPos = Number(matches[0].pos);
+            }
+          } catch (_) {}
+        }
       }
     }
 
@@ -230,6 +254,9 @@ export class MatchRoomCombat extends MatchRoomPersistence {
         if (recipientRow.length > 0) {
           const recipientPos = Number(recipientRow[0].pos);
           if (actionPos >= 0) sendToClient = this.hasLineOfSight(recipientPos, actionPos, this.currentDepth);
+          // Typed combat targets must resolve to a trusted position; missing stable identities
+          // must not bypass the second FOV check.
+          if (sendToClient && requiresVisibleTarget && targetPos < 0) sendToClient = false;
           // Combat events that identify a target are only disclosed when that target is visible too.
           if (sendToClient && targetPos >= 0) {
             sendToClient = this.hasLineOfSight(recipientPos, targetPos, this.currentDepth);

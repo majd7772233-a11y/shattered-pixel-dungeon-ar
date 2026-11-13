@@ -619,6 +619,67 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.room.worldTime).toBe(1);
   });
 
+
+  it("resolves a stable Mob entity ID before applying the PvP target FOV gate", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.room.gameMode = "PVP_ARENA";
+    delete fixture.room.broadcastWithFOV;
+    const lineOfSight = vi.spyOn(fixture.room, "hasLineOfSight").mockReturnValue(true);
+
+    fixture.room.broadcastWithFOV(ATTACKER_ID, "PLAYER_ATTACKED", {
+      targetId: ENTITY_ID, targetType: "MOB", targetPos: 17
+    }, fixture.authorityWs);
+
+    expect(lineOfSight).toHaveBeenCalledWith(9, 17, 1);
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const event = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(event.messageType).toBe("EVENT_BATCH");
+  });
+
+  it("rolls back a publisher SpiritArrow result when the event insert fails and correlates ERROR to both clients", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "spirit-arrow-sql-rollback-001";
+
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+    expect(JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0])).messageType).toBe("COMBAT_REQUEST");
+
+    fixture.sql.failEventInsert = true;
+    const afterMobBundle = nativeMobBundle(15, 17);
+    const authorityResult = makeSpiritArrowAuthorityResult(fixture, requestId, {
+      targetMobBundleAfter: afterMobBundle
+    });
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_MOB_STATE", data: authorityResult, heroStateJson: JSON.stringify(fixture.heroBefore)
+    })));
+
+    const publisherMessages = fixture.authorityWs.send.mock.calls.map(call =>
+      JSON.parse(String(call[0])) as { messageType: string; requestId?: string; sequence?: number; payloadJson?: string });
+    expect(publisherMessages.map(message => message.messageType)).toEqual(["COMBAT_REQUEST", "ERROR"]);
+    expect(publisherMessages[1].requestId).toBe(requestId);
+    expect(publisherMessages[1].sequence).toBe(0);
+    expect(JSON.parse(String(publisherMessages[1].payloadJson)).error).toBe("forced event insert failure");
+
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const requesterError = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(requesterError.messageType).toBe("ERROR");
+    expect(requesterError.requestId).toBe(requestId);
+    expect(requesterError.sequence).toBe(0);
+    expect(JSON.parse(String(requesterError.payloadJson)).error).toBe("forced event insert failure");
+
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.has(requestId)).toBe(false);
+    expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
+    const savedLevel = JSON.parse(String(fixture.sql.roomMeta.get("levelSnapshot:1")));
+    expect(savedLevel.mobs[0]).toMatchObject({ hp: 20, ht: 20, pos: 17 });
+    expect(fixture.sql.roomMeta.has("pendingCombat:" + requestId)).toBe(true);
+    expect(fixture.sql.roomMeta.get("pendingCombatAttacker:" + ATTACKER_ID)).toBe(requestId);
+    expect(fixture.sql.roomMeta.get("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(requestId);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+  });
+
   it("rejects a SpiritArrow publisher result when attackerPos is omitted", async () => {
     const fixture = makeSpiritArrowForwardFixture();
     const requestId = "spirit-arrow-missing-attacker-pos-001";
@@ -667,7 +728,12 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(response.requestId).toBe(requestId);
     expect(response.sequence).toBe(0);
     expect(JSON.parse(String(response.payloadJson)).error).toBe("INVALID_ACTION");
-    expect(fixture.senderWs.send).not.toHaveBeenCalled();
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const requesterError = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(requesterError.messageType).toBe("ERROR");
+    expect(requesterError.requestId).toBe(requestId);
+    expect(requesterError.sequence).toBe(0);
+    expect(JSON.parse(String(requesterError.payloadJson)).error).toBe("INVALID_ACTION");
     expect(fixture.sql.events).toHaveLength(0);
     expect(fixture.sql.processedActions.has(requestId)).toBe(false);
     expect(fixture.sql.mobs.get(7)).toMatchObject({ hp: 20, ht: 20, pos: 17 });
