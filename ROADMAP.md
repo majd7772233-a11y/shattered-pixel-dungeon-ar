@@ -99,7 +99,6 @@ The historical documentation batches established the technical references now in
 - Evidence limits: Workers runtime uses local DO SQLite, not a deployed production Worker; projectile lifecycle is headless, not rendered; no physical two-device match was run. Those checks remain Phases 22 and 23.
 
 ### Historical continuation checkpoint — 2026-11-09 (superseded by 2026-11-13)
-### Historical continuation checkpoint — 2026-11-09 (superseded by 2026-11-13)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. No new branch and no merge to `main`.
 - **Exact tested code/test HEAD:** `b68b66e686b98dbf343997202b215e2c828b7b89`; exact-head GitHub Actions [run 42777941791 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791). Backend TypeScript build and 644 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. Mirrored TS/JS suites mean executions are not unique scenario counts.
