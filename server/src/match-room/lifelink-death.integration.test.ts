@@ -821,7 +821,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark",
       id: 51, time: 10, object: 7, bonus: 0.5, server_entity_id: ENTITY_ID
     }});
-    markedHero.buffCooldown_0 = 0;
+    markedHero.buffCooldown_0 = 1;
     const markedJson = JSON.stringify(markedHero);
     const connected = [{ playerId: ATTACKER_ID, heroStateJson: markedJson }];
     const rebase = JSON.parse(JSON.stringify(levelSnapshot));

@@ -86,7 +86,7 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       payloadJson: JSON.stringify(payload)
     });
     const session = { playerId, sessionToken: "phase9-live-handler-session" };
-    const sent: string[] = [];
+    const sent = [];
     const socket = {
       send: (value) => { sent.push(String(value)); },
       deserializeAttachment: () => session
