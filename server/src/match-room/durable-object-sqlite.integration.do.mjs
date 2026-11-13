@@ -172,6 +172,159 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
+
+  it("transfers publisher authority in real DO SQLite only after a persisted snapshot and closes pending combat", async () => {
+    const oldPublisher = "phase9-real-handoff-old-publisher";
+    const nextPublisher = "phase9-real-handoff-next-publisher";
+    const attackerId = "phase9-real-handoff-attacker";
+    const requestId = "phase9-real-handoff-pending-combat";
+    const entityId = "phase9-real-handoff-linked-mob";
+    const roomId = env.MATCH_ROOM.idFromName("phase9-real-sqlite-publisher-handoff");
+    const stub = env.MATCH_ROOM.get(roomId);
+    const ratClass = "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat";
+    const heroState = {
+      hp: 9, ht: 20, pos: 9, shielding: 0, gold: 0, alchemyEnergy: 5,
+      inventoryBundle: "native-inventory", inventoryItemsJson: "[]", quickslotsJson: "[]",
+      notesBundle: "notes", questStateBundle: "quests", ankhCount: 0, blessedAnkhCount: 0,
+      cooldown: 1,
+      combatBundle: JSON.stringify({
+        id: 21, time: 10, lvl: 1, exp: 0, subClass: "NONE", STR: 10,
+        HP: 9, HT: 20, pos: 9, items: "native-inventory", buffs: [],
+        talents_tier_1: {}, talents_tier_2: {}, talents_tier_3: {}, talents_tier_4: {}
+      }),
+      buffCount: 0
+    };
+    const mobBundle = JSON.stringify({
+      mob: { __className: ratClass, id: 7, time: 9, HP: 20, HT: 20, pos: 25, max_lvl: 29, buffs: [] }
+    });
+    const savedMob = {
+      mobId: 7, entityId, name: "Rat", pos: 25, hp: 20, ht: 20, shielding: 0,
+      state: "Hunting", serializedBundle: mobBundle, buffs: [],
+      defenseSkill: 5, baseSpeed: 1, effectiveSpeed: 1, cooldown: 0,
+      targetCell: -1, targetType: "NONE", targetEntityId: "",
+      enemySeen: false, alerted: false, rewardClassName: ratClass,
+      rewardEligible: true, rewardExp: 2, rewardMaxLevel: 29,
+      rewardSpawningWeight: 1, rewardMonkEnergy: 1
+    };
+    const levelSnapshot = {
+      schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+      entrancePos: 0, exitPos: 1023, seed: 123456, locked: false, feeling: "NONE",
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heroStateJson: JSON.stringify(heroState), nativeLevelMetadataBundle: "native-level-metadata",
+      tiles: Array.from({ length: 1024 }, (_, pos) => ({
+        pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+        flammable: false, secret: false, avoid: false, water: false,
+        discoverable: false, openSpace: false
+      })),
+      transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+      mobs: [savedMob], visitedPositions: [], mappedPositions: []
+    };
+    const sent = { next: [], attacker: [] };
+    const liveSockets = [
+      {
+        send: (value) => sent.next.push(String(value)),
+        deserializeAttachment: () => ({ playerId: nextPublisher, sessionToken: "next-publisher-token" })
+      },
+      {
+        send: (value) => sent.attacker.push(String(value)),
+        deserializeAttachment: () => ({ playerId: attackerId, sessionToken: "attacker-token" })
+      }
+    ];
+    const closingSocket = {
+      deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "old-publisher-token" })
+    };
+
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      instance.currentDepth = 1;
+      instance.currentSequence = 0;
+      instance.worldTime = 0;
+      instance.matchSeed = 123456;
+      instance.gameStatus = "PLAYING";
+      instance.state.getWebSockets = () => liveSockets;
+
+      for (const playerId of [oldPublisher, nextPublisher, attackerId]) {
+        sql.exec(
+          "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?,?)",
+          playerId, playerId + "-token", "WARRIOR", 9, 9, 20, "ALIVE", 1
+        );
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "heroState:" + playerId, JSON.stringify(heroState)
+        );
+      }
+      sql.exec(
+        "INSERT INTO mobs (mob_id,depth,name,pos,hp,ht,state) VALUES (?,?,?,?,?,?,?)",
+        7, 1, "Rat", 25, 20, 20, "HUNTING"
+      );
+      const meta = [
+        ["levelPublisher", oldPublisher],
+        ["levelPublisherTerm", "4"],
+        ["levelPublisherReadyTerm", "4"],
+        ["worldTime", "0"],
+        ["depth", "1"],
+        ["levelSnapshot:1", JSON.stringify(levelSnapshot)],
+        ["pendingCombat:" + requestId, JSON.stringify({
+          requestId, attackerId, authorityId: oldPublisher,
+          targetType: "MOB", targetId: entityId,
+          targetLockKey: "MOB:" + entityId, createdAt: Date.now()
+        })],
+        ["pendingCombatAttacker:" + attackerId, requestId],
+        ["pendingCombatTarget:MOB:" + entityId, requestId],
+        ["nativeMutationPending:" + oldPublisher, JSON.stringify({
+          playerId: oldPublisher, requestId: "old-publisher-native-mutation", actionType: "ATTACK"
+        })]
+      ];
+      for (const [key,value] of meta) {
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          key, value
+        );
+      }
+
+      await instance.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
+
+      expect(sql.exec("SELECT connected FROM players WHERE player_id = ?", oldPublisher).toArray()[0].connected).toBe(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisher").toArray()[0].value).toBe(nextPublisher);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0].value).toBe("5");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisherReadyTerm").toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + requestId).toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombatAttacker:" + attackerId).toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "pendingCombatTarget:MOB:" + entityId).toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeMutationPending:" + oldPublisher).toArray()).toHaveLength(0);
+
+      const nextMessages = sent.next.map(value => JSON.parse(value));
+      const snapshotIndex = nextMessages.findIndex(message => message.messageType === "SNAPSHOT");
+      const authorityIndex = nextMessages.findIndex(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+      expect(snapshotIndex).toBeGreaterThanOrEqual(0);
+      expect(authorityIndex).toBeGreaterThan(snapshotIndex);
+      expect(JSON.parse(nextMessages[snapshotIndex].payloadJson).level.mobs[0]).toMatchObject({
+        entityId, mobId: 7, hp: 20
+      });
+      expect(JSON.parse(nextMessages[authorityIndex].payloadJson)).toMatchObject({
+        publisherId: nextPublisher, term: 5, reason: "PUBLISHER_DISCONNECTED"
+      });
+
+      const attackerError = sent.attacker.map(value => JSON.parse(value))
+        .find(message => message.messageType === "ERROR" && message.requestId === requestId);
+      expect(attackerError).toBeTruthy();
+      expect(attackerError.sequence).toBe(0);
+      expect(JSON.parse(attackerError.payloadJson).error).toBe("NATIVE_COMBAT_AUTHORITY_CHANGED");
+    });
+
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      expect(instance.currentDepth).toBe(1);
+      expect(instance.currentSequence).toBe(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisher").toArray()[0].value).toBe(nextPublisher);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0].value).toBe("5");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "levelPublisherReadyTerm").toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT connected FROM players WHERE player_id = ?", oldPublisher).toArray()[0].connected).toBe(0);
+      expect(sql.exec("SELECT hp FROM mobs WHERE mob_id = ? AND depth = ?", 7, 1).toArray()[0].hp).toBe(20);
+    });
+  });
+
   it("rolls back the complete native batch and reloads committed room state after eviction", async () => {
     const playerId = "phase9-sqlite-player-001";
     const roomId = env.MATCH_ROOM.idFromName("phase9-real-sqlite-rollback-eviction");
