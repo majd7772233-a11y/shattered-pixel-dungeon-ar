@@ -128,9 +128,9 @@ public class NetworkMessage {
                 if (!legacyShape) return error("INVALID_MESSAGE_ENVELOPE", null);
 
                 Json json = new Json();
-                String normalized = "{\\"protocolVersion\\":" + json.toJson(PROTOCOL_VERSION)
-                        + ",\\"messageType\\":" + json.toJson(type.asString())
-                        + ",\\"payloadJson\\":" + payload.toString() + "}";
+                String normalized = "{\"protocolVersion\":" + json.toJson(PROTOCOL_VERSION)
+                        + ",\"messageType\":" + json.toJson(type.asString())
+                        + ",\"payloadJson\":" + payload.toString() + "}";
                 return parseJson(normalized);
             }
         } catch (RuntimeException malformedEnvelope) {
