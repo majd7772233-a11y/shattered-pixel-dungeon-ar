@@ -45,7 +45,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **Phase 10:** next and OPEN. Consolidate protocol definitions and route event application through one typed path. The outer enum/schema currently has 25 names, including `LEVEL_PUBLISHER_CHANGED`.
 - **Not claimed:** production Worker deployment, rendered projectile animation or physical two-device session. Keep these release checks in Phases 22 and 23.
 
-## Source-of-truth hierarchy## Source-of-truth hierarchy
+## Source-of-truth hierarchy
 
 1. The exact source tree at the active branch HEAD is implementation truth.
 2. Protocol schema, Java serializers/parsers, server validators and client handlers jointly define the wire contract.
