@@ -3201,23 +3201,23 @@ public class NativeCombatRuntimeIntegrationTest {
         int actorIdA = targetA.id();
         manager.registerServerEntityId(actorIdA, stableMobId);
 
-        String targetMobBundleAfter = "{\\\"mob\\\":{\\\"__className\\\":"
-                + "\\\"com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat\\\","
-                + "\\\"id\\\":7,\\\"time\\\":10,\\\"HP\\\":15,\\\"HT\\\":20,\\\"pos\\\":"
-                + (hero.pos + 1) + ",\\\"max_lvl\\\":29,\\\"buffs\\\":[]}}";
-        String event = "[{\\\"sequence\\\":1,\\\"depth\\\":1,\\\"eventType\\\":\\\"PLAYER_ATTACKED\\\",\\\"action\\\":{"
-                + "\\\"combatRequestId\\\":\\\"" + requestId + "\\\","
-                + "\\\"attackerId\\\":\\\"client-publisher\\\","
-                + "\\\"targetId\\\":\\\"" + stableMobId + "\\\",\\\"targetType\\\":\\\"MOB\\\","
-                + "\\\"targetHpBefore\\\":20,\\\"targetHp\\\":15,\\\"targetHt\\\":20,"
-                + "\\\"targetPos\\\":" + targetA.pos + ",\\\"targetPosAfter\\\":" + targetA.pos + ","
-                + "\\\"targetMobBundleAfter\\\":" + new Json().toJson(targetMobBundleAfter) + ","
-                + "\\\"damage\\\":5,\\\"hit\\\":true,\\\"engineResolved\\\":true,"
-                + "\\\"attackKind\\\":\\\"RANGED\\\",\\\"attackWeaponMode\\\":\\\"SPIRIT_ARROW\\\","
-                + "\\\"targetBuffs\\\":\\\"[]\\\","
-                + "\\\"spiritArrow\\\":{\\\"formatVersion\\\":1,\\\"markBuffId\\\":77,"
-                + "\\\"markBonus\\\":0.5,\\\"targetEntityId\\\":\\\"" + stableMobId + "\\\","
-                + "\\\"bowItemId\\\":\\\"" + bowItemId + "\\\"}}}]";
+        String targetMobBundleAfter = "{\"mob\":{\"__className\":"
+                + "\"com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat\","
+                + "\"id\":7,\"time\":10,\"HP\":15,\"HT\":20,\"pos\":"
+                + (hero.pos + 1) + ",\"max_lvl\":29,\"buffs\":[]}}";
+        String event = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"combatRequestId\":\"" + requestId + "\","
+                + "\"attackerId\":\"client-publisher\","
+                + "\"targetId\":\"" + stableMobId + "\",\"targetType\":\"MOB\","
+                + "\"targetHpBefore\":20,\"targetHp\":15,\"targetHt\":20,"
+                + "\"targetPos\":" + targetA.pos + ",\"targetPosAfter\":" + targetA.pos + ","
+                + "\"targetMobBundleAfter\":" + new Json().toJson(targetMobBundleAfter) + ","
+                + "\"damage\":5,\"hit\":true,\"engineResolved\":true,"
+                + "\"attackKind\":\"RANGED\",\"attackWeaponMode\":\"SPIRIT_ARROW\","
+                + "\"targetBuffs\":\"[]\","
+                + "\"spiritArrow\":{\"formatVersion\":1,\"markBuffId\":77,"
+                + "\"markBonus\":0.5,\"targetEntityId\":\"" + stableMobId + "\","
+                + "\"bowItemId\":\"" + bowItemId + "\"}}}]";
 
         routeEventBatch(event, 1L);
 
