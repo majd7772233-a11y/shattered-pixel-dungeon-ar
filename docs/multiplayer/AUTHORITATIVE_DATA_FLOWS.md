@@ -173,7 +173,7 @@ Level Publisher is a durable generation, not a client-side boolean. Disconnect h
 
 The new publisher must send a lossless full-level rebase. Shared Mob IDs/bundles and world state remain unchanged; publisher-local Actor IDs are refreshed and checked. LifeLink.object and SnipersMark.object/server_entity_id must resolve to the exact same Mob identity. Invalid/stale rebase does not update publisher-ready term, and shared actions remain blocked until the current generation is committed.
 
-## 5. Mob turns and Actor scheduling## 5. Mob turns and Actor scheduling
+## 5. Mob turns and Actor scheduling
 
 Actor scheduler is part of gameplay rules. Actor.java exposes multiplayer-specific classification and scheduler decisions: whether a shared actor is skipped on a non-publisher, whether its result should be published, and deferred publication when an actor is still resolving an attack.
 
