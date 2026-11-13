@@ -30,7 +30,7 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 6 | Drops, partial stacks and floor heaps | Complete for implementation and automated acceptance |
 | 7 | Inventory actions and item economy | Complete for implementation and automated acceptance |
 | 8 | Inventory persistence, restoration and exactly-once rewards | Complete for implementation and automated acceptance |
-| 9 | Native buffs and timed effects | In progress — partial implementation; acceptance open |
+| 9 | Native buffs and timed effects | Complete for implementation and automated acceptance; unsupported branches explicitly fail-closed |
 | 10 | Canonical protocol schema and one typed event path | Open |
 | 11 | Event ordering, replay protection and resynchronization | Open |
 | 12 | Durable recovery, reconnect and authority handoff | Open |
@@ -87,25 +87,19 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Active project checkpoint — 2026-11-12 (9-C SpiritArrow roundtrip still red)
+### Active project checkpoint — 2026-11-13 (Phase 9 complete; Phase 10 ready)
 
-- **Current branch HEAD (documentation-only):** `89ff19fc9369ca990ffac4f3105f6022a6985d22`; parent `9168284e67d353a956fc276e0ea8c00d1c685f1d`. This commit updates only 13 Markdown files.
-- **Latest gameplay/test HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`.
-- **CI on the current docs HEAD:** [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145); Backend still has 654 passed / 4 failed Vitest executions, Android JVM/Debug APK pass. It reproduces the same two distinct SpiritArrow scenarios as code/test run [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
-- **Exact-head CI:** [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162). Backend TypeScript build/schema checks pass. Vitest: 8 files, **654 passed / 4 failed (658 executions)**; the four are two SpiritArrow scenarios mirrored between TS and generated JS. Android JVM tests and Debug APK compilation pass.
-- **Positive publisher roundtrip failure:** publisher socket receives `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an unexpected `ERROR`. The test stops at this message-list assertion, so requester EVENT_BATCH delivery/application is not yet proven.
-- **Forged-position negative failure:** the server correctly rejects forged `attackerPos` with a correlated requester `ERROR`, but the test still expects no requester message. The omitted-position negative test has already been updated to expect that error and passes.
-- **Important correction:** the positive `makeSpiritArrowAuthorityResult()` fixture already contains `attackerPos: 9`; Java delegated-RemoteHero test asserts native serialization equals `remoteHero.pos`. Missing/forged positions remain negative cases. Do not add the field again or weaken validation.
-- **Recent source fix:** commit `f5f88a11` changes FOV sender exclusion to use authenticated player ID from the socket attachment as well as object identity. Latest commit `9168284e` only types `payloadJson` in the test-local publisher message shape.
-- **Local lifecycle:** `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` passes headless tests; callback is manually invoked twice for exactly-once cleanup. Target movement cancels, retains mark, requests RESYNC and sends no ATTACK. No rendered animation is tested.
-- **Publisher timing risk:** MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`; trace Hero deferred report and MissileSprite callback before accepting this ordering.
-- **Only active slice:** Phase 9-C SpiritArrow asynchronous authority/result roundtrip. Phases 1–8 complete for implementation/automated acceptance; Phase 9 remains partial/open; Phases 10–23 open. Do not start Phase 10.
-- **Remaining in 9-C:** identify the post-ACK extra ERROR and its recipient/requestId/sequence; update forged-position negative assertion to correlated ERROR; prove publisher async completion order; then join requester ATTACK → COMBAT_REQUEST → real publisher completion → accepted sequenced EVENT_BATCH → requester application/reconciliation. Cover hit/miss, moved/removed target, invalid Bow/mark/entity, exceptions/cancel, duplicate, replay/stale and RESYNC. Keep SPEED/non-Mob targets fail-closed.
-- **Evidence limits:** no live Worker smoke, real Durable Object SQLite/restart, rendered projectile animation or physical two-device match is claimed.
-- **Permanent workflow:** one coherent bounded subphase per conversation (about half a phase when appropriate). Each new chat refetches HEAD/diff/CI, scans the tree and reads all 21 Markdown files plus new files, implements only the requested slice, updates code/tests/docs, verifies exact-head CI, writes a detailed Arabic handoff prompt and stops. Handoff never replaces fresh inspection.
+- Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
+- Verified gameplay/test HEAD: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- Exact-head CI [43472587588 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588): Backend TypeScript build and 682 executions across eight Vitest files passed; Android JVM tests and Debug APK passed; three Workers-runtime tests against real Durable Object SQLite passed.
+- SpiritArrow: strict intent → publisher reservation/COMBAT_REQUEST → native Java result → atomic commit → sequenced requester EVENT_BATCH → stable-ID requester reconciliation. Android tests use two clients with distinct local Mob Actor IDs.
+- Publisher recovery: durable generation handoff, persisted snapshot, pending-combat cancellation and lossless rebase gate; Mob IDs/bundles stay fixed while local Actor IDs refresh and LifeLink/SnipersMark references are checked.
+- Timed effects: supported Hero/Mob effects are source-specific and validated against native Java results. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff callbacks remain fail-closed.
+- Phases 1–9 complete for implementation and automated acceptance. Phase 10 is next and OPEN; Phases 11–23 remain open.
+- Evidence limits: Workers runtime uses local DO SQLite, not a deployed production Worker; projectile lifecycle is headless, not rendered; no physical two-device match was run. Those checks remain Phases 22 and 23.
 
-
-### Active continuation checkpoint — 2026-11-09 (Poison LifeLink batch atomicity verified; Phase 9 remains OPEN)
+### Historical continuation checkpoint — 2026-11-09 (superseded by 2026-11-13)
+### Historical continuation checkpoint — 2026-11-09 (superseded by 2026-11-13)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. No new branch and no merge to `main`.
 - **Exact tested code/test HEAD:** `b68b66e686b98dbf343997202b215e2c828b7b89`; exact-head GitHub Actions [run 42777941791 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791). Backend TypeScript build and 644 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. Mirrored TS/JS suites mean executions are not unique scenario counts.
@@ -405,118 +399,49 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 
 Physical two-device gameplay and deployed Worker end-to-end verification were not run; keep those release checks in Phases 22 and 23.
 
-### Active continuation checkpoint — 2026-11-12 (9-C SpiritArrow authority/result flow; exact HEAD red)
+## Phase 9 — Native buffs, timed effects and native effect reconciliation
 
-Phase 9 remains OPEN; only 9-C is active. Do not start Phase 10.
+**Status: COMPLETE for implementation and automated acceptance on 2026-11-13.** Verified gameplay/test HEAD: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact-head CI [43472587588 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
 
-- **Live HEAD:** `9168284e67d353a956fc276e0ea8c00d1c685f1d` — `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`.
-- **Exact-head CI:** [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162). Backend TypeScript build/schema checks pass. Vitest: 8 files, **654 passed / 4 failed (658 executions)**; the four are two SpiritArrow scenarios mirrored between TS and generated JS. Android JVM tests and Debug APK compilation pass.
-- **Positive publisher roundtrip failure:** publisher socket receives `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an unexpected `ERROR`. The test stops at this message-list assertion, so requester EVENT_BATCH delivery/application is not yet proven.
-- **Forged-position negative failure:** the server correctly rejects forged `attackerPos` with a correlated requester `ERROR`, but the test still expects no requester message. The omitted-position negative test has already been updated to expect that error and passes.
-- **Important correction:** the positive `makeSpiritArrowAuthorityResult()` fixture already contains `attackerPos: 9`; Java delegated-RemoteHero test asserts native serialization equals `remoteHero.pos`. Missing/forged positions remain negative cases. Do not add the field again or weaken validation.
-- **Recent source fix:** commit `f5f88a11` changes FOV sender exclusion to use authenticated player ID from the socket attachment as well as object identity. Latest commit `9168284e` only types `payloadJson` in the test-local publisher message shape.
-- **Local lifecycle:** `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` passes headless tests; callback is manually invoked twice for exactly-once cleanup. Target movement cancels, retains mark, requests RESYNC and sends no ATTACK. No rendered animation is tested.
-- **Publisher timing risk:** MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`; trace Hero deferred report and MissileSprite callback before accepting this ordering.
-- **Only active slice:** Phase 9-C SpiritArrow asynchronous authority/result roundtrip. Phases 1–8 complete for implementation/automated acceptance; Phase 9 remains partial/open; Phases 10–23 open. Do not start Phase 10.
-- **Remaining in 9-C:** identify the post-ACK extra ERROR and its recipient/requestId/sequence; update forged-position negative assertion to correlated ERROR; prove publisher async completion order; then join requester ATTACK → COMBAT_REQUEST → real publisher completion → accepted sequenced EVENT_BATCH → requester application/reconciliation. Cover hit/miss, moved/removed target, invalid Bow/mark/entity, exceptions/cancel, duplicate, replay/stale and RESYNC. Keep SPEED/non-Mob targets fail-closed.
-- **Evidence limits:** no live Worker smoke, real Durable Object SQLite/restart, rendered projectile animation or physical two-device match is claimed.
-- **Permanent workflow:** one coherent bounded subphase per conversation (about half a phase when appropriate). Each new chat refetches HEAD/diff/CI, scans the tree and reads all 21 Markdown files plus new files, implements only the requested slice, updates code/tests/docs, verifies exact-head CI, writes a detailed Arabic handoff prompt and stops. Handoff never replaces fresh inspection.
+### Completed work
+- [x] Original Java/libGDX SPD remains authoritative for every enabled calculation; TypeScript validates native results and does not recreate RNG/combat/Buff/Mob AI/scheduler formulas.
+- [x] Supported Hero/Mob Buff ticks, timers/cooldowns, actor clocks, HP/HT, shields, Buff rows and source-specific side effects are validated against trusted pre-state and native post-state.
+- [x] Poison LifeLink batching includes every linked Mob delta and Hero outcome in one request, including lethal Hero death. Stable Mob IDs, death tombstones, reward evidence and allowed loot cells are validated.
+- [x] Supported Hero Buff ticks and Poison/LifeLink paths commit atomically; SQL/snapshot/replay/event/sequence roll back together. In-memory sequence/world-time restore on failure; ACK/FOV/room broadcasts happen only after commit.
+- [x] Transaction errors are correlated with request ID/sequence; Android clears pending actions and requests RESYNC. Failed transactions cannot leak accepted events or partial state.
+- [x] Tests cover Poison/Barrier, ShieldBuff priority, Healing+Barrier concurrency, Hunger/WellFed, Drowsy/MagicalSleep, Haste, Amok, Terror, Dread, SnipersMark expiry, concurrent timers, approved Wand.Charger/Recharging, food/potion/scroll effects and native reward receipts.
+- [x] XP/reward and Monk boundaries are validated: exact non-level-up XP and bounded base MonkEnergy are accepted; level-up/item callbacks and unsupported Monk bonuses are rejected.
+- [x] SpiritArrow 9-C is complete: strict Bow/mark/stable-target intent, publisher reservation/COMBAT_REQUEST, native Java result, atomic commit, correlated failure/rollback, sequenced EVENT_BATCH and stable-identity requester reconciliation. JVM tests cover headless callback/cancel and clients with different local Mob IDs.
+- [x] Level Publisher handoff is durable/generation-based. Valid replacement requires persisted state; pending combat closes; clients receive handoff and persisted snapshot.
+- [x] Lossless rebase validates shared Mob IDs/bundles, fresh local Hero/RemoteHero/Mob Actor IDs and exact LifeLink/SnipersMark target identity before shared actions resume.
+- [x] Workers runtime exercises real Durable Object SQLite rollback, replay, eviction/reconstruction and publisher handoff.
+- [x] Malformed/oversized payload, forged identity/position, stale generation, replay, duplicate request, pending-lock expiry and non-publisher authority violations have regression coverage.
+- [x] Exact-head Backend build/tests, Android JVM/Debug APK and Workers-runtime SQLite jobs passed.
 
+### Explicitly unsupported and fail-closed
+The following are rejected before persistence and are not claimed as playable multiplayer effects:
+- XP level-ups, including `Hero.updateHT()` and `onHeroGainExp` item callbacks.
+- Monk Unencumbered Spirit and UnarmedAbilityTracker callback/bonus paths beyond verified base MonkEnergy.
+- RemoteHero/player LifeLink and cross-device local Buff references that cannot be rebound to the same stable Mob.
+- Unapproved scroll READ, generic Wand ZAP, unsupported consumable/Buff callbacks.
+- SpiritArrow SPEED volleys and non-Mob targets.
 
-#### Immediate next task
-1. Trace the positive path's post-accept sequence and find the source of the third `ERROR`; capture exact payload, recipient, request ID and sequence.
-2. Update the forged-`attackerPos` negative test to expect the correlated requester `ERROR`; keep missing/forged positions rejected.
-3. Trace `MessageRouter → RemoteHero → Hero.shoot/deferred report → SpiritArrow.onThrow/completeNativeSpiritArrow → MissileSprite.onComplete`; prove when the report is finalized.
-4. Join requester ATTACK → reservation/COMBAT_REQUEST → actual publisher completion → accepted EVENT_BATCH → requester application/reconciliation.
-5. Cover hit/miss, target invalidation, invalid Bow/mark/entity, exception/cancel, duplicate, stale/replay and RESYNC. Run backend and Android JVM/assembleDebug, then verify CI on exact final SHA.
+### Exact-head verification
+| Job | Result |
+|---|---|
+| Backend typecheck + tests | Passed; 8 files, 682 reported executions (mirrored TS/JS) |
+| Android JVM + Debug APK | Passed; `./gradlew test assembleDebug --no-daemon`, `BUILD SUCCESSFUL` |
+| Real Durable Object SQLite | Passed; 3 Workers-runtime integration tests |
 
-#### 9-C acceptance
-- [ ] Resolve publisher SYNC_MOB_STATE INVALID_ACTION with source-faithful result.
-- [ ] Verify/fix RemoteHero asynchronous completion.
-- [ ] Joined cross-layer requester → publisher → accepted event → requester reconcile test.
-- [ ] Hit/miss, target invalidation, invalid Bow/mark/entity, exception/cancel, duplicate, stale/replay and RESYNC cases.
-- [x] Local callback and target-moved cancellation pass headless JVM tests.
-- [x] Android JVM tests and assembleDebug pass on current HEAD.
-- [ ] Keep SPEED volley and non-Mob targets fail-closed.
+Production deployment and physical-device playtest remain Phases 22 and 23, not Phase 9 claims.
 
-Parent Phase 9 remains OPEN. Remaining after 9-C: Wand/shield/Berserk/consumables, overlapping DOT/HoT/shield/detach/death, real Durable Object SQLite/restart/crash, publisher handoff, XP/Monk/RemoteHero, reconnect/expiry/replay/resync.
+## Phase 10 — Canonical Protocol Schema and One Typed Event Path## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
-**Priority:** P0 · **Dependencies:** phases 7–8 and the native scheduler/snapshot work in phases 1–3.
+### Entry checkpoint — 2026-11-13
 
-### Work items
-- [ ] Audit all multiplayer-relevant native buff/debuff application paths and retain the existing Java SPD formulas, timing and actor order.
-- [ ] Synchronize effect ticks, remaining duration, cooldowns, shields, periodic damage/healing, hunger/WellFed state, potion effects and expiration through an authoritative native result.
-- [ ] Ensure expiry is applied exactly once; reject unrelated Hero/Mob changes disguised as an effect tick and handle effect targets removed or killed during callbacks.
-- [ ] Restore effect state and scheduler timing after reconnect/resync without restarting durations, applying ticks twice or leaving stale buffs.
-- [ ] Add tests for concurrent effects, expiry boundaries, shields/DOTs, death during an effect, reconnect before/after expiry, duplicated tick messages and malformed effect deltas.
+Phase 9 is complete for implementation and automated acceptance at `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. The outer Java/schema protocol currently contains 25 message names, including `LEVEL_PUBLISHER_CHANGED`; `NativeLevelSnapshot` carries optional `publisherRebase` and `publisherRebaseTerm` fields. These support Phase 9 authority recovery; the canonical typed event path is not yet complete.
 
-### Acceptance criteria
-
-#### Parent Phase 9 acceptance — phase remains OPEN until every item below is satisfied
-
-- [x] The original Java SPD engine remains authoritative for every enabled combat/effect calculation; TypeScript validates exact native results and never substitutes its own RNG, damage or scheduler formula.
-- [x] Implemented Hero/Mob effect ticks are source-specific and validate trusted pre-state, native post-state, actor clocks, HP/shields/Buffs and only their permitted side effects.
-- [x] Due-only expiry and selected concurrent timer restoration are covered by native/backend regressions; unrelated Hero Buff ticks cannot silently expire protected rows.
-- [x] Poison LifeLink publisher batches, reward/loot evidence, replay rejection, non-publisher fail-closed behavior and scoped SQL rollback/deferred outbound messaging have MatchRoom/Android tests.
-- [x] Unsupported effect branches remain fail-closed rather than accepting arbitrary client state.
-- [x] Complete local SpiritArrow asynchronous callback lifecycle in the native headless JVM test.
-- [ ] Complete full authority → accepted event → requester reconciliation.
-- [ ] Close remaining Wand/shield/Berserk/consumable and native side-effect variants with exact Java and server positive/negative tests; no source effect may hide unrelated item/quest/economy/AI changes.
-- [ ] Cover overlapping DOT/HoT/shield/detach effects, death during effects, target removal, concurrent timers, stale/replay/duplicate and reconnect/expiry boundaries.
-- [ ] Verify actual Durable Object SQLite atomic rollback, restart/crash behavior and publisher authority handoff; the current test adapter is deterministic/in-memory.
-- [ ] Validate XP level-up/`Hero.updateHT()`/item `onHeroGainExp` callbacks, Monk talent/ability variants and RemoteHero/player LifeLink, or keep them explicitly unsupported and ensure no path can partially apply them.
-- [ ] Run the complete backend build/tests and Android JVM tests plus `assembleDebug` on the exact final SHA; both CI jobs must pass.
-- [ ] Complete the deployment/service preflight and physical multiplayer playtest in phases 22–23; CI alone is not live service or device evidence.
-
-Phase 9 must not be closed while any required enabled effect, authority, recovery or acceptance item remains open. Unsupported features may remain fail-closed only when that limitation is explicit and compatible with the parent phase's final intended scope.
-
-### Progress checkpoint — 2026-11-09 (publisher Poison LifeLink batches atomic; Phase 9 remains OPEN)
-
-- **Exact tested gameplay HEAD:** `b68b66e686b98dbf343997202b215e2c828b7b89` on `multiplayer-framework-core-14118577486727081892`; exact-head [CI run 42777941791 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791).
-- **CI evidence:** TypeScript build and 644 Vitest executions across eight files passed; Android JVM tests and Debug APK compilation passed. TypeScript/generated-JavaScript suites mirror cases, so this is an execution count, not a unique-scenario count.
-- Native LifeLink Mob callbacks produced inside the publisher's Poison actor are buffered rather than sent as separate `SYNC_MOB_STATE` commits. The complete before/after data is included in `NativeMobCombatDelta`, including publisher-local Actor IDs, stable entity IDs, native bundles, Buff/shield values, and a JSON-array heap snapshot when a Mob dies.
-- A nonlethal Poison tick emits one `SYNC_HERO_STATE` / `BUFF_TICK` action containing both the Hero result and the complete linked Mob delta. A lethal local-Hero Poison callback attaches that same pre-state, sequence baseline and Mob batch to the Hero environment-death action; it does not wait for a post-death Buff tick.
-- `MatchRoom.handleAction` wraps these two exact Poison batch shapes in `state.storage.transactionSync`. Mob SQL updates/deletions, the level snapshot and heaps, Hero/player HP state, reward receipts, the final event, `processed_actions`, sequence and world time share the request transaction. If `transactionSync` is not available, the batch is rejected. If a write/event insert throws, SQL rolls back and the handler restores its in-memory sequence/world-time checkpoint. This is deliberately scoped; it does not make every action transactional.
-- The server resolves LifeLink Actor IDs only from the trusted Hero pre-state and complete level snapshot, then validates the stable server Mob identities and SQL before-state. It checks native post-bundles, HP/HT/position/shields/Buffs, death tombstones, loot only at dead Mob cells and trusted reward metadata. Non-publishers cannot author LifeLink Mob deltas from process-local Actor IDs.
-- The lethal publisher branch builds synthetic Mob-damage evidence from the validated batch and trusted pre-death Mob snapshot; the same evidence drives exact non-level-up XP and supported base MonkEnergy checks. Level-up/item callbacks and unsupported talent/ability variants remain rejected. The legacy non-publisher lethal evidence branch only correlates already-accepted events and does not write Mob state.
-- `server/src/match-room/lifelink-death.integration.test.ts` covers publisher nonlethal and lethal flows, replay using a fresh request ID, forged heap positions, non-publisher rejection and rollback when final event insertion fails. The in-memory SQL adapter models the HP-only Hero update, transaction rollback and all asserted rows. This exercises the MatchRoom handler, but is not a real Cloudflare Durable Object SQLite test.
-- **Non-publisher limitation:** a local Hero Poison tick with LifeLink references is not authorized to mutate shared Mobs. Even an empty `secondaryMobDeltas` payload is rejected with `BUFF_TICK_MOB_AUTHORITY_REQUIRED`. Android verifies the shared Mob is not changed locally and that rejection of the Hero tick requests RESYNC; it does not test full remote snapshot application. Cross-client delegated LifeLink remains an open feature.
-- **Correlated transaction errors:** an exception during the scoped SQL transaction is caught by the WebSocket message boundary, which now sends the original `requestId` and current room `sequence` in `ERROR`. The client can clear the pending action and request a snapshot after rollback. The new integration regression exercises the full message boundary with a forced final event-insert failure.
-- **Deferred external side effects:** ACTION_ACCEPTED and FOV/MATCH_END event broadcasts are queued while the SQL transaction runs and emitted only after its successful return. Rollback after a later hook therefore cannot leave a phantom accepted event. The FOV exclusion uses the original sender WebSocket, not the proxy passed into the handler.
-- **Concurrent Poison/Barrier damage:** server validation now accounts for the native ShieldBuff side effect of Poison damage against a Hero Barrier. A surviving Barrier may lose only the exact absorbed shield amount with unchanged partial decay; a depleted Barrier may detach only when the aggregate Hero shield decreases by exactly its old value. Tests accept full absorption/detach and partial absorption, while rejecting an unchanged shield with a missing Barrier, extra aggregate shield loss, or a forged partial accumulator. A Java runtime regression exercises a full two-point Poison hit absorbed by a two-point Barrier with no Hero HP loss.
-- **Barrier Bundle field-name correction:** `Barrier.storeInBundle()` writes `partial_lost_shield`, not `partialLostShield`. The Poison side-effect validator and native Barrier-tick validator now read the exact native key. Backend tests mirror Bundle output and include a negative camelCase-alias case; this closes the Android/server mismatch missed by earlier fixtures.
-- **Poison/ShieldBuff priority ordering:** the server mirrors native priorities 2 (`WarriorShield`/`BlockBuff`), 1 (`AscendBuff`/`DivineShield`) and 0 (`Barrier`). It requires complete consumption of each higher-priority tier before any lower-tier shield changes. Positive native-order and negative lower-tier-bypass fixtures pass; the Java runtime test exercises all three tiers and per-class zero-shield lifecycle.
-- **Atomic Hero Buff tick boundary:** all source-shaped `SYNC_HERO_STATE` `BUFF_TICK` actions now use the same transaction/deferred-send wrapper as Poison LifeLink; strict validators still determine which source transitions may commit. A forced Healing event-insert failure proves the full Hero/player HP/Buff/event/sequence rollback path.
-- **Wire fixes:** `NativeMobCombatDelta.Payload.heaps` is an object/JSON array, not a JSON string; `findObjectEnd()` handles nested objects and escaped quotes/backslashes; native Buff rejection responses report the first failed validation precondition.
-- **Full resync application:** the Android regression now confirms a rejected non-publisher Poison/LifeLink prediction is undone by applying a complete server-shaped SNAPSHOT; Hero pre-tick HP, linked Mob HP/Actor identity and Poison/LifeLink clocks are restored. It uses a deterministic in-test envelope, not a live Worker/SQLite response.
-- **Native snapshot JSON:** prototype elision was disabled for `SPDLevelSnapshot.buildLevelJson()`; otherwise default schema/branch values and explicit empty collections could be omitted and the client would reject the full snapshot as incomplete.
-- **Protected files:** `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged.
-- **Safe Hero Amok expiry:** the publisher now captures a due `Amok` Buff targeted at the local Hero. Native `Amok.detach()` only resets enemy-to-enemy Mob aggro when its target is an enemy; Hero-targeted expiry only removes the Hero Buff. Backend tests prove due-only removal and reject forged HP/shield changes, while the Android native runtime test executes the original `Amok.act()` and confirms the shared Mob HP and `AiState` remain unchanged. Amok is intentionally excluded from the cross-tick expirable set so another Buff tick cannot remove it as an incidental side effect.
-
-- **Safe Hero SnipersMark expiry:** native local-Hero `SnipersMark.act()` is now published only at its own due expiry. Its detach clears the local `ActionIndicator`; it does not perform Mob damage or AI changes. The backend accepts only due removal with exact pre-state identity/bonus and unchanged HP/shield/inventory, and rejects missing/early/modified marks or incidental disappearance during another Buff tick. Spirit Arrow use and target combat are not included by this expiry-only change.
-- **Still open for Phase 9:** real Durable Object/SQLite restart/failure validation, publisher authority handoff, level-up XP and item callbacks, Monk talent/ability variants, RemoteHero/player LifeLink, reconnect/expiry boundaries, more consumables/detach paths and simultaneous DOT/HoT/shield effects, and broader malformed/replay/resync testing. No Worker deployment smoke test or physical two-device match was run. Phase 9 remains OPEN.
-
-
-### Progress checkpoint — 2026-11-02 (Phase 9 remains OPEN)
-
-- Latest exact-SHA code/test checkpoint: `b9ad0739d10d6a4125fb6ea084d6d072b2699810`; exact-head CI [41489794307](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41489794307) passed Backend TypeScript build/tests and Android `:core:test` plus Debug APK assembly (`BUILD SUCCESSFUL`). Backend executed **560 Vitest tests across four files**; TypeScript and generated JavaScript suites mirror the same source cases, so this is not 560 unique scenarios.
-- Added native Hero/Mob flavour-expiry handling for `Foresight`, `Invulnerability`, and `FrostImbue`. These additions are expiry-only: the Java publisher admits the source event, while server validation requires the source timer to be due, exactly one removal, unchanged Hero HP/shield and unrelated native state. No application-side callbacks are authorized by these additions. The Java publisher regression constructs the Buff objects and sets their Hero target directly, avoiding scene-backed `Foresight.attachTo()` in headless tests; final exact-head Android CI passes.
-- The intermediate run [41489235105](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41489235105) exposed that headless `Foresight.attachTo()` calls `Hero.search()` and requires `GameScene.scene`; the Java fixture was corrected without changing production behavior, and [41489794307](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41489794307) passes both jobs.
-- New regressions prove two overlapping Hero timers expire as separate due scheduler events: the second expiry is rejected before its deadline, then accepted at its deadline, and both an old event and a duplicate are rejected after commit. Java Mob restore now verifies concurrent Haste+Weakness cooldown preservation, no duplicates on repeated snapshots, and no resurrection after both effects expire.
-- Cloudflare verification: the `spd-multiplayer` Worker still has its only 100%-traffic deployment from 2026-09-13; code through `b9ad073` has not been deployed and no live Worker smoke test was run. No physical-device multiplayer match was performed.
-- Native Hero Buff ticks remain source-specific and fail closed. Verified branches include Hunger/Poison constraints (Poison with LifeLink is rejected), Drowsy-to-MagicalSleep, Dread countdown/expiry, Recharging, Barrier/Blocking/BrokenSeal shield behavior, and only the deterministic portion of Berserk. Random Berserk shield decay remains rejected because it can kill the Hero and mutate additional state.
-- Wand charging is now implemented as an item-bound `Wand.Charger` tick: the event identifies one owned Wand by stable item ID and proves exact `curCharges`/`partialCharge` changes against native max-charge, Wand subclass, MagicalHolster, RingOfEnergy/EnhancedRings/Light Reading, Regeneration/LockedFloor/VaultLevel, MagicImmune, Recharging remainder and actor order. Unrelated inventory, quickslot and economy state remains immutable.
-- Native Mob timed-effect expiry has its own full-world validator. It checks the native actor clock, exact Mob/Buff Bundles, stable entity identity, globally unique local Actor IDs (including local/remote Heroes, their Buffs, Mobs, Mob Buffs, Blobs and the level respawner), unchanged unrelated world state and exactly one source expiry. `Terror` expiry is admitted only with the exact native `Mob.remove(Terror)` transition: FLEEING becomes HUNTING when `enemySeen` is true, otherwise WANDERING; unrelated AI/visibility changes and simultaneous Dread+Terror are rejected. Hero Terror damage recovery remains a distinct Hero tick callback.
-- Mob Buff restoration prepares the complete set before detaching prior effects, restores each original remaining cooldown, rejects failed attachment/decoding instead of silently dropping effects, and is covered for concurrent Haste+Weakness restoration, repeated snapshot application and non-resurrection after both effects expire.
-- Consumable validation includes the admitted native Food, Potion, and ScrollOfRecharging paths. PotionOfHealing uses the exact VialOfBlood multiplier and per-turn cap; PotionOfPurity/Stamina, Haste, Invisibility, Levitation, Strength and Shielding have source-specific checks. PotionOfShielding now requires the exact native Barrier shield amount and partial-decay state; it cannot add Poison. Healing and Shielding are blocked before local execution under `NO_HEALING`, and the server rejects a Poison fallback disguised as a successful consume.
-- The remaining phase work is broader than the current accepted subset: multi-target `LifeLink`/death callbacks, additional potion/scroll families and other Buff detach side effects, plus broader concurrent-effect, target-death, expiry-boundary, reconnect-before/after-expiry and malformed/replay/resync coverage. Separate sequential timer expiries and concurrent Mob-buff restoration now have focused regression coverage. Unsupported branches must continue to request resync or reject rather than mutate locally.
-- No deployed Worker end-to-end smoke test or physical-device multiplayer match was run; those remain Phases 22 and 23. CI does not replace those release checks.
-
-- Effects use original SPD gameplay and agree across clients on active state, tick result, duration and expiry.
-- Replaying a tick or restoring the same snapshot does not duplicate damage/healing or extend/restart an effect.
-- Removed actors/effects are safely cleaned up with no hidden scheduler corruption.
-
-## Phase 10 — Canonical Protocol Schema and One Typed Event Path
+Phase 10 must reconcile Java `MessageType`/`NetworkActionType`, serializers, `protocol/schema.json`, Worker routes, validators and Android handlers. Characterize `RemotePlayerActionReceiver` default-route behavior and migrate only with parity regressions. Define explicit malformed/unknown/unsupported outcomes. Keep Phase 11 replay/resync redesign out of scope.
 
 **Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
 
