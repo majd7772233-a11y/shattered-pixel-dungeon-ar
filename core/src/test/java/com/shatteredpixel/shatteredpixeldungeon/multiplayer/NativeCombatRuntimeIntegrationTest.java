@@ -3187,6 +3187,79 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(2L, manager.getLastSequence());
     }
 
+
+    @Test
+    public void acceptedSpiritArrowEventReconcilesByStableMobIdentityOnDifferentClients() throws Exception {
+        final String stableMobId = "stable-spirit-arrow-reconcile-0001";
+        final String bowItemId = "stable-spirit-arrow-bow-0001";
+        final String requestId = "spirit-arrow-reconcile-request-0001";
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+
+        TestTransport transportA = new TestTransport();
+        manager.startSession("spirit-arrow-event-reconcile", "client-a", transportA);
+        Rat targetA = addRat(hero.pos + 1, 20);
+        int actorIdA = targetA.id();
+        manager.registerServerEntityId(actorIdA, stableMobId);
+
+        String event = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"combatRequestId\":\"" + requestId + "\","
+                + "\"attackerId\":\"client-publisher\","
+                + "\"targetId\":\"" + stableMobId + "\",\"targetType\":\"MOB\","
+                + "\"targetHpBefore\":20,\"targetHp\":15,\"targetHt\":20,"
+                + "\"targetPos\":" + targetA.pos + ",\"targetPosAfter\":" + targetA.pos + ","
+                + "\"damage\":5,\"hit\":true,\"engineResolved\":true,"
+                + "\"attackKind\":\"RANGED\",\"attackWeaponMode\":\"SPIRIT_ARROW\","
+                + "\"targetBuffs\":\"[]\","
+                + "\"spiritArrow\":{\"formatVersion\":1,\"markBuffId\":77,"
+                + "\"markBonus\":0.5,\"targetEntityId\":\"" + stableMobId + "\","
+                + "\"bowItemId\":\"" + bowItemId + "\"}}}]";
+
+        routeEventBatch(event, 1L);
+
+        Assert.assertEquals("Client A resolves the accepted SpiritArrow Mob by stable identity",
+                15, targetA.HP);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertTrue("Mob combat scalar reconciliation must request the authoritative full snapshot",
+                transportA.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        manager.endSession();
+        Actor.clear();
+        Actor.resetNextID();
+        Random.resetGenerators();
+        Dungeon.hero = null;
+        Dungeon.level = null;
+
+        level = new TestLevel();
+        Dungeon.level = level;
+        hero = new Hero();
+        hero.heroClass = HeroClass.WARRIOR;
+        Talent.initClassTalents(hero);
+        hero.pos = 5 * level.width() + 5;
+        hero.HP = hero.HT = 20;
+        hero.damageInterrupt = false;
+        Arrays.fill(level.heroFOV, false);
+        Dungeon.hero = hero;
+        Actor.add(hero);
+
+        // Device B creates an unrelated local Mob first. Its marked Mob Actor ID must differ.
+        addRat(hero.pos + 2, 8);
+        Rat targetB = addRat(hero.pos + 1, 20);
+        int actorIdB = targetB.id();
+        Assert.assertNotEquals("SpiritArrow target Actor IDs are process-local", actorIdA, actorIdB);
+
+        TestTransport transportB = new TestTransport();
+        manager.startSession("spirit-arrow-event-reconcile", "client-b", transportB);
+        manager.registerServerEntityId(actorIdB, stableMobId);
+        routeEventBatch(event, 1L);
+
+        Assert.assertEquals("Client B applies the same accepted outcome through stable Mob identity",
+                15, targetB.HP);
+        Assert.assertEquals(targetA.pos, targetB.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertTrue("Client B also requests a full authoritative snapshot after scalar Mob combat",
+                transportB.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
     private static void routeEventBatch(String payload, long sequence) throws Exception {
         NetworkMessage message = new NetworkMessage(MessageType.EVENT_BATCH, payload);
         message.sequence = sequence;
