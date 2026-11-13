@@ -197,7 +197,7 @@ The requester receives a sequenced EVENT_BATCH. Android resolves the stable serv
 Missing/forged positions, wrong publisher/mark/target identity, stale request/generation, invalid Bow and unsupported SPEED/non-Mob branches remain rejected. Transaction rollback returns correlated errors without leaking ACTION_ACCEPTED/EVENT_BATCH. Publisher handoff requires a lossless rebase of fresh local Actor IDs; remote cross-device LifeLink/SnipersMark references that cannot map to the exact stable Mob remain fail-closed.
 
 Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed Android JVM tests and Debug APK compilation, plus Backend and Workers-runtime SQLite jobs. No rendered animation or physical two-device match is claimed.
-## 5. RemoteHero and RemotePlayer## 5. RemoteHero and RemotePlayer
+## 5. RemoteHero and RemotePlayer
 
 Sources:
 - actors/hero/RemoteHero.java (32 lines at baseline);
