@@ -93,6 +93,7 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/validators/hero-buffs.ts, world-state.ts and combat-state.ts | Hero/Mob Buff ticks, world snapshots/turns, HP/damage, Ankh and combat deltas/events. | Preserve fail-closed native state contracts and existing test coverage. |
 | server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
 | server/scripts/validate-spirit-arrow-schema.mjs | Static contract test for `SPIRIT_ARROW`, strict `spiritArrow` metadata and conditional ranged Mob rules. | Run in `npm test`; proves schema structure, not local projectile runtime or authority roundtrip. |
+| server/scripts/validate-phase10-protocol-enums.mjs | Static ordered parity check between Java `MessageType`/`NetworkActionType`, JSON Schema and protocol version. | Run in `npm test`; proves wire vocabulary/version parity only, not Worker route or client-handler support. |
 | server/src/index.test.ts | Main backend validator/contract test suite, retained on the root `./index` import path. | Add focused positive/negative cases beside the affected validator/action domain. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |

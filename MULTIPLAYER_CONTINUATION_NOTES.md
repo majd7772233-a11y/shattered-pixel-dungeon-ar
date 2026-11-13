@@ -1,39 +1,40 @@
-# Multiplayer Continuation Notes — Phase 10 Entry
+# Multiplayer Continuation Notes — Phase 10 (slice 10-A complete)
 
-**Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`  
-**Exact code/test CI:** [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)  
-**Evidence:** Backend 682 executions across eight Vitest files, Android JVM/Debug APK, and three real Durable Object SQLite Workers-runtime tests passed.  
-**Rule:** Always read the live branch HEAD and its exact-head Actions run before editing; do not assume a previous documentation SHA remains HEAD.  
-**Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`  
-**Only working branch:** `multiplayer-framework-core-14118577486727081892`
+**Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
+**Only working branch:** multiplayer-framework-core-14118577486727081892  
+**Phase 10-A implementation SHA:** d8938190960af64d6efc70f4625a7411bfa3b7de  
+**Exact implementation CI:** [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695)
 
-## Phase status
+## Verified result
 
-Phase 9 — Native buffs and timed effects — is complete for implementation and automated acceptance. Enabled effects are validated against the Java SPD engine. Unsupported callback branches remain fail-closed and are listed in ROADMAP.md.
+- All 21 tracked Markdown files were read at the starting HEAD 032453bf31f722fceb41b9d164987a7f0763502f before code changes. Start-HEAD CI [43479458418](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43479458418) passed.
+- protocol/schema.json now contains the complete 23-value definitions.NetworkActionType, in the exact order of Java NetworkActionType.
+- The 25-value schema messageType enum is aligned in exact value and order with Java MessageType.
+- server/scripts/validate-phase10-protocol-enums.mjs compares both ordered enums, checks NetworkMessage.PROTOCOL_VERSION against schema.version and protocolVersion.default, and ensures the narrower nativeMutationAction list is a subset of the canonical action vocabulary.
+- The new guard is part of backend npm test. CI reported 25 message types, 23 action types, protocol 1.0.0, TypeScript build success and 682 Vitest executions (mirrored TS/JS executions, not unique-source count). Android JVM/Debug APK and three Durable Object SQLite tests also passed.
+- The first two CI attempts exposed an invalid regex in the guard and a genuine ordering mismatch for COMBAT_REQUEST; both were corrected. Final exact-head CI is green.
 
-Phase 10 — Canonical Protocol Schema and One Typed Event Path — is next and remains OPEN. Do not start Phase 11 in parallel. The exact Phase 10 entry checklist below is the next bounded work unit.
+## Scope boundary
 
-## Exact evidence
+Slice 10-A only establishes canonical enum/version vocabulary and static parity. It did not change MessageRouter, RemotePlayerActionReceiver, Worker dispatch, gameplay behavior, or event sequence/replay handling. Enum presence does not authorize execution or prove a handler exists.
 
-- Backend TypeScript build passed; 8 Vitest files, **682 test executions passed**. Generated/mirrored TS/JS suites mean this is not a unique-scenario count.
-- Android `./gradlew test assembleDebug --no-daemon` passed; JVM tests and Debug APK compilation completed with `BUILD SUCCESSFUL`.
-- Workers runtime passed **3 tests** against real Durable Object SQLite: Poison LifeLink rollback/replay across eviction, publisher handoff after a persisted snapshot with pending-combat closure, and committed-state reconstruction after eviction.
-- SpiritArrow is joined across strict intent, trusted reservation, publisher COMBAT_REQUEST, native Java result, atomic commit, sequenced EVENT_BATCH and stable Mob-ID client reconciliation. Android test worlds use distinct local Mob Actor IDs.
-- Publisher disconnect/rebase is generation-based, transactional and fail-closed until persisted state and local Actor references have been validated.
-- XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink, unsupported item/Buff callbacks, SpiritArrow SPEED volleys and non-Mob targets remain rejected without partial state.
+Phase 10 as a whole remains OPEN. Do not start Phase 11.
 
-## Phase 10 entry work
+## Next bounded slice — Phase 10-B
 
-1. Compare all 25 active Java/schema outer message names and every `NetworkActionType`, serializer, payload field and protocol version.
-2. Map each message/action to its exact Worker branch, validator, authorization, persistence/sequence semantics and Android handler. An enum entry alone does not prove a handler exists.
-3. Consolidate event application into one typed `MessageRouter` path. Characterize `RemotePlayerActionReceiver` default-route behavior; migrate only with equivalent parity regressions.
-4. Define direction, required/optional fields, request ID, sequence, malformed payload behavior and explicit unsupported outcomes.
-5. Add contract tests for missing/wrong-type/oversized fields and ensure every declared message/action has a handler or safe explicit response.
+Map each of the 25 outer messages and 23 actions across:
+1. sender/direction and envelope/body schema;
+2. exact Worker inbound branch or explicit server-originated-only / unsupported behavior;
+3. validator, authorization, persistence and sequence behavior;
+4. Java sender/serializer and Android receiver/handler;
+5. malformed or unsupported response and relevant regression test.
 
-## Boundaries
+Start with a source-grounded matrix and a few highest-risk gaps. Do not migrate the legacy receiver until its behavior is characterized and equivalent parity tests exist. Do not attempt the entire typed event path in one slice.
 
-- Java/SPD remains the gameplay specification; do not reimplement combat, Mob AI, Buff or scheduler formulas in TypeScript.
-- Never accept client-created rewards or Mob IDs without trusted-state binding.
-- Do not broaden non-publisher permissions or remote LifeLink authority.
-- Keep Phase 11 replay/resync redesign, transport phases 14–16, modes 17–19, UX 20–21, deployed service Phase 22 and physical-device Phase 23 out of Phase 10.
-- Work only on `multiplayer-framework-core-14118577486727081892`; no new branch and no merge to main/master.
+## Rules for the next conversation
+
+- Re-read all Markdown files from the live branch HEAD, then read the latest GPT.md and ROADMAP.md checkpoints.
+- Verify the live branch SHA and exact-head Actions run before any write; documentation synchronization may have added a descendant after implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de.
+- Work only on multiplayer-framework-core-14118577486727081892; do not create a branch, merge, or touch master/main.
+- Keep Java/SPD as gameplay truth, preserve fail-closed behavior, and do not broaden support merely because an enum value exists.
+- Work only on the next bounded Phase 10 slice, update docs with each change, run exact-head CI, then stop for the user's direction.

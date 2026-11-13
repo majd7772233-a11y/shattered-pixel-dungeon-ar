@@ -13,7 +13,7 @@ Inspected server/package.json:
 | Script | Command | Purpose |
 |---|---|---|
 | build | tsc | Compile/type-check TypeScript according to tsconfig.json. |
-| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && vitest run | Run both static native schema contracts, then Vitest. |
+| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && node scripts/validate-publisher-handoff-schema.mjs && node scripts/validate-phase10-protocol-enums.mjs && vitest run | Run four static native/schema/protocol contracts, then Vitest. |
 
 Normal backend validation sequence from repository root:
 
@@ -187,3 +187,10 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 - Phase 10: next and OPEN. The protocol contains 25 outer names including LEVEL_PUBLISHER_CHANGED; typed-path consolidation and legacy receiver migration remain Phase 10 work.
 - CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
+
+
+## 10. Phase 10-A canonical protocol enum/version check
+
+The backend npm test command now invokes server/scripts/validate-phase10-protocol-enums.mjs before Vitest. The script compares Java MessageType and NetworkActionType to the ordered schema enums, checks the 1.0.0 protocol version/default against NetworkMessage.java, and verifies that the existing nativeMutationAction allowlist remains a subset of declared Java actions. It is a static contract guard, not proof that every message/action has a Worker handler or an end-to-end client path.
+
+Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [GitHub Actions run 43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend build and tests, Android JVM/debug-APK compilation, and Durable Object SQLite rollback/eviction tests all succeeded.

@@ -451,6 +451,14 @@ Phase 10 must reconcile Java `MessageType`/`NetworkActionType`, serializers, `pr
 
 **Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
 
+### Delivered bounded slice 10-A — Canonical enum/version registry (complete)
+
+- Added definitions.NetworkActionType to protocol/schema.json with all 23 Java action values, in Java enum order. The existing 25-value outer messageType enum was aligned to Java ordering; no outer message was added or removed.
+- Added server/scripts/validate-phase10-protocol-enums.mjs to compare both Java enums against the schema, compare NetworkMessage.PROTOCOL_VERSION with schema.version and protocolVersion.default, and verify the narrower nativeMutationAction allowlist is contained in the canonical action enum.
+- Wired the guard into npm test. It checks vocabulary/version parity only; it does not declare every action executable or imply that every message has an inbound Worker route.
+- Implementation SHA: d8938190960af64d6efc70f4625a7411bfa3b7de. Exact-head [CI 43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend build + 682 Vitest executions, Android JVM/Debug APK, and three Durable Object SQLite runtime tests.
+- No MessageRouter, RemotePlayerActionReceiver, Worker routing or gameplay behavior was changed in slice 10-A. The parent Phase 10 remains OPEN; the next slice must map message/action direction, route, validation/authorization, sequence/persistence behavior and client handlers before touching event-path consolidation.
+
 ### Work items
 - [ ] Compare every active Java message/action enum and payload with Worker handlers and protocol/schema.json, including LEVEL_DATA and all item/effect outcomes.
 - [ ] Document required versus optional fields, full versus partial snapshots, stable IDs, request IDs, sequence numbers, rejection/error payloads and supported protocol versions.

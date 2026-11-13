@@ -1,4 +1,4 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-13 (PHASE 9 COMPLETE; PHASE 10 READY)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-13 (PHASE 9 COMPLETE; PHASE 10 IN PROGRESS — 10-A COMPLETE)
 
 - **Repository / branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. This is the only write target. Never create a branch, work on master/main or merge this branch.
 - **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
@@ -11,11 +11,21 @@
 - **Publisher handoff/rebase:** durable generation advance, valid persisted state, pending-combat cancellation, generation notification and persisted snapshot delivery. Replacement must pass lossless rebase validating shared Mob IDs/bundles plus refreshed Hero/RemoteHero/Mob Actor IDs, LifeLink and SnipersMark references before shared actions resume.
 - **Timed effects:** enabled effects are validated source-specifically against native Java results; SQL/event/sequence/outbound messages are atomic. Poison/LifeLink, shield priority, concurrent timers, approved consumables, XP/reward and base MonkEnergy boundaries have positive/negative coverage.
 - **Explicit fail-closed exclusions:** XP level-up/`Hero.updateHT()`/`onHeroGainExp`; advanced Monk Unencumbered Spirit/UnarmedAbilityTracker; RemoteHero/player LifeLink; unsupported scroll/wand/consumable/Buff callbacks; SpiritArrow SPEED volleys and non-Mob targets.
-- **Phase status:** Phases 1–9 complete for implementation and automated acceptance. Phase 10 is next and OPEN; Phases 11–23 remain open.
+- **Phase status:** Phases 1–9 complete for implementation and automated acceptance. Phase 10 is in progress and remains OPEN; bounded slice 10-A is complete. Phases 11–23 remain open.
+- **Phase 10-A source/test SHA:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). It adds the canonical 23-value `NetworkActionType` schema definition and a static guard for both ordered Java enums, protocol version `1.0.0`, and the narrower native-mutation allowlist. Backend build + 682 Vitest executions, Android JVM/Debug APK and 3 Durable Object SQLite tests passed.
+- **Phase 10-A boundary:** no changes to `MessageRouter`, `RemotePlayerActionReceiver`, Worker dispatch or gameplay handlers. The registry is vocabulary parity, not proof of runtime support. Next is bounded slice 10-B: map all outer message/action directions to Worker routes, validators/authorization, sequence/persistence semantics and Android handlers.
 - **Evidence limits:** DO SQLite tests use local Workers runtime, not deployed production; projectile test is headless, not rendered; no physical two-device match. Phases 22–23 remain the release checks.
 - **Phase 10 entry:** reconcile all message/action enums, schemas, Worker routes and Java handlers; consolidate event application through one typed path; characterize/migrate `RemotePlayerActionReceiver` with parity tests; define malformed/unknown/unsupported outcomes. Keep Phase 11 out of scope.
 
 **Source-of-truth hierarchy:** `PROJECT_EXECUTION_PROTOCOL_AR.md` governs workflow; `ROADMAP.md` governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; `docs/multiplayer/` is the maintained architecture/test reference.
+
+## Phase 10 execution log — 2026-11-13 (bounded slice 10-A)
+
+- Start HEAD: `032453bf31f722fceb41b9d164987a7f0763502f`; all 21 tracked Markdown files were read before code changes. Exact start-HEAD CI `43479458418` passed all three jobs.
+- Implementation chain: `2a8094a47c88bdf17e123b216f9ce8a77cdb5533` (canonical action enum + test integration), `847333c92d8b24c670c93305e54bd2544a621ed8` (validator syntax correction), `d8938190960af64d6efc70f4625a7411bfa3b7de` (align schema message enum ordering with Java).
+- Final exact-head CI `43485367695` passed Backend, Android and Durable Object SQLite jobs. Backend output confirmed 25 message types, 23 action types, protocol 1.0.0 and 682 Vitest executions across eight files (mirrored TS/JS outputs are not unique source scenarios).
+- The initial CI exposed two real defects in the new contract guard: an invalid comment-stripping regex and a message enum order mismatch. Both were fixed without weakening exact ordered parity; the final run is green.
+- Remaining: comprehensive message/action routing matrix, inbound unsupported-message behavior, typed client event path, and parity-tested `RemotePlayerActionReceiver` migration. Keep Phase 11 replay/resync redesign out of scope.
 
 ## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
 

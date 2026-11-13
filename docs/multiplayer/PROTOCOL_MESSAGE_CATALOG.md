@@ -1,6 +1,6 @@
 # Multiplayer Protocol and Message Catalog
 
-> Protocol/gameplay source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 will complete the one typed event path; enum/schema parity alone does not mean consolidation is complete. Verify the live branch HEAD and its exact-head Actions run before editing.
+> Phase 10-A protocol contract source/test SHA: d8938190960af64d6efc70f4625a7411bfa3b7de; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 remains open: enum/schema parity is only the first bounded slice, not completion of the typed event path. Verify the live branch HEAD and its exact-head Actions run before editing.
 
 ## 1. Protocol version and envelope
 
@@ -111,7 +111,7 @@ The default route is a known transitional boundary. MessageRouter and RemotePlay
 
 ## 5. Gameplay NetworkActionType enum
 
-The 22 Java action values are:
+The 23 Java action values are:
 
 | Action | High-level meaning |
 |---|---|
@@ -137,6 +137,7 @@ The 22 Java action values are:
 | REVIVE | Native revival result |
 | SYNC_HERO_STATE | Native Hero/combat state publication |
 | SYNC_MOB_STATE | Native Mob state publication |
+| SYNC_PLAYER_COMBAT | Native player-combat authority result/state synchronization |
 
 NetworkActionBridge maps a subset of HeroAction classes directly: Move, Attack, PickUp, OpenChest, Buy, Interact, Unlock, LvlTransition, Mine and Alchemy. Unknown HeroAction classes fall back to WAIT in the inspected mapping; do not treat that fallback as an implementation of the missing action.
 
@@ -193,6 +194,7 @@ A snapshot or event record sequence must be applied monotonically. Stale/duplica
 
 | Definition | Purpose |
 |---|---|
+| NetworkActionType | Complete 23-value Java gameplay action vocabulary; declaration does not imply Worker acceptance. |
 | NativeUseItemAction | DRINK, EAT, READ action discriminator |
 | NativeMobEntity | Stable ID, native Mob state, AI and scheduler fields |
 | NativeLevelSnapshot | Version, floor, dimensions, metadata, tiles, transitions and entity collections |
@@ -219,9 +221,11 @@ SpiritArrow is **not** a new outer `MessageType` and is not a separate `NetworkA
 
 The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`.
 
+The Phase 10-A parity guard `server/scripts/validate-phase10-protocol-enums.mjs` compares the ordered Java `MessageType` and `NetworkActionType` enums with their JSON Schema definitions, checks `NetworkMessage.PROTOCOL_VERSION` against `schema.version` and the `protocolVersion` default, and ensures the narrower `NativeLevelSnapshot.nativeMutationAction` allowlist contains only declared actions. This proves vocabulary/version parity, not Worker route coverage or end-to-end support.
+
 **Historical 9-C failure snapshot — 2026-11-12; superseded by Phase 9 completion on 2026-11-13.** At gameplay HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, [CI 43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) reported 654 passed / 4 failed mirrored Vitest executions. Those failures were subsequently resolved: publisher result commit and requester EVENT_BATCH are now covered, the forged-position negative test asserts the correlated ERROR, and Android accepted-event reconciliation is tested on two client worlds with different local Mob Actor IDs.
 
-The gameplay/test baseline is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). The source-level acceptance includes Backend 682/682 executions, Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. Phase 9's support boundary and exclusions are recorded in `ROADMAP.md` and `TEST_MATRIX.md`; verify any later documentation-only branch commits against their own Actions run.
+The Phase 9 gameplay/test baseline is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). The source-level acceptance includes Backend 682/682 executions, Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. Phase 9's support boundary and exclusions are recorded in `ROADMAP.md` and `TEST_MATRIX.md`. Phase 10-A source/test SHA `d8938190960af64d6efc70f4625a7411bfa3b7de` passed exact-head CI [43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695), including the enum/version parity guard; verify any later documentation-only branch commits against their own Actions run.
 
 
 

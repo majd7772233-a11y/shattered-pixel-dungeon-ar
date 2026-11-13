@@ -1,6 +1,7 @@
 # Multiplayer Automated Test Matrix
 
-> Gameplay/test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). Counts distinguish source declarations from mirrored CI executions. This is not a formal security certification or physical-device result. Always inspect the live branch HEAD and exact-head CI before future edits.
+> Gameplay/test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact gameplay/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+> Phase 10-A protocol contract SHA: d8938190960af64d6efc70f4625a7411bfa3b7de; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). Counts distinguish source declarations from mirrored CI executions. This is not a formal security certification or physical-device result. Always inspect the live branch HEAD and exact-head CI before future edits.
 
 
 ## Source-refactor compatibility
@@ -171,7 +172,7 @@ File: .github/workflows/multiplayer-ci.yml
 - npm ci;
 - npm run build;
 - npm test;
-- npm test runs the static native-mutation/schema validation script before Vitest.
+- npm test runs four static protocol/schema contracts before Vitest: native mutation metadata, SpiritArrow, publisher handoff, and Phase 10 Java/schema enum plus protocol-version parity.
 
 ### Android job
 - Temurin Java 17;
@@ -268,3 +269,17 @@ Fail-closed and tested, not supported multiplayer effects:
 - SpiritArrow SPEED volleys and non-Mob targets.
 
 Phase 9 is complete for the enabled implementation and automated acceptance under this explicit support boundary. Production deployment and physical-device playtest remain Phases 22 and 23.
+
+
+## Phase 10-A — Canonical protocol enum/version parity
+
+The server/scripts/validate-phase10-protocol-enums.mjs script is invoked by server/package.json's npm test command. It reads the Java source enums and checks exact value and order parity against protocol/schema.json:
+
+- All 25 MessageType names must match the schema envelope enum.
+- All 23 NetworkActionType values must match the schema's canonical definitions.NetworkActionType.
+- The schema version and protocolVersion default must match NetworkMessage.PROTOCOL_VERSION (1.0.0).
+- Every entry in the narrower NativeLevelSnapshot.nativeMutationAction allowlist must be a declared Java action.
+
+The check intentionally does not claim that every enum value has a Worker route or a complete client handler. Handler/direction/authorization/sequence parity and the single typed event path remain outstanding Phase 10 work.
+
+Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [CI 43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend TypeScript build, four static protocol/schema checks and 682 Vitest executions passed; Android JVM/Debug APK and three Durable Object SQLite runtime tests also passed.

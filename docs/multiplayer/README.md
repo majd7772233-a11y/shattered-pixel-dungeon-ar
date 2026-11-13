@@ -37,7 +37,8 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-13
 
 - **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- **Verified Phase 9 gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact gameplay/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- **Phase 10-A protocol contract baseline:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). The new guard verified 25 ordered MessageType values, 23 ordered NetworkActionType values and protocol version 1.0.0.
 - Backend: TypeScript build + 682 executions across eight Vitest files passed (mirrored JS output means executions are not unique source scenarios).
 - Android: JVM tests and Debug APK compilation passed.
 - Workers runtime: 3 tests against real Durable Object SQLite passed.
@@ -45,7 +46,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **Phase 9:** complete for implementation and automated acceptance. Enabled native effects use source-specific trusted validation; unsupported XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff effects remain fail-closed.
 - **SpiritArrow:** strict intent → publisher authority → native Java result → atomic commit → sequenced EVENT_BATCH → stable-identity client reconciliation is covered. A dedicated JVM regression uses two clients with different local Mob Actor IDs.
 - **Publisher recovery:** durable generation handoff, pending-combat closure, persisted snapshot, lossless rebase and local Actor identity refresh are covered, including actual DO SQLite rollback/eviction tests.
-- **Phase 10:** next and OPEN. Consolidate protocol definitions and route event application through one typed path. The outer enum/schema currently has 25 names, including `LEVEL_PUBLISHER_CHANGED`.
+- **Phase 10:** in progress and still OPEN. Bounded slice 10-A added the canonical 23-value `NetworkActionType` schema definition and ordered Java/schema enum + protocol-version parity test. Exact implementation SHA `d8938190960af64d6efc70f4625a7411bfa3b7de` passed CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). The outer enum remains 25 names. Worker/client route mapping, one typed event path and legacy receiver migration remain.
 - **Not claimed:** production Worker deployment, rendered projectile animation or physical two-device session. Keep these release checks in Phases 22 and 23.
 
 ## Source-of-truth hierarchy

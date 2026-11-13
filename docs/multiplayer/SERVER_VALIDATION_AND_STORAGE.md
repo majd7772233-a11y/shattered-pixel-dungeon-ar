@@ -40,6 +40,7 @@ The original validator declarations have been moved out of `server/src/index.ts`
 | `server/src/validators/world-state.ts` | Action cost, native world mutations, full level snapshot and Mob Buff expiry validation |
 | `server/src/validators/combat-state.ts` | World turn, HP/damage, Ankh, combat, Hero state, Mob deltas and combat event validation |
 | `server/src/util/seeded-rng.ts` | Deterministic SeededRNG utility |
+| `server/scripts/validate-phase10-protocol-enums.mjs` | Static ordered Java/schema message/action enum and protocol-version parity guard, invoked by `npm test` |
 
 The grouping follows source cohesion and the observed helper dependencies. Some validator modules import shared helpers from other validator modules; imports are explicit. Do not create duplicate copies to avoid imports. The exact source SHA `4119263d9cc4dd5b230c551897b37dc4391417cf` passed the full backend TypeScript build and test job plus Android JVM/debug-APK job in [CI run 42479978278](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42479978278).
 
