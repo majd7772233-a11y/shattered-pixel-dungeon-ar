@@ -1,24 +1,32 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const readRepoFile = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
+const readRepoFile = (path) => readFileSync(new URL("../../" + path, import.meta.url), "utf8");
 const schema = JSON.parse(readRepoFile("protocol/schema.json"));
 
 function parseJavaEnum(source, enumName) {
-  const declaration = source.match(new RegExp(`\\benum\\s+${enumName}\\s*\\{([\\s\\S]*?)\\}`));
-  assert.ok(declaration, `Java enum ${enumName} must exist`);
+  const marker = "enum " + enumName;
+  const declarationStart = source.indexOf(marker);
+  assert.ok(declarationStart >= 0, "Java enum " + enumName + " must exist");
 
-  const values = declaration[1]
-    .replace(/\\/\\*[\\s\\S]*?\\*\\//g, "")
-    .replace(/\\/\\/.*$/gm, "")
+  const openBrace = source.indexOf("{", declarationStart + marker.length);
+  const closeBrace = source.indexOf("}", openBrace + 1);
+  assert.ok(openBrace >= 0 && closeBrace > openBrace,
+    "Java enum " + enumName + " must have a valid body");
+
+  const values = source.slice(openBrace + 1, closeBrace)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
   for (const value of values) {
-    assert.match(value, /^[A-Z][A-Z0-9_]*$/, `${enumName} contains a non-canonical value: ${value}`);
+    assert.match(value, /^[A-Z][A-Z0-9_]*$/,
+      enumName + " contains a non-canonical value: " + value);
   }
-  assert.equal(new Set(values).size, values.length, `${enumName} must not contain duplicate values`);
+  assert.equal(new Set(values).size, values.length,
+    enumName + " must not contain duplicate values");
   return values;
 }
 
@@ -55,10 +63,10 @@ assert.ok(Array.isArray(nativeMutationActions),
   "NativeLevelSnapshot.nativeMutationAction must retain its narrower mutation allowlist");
 for (const action of nativeMutationActions) {
   assert.ok(javaActionTypes.includes(action),
-    `NativeLevelSnapshot.nativeMutationAction contains undeclared NetworkActionType: ${action}`);
+    "NativeLevelSnapshot.nativeMutationAction contains undeclared NetworkActionType: " + action);
 }
 
-const version = networkMessageSource.match(/PROTOCOL_VERSION\\s*=\\s*"([^"]+)"/)?.[1];
+const version = networkMessageSource.match(/PROTOCOL_VERSION\s*=\s*"([^"]+)"/)?.[1];
 assert.ok(version, "NetworkMessage.PROTOCOL_VERSION must be a string constant");
 assert.equal(schema.version, version, "JSON Schema version must match NetworkMessage.PROTOCOL_VERSION");
 assert.equal(schema.properties?.protocolVersion?.default, version,
@@ -67,5 +75,6 @@ assert.deepEqual(schema.required, ["protocolVersion", "messageType", "payloadJso
   "the canonical envelope must keep its required fields explicit");
 
 console.log(
-  `Phase 10 protocol enum contract: ${javaMessageTypes.length} message types, ${javaActionTypes.length} action types, protocol ${version}`
+  "Phase 10 protocol enum contract: " + javaMessageTypes.length + " message types, "
+  + javaActionTypes.length + " action types, protocol " + version
 );
