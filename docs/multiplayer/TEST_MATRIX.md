@@ -311,7 +311,7 @@ The script cross-checks:
 - all 23 Java NetworkActionType values have a corresponding explicit Worker ACTION branch token;
 - the Worker action dispatcher still defaults to actionValid=false / INVALID_ACTION.
 
-This is source-route coverage, not proof that every action subcase is supported or that the Android event path has been consolidated. The Phase 10-B catalog records the per-action validators/authority boundaries and every outer message direction. Android parser strictness, producer-to-action parity (including the NetworkActionBridge fallback-to-WAIT), and behavior-specific RemotePlayerActionReceiver parity remain open.
+This is source-route coverage, not proof that every action subcase is supported or that the Android event path has been consolidated. The Phase 10-B catalog records the per-action validators/authority boundaries and every outer message direction. Android parser/producer parity and the listed behavior-specific RemotePlayerActionReceiver regressions were completed in Phase 10-C; the remaining default-route migration belongs to Phase 10-D.
 
 ### Scope and exclusions
 No change was made to action validator semantics, native SPD gameplay, message sequencing, persistence/replay policy, or resync behavior. RemotePlayerActionReceiver remains in place; its PLAYER_LEFT native Actor/Mob cleanup is required until equivalent typed-path tests prove parity.
@@ -325,3 +325,34 @@ Implementation/fix SHA: `d16be138d74bb9930777f5352efbeae3291070c6`. Exact-head C
 - Three Durable Object SQLite rollback/eviction tests passed.
 
 The first implementation run exposed an accidental change to the existing handler-exception message contract. The implementation was corrected to preserve transaction rollback error messages; no regression assertion was weakened. The successful run above is the corrected exact SHA.
+
+
+## Phase 10-C — Android envelope, producer and legacy receiver behavior
+
+### NetworkProtocolParityTest.java — 15 JVM tests
+
+The suite checks:
+- canonical protocol 1.0.0 envelope parsing, nested JSON string payload and serializer round-trip;
+- required protocolVersion/messageType/payloadJson presence and types;
+- optional requestId/senderId types and sequence safe-integer/range behavior, including omitted sequence default and integral-decimal parity;
+- wrong/unsupported protocol version, unknown MessageType, malformed outer/nested JSON and non-object roots;
+- generic rejection of raw payload objects/arrays and JSON-null optional strings;
+- the exact LAN six-field legacy envelope and Bluetooth two-field unversioned legacy envelope only through transport-specific parsers, including extra-field rejection;
+- all ten mapped HeroAction values plus null/unmapped action rejection with Optional.empty();
+- canonical Bluetooth serialization and strict LAN action discriminator parsing.
+
+### NativeCombatRuntimeIntegrationTest.java — receiver regressions
+
+At the audited source HEAD this class contains 62 @Test methods. Phase 10-C adds targeted behavior checks for:
+1. PLAYER_LEFT: RemotePlayer registry removal, RemoteHero Actor scheduler removal, Mob target reference cleanup, Buff detachment and sprite removal.
+2. Legacy remote-player updates: the default route still updates supported RemoteHero position/HP and retains its Actor registration.
+3. EVENT_BATCH single path: MessageRouter applies Mob state once, duplicate sequence does not reapply it, and direct legacy receiver delivery refuses a second application and requests the existing recovery path.
+
+### Exact-HEAD acceptance
+
+Code/test SHA 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773): Backend TypeScript build and 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK compilation passed; all three Durable Object SQLite integration tests passed.
+
+### Scope and exclusions
+
+No MessageRouter/RemotePlayerActionReceiver relocation or deletion occurred. No Worker action route/validator, replay/resync algorithm, event ordering, or native SPD gameplay formula changed. A green CI run does not prove production deployment or physical-device play.
+

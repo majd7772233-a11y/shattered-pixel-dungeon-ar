@@ -122,7 +122,17 @@ The package has 32 Java files:
 | TransportCallback.java | Transport callback interface |
 | WorldSnapshot.java | Snapshot validation, restore, entity reconciliation and rollback |
 
-For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Batch 2 native/protocol/server references.
+For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the current Phase 10-C protocol/Android/test references.
+
+
+## 4.1 Phase 10-C JVM protocol/receiver tests
+
+| Test path | Current source evidence |
+|---|---|
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NetworkProtocolParityTest.java | 15 JVM tests for canonical envelope parser/serializer, strict required and optional fields, version/sequence, malformed JSON, unknown types, scoped LAN/Bluetooth legacy compatibility, HeroAction Optional mapping and transport framing/action parsing. |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 62 @Test methods at the Phase 10-C audited HEAD. Includes PLAYER_LEFT native cleanup, legacy RemoteHero position/HP compatibility and EVENT_BATCH no-double-application coverage. |
+
+These are automated JVM tests. They do not prove a production Worker deployment or a physical two-device session.
 
 ## 5. Native engine integration paths
 

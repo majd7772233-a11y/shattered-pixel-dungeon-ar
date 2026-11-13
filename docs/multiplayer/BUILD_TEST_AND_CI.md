@@ -184,7 +184,7 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
 - Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
 - Phase 9: complete for implementation and automated acceptance. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff effects remain fail-closed.
-- Phase 10: active and OPEN. Slice 10-A enum/version parity is complete; slice 10-B cross-layer route inventory and fail-closed Worker ingress admission are implemented. Android parser/producer parity, one typed event path and parity-tested legacy receiver migration remain.
+- Phase 10: active and OPEN. Slices 10-A (enum/version parity), 10-B (route inventory/Worker admission) and 10-C (Android parser/producer parity plus targeted receiver behavior regressions) are complete. The next bounded slice is 10-D typed-path convergence; do not change replay/resync under this scope.
 - CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
 
@@ -205,3 +205,13 @@ The gate is part of the ordinary `npm test` path, not a separate CI-only check. 
 ### Phase 10-B exact-head CI result
 
 Corrected implementation SHA `d16be138d74bb9930777f5352efbeae3291070c6` passed [Actions run 43494769215 — all three required jobs succeeded](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend TypeScript build and 708 Vitest executions across 10 files passed; the routing guard reported eight Worker inbound types, 17 known non-inbound types and 23 explicit Worker ACTION branches. Android JVM/Debug APK and all three Durable Object SQLite rollback/eviction tests passed. The successful SHA also preserves the established handler exception message contract used by transaction rollback tests.
+
+
+## 10-C exact-head CI result
+
+The Phase 10-C source/test baseline 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [GitHub Actions run 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773). All three jobs completed successfully:
+- Backend typecheck/build and 10 Vitest files / 708 executions passed.
+- Android JVM tests and ./gradlew test assembleDebug --no-daemon completed with BUILD SUCCESSFUL.
+- Three Durable Object SQLite runtime integration tests passed.
+The 708 backend executions include mirrored generated TypeScript/JavaScript tests and are not 708 unique source scenarios. These results do not represent a production Worker deployment or a physical-device test.
+

@@ -40,7 +40,7 @@ For an action using the native world-mutation path:
 7. Publisher and peers apply the event or validated snapshot through client routing.
 8. If a required identity, pre-state, field, or side effect cannot be proven, request resync rather than continuing with guessed local state.
 
-Do not assume every NetworkActionType has a complete server implementation. NetworkActionBridge enum conversion and a client publisher are only pieces of an end-to-end action.
+Do not assume every NetworkActionType has a complete server implementation. NetworkActionBridge maps only ten explicit HeroAction classes to Optional network actions; unmapped actions are rejected by MultiplayerActionDispatcher and are never converted to WAIT. Direct producers for other action families remain source-specific. Neither enum membership nor a Worker branch proves every item/effect subcase is enabled.
 
 ## 4. Native combat flow
 
@@ -228,7 +228,7 @@ Required behavior for all event paths:
 - advance applied client sequence only after successful state reconciliation;
 - request a complete snapshot when local pre-state cannot be proven or incremental application fails.
 
-Current migration limit: MessageRouter default cases still forward to RemotePlayerActionReceiver. A single typed event path has not replaced all older message handling. Do not extend the legacy parsing path while implementing the phase-10 protocol migration.
+Current migration limit: MessageRouter default cases still forward remaining message kinds to RemotePlayerActionReceiver on the render thread. PLAYER_LEFT still depends on its native Actor/Mob target, Buff, sprite and registry cleanup. EVENT_BATCH is owned by MessageRouter; the legacy receiver refuses it and requests the existing recovery path, preventing a second state application. The typed path has not replaced all older message handling. Migrate only a cohesive behavior after dedicated equivalence tests; do not move or delete the receiver wholesale.
 
 ## 8. Inventory, loot claims, exactly-once rewards
 

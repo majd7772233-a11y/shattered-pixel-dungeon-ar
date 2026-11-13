@@ -72,14 +72,16 @@ The source tree contains client classes for Internet, LAN, and Bluetooth transpo
 
 That presence does not mean all features have passed end-to-end acceptance.
 
-### Current verified checkpoint — 2026-11-13
+### Current verified checkpoint — 2026-11-14
 
-- Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). Backend 682 executions across eight Vitest files, Android JVM/Debug APK and three real Durable Object SQLite tests passed. The production Worker is not deployed/verified by this branch run, and physical-device gameplay has not been performed; inspect the live branch HEAD and exact Actions run when continuing.
-- Backend TypeScript build and 682 executions across eight Vitest files passed. Android JVM tests and Debug APK compile passed. Three Workers-runtime tests against actual Durable Object SQLite passed.
-- Phase 9 is complete for implementation and automated acceptance. Enabled native effects are validated against Java/SPD. Unsupported level-up XP/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff paths are rejected before persistence.
-- SpiritArrow is covered from strict intent/reservation through native publisher result, atomic commit, sequenced EVENT_BATCH and stable-identity client reconciliation. A dedicated JVM regression proves reconciliation on clients whose local Mob Actor IDs differ.
-- Publisher handoff is generation-based and transactional. A replacement restores persisted state and must pass a lossless rebase before shared actions resume.
-- Phase 10 is in progress and remains OPEN: 10-A enum/version parity and 10-B cross-layer message/action routing plus fail-closed Worker ingress admission are implemented. The 10-B implementation SHA `d16be138d74bb9930777f5352efbeae3291070c6` passed exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). The next bounded slice is 10-C Android envelope/parser and native action-producer parity, with legacy-receiver behavior tests before any migration. Phases 11–23 remain open; branch CI is not a deployed Worker or physical-device match.
+- Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; exact-head CI [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) passed all three jobs.
+- Backend TypeScript build and 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK compilation passed; three Workers-runtime Durable Object SQLite tests passed. The 708 count includes mirrored TS/JS executions, not 708 unique source scenarios.
+- Phase 9 remains complete under its explicit fail-closed support boundary. SpiritArrow/publisher-recovery evidence is recorded in the phase and test references.
+- Phase 10-A enum/version parity and 10-B route inventory/Worker admission remain complete at their recorded implementation SHAs.
+- Phase 10-C is complete: Android parser enforces the canonical envelope; LAN/Bluetooth legacy compatibility is limited to explicitly tested transport parsers; unmapped HeroActions reject without being converted to WAIT; dedicated tests protect PLAYER_LEFT cleanup, supported legacy RemoteHero updates and EVENT_BATCH single application.
+- Phase 10 remains OPEN; next is the bounded Phase 10-D typed-path convergence. Do not remove/move RemotePlayerActionReceiver without behavior-specific equivalence tests. Phase 11 has not started.
+- Branch CI does not mean production Worker deployment or physical-device gameplay; Phases 22–23 remain open.
+
 
 ## 6. Modes and transports: do not infer readiness
 

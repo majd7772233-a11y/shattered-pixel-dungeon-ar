@@ -36,14 +36,14 @@ The audited tree contains 32 Java files:
 | NativeItemActionPublisher.java | Executes/wraps selected native item actions and publishes resulting state. | Hero, NativeItemUse, item classes, inventory and Worker mutation validators. |
 | NativeItemUse.java | Multiplayer native item-action context, support allowlist, preflight/rejection/finalization. | Food/Potion/Scroll/Wand/Item actions, NativeItemActionPublisher, Worker; ambiguous side effects stay fail-closed. |
 | NativeMobCombatDelta.java | Captures/serializes secondary Mob changes during native combat. | Hero, Mob, WorldSnapshot, Worker combat delta validators, rewards/loot. |
-| NetworkActionBridge.java | Maps native HeroAction types to NetworkActionType. | Hero, MultiplayerActionDispatcher, server action admission; enum mapping alone does not implement an action. |
+| NetworkActionBridge.java | Optional mapping for ten explicitly supported HeroAction classes; null/unmapped actions return empty. | MultiplayerActionDispatcher rejects an empty mapping through the native Hero warning/abort path; no WAIT fallback. Worker branch presence does not prove every action subcase. |
 | NetworkActionType.java | Gameplay action enum. | Native hooks, Manager, schema, Worker dispatcher and tests; every action needs end-to-end mapping or explicit rejection. |
-| NetworkMessage.java | Protocol envelope fields, parser and version constant. | NetworkTransport, MessageRouter, Worker, schema; preserve typed validation and size/range rules. |
+| NetworkMessage.java | Canonical protocol 1.0.0 envelope, strict generic parser/serializer and explicitly scoped LAN/Bluetooth legacy parsers. | Internet uses parseJson; LAN/Bluetooth use only their tested compatibility methods; Worker and schema remain canonical. |
 | NetworkTransport.java | Common connect/send/disconnect/connected/type interface. | All transport implementations and MultiplayerManager; interface changes require every implementation and tests. |
 | PlayerFOV.java | Calculates local player field of view. | Hero, Level, competitive visibility policy, server broadcastWithFOV. |
 | PvPMode.java | PvP rule descriptor. | GameMode, server ownership/target rules, FOV and UI. |
 | RemotePlayer.java | Remote-player metadata and local Hero instance. | MultiplayerManager, RemotePlayerActionReceiver, MultiHeroManager, sprites and Mob targeting. |
-| RemotePlayerActionReceiver.java | Legacy/general receiver and remote-Hero setup/state. | MessageRouter default route; overlapping with typed routing; remove/refactor only after every supported message has a tested typed handler. |
+| RemotePlayerActionReceiver.java | Legacy/general receiver, PLAYER_LEFT Actor/Mob-target/Buff/sprite cleanup and older remote-player paths. | MessageRouter default route remains transitional; EVENT_BATCH is refused here to prevent double application. Keep intact until each migrated behavior has dedicated equivalence tests. |
 | SPDLevelSnapshot.java | Captures native level, tiles, transitions, Mobs, buffs, items, inventory, quickslots, heaps, plants, traps and blobs. | Level, Hero, Mob, Worker full-snapshot validator, protocol definitions and WorldSnapshot. |
 | SurvivalMode.java | Survival GameMode rule descriptor. | GameMode, Worker lifecycle/score/rules and UI; enforce rather than merely expose properties. |
 | TransportCallback.java | Transport connected/disconnected/message/error callbacks. | Every transport and MultiplayerManager; callback threading/order must remain explicit. |

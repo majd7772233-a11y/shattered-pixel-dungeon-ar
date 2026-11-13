@@ -19,7 +19,7 @@ The top-level NetworkMessage envelope contains:
 
 Important: payloadJson is itself a JSON string. A message therefore has a JSON envelope containing another encoded JSON payload. Preserve this two-level representation in tests and serializers.
 
-NetworkMessage.java defaults messageType to ACTION, parses the outer JSON, reads optional requestId/sequence/senderId and returns MessageType.ERROR on malformed or unknown input. The server similarly parses the outer envelope before processing the typed branch.
+NetworkMessage.java does not default an invalid or missing discriminator to ACTION. Its generic parseJson path requires a JSON object and string protocolVersion/messageType/payloadJson, enforces protocol 1.0.0, validates optional requestId/senderId strings and a non-negative safe-integer sequence (default zero when omitted), and parses the nested payload JSON. Invalid envelopes return ERROR with a specific code. Raw object/array payload compatibility is confined to the exact legacy shapes accepted by parseLanJson and parseBluetoothJson.
 
 ## 2. Outer message-type enum
 
@@ -139,7 +139,7 @@ The 23 Java action values are:
 | SYNC_MOB_STATE | Native Mob state publication |
 | SYNC_PLAYER_COMBAT | Native player-combat authority result/state synchronization |
 
-NetworkActionBridge maps a subset of HeroAction classes directly: Move, Attack, PickUp, OpenChest, Buy, Interact, Unlock, LvlTransition, Mine and Alchemy. Unknown HeroAction classes fall back to WAIT in the inspected mapping; do not treat that fallback as an implementation of the missing action.
+NetworkActionBridge maps only ten explicit HeroAction classes (Move, Attack, PickUp, OpenChest, Buy, Interact, Unlock, LvlTransition, Mine and Alchemy) and returns Optional.empty() for null/unmapped classes. MultiplayerActionDispatcher rejects that result through Hero.rejectUnsupportedMultiplayerWorldAction(); it clears a pending native mutation and warns rather than sending WAIT. Other action families have direct native producers and remain governed by their own support gates.
 
 ## 6. Worker action routing observed at baseline
 
@@ -324,17 +324,29 @@ All actions travel inside the outer ACTION envelope unless noted otherwise. `Mul
 | ALCHEMY | AlchemyScene/native resolved recipe publisher sends ACTION(ALCHEMY) | `isValidNativeAlchemyIntent` checks ingredients, alchemy energy, output identity/location and inventory/heap mutation. | ACTION_ACCEPTED/EVENT_BATCH; native alchemy result and snapshot. |
 | USE_ITEM | `NativeItemActionPublisher.execute` sends only supported native EAT/DRINK consumptions as USE_ITEM; unsupported item effects reject locally | `isValidNativeUseItemIntent` checks supported action, item instance/class/quantity and trusted Hero/level inventory state. | ACTION_ACCEPTED/EVENT_BATCH; supported item consumption only. |
 | USE_ABILITY | Native class armor-ability callback sends ACTION(USE_ABILITY) | `isValidNativeAbilityIntent` checks class/armor identity, charge before/after and native action cost. | ACTION_ACCEPTED/EVENT_BATCH and native Hero state reconciliation. |
-| WAIT | Mapped by `NetworkActionBridge` for HeroAction classes not otherwise mapped; this fallback currently means an unrecognized action can become WAIT | Explicit WAIT branch requires an ALIVE player and assigns the native action cost. It does not prove an arbitrary unmapped HeroAction was a genuine native wait. | ACTION_ACCEPTED/EVENT_BATCH. The Java fallback-to-WAIT is a fail-closed mapping risk to test and resolve before claiming complete producer parity. |
+| WAIT | Explicit WAIT remains a distinct `NetworkActionType`; unsupported/unmapped HeroAction classes are rejected and are never converted into WAIT. | Explicit WAIT branch requires an ALIVE player and assigns the native action cost. Its branch does not prove every local wait-like interaction is a supported producer. | ACTION_ACCEPTED/EVENT_BATCH for an actual WAIT request. |
 | REVIVE | `MultiplayerManager.finishPendingUnblessedAnkhRevival` and native Ankh callbacks send ACTION(REVIVE) | Blessed/Unblessed Ankh state checks, HP/HT/position/shield/Buff pre-state, `isValidNativeHeroStateJson`, loot snapshot validation for Unblessed Ankh and exactly-once state update. | ACTION_ACCEPTED/EVENT_BATCH; restore the authoritative Hero/loot result. |
 | SYNC_HERO_STATE | `NativeHeroBuffTickPublisher.publish` emits native BUFF_TICK state; lethal Poison may be enriched with LifeLink deltas | `isValidNativeHeroBuffTick`, source Buff allowlist, actor clock/pre-state, trusted Hero snapshot and LifeLink Mob deltas. Buff/Poison batch uses the atomic native-action transaction wrapper. | ACTION_ACCEPTED/EVENT_BATCH and authoritative Hero/Mob state; invalid or incomplete restoration uses existing resync. |
 | SYNC_MOB_STATE | Native Mob damage/combat authority publisher sends the post-SPD Mob result | Validates pending combat identity/authority, stable Mob entity ID, trusted before/after Mob bundle, geometry, Buff/shield state, loot/rewards and secondary Mob deltas. Combat authority result is committed atomically. | ACTION_ACCEPTED/EVENT_BATCH; MessageRouter applies accepted state or requests a full snapshot where scalar data is insufficient. |
 | SYNC_PLAYER_COMBAT | Defender/authority client reports native PvP result through sendAuthorityAction/sendAction | Validates pending request and defender authority, attacker/defender trusted Hero before-state, HP/shield/Ankh transitions, Buffs and merged native Hero state. Atomic transaction wrapper applies to delegated combat result. | ACTION_ACCEPTED/EVENT_BATCH applied by MessageRouter to local/remote Hero replicas. |
 
-**Important distinctions:** the 23 rows establish explicit Worker ACTION branches and the validators they call; they do not promise every item, NPC, Buff, class ability, weapon mode or native side effect is supported. The Java source gates unsupported subcases; the server must continue to reject them. `NetworkActionBridge` currently maps only a subset of HeroAction classes and falls back to WAIT for the rest, so a branch in the Worker does not establish a legitimate Java producer.
+**Important distinctions:** the 23 rows establish explicit Worker ACTION branches and the validators they call; they do not promise every item, NPC, Buff, class ability, weapon mode or native side effect is supported. The Java source gates unsupported subcases; the server must continue to reject them. The HeroAction bridge now fails closed with Optional.empty() for unmapped classes, but other action families have distinct native publishers; a Worker branch does not establish a legitimate producer or full subcase support.
 
 ### 11.4 Phase 10-B implementation and remaining client parity
 
 The Worker admission gate is implemented in `server/src/protocol/message-admission.ts` and applied at the top of `MatchRoomMessages.webSocketMessage`. `server/scripts/validate-phase10-routing.mjs` and `message-admission.test.ts` verify the 25-way message classification, exact eight Worker route branches, all 23 explicit Worker action branch names and rejection behavior for malformed/unsupported/unknown envelopes.
 
-This does **not** yet consolidate the client path. `MessageRouter` still has a default route to `RemotePlayerActionReceiver`; that receiver contains required PLAYER_LEFT Actor/Mob cleanup and legacy Mob/snapshot parsing. Do not delete or relocate it before behavior-specific parity tests exist. The Android `NetworkMessage.parseJson` permissive required-field/version defaults and the NetworkActionBridge fallback-to-WAIT remain separate typed-producer/parser parity work. Do not change replay/resync semantics here.
+This does **not** yet consolidate the client path. `MessageRouter` still has a default route to `RemotePlayerActionReceiver`; the receiver contains required PLAYER_LEFT Actor/Mob-target/Buff/sprite cleanup and other legacy message handling. Phase 10-C added behavior-specific tests for PLAYER_LEFT, retained legacy RemoteHero position/HP updates and EVENT_BATCH no-double-application (the receiver rejects EVENT_BATCH and requests the existing recovery path). The strict generic Android parser, scoped LAN/Bluetooth compatibility and fail-closed HeroAction producer mapping are complete. Do not delete or relocate the receiver before every migrated behavior has dedicated equivalence tests. Do not change replay/resync semantics here.
 
+
+
+### 11.5 Phase 10-C Android envelope, producer and receiver-parity result
+
+The Android parser/producer work was present in the live source/test HEAD 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 and was audited without replaying or replacing those implementation commits.
+
+- Canonical parseJson enforces the required envelope and protocol 1.0.0, validates optional field types and safe sequence values, parses the encoded nested payload, and rejects invalid/unknown input without defaulting to ACTION.
+- parseLanJson and parseBluetoothJson are narrow compatibility boundaries for the exact historical LAN and Bluetooth envelopes. The generic parser and Internet path reject those raw payload forms; legacy shapes with extra fields reject. Bluetooth writes the canonical versioned envelope.
+- NetworkActionBridge maps ten explicit HeroAction classes to Optional action values. Unmapped classes return empty; MultiplayerActionDispatcher calls the native reject/warn/abort path and sends no WAIT.
+- NetworkProtocolParityTest.java contains 15 JVM tests. NativeCombatRuntimeIntegrationTest.java contains 62 test methods at the audited HEAD, including PLAYER_LEFT cleanup, retained legacy RemoteHero update and EVENT_BATCH duplicate-application guard.
+- MessageRouter and RemotePlayerActionReceiver remain in place; no broad typed-path migration was made. The 10-D slice must inventory remaining live legacy behavior and migrate only a tested cohesive subset.
+- Exact source/test SHA 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773): Backend 10 files / 708 executions, Android JVM/Debug APK and three Durable Object SQLite tests.

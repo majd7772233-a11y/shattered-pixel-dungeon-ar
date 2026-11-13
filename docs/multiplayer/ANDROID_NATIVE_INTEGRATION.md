@@ -367,3 +367,36 @@ Before changing native multiplayer behavior:
 NativeCombatRuntimeIntegrationTest.java contains 46 @Test methods at the baseline. It includes shared Actor scheduling, disconnect cleanup, native Mob AI/timing, native world restore/rollback/idempotency, Hero timed effects, native combat outcomes, Ankh behavior, delegated combat/PvP, secondary Mob effects, replica death without rewards, resync and cross-client Actor-ID convergence.
 
 Other multiplayer JVM test files add stable entity identity, item/heap identity, level metadata, combat authority policy and native NPC item side-effect policy. See TEST_MATRIX.md.
+
+
+## 14. Phase 10-C — protocol envelope and HeroAction producer parity
+
+### Canonical parser and envelope contract
+
+NetworkMessage.parseJson is the strict generic decoder for protocol 1.0.0:
+- outer JSON must be an object;
+- protocolVersion, messageType and payloadJson are required strings;
+- protocol mismatch, unknown message type, malformed outer JSON, malformed nested payload JSON and non-object roots return explicit ERROR envelopes;
+- optional requestId and senderId must be strings when present; sequence must be a non-negative safe integer and defaults to zero only when absent;
+- payloadJson is a JSON-encoded string; the generic parser rejects raw object/array values and null optional string values;
+- invalid input is never coerced into ACTION.
+
+Compatibility is limited to two tested methods: parseLanJson accepts only the exact legacy six-field LAN envelope with raw object/array payload; parseBluetoothJson accepts only the exact two-field unversioned Bluetooth envelope. Extra fields are rejected. Both normalize into the canonical envelope then invoke the strict parser. InternetTransport uses only the generic parser. BluetoothTransport writes the canonical versioned envelope.
+
+### HeroAction mapping and unsupported behavior
+
+NetworkActionBridge.mapHeroActionToNetworkAction returns Optional values for only ten explicitly mapped native HeroAction classes. Null and unrecognized classes return Optional.empty(). MultiplayerActionDispatcher is the only production caller; an empty result calls Hero.rejectUnsupportedMultiplayerWorldAction(), clears pending native mutation and warns the player. It does not send NetworkActionType.WAIT.
+
+The 23-value NetworkActionType enum and 23 Worker ACTION branch tokens remain a vocabulary/routing inventory, not proof that each item/effect/class subcase has an enabled native producer or accepted server semantics. Direct native producer paths remain action-specific.
+
+### Behavior-specific routing tests
+
+NetworkProtocolParityTest.java contributes 15 JVM tests. NativeCombatRuntimeIntegrationTest.java has 62 test methods at the audited HEAD, including:
+- PLAYER_LEFT cleanup of the remote player, RemoteHero Actor scheduler, Mob target references, Buffs and sprite;
+- retention of the tested legacy RemoteHero movement/HP path;
+- EVENT_BATCH single-application through MessageRouter, duplicate-sequence protection and rejection by RemotePlayerActionReceiver with the existing recovery behavior.
+
+MessageRouter and RemotePlayerActionReceiver remain structurally unchanged. The default legacy route is still a migration boundary; do not remove/move the receiver without per-behavior equivalence tests. Phase 10-D owns the next narrow typed-path convergence work.
+
+Exact-HEAD evidence: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5, [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) — Backend, Android and Durable Object SQLite jobs all passed.
+

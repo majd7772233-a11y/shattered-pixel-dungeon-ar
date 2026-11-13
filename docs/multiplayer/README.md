@@ -34,21 +34,17 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
-## Active project checkpoint — 2026-11-13
+## Active project checkpoint — 2026-11-14
 
-- **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Verified Phase 9 gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact gameplay/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
-- **Phase 10-A protocol contract baseline:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). This protects 25 ordered MessageType values, 23 ordered NetworkActionType values and protocol version 1.0.0.
-- Backend: TypeScript build + 682 executions across eight Vitest files passed (mirrored JS output means executions are not unique source scenarios).
-- **Phase 10-B implementation/fix:** `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend build + 708 Vitest executions across 10 files, Android JVM/Debug APK and three Durable Object SQLite tests passed.
-- Android: JVM tests and Debug APK compilation passed.
-- Workers runtime: 3 tests against real Durable Object SQLite passed.
-- The production Worker and physical-device session remain unverified; the next conversation must inspect live HEAD and its matching Actions run.
-- **Phase 9:** complete for implementation and automated acceptance. Enabled native effects use source-specific trusted validation; unsupported XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff effects remain fail-closed.
-- **SpiritArrow:** strict intent → publisher authority → native Java result → atomic commit → sequenced EVENT_BATCH → stable-identity client reconciliation is covered. A dedicated JVM regression uses two clients with different local Mob Actor IDs.
-- **Publisher recovery:** durable generation handoff, pending-combat closure, persisted snapshot, lossless rebase and local Actor identity refresh are covered, including actual DO SQLite rollback/eviction tests.
-- **Phase 10:** in progress and still OPEN. Slice 10-A established canonical enum/version parity. Slice 10-B now documents all 25 outer messages and 23 actions across Worker/Java/Android paths, and adds strict fail-closed Worker envelope admission plus static and unit tests. Client parser/producer parity, one typed event path and legacy receiver migration remain.
-- **Not claimed:** production Worker deployment, rendered projectile animation or physical two-device session. Keep these release checks in Phases 22 and 23.
+- **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
+- **Live code/test HEAD audited for Phase 10-C:** 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 (newer than the originally supplied c899891 checkpoint).
+- **Exact-HEAD CI:** [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773); Backend typecheck/build + 10 Vitest files / 708 executions, Android JVM/Debug APK, and three Durable Object SQLite runtime tests all passed.
+- **Phase 10-A:** ordered 25-message / 23-action enum and protocol version parity complete; see implementation d8938190960af64d6efc70f4625a7411bfa3b7de.
+- **Phase 10-B:** all 25 message / 23 action routes inventoried; eight Worker inbound message types distinguished from 17 known non-inbound types; fail-closed ingress and static/test guards complete at d16be138d74bb9930777f5352efbeae3291070c6.
+- **Phase 10-C:** strict Android canonical envelope parsing, transport-scoped LAN/Bluetooth legacy compatibility, fail-closed HeroAction producer mapping, and PLAYER_LEFT/legacy RemoteHero/EVENT_BATCH routing regressions complete at 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5.
+- **Phase 10 remains OPEN; Phase 10-D is next.** Continue test-led typed-path convergence in a narrow behavior-specific unit. Keep RemotePlayerActionReceiver and PLAYER_LEFT cleanup intact until full equivalence is proven. Phase 11 has not started.
+- **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
+
 
 ## Source-of-truth hierarchy
 
@@ -89,7 +85,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–9 complete for implementation and automated acceptance; Phase 10 in progress (10-A enum parity and 10-B Worker routing/admission slice implemented; parent acceptance remains open); Phases 11–23 open |
+| Phase state | Phases 1–9 complete for implementation and automated acceptance; Phase 10-A/B/C delivered and parent Phase 10 remains open (10-D next); Phases 11–23 open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 
