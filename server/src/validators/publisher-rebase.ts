@@ -27,6 +27,28 @@ function nativeHeroActorIds(heroStateJson: string): number[] | null {
   return new Set(ids).size === ids.length ? ids : null;
 }
 
+
+type NativeSnipersMarkReference = { actorId:number; serverEntityId:string };
+
+function nativeHeroSnipersMarkReferences(heroStateJson:string): NativeSnipersMarkReference[] | null {
+  let hero:any;
+  try { hero=JSON.parse(heroStateJson); } catch (_) { return null; }
+  if (!hero || !Number.isInteger(hero.buffCount) || hero.buffCount<0 || hero.buffCount>256) return null;
+  const references:NativeSnipersMarkReference[]=[];
+  for(let i=0;i<hero.buffCount;i++){
+    const root=parseNativeBundleObject(hero["buff_"+i]);
+    const buff=root?.buff;
+    if(String(buff?.__className||"")!=="com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark")continue;
+    const actorId=Number(buff.object);
+    const serverEntityId=String(buff.server_entity_id||"");
+    if(!Number.isSafeInteger(actorId)||actorId<1||actorId>2147483647
+        || !/^[A-Za-z0-9._:-]{8,80}$/.test(serverEntityId)
+        || references.some(row=>row.actorId===actorId || row.serverEntityId===serverEntityId))return null;
+    references.push({actorId,serverEntityId});
+  }
+  return references;
+}
+
 /** Accepts only a lossless native world re-serialization and a refreshed process-local Actor registry. */
 export function isValidNativePublisherRebase(
   previousValue: unknown,
@@ -94,6 +116,10 @@ export function isValidNativePublisherRebase(
   }
   if (nextActorIds.size !== mobActorIds.size) return false;
 
+  const mobEntityByActorId = new Map<number,string>();
+  for(const [entityId,mob] of oldMobs){
+    mobEntityByActorId.set(Number(mob.mobId),entityId);
+  }
   const expectedRemoteActorIds: number[] = [];
   const allHeroActorIds = new Set<number>();
   const localHeroActorIds = new Set<number>();
@@ -102,7 +128,8 @@ export function isValidNativePublisherRebase(
     if (!row || typeof row.playerId !== "string" || typeof row.heroStateJson !== "string") return false;
     const actorIds = nativeHeroActorIds(row.heroStateJson);
     const lifeLinkIds = nativeHeroBuffLifeLinkMobActorIds(row.heroStateJson);
-    if (!actorIds || !lifeLinkIds) return false;
+    const sniperMarks = nativeHeroSnipersMarkReferences(row.heroStateJson);
+    if (!actorIds || !lifeLinkIds || !sniperMarks) return false;
     if (row.playerId === publisherId) foundPublisher = true;
     for (const actorId of actorIds) {
       if (allHeroActorIds.has(actorId) || mobActorIds.has(actorId)) return false;
@@ -113,9 +140,14 @@ export function isValidNativePublisherRebase(
     // LifeLink.object is an Actor ID local to the process that created the Hero. A
     // RemoteHero's value belongs to another device and must never be resolved against this
     // publisher's Mob registry, even if the integers happen to collide.
-    if (row.playerId !== publisherId && lifeLinkIds.length > 0) return false;
+    if (row.playerId !== publisherId && (lifeLinkIds.length > 0 || sniperMarks.length > 0)) return false;
     for (const actorId of lifeLinkIds) {
       if (!mobActorIds.has(actorId)) return false;
+    }
+    // SnipersMark.object is also a process-local Actor ID. Its stable server_entity_id
+    // must resolve to the exact same Mob in the trusted pre-rebase snapshot.
+    for(const mark of sniperMarks){
+      if(mobEntityByActorId.get(mark.actorId)!==mark.serverEntityId)return false;
     }
   }
   if (!foundPublisher) return false;

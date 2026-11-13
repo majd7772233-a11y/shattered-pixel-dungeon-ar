@@ -810,6 +810,62 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
   });
 
 
+
+  it("rebinds publisher SnipersMark only when its local Actor and stable Mob identity agree", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { levelSnapshot, heroBefore } = fixture;
+    const markedHero = JSON.parse(JSON.stringify(heroBefore));
+    markedHero.combatBundle = JSON.stringify({ id: 11, time: 10, STR: 10, buffs: [] });
+    markedHero.buffCount = 1;
+    markedHero.buff_0 = JSON.stringify({ buff: {
+      __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark",
+      id: 51, time: 10, object: 7, bonus: 0.5, server_entity_id: ENTITY_ID
+    }});
+    markedHero.buffCooldown_0 = 0;
+    const markedJson = JSON.stringify(markedHero);
+    const connected = [{ playerId: ATTACKER_ID, heroStateJson: markedJson }];
+    const rebase = JSON.parse(JSON.stringify(levelSnapshot));
+    rebase.heroStateJson = markedJson;
+    rebase.nativeRemoteHeroActorIds = [];
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, markedJson, connected)).toBe(true);
+
+    const forgedEntity = JSON.parse(JSON.stringify(markedHero));
+    const forgedBundle = JSON.parse(String(forgedEntity.buff_0));
+    forgedBundle.buff.server_entity_id = "another-linked-mob-009";
+    forgedEntity.buff_0 = JSON.stringify(forgedBundle);
+    const forgedEntityJson = JSON.stringify(forgedEntity);
+    expect(isValidNativePublisherRebase(levelSnapshot, {
+      ...rebase, heroStateJson: forgedEntityJson
+    }, ATTACKER_ID, forgedEntityJson, [{ playerId: ATTACKER_ID, heroStateJson: forgedEntityJson }])).toBe(false);
+
+    const forgedActor = JSON.parse(JSON.stringify(markedHero));
+    const forgedActorBundle = JSON.parse(String(forgedActor.buff_0));
+    forgedActorBundle.buff.object = 8;
+    forgedActor.buff_0 = JSON.stringify(forgedActorBundle);
+    const forgedActorJson = JSON.stringify(forgedActor);
+    expect(isValidNativePublisherRebase(levelSnapshot, {
+      ...rebase, heroStateJson: forgedActorJson
+    }, ATTACKER_ID, forgedActorJson, [{ playerId: ATTACKER_ID, heroStateJson: forgedActorJson }])).toBe(false);
+
+    const missingStableId = JSON.parse(JSON.stringify(markedHero));
+    const missingBundle = JSON.parse(String(missingStableId.buff_0));
+    delete missingBundle.buff.server_entity_id;
+    missingStableId.buff_0 = JSON.stringify(missingBundle);
+    const missingJson = JSON.stringify(missingStableId);
+    expect(isValidNativePublisherRebase(levelSnapshot, {
+      ...rebase, heroStateJson: missingJson
+    }, ATTACKER_ID, missingJson, [{ playerId: ATTACKER_ID, heroStateJson: missingJson }])).toBe(false);
+
+    // A RemoteHero's object ID belongs to the remote device and cannot be resolved locally.
+    const remoteJson = JSON.stringify({ ...markedHero, combatBundle: JSON.stringify({ id: 21, time: 10, STR: 10, buffs: [] }) });
+    const remoteRebase = JSON.parse(JSON.stringify(rebase));
+    remoteRebase.nativeRemoteHeroActorIds = [21, 51];
+    expect(isValidNativePublisherRebase(levelSnapshot, remoteRebase, ATTACKER_ID, markedJson, [
+      { playerId: ATTACKER_ID, heroStateJson: markedJson },
+      { playerId: "remote-player-identity-002", heroStateJson: remoteJson }
+    ])).toBe(false);
+  });
+
   it("blocks native actions until the active publisher generation has committed its rebase", async () => {
     const fixture = makeSpiritArrowForwardFixture();
     fixture.sql.roomMeta.set("levelPublisherTerm", "9");
