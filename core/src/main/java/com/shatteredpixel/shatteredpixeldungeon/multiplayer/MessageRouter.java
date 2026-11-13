@@ -4,13 +4,17 @@ import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
+import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
 import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Mob;
+import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Buff;
 import com.shatteredpixel.shatteredpixeldungeon.actors.buffs.SnipersMark;
 import com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow;
 import com.shatteredpixel.shatteredpixeldungeon.items.Item;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndResurrect;
 import com.watabou.noosa.Game;
+
+import java.util.ArrayList;
 
 public final class MessageRouter {
 
@@ -55,10 +59,58 @@ public final class MessageRouter {
             case ERROR:
                 handleErrorMessage(message);
                 break;
+            case PLAYER_LEFT:
+                // Disconnect cleanup mutates native Actors, Buffs, Mob targets and sprites.
+                Game.runOnRenderThread(() -> handlePlayerLeftMessage(message));
+                break;
             default:
                 Game.runOnRenderThread(() -> RemotePlayerActionReceiver.handleNetworkMessage(message));
                 break;
         }
+    }
+
+    private static void handlePlayerLeftMessage(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.payloadJson == null) return;
+
+        // Preserve the legacy identity contract: use payload.playerId when it is a string,
+        // otherwise fall back to the server-authored senderId.
+        String playerId = message.senderId;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            JsonValue idValue = payload == null ? null : payload.get("playerId");
+            if (idValue != null && idValue.isString()) playerId = idValue.asString();
+        } catch (RuntimeException ignored) {
+            // The server sender ID remains the fallback for a malformed leave envelope.
+        }
+        if (playerId == null || playerId.isEmpty()
+                || playerId.equals(manager.getLocalPlayerId())) return;
+
+        RemotePlayer remote = manager.getRemotePlayer(playerId);
+        if (remote == null) {
+            manager.removeRemotePlayer(playerId);
+            return;
+        }
+
+        Hero remoteHero = remote.heroInstance;
+        if (remoteHero != null) {
+            // Clear references before the next shared-world tick can encode a PLAYER target
+            // whose stable player ID no longer exists in the connected Actor graph.
+            if (Dungeon.level != null) {
+                for (Mob mob : Dungeon.level.mobs.toArray(new Mob[0])) {
+                    mob.multiplayerForgetTarget(remoteHero);
+                }
+            }
+            for (Buff buff : new ArrayList<>(remoteHero.buffs())) {
+                if (buff != null) buff.detach();
+            }
+            Actor.remove(remoteHero);
+            if (remoteHero.sprite != null) {
+                remoteHero.sprite.remove();
+                remoteHero.sprite = null;
+            }
+        }
+        manager.removeRemotePlayer(playerId);
     }
 
     private static void handleLevelPublisherChanged(NetworkMessage message) {

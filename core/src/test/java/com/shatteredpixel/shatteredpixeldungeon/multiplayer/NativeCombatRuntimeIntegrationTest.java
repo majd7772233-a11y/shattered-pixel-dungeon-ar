@@ -1082,9 +1082,10 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertSame(remoteHero, acting.multiplayerEnemy());
         int remoteActorId = remoteHero.id();
 
-        // Exercise the original default/legacy receiver before moving PLAYER_LEFT into MessageRouter.
+        // The same full side-effect assertions now exercise the typed MessageRouter path.
         NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{\"playerId\":\"departing-player\"}");
         left.senderId = departing.playerId;
+        left.sequence = 17L;
         MessageRouter.routeMessage(left);
         CountDownLatch routed = new CountDownLatch(1);
         Game.runOnRenderThread(routed::countDown);
@@ -1112,6 +1113,18 @@ public class NativeCombatRuntimeIntegrationTest {
                 manager.getHeroForPlayerId(departing.playerId));
         Assert.assertNull("Hero-to-player lookup must no longer resolve the departed Hero",
                 manager.getPlayerIdForHero(remoteHero));
+
+        int resyncsBeforeLegacyGuard = (int) transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.RESYNC).count();
+        RemotePlayerActionReceiver.handleNetworkMessage(left);
+        int resyncsAfterLegacyGuard = (int) transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.RESYNC).count();
+        Assert.assertEquals("Legacy direct delivery must refuse reapplication and request recovery",
+                resyncsBeforeLegacyGuard + 1, resyncsAfterLegacyGuard);
+        Assert.assertNull("Legacy delivery must not recreate or remove another player",
+                manager.getRemotePlayer(departing.playerId));
+        Assert.assertNull("Legacy delivery must not reattach the departed Hero",
+                Actor.findById(remoteActorId));
     }
 
     @Test
