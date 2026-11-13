@@ -1465,6 +1465,9 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     // The Monk unarmed-ability tracker changes reward energy/cap semantics and is also
     // rejected until its entire callback lifecycle has a separate authoritative contract.
     const unarmedBefore = JSON.parse(JSON.stringify(beforeHero));
+    const unarmedCombat = JSON.parse(String(unarmedBefore.combatBundle));
+    unarmedCombat.subClass = "MONK";
+    unarmedBefore.combatBundle = JSON.stringify(unarmedCombat);
     unarmedBefore.buffCount = 3;
     unarmedBefore.buff_2 = JSON.stringify({ buff: {
       __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy$MonkAbility$UnarmedAbilityTracker",
@@ -1472,6 +1475,9 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     }});
     unarmedBefore.buffCooldown_2 = 0;
     const unarmedAfter = JSON.parse(JSON.stringify(afterHero));
+    const unarmedAfterCombat = JSON.parse(String(unarmedAfter.combatBundle));
+    unarmedAfterCombat.subClass = "MONK";
+    unarmedAfter.combatBundle = JSON.stringify(unarmedAfterCombat);
     unarmedAfter.buffCount = 2;
     unarmedAfter.buff_1 = unarmedBefore.buff_2;
     unarmedAfter.buffCooldown_1 = 0;
