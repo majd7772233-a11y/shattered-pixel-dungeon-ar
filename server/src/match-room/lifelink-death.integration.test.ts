@@ -740,6 +740,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     const connected = [{ playerId: ATTACKER_ID, heroStateJson: ownJson }];
     const rebase = JSON.parse(JSON.stringify(levelSnapshot));
     rebase.heroStateJson = ownJson;
+    rebase.nativeRemoteHeroActorIds = [];
     expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(true);
 
     const changedMobActor = JSON.parse(JSON.stringify(rebase));
