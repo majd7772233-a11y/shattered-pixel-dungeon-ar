@@ -81,7 +81,7 @@ That presence does not mean all features have passed end-to-end acceptance.
 - Publisher handoff is generation-based and transactional. A replacement restores persisted state and must pass a lossless rebase before shared actions resume.
 - Phase 10 is next and OPEN; Phases 11–23 remain open. Branch CI is not a deployed Worker or a physical-device multiplayer session.
 
-## 6. Modes and transports: do not infer readiness## 6. Modes and transports: do not infer readiness
+## 6. Modes and transports: do not infer readiness
 
 The Java source contains mode descriptor classes for Co-op, PvP, Deathmatch, and Survival. The Worker has a game-mode field and competitive field-of-view broadcast behavior. Mode-specific enforcement remains a separate acceptance concern; the presence of a class or server enum is not proof that scoring, revive, death, visibility, team, or end-condition rules are complete.
 
