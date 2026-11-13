@@ -34,23 +34,18 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
-## Active project checkpoint — 2026-11-12
+## Active project checkpoint — 2026-11-13
 
-- Repo/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Current branch HEAD (docs-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; it updates 13 Markdown files only.
-- Latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
-- CI on current docs HEAD [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145): same two distinct SpiritArrow test scenarios remain red (4 mirrored executions); Android JVM/Debug APK pass.
-- Exact-head [CI 43290836162 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; 8 Vitest files, 654 passed / 4 failed of 658 executions; Android JVM and Debug APK pass.
-- Two distinct failures mirrored in TS/JS: positive publisher result sees `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`; forged-`attackerPos` negative test receives a correlated requester `ERROR` despite expecting no response.
-- Positive result helper already has `attackerPos: 9`; Java verifies native RemoteHero reports its actual position. Missing/forged positions stay rejected.
-- Active slice 9-C only. Phase 9 remains open; do not start Phase 10.
-- Local MissileSprite callback/cancel tests pass headlessly with manual completion, not rendered animation. Publisher finish ordering and requester EVENT_BATCH application remain unproven.
-- `f5f88a11` adds authenticated player-id exclusion to FOV event broadcasts; investigate post-ACK ERROR and recipient/sequence.
-- Permanent workflow: one coherent bounded subphase per conversation; read all 21 Markdown files plus newly discovered files, inspect exact HEAD/CI, update docs/tests, provide Arabic handoff and stop.
-- No live Worker, Durable Object SQLite/restart, rendered projectile or physical two-device proof is claimed.
+- **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
+- **Verified gameplay/test HEAD:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- **Exact-head CI:** [43472587588 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588): Backend build + 682 executions across eight Vitest files, Android JVM tests + Debug APK, and 3 Workers-runtime tests against real Durable Object SQLite.
+- **Phase 9:** complete for implementation and automated acceptance. Enabled native effects use source-specific trusted validation; unsupported XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff effects remain fail-closed.
+- **SpiritArrow:** strict intent → publisher authority → native Java result → atomic commit → sequenced EVENT_BATCH → stable-identity client reconciliation is covered. A dedicated JVM regression uses two clients with different local Mob Actor IDs.
+- **Publisher recovery:** durable generation handoff, pending-combat closure, persisted snapshot, lossless rebase and local Actor identity refresh are covered, including actual DO SQLite rollback/eviction tests.
+- **Phase 10:** next and OPEN. Consolidate protocol definitions and route event application through one typed path. The outer enum/schema currently has 25 names, including `LEVEL_PUBLISHER_CHANGED`.
+- **Not claimed:** production Worker deployment, rendered projectile animation or physical two-device session. Keep these release checks in Phases 22 and 23.
 
-
-## Source-of-truth hierarchy
+## Source-of-truth hierarchy## Source-of-truth hierarchy
 
 1. The exact source tree at the active branch HEAD is implementation truth.
 2. Protocol schema, Java serializers/parsers, server validators and client handlers jointly define the wire contract.
