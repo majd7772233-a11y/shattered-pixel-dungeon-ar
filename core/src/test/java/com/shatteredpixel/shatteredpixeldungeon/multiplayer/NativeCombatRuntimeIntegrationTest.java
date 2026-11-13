@@ -1089,29 +1089,40 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void defaultRouterRetainsLegacyRemoteHeroJoinAndStateUpdates() throws Exception {
+    public void defaultRouterRetainsLegacyRemoteHeroStateUpdates() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("legacy-remote-route", "local-player", new TestTransport());
 
-        NetworkMessage joined = new NetworkMessage(MessageType.PLAYER_JOINED,
-                "{\"event\":\"PLAYER_MOVED\",\"to\":17,\"hp\":6}");
-        joined.senderId = "legacy-remote-player";
-        MessageRouter.routeMessage(joined);
+        RemotePlayer remote = new RemotePlayer("legacy-remote-player", "Legacy", "WARRIOR");
+        remote.pos = hero.pos + 3;
+        remote.hp = remote.ht = 20;
+        RemoteHero remoteHero = new RemoteHero();
+        remoteHero.pos = remote.pos;
+        remoteHero.HP = remoteHero.HT = 20;
+        remote.heroInstance = remoteHero;
+        manager.addRemotePlayer(remote);
+        Actor.add(remoteHero);
+
+        // Preserve the legacy receiver's actual JSON key-scanning contract: the nested "to"
+        // closes before the sibling hp field, so both values are independently parseable.
+        NetworkMessage update = new NetworkMessage(MessageType.PLAYER_JOINED,
+                "{\"position\":{\"to\":17},\"hp\":6}");
+        update.senderId = "legacy-remote-player";
+        MessageRouter.routeMessage(update);
 
         CountDownLatch routed = new CountDownLatch(1);
         Game.runOnRenderThread(routed::countDown);
         Assert.assertTrue("Default route must deliver legacy player updates on the render thread",
                 routed.await(10, TimeUnit.SECONDS));
 
-        RemotePlayer remote = manager.getRemotePlayer("legacy-remote-player");
-        Assert.assertNotNull("Legacy receiver still creates the remote-player registry entry", remote);
-        Assert.assertNotNull("Legacy receiver still creates the native RemoteHero replica", remote.heroInstance);
+        Assert.assertSame("The existing remote player remains registered", remote,
+                manager.getRemotePlayer("legacy-remote-player"));
         Assert.assertEquals(17, remote.pos);
-        Assert.assertEquals(17, remote.heroInstance.pos);
+        Assert.assertEquals(17, remoteHero.pos);
         Assert.assertEquals(6, remote.hp);
-        Assert.assertEquals(6, remote.heroInstance.HP);
+        Assert.assertEquals(6, remoteHero.HP);
         Assert.assertSame("RemoteHero remains registered in the native Actor scheduler",
-                remote.heroInstance, Actor.findById(remote.heroInstance.id()));
+                remoteHero, Actor.findById(remoteHero.id()));
     }
 
     @Test

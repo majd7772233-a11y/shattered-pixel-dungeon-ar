@@ -3,6 +3,7 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
+import com.badlogic.gdx.utils.JsonWriter;
 
 public class NetworkMessage {
     public static final String PROTOCOL_VERSION = "1.0.0";
@@ -26,9 +27,9 @@ public class NetworkMessage {
     }
 
     /**
-     * Parses protocol 1.0.0. Required and optional types match Worker admission. The retained
-     * compatibility cases are raw object/array payloadJson and nullable optional IDs from
-     * the legacy LAN envelope; new senders always emit the canonical string form.
+     * Parses only the canonical protocol 1.0.0 envelope used by Worker admission. Legacy raw
+     * payloadJson objects/arrays are accepted only by the explicitly transport-scoped LAN and
+     * Bluetooth readers below; nullable optional IDs are never accepted on this generic path.
      */
     public static NetworkMessage parseJson(String jsonStr) {
         if (jsonStr == null || jsonStr.trim().isEmpty()) return error("EMPTY_MESSAGE", null);
@@ -151,7 +152,8 @@ public class NetworkMessage {
                     }
 
                     Json json = new Json();
-                    StringBuilder normalized = new StringBuilder(128 + payload.toString().length());
+                    String encodedPayload = payload.toJson(JsonWriter.OutputType.json);
+                    StringBuilder normalized = new StringBuilder(128 + encodedPayload.length());
                     normalized.append("{\"protocolVersion\":").append(json.toJson(PROTOCOL_VERSION));
                     normalized.append(",\"messageType\":").append(json.toJson(type.asString()));
                     if (requestId != null && requestId.isString()) {
@@ -159,7 +161,7 @@ public class NetworkMessage {
                     }
                     normalized.append(",\"senderId\":").append(json.toJson(senderId.asString()));
                     normalized.append(",\"sequence\":").append((long) numericSequence);
-                    normalized.append(",\"payloadJson\":").append(json.toJson(payload.toString())).append('}');
+                    normalized.append(",\"payloadJson\":").append(json.toJson(encodedPayload)).append('}');
                     return parseJson(normalized.toString());
                 }
             }
@@ -197,9 +199,10 @@ public class NetworkMessage {
                 if (!legacyShape) return error("INVALID_MESSAGE_ENVELOPE", null);
 
                 Json json = new Json();
+                String encodedPayload = payload.toJson(JsonWriter.OutputType.json);
                 String normalized = "{\"protocolVersion\":" + json.toJson(PROTOCOL_VERSION)
                         + ",\"messageType\":" + json.toJson(type.asString())
-                        + ",\"payloadJson\":" + json.toJson(payload.toString()) + "}";
+                        + ",\"payloadJson\":" + json.toJson(encodedPayload) + "}";
                 return parseJson(normalized);
             }
         } catch (RuntimeException malformedEnvelope) {
