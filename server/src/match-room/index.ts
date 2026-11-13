@@ -104,7 +104,7 @@ export class MatchRoom extends MatchRoomMessages {
         }
 
         const termRow = this.sql.exec(
-          "SELECT value FROM room_meta WHERE key = 'levelPublisherTerm'").toArray()[0];
+          "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
         const currentTerm = termRow === undefined ? 0 : Number(termRow?.value);
         if (!Number.isSafeInteger(currentTerm) || currentTerm < 0 || currentTerm >= Number.MAX_SAFE_INTEGER) {
           throw new Error("INVALID_LEVEL_PUBLISHER_TERM");
@@ -248,7 +248,7 @@ export class MatchRoom extends MatchRoomMessages {
             }));
         if (canRestoreInProgressRun) {
           const termRow = this.sql.exec(
-            "SELECT value FROM room_meta WHERE key = 'levelPublisherTerm'").toArray()[0];
+            "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
           const currentTerm = termRow === undefined ? 0 : Number(termRow?.value);
           if (!Number.isSafeInteger(currentTerm) || currentTerm < 0
               || currentTerm >= Number.MAX_SAFE_INTEGER) {
@@ -274,7 +274,7 @@ export class MatchRoom extends MatchRoomMessages {
       const currentPublisherId = currentPublisherRow && typeof currentPublisherRow.value === "string"
         ? String(currentPublisherRow.value) : null;
       const publisherTermRow = this.sql.exec(
-        "SELECT value FROM room_meta WHERE key = 'levelPublisherTerm'").toArray()[0];
+        "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
       const publisherTerm = publisherTermRow === undefined ? 0 : Number(publisherTermRow.value);
       const activateAfterSnapshot = promotedOnConnect && this.gameStatus === "PLAYING";
 
