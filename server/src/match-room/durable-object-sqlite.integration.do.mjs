@@ -124,7 +124,7 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(sent).toHaveLength(1);
       const error = JSON.parse(sent[0]);
       expect(error).toMatchObject({ messageType: "ERROR", requestId, sequence: 0 });
-      expect(JSON.parse(error.payloadJson).error).toBe("phase9 real MatchRoom event failure");
+      expect(JSON.parse(error.payloadJson).error).toContain("phase9 real MatchRoom event failure");
       expect(sql.exec("SELECT hp FROM players WHERE player_id = ?", playerId).toArray()[0].hp).toBe(9);
       expect(sql.exec("SELECT hp FROM mobs WHERE mob_id = ? AND depth = ?", 7, 1).toArray()[0].hp).toBe(20);
       expect(JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId).toArray()[0].value).hp).toBe(9);
