@@ -247,7 +247,7 @@ public class LANTransport implements NetworkTransport {
     }
 
     private NetworkMessage parseMessage(String jsonStr) {
-        return NetworkMessage.parseJson(jsonStr);
+        return NetworkMessage.parseLanJson(jsonStr);
     }
 
     @Override

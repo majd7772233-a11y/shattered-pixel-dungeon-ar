@@ -38,7 +38,7 @@ public class NetworkMessage {
             if (root == null || !root.isObject()) return error("INVALID_MESSAGE_OBJECT", null);
 
             JsonValue requestIdValue = root.get("requestId");
-            if (requestIdValue != null && !requestIdValue.isNull() && !requestIdValue.isString()) {
+            if (requestIdValue != null && !requestIdValue.isString()) {
                 return error("INVALID_MESSAGE_ENVELOPE", null);
             }
             if (requestIdValue != null && requestIdValue.isString()) requestId = requestIdValue.asString();
@@ -64,7 +64,7 @@ public class NetworkMessage {
             }
 
             JsonValue senderValue = root.get("senderId");
-            if (senderValue != null && !senderValue.isNull() && !senderValue.isString()) {
+            if (senderValue != null && !senderValue.isString()) {
                 return error("INVALID_MESSAGE_ENVELOPE", requestId);
             }
             long parsedSequence = 0L;
@@ -89,10 +89,6 @@ public class NetworkMessage {
                 } catch (RuntimeException malformedPayload) {
                     return error("MALFORMED_MESSAGE_PAYLOAD", requestId);
                 }
-            } else if (payloadValue.isObject() || payloadValue.isArray()) {
-                // The pre-10-C LAN serializer wrote payloadJson as raw JSON. Preserve that
-                // protocol-1.0.0 shape explicitly; scalar raw payload values are not accepted.
-                decodedPayload = payloadValue.toString();
             } else {
                 return error("INVALID_MESSAGE_ENVELOPE", requestId);
             }
@@ -108,6 +104,56 @@ public class NetworkMessage {
         } catch (RuntimeException malformedEnvelope) {
             return error("MALFORMED_JSON", requestId);
         }
+    }
+
+    /**
+     * Accepts only the exact legacy LAN serializer shape: protocol/message/sender/request/sequence
+     * plus a raw object-or-array payloadJson. The generic parser and Worker contract stay strict.
+     */
+    public static NetworkMessage parseLanJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.trim().isEmpty()) return parseJson(jsonStr);
+        try {
+            JsonValue root = new JsonReader().parse(jsonStr);
+            if (root != null && root.isObject() && root.size == 6) {
+                JsonValue version = root.get("protocolVersion");
+                JsonValue type = root.get("messageType");
+                JsonValue requestId = root.get("requestId");
+                JsonValue senderId = root.get("senderId");
+                JsonValue sequence = root.get("sequence");
+                JsonValue payload = root.get("payloadJson");
+                boolean legacyShape = version != null && version.isString()
+                        && PROTOCOL_VERSION.equals(version.asString())
+                        && type != null && type.isString()
+                        && (requestId == null || requestId.isNull() || requestId.isString())
+                        && senderId != null && senderId.isString()
+                        && sequence != null && sequence.isNumber()
+                        && payload != null && (payload.isObject() || payload.isArray());
+                if (legacyShape) {
+                    double numericSequence = sequence.asDouble();
+                    if (Double.isNaN(numericSequence) || Double.isInfinite(numericSequence)
+                            || numericSequence < 0d || numericSequence > MAX_SAFE_SEQUENCE
+                            || numericSequence != Math.floor(numericSequence)) {
+                        return error("INVALID_MESSAGE_ENVELOPE",
+                                requestId != null && requestId.isString() ? requestId.asString() : null);
+                    }
+
+                    Json json = new Json();
+                    StringBuilder normalized = new StringBuilder(128 + payload.toString().length());
+                    normalized.append("{\"protocolVersion\":").append(json.toJson(PROTOCOL_VERSION));
+                    normalized.append(",\"messageType\":").append(json.toJson(type.asString()));
+                    if (requestId != null && requestId.isString()) {
+                        normalized.append(",\"requestId\":").append(json.toJson(requestId.asString()));
+                    }
+                    normalized.append(",\"senderId\":").append(json.toJson(senderId.asString()));
+                    normalized.append(",\"sequence\":").append((long) numericSequence);
+                    normalized.append(",\"payloadJson\":").append(json.toJson(payload.toString())).append('}');
+                    return parseJson(normalized.toString());
+                }
+            }
+        } catch (RuntimeException malformedEnvelope) {
+            return parseJson(jsonStr);
+        }
+        return parseJson(jsonStr);
     }
 
     /**
@@ -130,7 +176,7 @@ public class NetworkMessage {
                 Json json = new Json();
                 String normalized = "{\"protocolVersion\":" + json.toJson(PROTOCOL_VERSION)
                         + ",\"messageType\":" + json.toJson(type.asString())
-                        + ",\"payloadJson\":" + payload.toString() + "}";
+                        + ",\"payloadJson\":" + json.toJson(payload.toString()) + "}";
                 return parseJson(normalized);
             }
         } catch (RuntimeException malformedEnvelope) {

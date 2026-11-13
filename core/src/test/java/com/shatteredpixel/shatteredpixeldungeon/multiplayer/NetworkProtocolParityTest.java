@@ -104,19 +104,35 @@ public class NetworkProtocolParityTest {
 
     @Test
     public void preservesOnlyDocumentedLegacyLanEnvelopeForms() {
-        NetworkMessage objectPayload = NetworkMessage.parseJson(
-                "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"ACTION\","
-                        + "\"requestId\":null,\"senderId\":\"lan-player\","
-                        + "\"sequence\":0,\"payloadJson\":{\"action\":\"WAIT\"}}");
+        String legacyObject = "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"ACTION\","
+                + "\"requestId\":null,\"senderId\":\"lan-player\",\"sequence\":0,"
+                + "\"payloadJson\":{\"action\":\"WAIT\"}}";
+        assertError(legacyObject, "INVALID_MESSAGE_ENVELOPE");
+        NetworkMessage objectPayload = NetworkMessage.parseLanJson(legacyObject);
         Assert.assertEquals(MessageType.ACTION, objectPayload.messageType);
-        Assert.assertNull("Legacy LAN requestId:null is interpreted as absent", objectPayload.requestId);
+        Assert.assertNull("Only the legacy LAN boundary normalizes requestId:null", objectPayload.requestId);
         Assert.assertEquals("{\"action\":\"WAIT\"}", objectPayload.payloadJson);
 
-        NetworkMessage arrayPayload = NetworkMessage.parseJson(
-                "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"EVENT_BATCH\","
-                        + "\"senderId\":null,\"payloadJson\":[{\"sequence\":1}]}");
+        String legacyArray = "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"EVENT_BATCH\","
+                + "\"requestId\":\"legacy-event\",\"senderId\":\"server\",\"sequence\":1,"
+                + "\"payloadJson\":[{\"sequence\":1}]}";
+        assertError(legacyArray, "INVALID_MESSAGE_ENVELOPE");
+        NetworkMessage arrayPayload = NetworkMessage.parseLanJson(legacyArray);
         Assert.assertEquals(MessageType.EVENT_BATCH, arrayPayload.messageType);
+        Assert.assertEquals("legacy-event", arrayPayload.requestId);
         Assert.assertEquals("[{\"sequence\":1}]", arrayPayload.payloadJson);
+    }
+
+    @Test
+    public void genericParserRejectsNullOptionalFieldsAndRawPayloadValues() {
+        assertError(envelope("PING", "{}").replace("\"payloadJson\":", "\"requestId\":null,\"payloadJson\":"),
+                "INVALID_MESSAGE_ENVELOPE");
+        assertError(envelope("PING", "{}").replace("\"payloadJson\":", "\"senderId\":null,\"payloadJson\":"),
+                "INVALID_MESSAGE_ENVELOPE");
+        assertError("{\"protocolVersion\":\"1.0.0\",\"messageType\":\"PING\",\"payloadJson\":{}}",
+                "INVALID_MESSAGE_ENVELOPE");
+        assertError("{\"protocolVersion\":\"1.0.0\",\"messageType\":\"PING\",\"payloadJson\":[]}",
+                "INVALID_MESSAGE_ENVELOPE");
     }
 
     @Test
