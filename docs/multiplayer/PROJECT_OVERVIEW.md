@@ -72,21 +72,16 @@ The source tree contains client classes for Internet, LAN, and Bluetooth transpo
 
 That presence does not mean all features have passed end-to-end acceptance.
 
-### Current verified checkpoint — 2026-11-12
+### Current verified checkpoint — 2026-11-13
 
-- Current branch HEAD (documentation-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`.
-- Docs-head CI [43294778145 — failure](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145): Backend has 654 passed / 4 failed mirrored executions; Android JVM and Debug APK pass.
-- Exact-head CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Backend build/schema pass; Vitest 654 passed / 4 failed of 658 executions across eight files; Android JVM and Debug APK pass.
-- Two actual failures mirrored in TypeScript/generated JavaScript: positive publisher result sends `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then unexpected `ERROR`; forged attacker-position negative test expects no sender reply but receives correlated `ERROR`.
-- Positive fixture contains `attackerPos: 9`; Java verifies native serialization equals `remoteHero.pos`. Missing/forged positions must remain rejected.
-- Local SpiritArrow lifecycle passes headlessly with manually invoked MissileSprite completion; no rendered animation is tested.
-- Requester ATTACK, pending authority reservation and COMBAT_REQUEST forwarding pass separately; accepted event delivery and requester application remain unproven.
-- Trace MessageRouter immediate `finishNativeSpiritArrowAttack()` against MissileSprite callback and Hero deferred-report ordering.
-- Phases 1–8 complete; Phase 9 partial/open; Phases 10–23 open. Only 9-C active; no live Worker/device proof claimed.
+- Verified gameplay/test HEAD: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact-head CI [43472587588 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- Backend TypeScript build and 682 executions across eight Vitest files passed. Android JVM tests and Debug APK compile passed. Three Workers-runtime tests against actual Durable Object SQLite passed.
+- Phase 9 is complete for implementation and automated acceptance. Enabled native effects are validated against Java/SPD. Unsupported level-up XP/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff paths are rejected before persistence.
+- SpiritArrow is covered from strict intent/reservation through native publisher result, atomic commit, sequenced EVENT_BATCH and stable-identity client reconciliation. A dedicated JVM regression proves reconciliation on clients whose local Mob Actor IDs differ.
+- Publisher handoff is generation-based and transactional. A replacement restores persisted state and must pass a lossless rebase before shared actions resume.
+- Phase 10 is next and OPEN; Phases 11–23 remain open. Branch CI is not a deployed Worker or a physical-device multiplayer session.
 
-
-
-## 6. Modes and transports: do not infer readiness
+## 6. Modes and transports: do not infer readiness## 6. Modes and transports: do not infer readiness
 
 The Java source contains mode descriptor classes for Co-op, PvP, Deathmatch, and Survival. The Worker has a game-mode field and competitive field-of-view broadcast behavior. Mode-specific enforcement remains a separate acceptance concern; the presence of a class or server enum is not proof that scoring, revive, death, visibility, team, or end-condition rules are complete.
 
