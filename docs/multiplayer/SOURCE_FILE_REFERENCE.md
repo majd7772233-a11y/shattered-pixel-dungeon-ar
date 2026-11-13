@@ -170,14 +170,19 @@ server/ contains:
 - tsconfig.json;
 - wrangler.jsonc;
 - scripts/validate-phase7-native-mutation-schema.mjs;
-- scripts/validate-spirit-arrow-schema.mjs; (strict NativeAttackPayload SpiritArrow metadata/conditional schema parity).
+- scripts/validate-spirit-arrow-schema.mjs (strict NativeAttackPayload SpiritArrow metadata/conditional schema parity);
+- scripts/validate-publisher-handoff-schema.mjs (publisher handoff/rebase schema contract);
+- scripts/validate-phase10-protocol-enums.mjs (ordered Java/schema enum and protocol-version parity);
+- scripts/validate-phase10-routing.mjs (25-message classification, eight actual Worker ingress routes and 23 explicit ACTION branch guard).
 - src/index.ts (35-line Worker entry + compatibility facade);\n- src/worker.ts (default Worker request router);
 - src/match-room/ (base, persistence, combat, snapshots, actions, messages, final MatchRoom class);
 - src/protocol/types.ts;
+- src/protocol/message-admission.ts and src/protocol/message-admission.test.ts (Worker envelope classification, fail-closed admission and regressions);
 - src/validators/ (14 domain modules);
 - src/util/seeded-rng.ts;
 - src/index.test.ts;
-- src/native-pickup-side-effect.test.ts;\n- src/entrypoint.test.ts (Worker root-entry/routing integration).
+- src/native-pickup-side-effect.test.ts;
+- src/protocol/message-admission.test.ts;\n- src/entrypoint.test.ts (Worker root-entry/routing integration).
 
 `server/src/index.ts` is the Worker entry and compatibility facade; `server/src/worker.ts` owns default request routing; the complete `MatchRoom` class lives in `server/src/match-room/index.ts`. Pure validator implementations live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
 

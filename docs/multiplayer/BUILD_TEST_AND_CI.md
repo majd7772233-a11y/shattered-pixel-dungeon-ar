@@ -13,7 +13,7 @@ Inspected server/package.json:
 | Script | Command | Purpose |
 |---|---|---|
 | build | tsc | Compile/type-check TypeScript according to tsconfig.json. |
-| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && node scripts/validate-publisher-handoff-schema.mjs && node scripts/validate-phase10-protocol-enums.mjs && vitest run | Run four static native/schema/protocol contracts, then Vitest. |
+| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && node scripts/validate-publisher-handoff-schema.mjs && node scripts/validate-phase10-protocol-enums.mjs && node scripts/validate-phase10-routing.mjs && vitest run | Run five static native/schema/protocol/routing contracts, then Vitest. |
 
 Normal backend validation sequence from repository root:
 

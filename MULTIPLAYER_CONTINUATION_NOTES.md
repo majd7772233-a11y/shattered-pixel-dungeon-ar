@@ -7,6 +7,8 @@
 **10-B implementation/fix SHA:** `d16be138d74bb9930777f5352efbeae3291070c6`  
 **Exact-head CI:** [43494769215 — all three required checks passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend build + 708 Vitest executions (10 files), Android JVM/Debug APK and three Durable Object SQLite tests passed.
 
+**Post-slice live-branch audit (2026-11-13):** the branch subsequently advanced to `a465637492d35798193974c937897f84dc64e34d`, a documentation-only descendant of the 10-B implementation SHA above. The live Java/Worker sources and existing tests still match the documented 10-B result; do not recreate the completed 10-B admission gate or route matrix. Continue with the already scoped Phase 10-C work below.
+
 ## Verified starting point
 
 - The live branch head exactly matched fa5f7937eb55145345230de7930be8f860b74694 before any write.

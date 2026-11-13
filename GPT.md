@@ -198,7 +198,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - `server/src/index.test.ts` and `server/src/native-pickup-side-effect.test.ts`: existing backend contract/validator suites remain on `./index`; `server/src/entrypoint.test.ts` adds direct Worker-handler routing regression tests. These tests still do not instantiate a deployed Cloudflare Durable Object runtime.
 - `server/package.json`, `server/tsconfig.json`, `server/wrangler.jsonc`: backend scripts/build/deployment configuration.
 - `protocol/schema.json`: protocol schema; it must match `MessageType` and actual payloads. The current schema includes `LEVEL_DATA`; native Mob full-snapshot AI/scheduler fields were synchronized with server preflight during the 2026-10-21 Phase 1 audit.
-- `.github/workflows/multiplayer-ci.yml`: on relevant pushes, runs backend dependency install/typecheck/tests and Android `assembleDebug`. Docs-only commits may not trigger it because of the path filters.
+- `.github/workflows/multiplayer-ci.yml`: on pushes to the permitted multiplayer branch, runs backend dependency install/typecheck/tests, Durable Object SQLite integration tests and Android JVM tests/`assembleDebug` when configured paths change. Its push/PR path filters explicitly include `core/**`, `android/**`, `server/**`, `protocol/**`, the workflow file, `ROADMAP.md`, `GPT.md`, `MULTIPLAYER_CONTINUATION_NOTES.md` and `docs/multiplayer/**`; edits to those docs do trigger CI, while unrelated root/platform docs do not trigger it by themselves.
 - `.github/workflows/deploy-server.yml`, `.github/workflows/release.yml`: inspect before changing deployment/release behavior.
 
 ## 4. Current Verified State and Implemented Architecture
@@ -211,7 +211,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Android: JVM tests and Debug APK compilation passed.
 - Workers runtime: three real Durable Object SQLite tests passed under the local Workers runtime.
 - These results do not prove a deployed production Worker or a physical-device match. Always inspect the live branch HEAD and its matching Actions run before changing code or documentation.
-- Phase 9 is complete for implementation and automated acceptance under the explicit fail-closed exclusions in ROADMAP.md. Phase 10 is the active next phase.
+- Phase 9 is complete for implementation and automated acceptance under the explicit fail-closed exclusions in ROADMAP.md. Phase 10 is active and remains OPEN: 10-A enum/version parity and 10-B cross-layer routing/Worker admission are delivered; the next bounded slice is 10-C Android envelope/parser and native producer parity.
 
 ### Phase status
 
@@ -221,7 +221,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - **Phase 7:** complete for implementation and automated acceptance on code/test SHA `744b78cebfae17609dd2b7d43e9d19bd42774056`; exact-SHA CI [41112954455](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41112954455) passed protocol schema, backend tests and Android JVM/debug APK jobs.
 - **Phase 8:** complete for implementation and automated acceptance on `e36bc8030755050e3eae3d45ccab4db1040a65f5`; exact-SHA CI [41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed.
 - **Phase 9:** complete for implementation and automated acceptance on gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code and current documentation HEAD workflows are recorded in ROADMAP.md.
-- **Phase 10:** next and OPEN — canonical protocol schema and one typed event path.
+- **Phase 10:** in progress and OPEN — 10-A canonical enum/version parity and 10-B cross-layer route inventory/Worker ingress admission are complete at their exact verified SHAs in ROADMAP.md. Next: bounded slice 10-C for Android parser/version/required-field strictness, native action-producer mapping and behavior-specific legacy receiver equivalence tests. Phase 11 has not started.
 - **Phases 11–12:** event ordering/replay/resync; durable recovery/reconnect/authority handoff.
 - **Phase 13:** transport-independent room/session lifecycle.
 - **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).
@@ -298,7 +298,7 @@ The project is not done when it compiles or when two clients merely connect. Don
 - Verified gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7` and exact CI run 43472587588: Backend 682 executions across eight Vitest files, Android JVM/Debug APK and three local Workers-runtime Durable Object SQLite tests passed.
 - Real SQLite tests cover rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction. This is local Workers runtime evidence, not a deployed production Worker.
 - Corrected stale Phase 9 status/history references and synchronized the Phase 10 entry across GPT.md, ROADMAP.md, continuation notes and technical references. No gameplay source change was needed during final closeout.
-- Phase 10 is next: canonical schema/enum/serializer/Worker/Android-handler parity, one typed event-application path, and parity-tested migration of remaining RemotePlayerActionReceiver behavior. Keep Phase 11 out of scope.
+- At that 2026-11-13 closeout point, Phase 10 was the next phase. This direction was superseded later the same day by the delivered 10-A and 10-B execution logs above. The parent Phase 10 remains OPEN; 10-C is next. Keep Phase 11 out of scope.
 
 
 

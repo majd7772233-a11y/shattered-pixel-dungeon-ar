@@ -79,7 +79,7 @@ That presence does not mean all features have passed end-to-end acceptance.
 - Phase 9 is complete for implementation and automated acceptance. Enabled native effects are validated against Java/SPD. Unsupported level-up XP/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff paths are rejected before persistence.
 - SpiritArrow is covered from strict intent/reservation through native publisher result, atomic commit, sequenced EVENT_BATCH and stable-identity client reconciliation. A dedicated JVM regression proves reconciliation on clients whose local Mob Actor IDs differ.
 - Publisher handoff is generation-based and transactional. A replacement restores persisted state and must pass a lossless rebase before shared actions resume.
-- Phase 10 is next and OPEN; Phases 11–23 remain open. Branch CI is not a deployed Worker or a physical-device multiplayer session.
+- Phase 10 is in progress and remains OPEN: 10-A enum/version parity and 10-B cross-layer message/action routing plus fail-closed Worker ingress admission are implemented. The 10-B implementation SHA `d16be138d74bb9930777f5352efbeae3291070c6` passed exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). The next bounded slice is 10-C Android envelope/parser and native action-producer parity, with legacy-receiver behavior tests before any migration. Phases 11–23 remain open; branch CI is not a deployed Worker or physical-device match.
 
 ## 6. Modes and transports: do not infer readiness
 

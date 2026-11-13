@@ -78,12 +78,14 @@ These files are outside the multiplayer package but part of the feature.
 | `server/src/worker.ts` | Default Cloudflare Worker fetch router; resolves `/room/{roomCode}/...` to the `MATCH_ROOM` Durable Object and preserves the default API response. | Keep the handler behavior aligned with `entrypoint.test.ts`; do not change the Wrangler main path. |
 | `server/src/entrypoint.test.ts` | Worker entry integration tests for Durable Object routing, Request forwarding, default-room fallback and the root `MatchRoom` export. | Keep these separate from claims of live Worker/deployment testing. |
 | server/src/protocol/types.ts | Env, NetworkMessage and SessionData declarations moved from the original entry. | Wire shape is unchanged; keep Java/schema/server contracts aligned if a future field changes. |
+| server/src/protocol/message-admission.ts | Worker outer-message classifier and fail-closed envelope admission. | Keep the exact eight inbound and 17 known non-inbound classifications, required/optional field checks, version check and nested payload validation aligned with live routes. |
+| server/src/protocol/message-admission.test.ts | Focused tests for route classification, envelope shape/types, version, malformed payload and safe request correlation. | Add positive/negative cases whenever the admission contract changes. |
 | server/src/match-room/base.ts | Shared room state/SQL fields and foundational WebSocket close/broadcast methods. | Do not duplicate room state between layers. |
 | server/src/match-room/persistence.ts | SQLite schema/init, claimed item migration and fallback level generation. | Preserve schema, migrations, SQL and initialization order. |
 | server/src/match-room/combat.ts | Pending combat reservation/reconciliation, combat position checks, LOS and FOV. | Preserve authority checks, lock expiry and FOV behavior. |
 | server/src/match-room/snapshots.ts | Level snapshots, floor-transition finalization and match-end rules. | Preserve event sequencing and full snapshot contents. |
 | server/src/match-room/actions.ts | Reconnect, level data/ready and native action request handlers. | ACTION remains sequential in one method; do not reorder SQL writes or event publication. |
-| server/src/match-room/messages.ts | WebSocket message parsing and dispatch/error boundary. | Keep dispatcher awaiting extracted handlers within the original try/catch. |
+| server/src/match-room/messages.ts | WebSocket frame/session checks, fail-closed envelope admission, message dispatch and error boundary. | Preserve the eight explicit inbound routes, trusted attachment-derived senderId and existing handler-exception contract. |
 | server/src/match-room/index.ts | The single exported MatchRoom Durable Object class; owns constructor/alarm/HTTP fetch. | Preserve class export name and Wrangler `class_name: MatchRoom`.
 | server/src/validators/entity-identity.ts and floor-transitions.ts | Stable entity mapping, movement and floor transition validation. | Keep the original fail-closed rules and native transition assumptions. |
 | server/src/validators/equipment.ts, item-state.ts and abilities.ts | Quickslots, equipment, item/buff bundle safety, use/status and ability validation. | Shared helper imports are explicit; avoid weakening item ownership or mutation checks. |
@@ -94,6 +96,7 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
 | server/scripts/validate-spirit-arrow-schema.mjs | Static contract test for `SPIRIT_ARROW`, strict `spiritArrow` metadata and conditional ranged Mob rules. | Run in `npm test`; proves schema structure, not local projectile runtime or authority roundtrip. |
 | server/scripts/validate-phase10-protocol-enums.mjs | Static ordered parity check between Java `MessageType`/`NetworkActionType`, JSON Schema and protocol version. | Run in `npm test`; proves wire vocabulary/version parity only, not Worker route or client-handler support. |
+| server/scripts/validate-phase10-routing.mjs | Static cross-layer guard for the 25 outer messages, eight Worker ingress routes, 17 known non-inbound names, 23 Worker action branches and fail-closed `INVALID_ACTION` default. | Run in `npm test`; route-branch presence is not proof that every native action subcase is supported. |
 | server/src/index.test.ts | Main backend validator/contract test suite, retained on the root `./index` import path. | Add focused positive/negative cases beside the affected validator/action domain. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |
@@ -122,7 +125,8 @@ These files are outside the multiplayer package but part of the feature.
 
 - server/src/index.test.ts — broad validation/combat/world snapshot/item/economy/claims/Mob state tests.
 - server/src/native-pickup-side-effect.test.ts — focused native pickup side-effect policy.
-- server/scripts/validate-phase7-native-mutation-schema.mjs — static schema/action validation run before Vitest.
+- server/src/protocol/message-admission.test.ts — focused Worker envelope admission and message-direction tests.
+- server/scripts/validate-phase7-native-mutation-schema.mjs, `validate-phase10-protocol-enums.mjs` and `validate-phase10-routing.mjs` — static native/schema/protocol/route contracts run before Vitest.
 
 Mirrored TypeScript/JavaScript outputs may execute the same source cases more than once. Report executions separately from unique source scenarios.
 

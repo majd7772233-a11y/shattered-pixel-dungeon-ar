@@ -87,19 +87,17 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Active project checkpoint — 2026-11-13 (Phase 9 complete; Phase 10 ready)
+### Active project checkpoint — 2026-11-13 (Phase 9 complete; Phase 10 in progress — 10-A and 10-B delivered)
 
 - Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Verified gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)
-- Backend: TypeScript build and 682 executions across eight Vitest files passed.
-- Android: JVM tests and Debug APK compilation passed.
-- Workers runtime: three tests against real Durable Object SQLite passed (rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction).
-- These checks are automated and use local Workers runtime; production deployment and physical-device play remain Phases 22 and 23. Re-check live HEAD and its exact-head Actions run before the next edit.
-- SpiritArrow: strict intent → publisher reservation/COMBAT_REQUEST → native Java result → atomic commit → sequenced requester EVENT_BATCH → stable-ID requester reconciliation. Android tests use two clients with distinct local Mob Actor IDs.
-- Publisher recovery: durable generation handoff, persisted snapshot, pending-combat cancellation and lossless rebase gate; Mob IDs/bundles stay fixed while local Actor IDs refresh and LifeLink/SnipersMark references are checked.
-- Timed effects: supported Hero/Mob effects are source-specific and validated against native Java results. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff callbacks remain fail-closed.
-- Phases 1–9 complete for implementation and automated acceptance. Phase 10 is next and OPEN; Phases 11–23 remain open.
-- Evidence limits: Workers runtime uses local DO SQLite, not a deployed production Worker; projectile lifecycle is headless, not rendered; no physical two-device match was run. Those checks remain Phases 22 and 23.
+- Live branch HEAD at the start of the latest Phase 10-B state audit: `a465637492d35798193974c937897f84dc64e34d`, a documentation-only descendant of the verified 10-B implementation commit `d16be138d74bb9930777f5352efbeae3291070c6`.
+- Phase 9 gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- **Phase 10-A:** canonical enum/version parity is complete at `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695).
+- **Phase 10-B:** the cross-layer catalog for all 25 outer messages and 23 actions, eight Worker inbound routes versus 17 known non-inbound types, fail-closed Worker envelope admission, focused tests and static routing guard are complete at `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI [43494769215 — all three required jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215).
+- The 10-B workflow passed Backend TypeScript build and 708 Vitest executions across 10 files, Android JVM tests/Debug APK, and three Durable Object SQLite rollback/eviction tests. Mirrored JS/TS executions are not unique source scenarios; Workers runtime tests are local, not deployed production.
+- **Phase 10 as a whole remains OPEN.** The next bounded slice is 10-C: strict Android envelope/parser parity, native action-producer mapping (including the unmapped-HeroAction-to-WAIT fallback), and behavior-specific MessageRouter/RemotePlayerActionReceiver parity tests. Do not repeat 10-A/10-B, do not begin Phase 11, and do not redesign replay/resync.
+- `RemotePlayerActionReceiver` remains intact; its PLAYER_LEFT Actor/Mob cleanup must be preserved until typed-path behavior is proven by dedicated equivalence tests.
+- Phases 11–23 remain open. No deployed production Worker smoke test or physical two-device match is claimed; those remain Phases 22 and 23.
 
 ### Historical continuation checkpoint — 2026-11-09 (superseded by 2026-11-13)
 
@@ -443,11 +441,11 @@ Production deployment and physical-device playtest remain Phases 22 and 23, not 
 
 ## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
-### Entry checkpoint — 2026-11-13
+### Current Phase 10 checkpoint — 2026-11-13
 
-Phase 9 is complete for implementation and automated acceptance at gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. The outer Java/schema protocol currently contains 25 message names, including `LEVEL_PUBLISHER_CHANGED`; `NativeLevelSnapshot` carries optional `publisherRebase` and `publisherRebaseTerm` fields. These support Phase 9 authority recovery; the canonical typed event path is not yet complete. Read the live branch HEAD and its exact-head CI before starting Phase 10.
+Phase 9 is complete for implementation and automated acceptance at gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. Phase 10-A (canonical ordered enum/version parity) and Phase 10-B (cross-layer route inventory plus fail-closed Worker ingress admission) are already implemented and verified; their exact implementation SHAs and CI evidence are recorded below and in the active project checkpoint above.
 
-Phase 10 must reconcile Java `MessageType`/`NetworkActionType`, serializers, `protocol/schema.json`, Worker routes, validators and Android handlers. Characterize `RemotePlayerActionReceiver` default-route behavior and migrate only with parity regressions. Define explicit malformed/unknown/unsupported outcomes. Keep Phase 11 replay/resync redesign out of scope.
+The live branch was audited at `a465637492d35798193974c937897f84dc64e34d`, a documentation-only descendant of the 10-B implementation SHA `d16be138d74bb9930777f5352efbeae3291070c6`. Do not reimplement either completed slice. Phase 10 remains OPEN; the next bounded slice is 10-C, focused on Android envelope/parser and native action-producer parity plus behavior-specific legacy receiver tests. Keep `RemotePlayerActionReceiver` intact until its behavior is covered by equivalence regressions. Do not start Phase 11 or modify replay/resync semantics.
 
 **Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
 
