@@ -175,8 +175,11 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 ## 9. Current verified branch checkpoint — 2026-11-13
 
 - Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Current branch HEAD: `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (documentation-only descendant of gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`).
-- Latest exact-head workflow: [43476033245 — all three jobs succeeded](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245). The gameplay/test baseline's exact-code workflow [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) also passed.
+- Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test workflow [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- Backend: 8 Vitest files, 682 executions passed (mirrored JS output is not a unique-source count).
+- Android: JVM tests and Debug APK passed.
+- Workers runtime: 3 real Durable Object SQLite integration tests passed.
+- Re-run CI on the live branch HEAD before any later edits; green branch CI does not deploy the production Worker.
 - Backend: TypeScript build passed; 8 Vitest files; 682 test executions passed. Generated/mirrored TS/JS outputs mean this is not a count of unique source scenarios.
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
 - Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
