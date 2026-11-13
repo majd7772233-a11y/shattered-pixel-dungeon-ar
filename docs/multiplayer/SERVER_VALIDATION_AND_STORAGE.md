@@ -360,7 +360,7 @@ Publisher disconnect handoff uses a durable generation. Its SQL transaction tran
 
 The Workers runtime suite exercises real Durable Object SQLite rollback, replay, eviction/reconstruction and publisher handoff after a persisted snapshot. Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed all three jobs. The test runtime is local Workers emulation, not a deployed production Worker smoke test.
 
-### 6.2 Poison damage against a native Hero Barrier### 6.2 Poison damage against a native Hero Barrier
+### 6.2 Poison damage against a native Hero Barrier
 
 The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
 
