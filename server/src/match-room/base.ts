@@ -28,6 +28,17 @@ export class MatchRoomBase {
     }
   }
 
+  protected connectedPlayerIds(): Set<string> {
+    const connected = new Set<string>();
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        const session = ws.deserializeAttachment() as SessionData | null;
+        if (session?.playerId) connected.add(String(session.playerId));
+      } catch (_) {}
+    }
+    return connected;
+  }
+
   protected currentLevelPublisherTerm(): number {
     const row = this.sql.exec(
       "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];

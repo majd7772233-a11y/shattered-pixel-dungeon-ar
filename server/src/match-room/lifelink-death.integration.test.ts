@@ -784,6 +784,29 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(true);
     rebase.nativeRemoteHeroActorIds = [21];
     expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(false);
+
+    // A connected player that has not created a Hero yet gets one fresh RemoteHero Actor,
+    // but no persisted Buff IDs. Rebase admits exactly one such extra ID, not an arbitrary set.
+    rebase.nativeRemoteHeroActorIds = [21, 88, 99];
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected, 1)).toBe(true);
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected, 0)).toBe(false);
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected, 2)).toBe(false);
+
+    // RemoteHero LifeLink.object belongs to another device. This fixture deliberately
+    // collides it with the publisher's Mob Actor ID (7); numeric equality is not identity.
+    const remoteLinkedHero = JSON.parse(JSON.stringify(remoteHero));
+    remoteLinkedHero.buffCount = 2;
+    remoteLinkedHero.buff_1 = JSON.stringify({ buff: {
+      __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink", id: 89, time: 10, object: 7
+    }});
+    remoteLinkedHero.buffCooldown_1 = 1;
+    const linkedRemoteJson = JSON.stringify(remoteLinkedHero);
+    const linkedRemoteSet = [
+      { playerId: ATTACKER_ID, heroStateJson: ownJson },
+      { playerId: "remote-player-identity-002", heroStateJson: linkedRemoteJson }
+    ];
+    rebase.nativeRemoteHeroActorIds = [21, 88, 89];
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, linkedRemoteSet)).toBe(false);
   });
 
 
@@ -897,6 +920,34 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(JSON.parse(String(publisherChange.payloadJson))).toMatchObject({
       publisherId: nextPublisher, term: 5, reason: "PUBLISHER_DISCONNECTED"
     });
+  });
+
+  it("ignores an old WebSocket close after the same player has reconnected", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room } = fixture;
+    const playerId = "replacement-socket-player-001";
+    sql.players.set(playerId, {
+      player_id: playerId, pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1
+    });
+    const closingSocket = {
+      deserializeAttachment: () => ({ playerId, sessionToken: "old-session-token" }),
+      send: vi.fn()
+    };
+    const replacementSocket = {
+      deserializeAttachment: () => ({ playerId, sessionToken: "new-session-token" }),
+      send: vi.fn()
+    };
+    const otherSocket = {
+      deserializeAttachment: () => ({ playerId: "other-live-player-001", sessionToken: "other-session-token" }),
+      send: vi.fn()
+    };
+    room.state.getWebSockets = () => [replacementSocket, otherSocket];
+
+    await room.webSocketClose(closingSocket, 1006, "late old socket close", false);
+
+    expect(sql.players.get(playerId)?.connected).toBe(1);
+    expect(replacementSocket.send).not.toHaveBeenCalled();
+    expect(otherSocket.send).not.toHaveBeenCalled();
   });
 
   it("clears Level Publisher authority when no connected living replacement exists", async () => {

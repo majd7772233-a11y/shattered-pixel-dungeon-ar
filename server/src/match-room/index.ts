@@ -11,22 +11,23 @@ export class MatchRoom extends MatchRoomMessages {
 
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     const session = ws.deserializeAttachment() as SessionData | null;
+    if (session) {
+      // An older socket can close after a replacement has already authenticated. Do not
+      // broadcast PLAYER_LEFT or tear down the live RemoteHero in that race.
+      const replacementSocketExists = this.state.getWebSockets().some(peer => {
+        try {
+          const peerSession = peer.deserializeAttachment() as SessionData | null;
+          return peerSession?.playerId === session.playerId
+            && peerSession?.sessionToken !== session.sessionToken;
+        } catch (_) { return false; }
+      });
+      if (replacementSocketExists) {
+        this.sql.exec("UPDATE players SET connected = 1 WHERE player_id = ?", session.playerId);
+        return;
+      }
+    }
     await super.webSocketClose(ws, code, reason, wasClean);
     if (!session) return;
-
-    // Ignore an old close callback if a replacement socket for this same authenticated player
-    // is already active. Session tokens distinguish the newer socket from the closing socket.
-    const replacementSocketExists = this.state.getWebSockets().some(peer => {
-      try {
-        const peerSession = peer.deserializeAttachment() as SessionData | null;
-        return peerSession?.playerId === session.playerId
-          && peerSession?.sessionToken !== session.sessionToken;
-      } catch (_) { return false; }
-    });
-    if (replacementSocketExists) {
-      this.sql.exec("UPDATE players SET connected = 1 WHERE player_id = ?", session.playerId);
-      return;
-    }
 
     const publisherRow = this.sql.exec(
       "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
@@ -51,14 +52,7 @@ export class MatchRoom extends MatchRoomMessages {
       return;
     }
 
-    const liveSockets = this.state.getWebSockets();
-    const livePlayerIds = new Set<string>();
-    for (const peer of liveSockets) {
-      try {
-        const peerSession = peer.deserializeAttachment() as SessionData | null;
-        if (peerSession?.playerId) livePlayerIds.add(peerSession.playerId);
-      } catch (_) {}
-    }
+    const livePlayerIds = this.connectedPlayerIds();
 
     let nextPublisherId: string | null = null;
     let nextTerm = 0;

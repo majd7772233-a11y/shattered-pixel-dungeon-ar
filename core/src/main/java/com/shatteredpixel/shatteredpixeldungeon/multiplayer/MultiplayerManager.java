@@ -591,6 +591,15 @@ public class MultiplayerManager implements TransportCallback {
                 && message.requestId != null) {
             pendingActions.remove(message.requestId);
         } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
+            Long rejectedRebaseTerm = publisherRebaseRequests.remove(message.requestId);
+            boolean rejectedPublisherRebase = rejectedRebaseTerm != null
+                    && rejectedRebaseTerm.longValue() == levelPublisherTerm && levelPublisher;
+            if (rejectedPublisherRebase) {
+                // The server keeps this generation gated until a lossless rebase commits.
+                // Clear the send marker so the next authoritative SNAPSHOT can trigger one retry.
+                publisherRebaseSentTerm = -1L;
+                requestResync(message.sequence);
+            }
             NetworkMessage rejected = pendingActions.remove(message.requestId);
             boolean rejectedNativeTurn = false;
             if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA

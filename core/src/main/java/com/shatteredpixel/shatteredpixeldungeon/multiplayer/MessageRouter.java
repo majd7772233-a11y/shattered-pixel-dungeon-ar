@@ -650,6 +650,9 @@ public final class MessageRouter {
                             manager.markFloorTransitionComplete();
                             if (Dungeon.hero != null) Dungeon.hero.next();
                         }
+                        if (manager.isLevelPublisher()) {
+                            manager.publishPublisherRebase(false);
+                        }
                     } else {
                         WorldSnapshot.rollbackToLastApplied();
                         manager.requestResync(snapshot.sequence);

@@ -215,7 +215,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               }
             }
 
-            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray().map((player: any) => {
+            const connectedPlayerIds = this.connectedPlayerIds();
+            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray()
+              .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
               const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
               return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
             });
@@ -713,30 +715,30 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         if (isPublisherRebase) {
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
             "heroState:" + session.playerId).toArray()[0];
+          const livePlayerIds = this.connectedPlayerIds();
           const playerRows = this.sql.exec(
-            "SELECT player_id FROM players ORDER BY player_id ASC").toArray();
+            "SELECT player_id FROM players WHERE connected = 1 ORDER BY player_id ASC").toArray();
           const playerHeroStates: PublisherRebaseHeroState[] = [];
-          let publisherHeroStateSetComplete = true;
+          let emptyRemoteHeroCount = 0;
+          let publisherHeroStateSetComplete = false;
           for (const player of playerRows) {
             const playerId = String(player.player_id || "");
-            if (!playerId) {
-              publisherHeroStateSetComplete = false;
-              break;
-            }
+            if (!playerId || !livePlayerIds.has(playerId)) continue;
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
               "heroState:" + playerId).toArray()[0];
             if (!heroRow || typeof heroRow.value !== "string") {
-              // A player can join before creating a Hero. Such an empty RemoteHero has no
-              // saved Buff references; its freshly assigned Actor ID is accepted as an extra
-              // process-local ID, while every persisted Hero/Buff identity is checked below.
+              // A connected peer may have joined before selecting/building a Hero. Its native
+              // RemoteHero has exactly one fresh local Actor ID and no saved Buff IDs.
               if (playerId === session.playerId) publisherHeroStateSetComplete = false;
+              else emptyRemoteHeroCount++;
               continue;
             }
             playerHeroStates.push({ playerId, heroStateJson: String(heroRow.value) });
+            if (playerId === session.playerId) publisherHeroStateSetComplete = true;
           }
           if (!trustedHeroRow || !publisherHeroStateSetComplete
               || !isValidNativePublisherRebase(previousSnapshot, level, session.playerId,
-                trustedHeroRow.value, playerHeroStates)) {
+                trustedHeroRow.value, playerHeroStates, emptyRemoteHeroCount)) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_PUBLISHER_REBASE_SNAPSHOT" }) }));
             return;
@@ -896,7 +898,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         if (isNativeWorldTurn || isNativeWorldMutation) {
           // Broadcast the complete server-committed world to peers, not a guessed delta.
           const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
-          const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray().map((player: any) => {
+          const connectedPlayerIds = this.connectedPlayerIds();
+          const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray()
+            .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
             const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
             return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
           });

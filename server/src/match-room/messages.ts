@@ -43,7 +43,9 @@ export class MatchRoomMessages extends MatchRoomActions {
         });
       } else if (msg.messageType === "RESYNC") {
         const events = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC`).toArray();
-        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray().map((player: any) => {
+        const connectedPlayerIds = this.connectedPlayerIds();
+        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray()
+          .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
           const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
           return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
         });

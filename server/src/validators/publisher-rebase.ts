@@ -33,7 +33,8 @@ export function isValidNativePublisherRebase(
   nextValue: unknown,
   publisherId: string,
   trustedPublisherHeroStateJson: unknown,
-  connectedHeroStates: PublisherRebaseHeroState[]
+  connectedHeroStates: PublisherRebaseHeroState[],
+  emptyRemoteHeroCount = 0
 ): boolean {
   const previous: any = previousValue, next: any = nextValue;
   if (!previous || !next || typeof previous !== "object" || typeof next !== "object"
@@ -44,7 +45,9 @@ export function isValidNativePublisherRebase(
       || next.nativeRemoteHeroActorIds.length > 1024
       || !Array.isArray(previous.mobs) || !Array.isArray(next.mobs)
       || !Array.isArray(connectedHeroStates) || connectedHeroStates.length < 1
-      || connectedHeroStates.length > 16) return false;
+      || connectedHeroStates.length > 16
+      || !Number.isInteger(emptyRemoteHeroCount) || emptyRemoteHeroCount < 0 || emptyRemoteHeroCount > 15
+      || connectedHeroStates.length + emptyRemoteHeroCount > 16) return false;
 
   let trustedHero: any, submittedHero: any;
   try {
@@ -107,6 +110,10 @@ export function isValidNativePublisherRebase(
       if (row.playerId === publisherId) localHeroActorIds.add(actorId);
       else expectedRemoteActorIds.push(actorId);
     }
+    // LifeLink.object is an Actor ID local to the process that created the Hero. A
+    // RemoteHero's value belongs to another device and must never be resolved against this
+    // publisher's Mob registry, even if the integers happen to collide.
+    if (row.playerId !== publisherId && lifeLinkIds.length > 0) return false;
     for (const actorId of lifeLinkIds) {
       if (!mobActorIds.has(actorId)) return false;
     }
@@ -122,5 +129,6 @@ export function isValidNativePublisherRebase(
   }
   const expectedRemoteSet = new Set(expectedRemoteActorIds);
   return expectedRemoteSet.size === expectedRemoteActorIds.length
+    && submittedRemoteSet.size === expectedRemoteSet.size + emptyRemoteHeroCount
     && Array.from(expectedRemoteSet).every(actorId => submittedRemoteSet.has(actorId));
 }
