@@ -32,7 +32,7 @@
 - Added `server/scripts/validate-phase10-routing.mjs` to npm test. It compares the 25-value Java/schema vocabulary with inbound/non-inbound classification, the eight exact route branches and all 23 Worker ACTION branches, while retaining the INVALID_ACTION fail-closed default.
 - Updated protocol catalog, server validation/storage guide, test matrix, build/CI guide, multiplayer README and active roadmap/checkpoint/continuation docs. The catalog explicitly documents all 25 message directions and 23 action validation paths.
 - No Java/gameplay action validator, message sequence, persistence, replay/resync behavior, MessageRouter route or RemotePlayerActionReceiver code was changed. RemotePlayerActionReceiver remains necessary for PLAYER_LEFT Actor/Mob cleanup and legacy handling; do not move/delete it without parity tests.
-- Known remaining gap: NetworkActionBridge maps only a subset of HeroAction classes and falls back to WAIT for an unmapped action. This is not proof that the original action is supported; test/fix this in a dedicated client-producer slice.
+- Historical Phase 10-B baseline finding (superseded by 10-C): NetworkActionBridge then fell back to WAIT for unmapped HeroAction classes. Phase 10-C replaced that behavior with Optional.empty() and native rejection; see the 2026-11-14 execution log above.
 - Implementation/fix commit: `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend TypeScript build and 708 Vitest executions across 10 files passed, Android JVM/Debug APK passed, and the three Durable Object SQLite rollback/eviction tests passed. The first run on `8cd15d8fc9645fe0906b30b66c06063a18dbc0b4` exposed a change to transaction error text; the follow-up retained the existing contract without weakening tests. Phase 10 remains OPEN; Phase 11 is not started.
 
 ## Phase 10 execution log — 2026-11-14 (bounded slice 10-C — Android envelope and producer parity)
@@ -218,7 +218,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Android: JVM tests and Debug APK compilation passed.
 - Workers runtime: three real Durable Object SQLite tests passed under the local Workers runtime.
 - These results do not prove a deployed production Worker or a physical-device match. Always inspect the live branch HEAD and its matching Actions run before changing code or documentation.
-- Phase 9 is complete for implementation and automated acceptance under the explicit fail-closed exclusions in ROADMAP.md. Phase 10 is active and remains OPEN: 10-A enum/version parity and 10-B cross-layer routing/Worker admission are delivered; the next bounded slice is 10-C Android envelope/parser and native producer parity.
+- Phase 9 is complete for implementation and automated acceptance under the explicit fail-closed exclusions in ROADMAP.md. Phase 10 is active and remains OPEN: 10-A enum/version parity, 10-B cross-layer routing/Worker admission, and 10-C Android envelope/parser and native producer parity plus receiver behavior tests are delivered; the next bounded slice is 10-D typed-path convergence.
 
 ### Phase status
 
