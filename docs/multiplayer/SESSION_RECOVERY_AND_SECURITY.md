@@ -196,7 +196,7 @@ Poison LifeLink is a publisher-owned batch. The server resolves local Actor IDs 
 
 After a rejected `SYNC_HERO_STATE`, Android requests RESYNC. The deterministic JVM regression applies a server-shaped full SNAPSHOT and verifies Hero HP/Buff clocks and linked Mob state restore. Workers-runtime tests exercise SQLite rollback/eviction/handoff; deployed Worker and physical-device recovery remain Phases 22–23.
 
-## 10. Field-of-view disclosure## 10. Field-of-view disclosure
+## 10. Field-of-view disclosure
 
 broadcastWithFOV() filters event visibility in PVP_ARENA and DEATHMATCH:
 - it determines action/sender position;
