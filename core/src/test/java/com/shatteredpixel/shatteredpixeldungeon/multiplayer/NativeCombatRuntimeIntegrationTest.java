@@ -1060,6 +1060,21 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.addRemotePlayer(departing);
         Actor.add(remoteHero);
 
+        Buff firstBuff = new Buff();
+        Buff secondBuff = new Buff();
+        Assert.assertTrue(firstBuff.attachTo(remoteHero));
+        Assert.assertTrue(secondBuff.attachTo(remoteHero));
+        int firstBuffActorId = firstBuff.id();
+        int secondBuffActorId = secondBuff.id();
+
+        TestAttackSprite remoteSprite = new TestAttackSprite();
+        Group spriteParent = new Group();
+        spriteParent.add(remoteSprite);
+        remoteHero.sprite = remoteSprite;
+
+        Assert.assertSame(remoteHero, manager.getHeroForPlayerId(departing.playerId));
+        Assert.assertEquals(departing.playerId, manager.getPlayerIdForHero(remoteHero));
+
         Rat acting = addRat(hero.pos + 1, 18);
         manager.registerServerEntityId(acting.id(), "stable-mob-targeting-player-0001");
         acting.restoreMultiplayerAiState("Hunting", acting.multiplayerBaseSpeed(), acting.defenseSkill,
@@ -1067,6 +1082,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertSame(remoteHero, acting.multiplayerEnemy());
         int remoteActorId = remoteHero.id();
 
+        // Exercise the original default/legacy receiver before moving PLAYER_LEFT into MessageRouter.
         NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{\"playerId\":\"departing-player\"}");
         left.senderId = departing.playerId;
         MessageRouter.routeMessage(left);
@@ -1086,6 +1102,53 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals("", acting.multiplayerTargetEntityId());
         Assert.assertEquals("Last-known target cell is retained for SPD's native lost-target logic",
                 remoteHero.pos, acting.multiplayerTargetCell());
+
+        Assert.assertTrue("Every attached remote Hero Buff must be detached", remoteHero.buffs().isEmpty());
+        Assert.assertNull("The first detached Buff must leave the Actor scheduler", Actor.findById(firstBuffActorId));
+        Assert.assertNull("The second detached Buff must leave the Actor scheduler", Actor.findById(secondBuffActorId));
+        Assert.assertNull("Remote Hero sprite must be removed from its parent group", remoteSprite.parent);
+        Assert.assertNull("Remote Hero sprite reference must be cleared", remoteHero.sprite);
+        Assert.assertNull("Player-to-Hero lookup must no longer resolve the departed player",
+                manager.getHeroForPlayerId(departing.playerId));
+        Assert.assertNull("Hero-to-player lookup must no longer resolve the departed Hero",
+                manager.getPlayerIdForHero(remoteHero));
+    }
+
+    @Test
+    public void playerLeftMalformedPayloadFallsBackToServerSenderId() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("malformed-player-left-fallback", "local-player", new TestTransport());
+
+        RemotePlayer departing = new RemotePlayer("departing-malformed", "Departing", "WARRIOR");
+        manager.addRemotePlayer(departing);
+
+        NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{");
+        left.senderId = departing.playerId;
+        MessageRouter.routeMessage(left);
+
+        CountDownLatch routed = new CountDownLatch(1);
+        Game.runOnRenderThread(routed::countDown);
+        Assert.assertTrue("Malformed leave payload must still be handled on the render thread",
+                routed.await(10, TimeUnit.SECONDS));
+        Assert.assertNull("Malformed payload must fall back to the trusted server sender ID",
+                manager.getRemotePlayer(departing.playerId));
+    }
+
+    @Test
+    public void playerLeftForLocalPlayerIsIgnored() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("local-player-left-is-ignored", "local-player", new TestTransport());
+
+        NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{\"playerId\":\"local-player\"}");
+        left.senderId = "SERVER";
+        MessageRouter.routeMessage(left);
+
+        CountDownLatch routed = new CountDownLatch(1);
+        Game.runOnRenderThread(routed::countDown);
+        Assert.assertTrue(routed.await(10, TimeUnit.SECONDS));
+        Assert.assertSame("A local PLAYER_LEFT message must not remove the local Hero",
+                hero, manager.getHeroForPlayerId("local-player"));
+        Assert.assertSame(hero, Actor.findById(hero.id()));
     }
 
     @Test
