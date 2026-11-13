@@ -80,7 +80,7 @@ public class NetworkProtocolParityTest {
     @Test
     public void acceptsIntegralDecimalSequenceExactlyLikeWorkerSafeIntegerAdmission() {
         NetworkMessage message = NetworkMessage.parseJson(
-                "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"PING\",
+                "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"PING\","
                         + "\"sequence\":1.0,\"payloadJson\":\"{}\"}");
         Assert.assertEquals(MessageType.PING, message.messageType);
         Assert.assertEquals(1L, message.sequence);
@@ -130,7 +130,7 @@ public class NetworkProtocolParityTest {
         Assert.assertEquals("{\"text\":\"old-peer\"}", received.payloadJson);
 
         NetworkMessage extraField = NetworkMessage.parseBluetoothJson(
-                "{\"messageType\":\"CHAT\",\"senderId\":\"old-peer\",
+                "{\"messageType\":\"CHAT\",\"senderId\":\"old-peer\","
                         + "\"payloadJson\":{\"text\":\"old-peer\"}}");
         Assert.assertEquals(MessageType.ERROR, extraField.messageType);
     }
