@@ -13,7 +13,7 @@
 
 **Source-of-truth hierarchy:** `PROJECT_EXECUTION_PROTOCOL_AR.md` governs workflow; `ROADMAP.md` governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; `docs/multiplayer/` is the maintained architecture/test reference.
 
-## Source refactor checkpoint — Stage 3 complete## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
+## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
 
 - **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. No new branch and no merge to `main`.
 - **Stage 1 source parent:** `4b1a321539bd828014b4194c3104bfb556d4d0a1`.
