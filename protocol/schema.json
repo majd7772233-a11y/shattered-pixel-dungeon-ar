@@ -30,6 +30,7 @@
         "LEVEL_READY",
         "LEVEL_PUBLISHER_CHANGED",
         "ACTION_ACCEPTED",
+        "COMBAT_REQUEST",
         "EVENT_BATCH",
         "SNAPSHOT",
         "ACK",
@@ -39,8 +40,7 @@
         "LEAVE",
         "PING",
         "CHAT",
-        "ERROR",
-        "COMBAT_REQUEST"
+        "ERROR"
       ]
     },
     "requestId": {
