@@ -1,9 +1,9 @@
 # Multiplayer Continuation Notes — Phase 10 Entry
 
-**Current branch HEAD:** `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (documentation-only descendant)  
 **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`  
-**Latest exact-HEAD CI:** [43476033245 — all three jobs successful](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245)  
-**Exact gameplay/test baseline CI:** [43472587588 — all three jobs successful](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)  
+**Exact code/test CI:** [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)  
+**Evidence:** Backend 682 executions across eight Vitest files, Android JVM/Debug APK, and three real Durable Object SQLite Workers-runtime tests passed.  
+**Rule:** Always read the live branch HEAD and its exact-head Actions run before editing; do not assume a previous documentation SHA remains HEAD.  
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`  
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`
 

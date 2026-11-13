@@ -1,9 +1,12 @@
 ## ACTIVE PROJECT CHECKPOINT — 2026-11-13 (PHASE 9 COMPLETE; PHASE 10 READY)
 
 - **Repository / branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. This is the only write target. Never create a branch, work on master/main or merge this branch.
-- **Current branch HEAD:** `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (documentation-only descendant of the gameplay/test baseline below).
-- **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; comparison from this SHA to current HEAD contains documentation changes only.
-- **Latest exact-HEAD CI:** [43476033245 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245). Backend TypeScript build and 682 executions across eight Vitest files passed. Android JVM tests and `assembleDebug` passed (`BUILD SUCCESSFUL`). Three Workers-runtime tests against real Durable Object SQLite passed: rollback/replay across eviction, publisher handoff after a persisted snapshot, and committed-state reconstruction after eviction. The gameplay/test baseline also passed its own exact-code run [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- **Exact code/test CI:** [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)
+- Backend: TypeScript build and 682 executions across eight Vitest files passed (generated/mirrored JS executions are not unique source cases).
+- Android: JVM tests and `assembleDebug` passed (`BUILD SUCCESSFUL`).
+- Workers runtime: three tests passed against real Durable Object SQLite under the local Cloudflare Workers runtime (rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction).
+- This is automated/local Workers-runtime evidence, not a production Worker deployment or a physical-device match. Re-read live branch HEAD and its exact-head Actions run before any later edit.
 - **SpiritArrow 9-C complete:** strict native intent binds Bow, SnipersMark and stable Mob identity; MatchRoom reserves/forwards COMBAT_REQUEST; Java executes native SPD combat; publisher result commits Mob/level/event/sequence atomically; requester receives sequenced EVENT_BATCH. Android coverage reconciles by stable Mob ID on two client worlds with different local Actor IDs.
 - **Publisher handoff/rebase:** durable generation advance, valid persisted state, pending-combat cancellation, generation notification and persisted snapshot delivery. Replacement must pass lossless rebase validating shared Mob IDs/bundles plus refreshed Hero/RemoteHero/Mob Actor IDs, LifeLink and SnipersMark references before shared actions resume.
 - **Timed effects:** enabled effects are validated source-specifically against native Java results; SQL/event/sequence/outbound messages are atomic. Poison/LifeLink, shield priority, concurrent timers, approved consumables, XP/reward and base MonkEnergy boundaries have positive/negative coverage.
@@ -179,11 +182,12 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 ### Exact branch and CI state
 - Repository: https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar
 - Branch: `multiplayer-framework-core-14118577486727081892`. Never merge into main without explicit instruction.
-- Current branch HEAD: `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688`; the current source/test baseline is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. The intervening commits are documentation-only.
-- Latest exact-HEAD workflow [43476033245](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245) passed all three jobs: Backend TypeScript build + 682 executions across eight Vitest files, Android JVM tests + Debug APK, and three Workers-runtime tests against real Durable Object SQLite.
-- Code/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7` also passed exact-code workflow [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). The later branch HEAD changes documentation only.
-- These are automated build/test and local Workers-runtime results, not a deployed production Worker or physical-device match.
-- Phase 9 is complete for implementation and automated acceptance under the explicit exclusions in ROADMAP.md. Phase 10 is the active next phase.
+- Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)
+- Backend: 8 Vitest files, 682 executions passed (mirrored JS means executions are not unique source scenarios).
+- Android: JVM tests and Debug APK compilation passed.
+- Workers runtime: three real Durable Object SQLite tests passed under the local Workers runtime.
+- These results do not prove a deployed production Worker or a physical-device match. Always inspect the live branch HEAD and its matching Actions run before changing code or documentation.
+- Phase 9 is complete for implementation and automated acceptance under the explicit fail-closed exclusions in ROADMAP.md. Phase 10 is the active next phase.
 
 ### Phase status
 
@@ -263,6 +267,16 @@ The project is not done when it compiles or when two clients merely connect. Don
 - The roadmap has no unresolved P0 items and known limitations are documented honestly.
 
 ## 8. Append-Only Working Log (Keep This Section Open)
+
+### 2026-11-13 — Phase 9 final closeout audit and Phase 10 handoff
+
+- Re-read the live branch history, all 21 Markdown files, Phase 9/10 scope, source/test baseline and exact CI evidence. Confirmed Phase 9 is complete for implementation and automated acceptance under its explicit support boundary; unsupported XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink, unsupported item/Buff callbacks, SpiritArrow SPEED volleys and non-Mob targets remain fail-closed.
+- Verified gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7` and exact CI run 43472587588: Backend 682 executions across eight Vitest files, Android JVM/Debug APK and three local Workers-runtime Durable Object SQLite tests passed.
+- Real SQLite tests cover rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction. This is local Workers runtime evidence, not a deployed production Worker.
+- Corrected stale Phase 9 status/history references and synchronized the Phase 10 entry across GPT.md, ROADMAP.md, continuation notes and technical references. No gameplay source change was needed during final closeout.
+- Phase 10 is next: canonical schema/enum/serializer/Worker/Android-handler parity, one typed event-application path, and parity-tested migration of remaining RemotePlayerActionReceiver behavior. Keep Phase 11 out of scope.
+
+
 
 ### 2026-10-29 — Explicit handoff before switching conversations
 

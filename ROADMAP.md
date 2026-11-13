@@ -90,9 +90,11 @@ The historical documentation batches established the technical references now in
 ### Active project checkpoint — 2026-11-13 (Phase 9 complete; Phase 10 ready)
 
 - Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- Current branch HEAD: `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (the descendant commits after the gameplay/test baseline are documentation-only).
-- Verified gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
-- Latest exact-HEAD CI [43476033245 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245): Backend TypeScript build and 682 executions across eight Vitest files passed; Android JVM tests and Debug APK passed; three Workers-runtime tests against real Durable Object SQLite passed. The source/test baseline also passed exact-code CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- Verified gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)
+- Backend: TypeScript build and 682 executions across eight Vitest files passed.
+- Android: JVM tests and Debug APK compilation passed.
+- Workers runtime: three tests against real Durable Object SQLite passed (rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction).
+- These checks are automated and use local Workers runtime; production deployment and physical-device play remain Phases 22 and 23. Re-check live HEAD and its exact-head Actions run before the next edit.
 - SpiritArrow: strict intent → publisher reservation/COMBAT_REQUEST → native Java result → atomic commit → sequenced requester EVENT_BATCH → stable-ID requester reconciliation. Android tests use two clients with distinct local Mob Actor IDs.
 - Publisher recovery: durable generation handoff, persisted snapshot, pending-combat cancellation and lossless rebase gate; Mob IDs/bundles stay fixed while local Actor IDs refresh and LifeLink/SnipersMark references are checked.
 - Timed effects: supported Hero/Mob effects are source-specific and validated against native Java results. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff callbacks remain fail-closed.
@@ -401,7 +403,7 @@ Physical two-device gameplay and deployed Worker end-to-end verification were no
 
 ## Phase 9 — Native buffs, timed effects and native effect reconciliation
 
-**Status: COMPLETE for implementation and automated acceptance on 2026-11-13.** Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. The current documentation HEAD is `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688`; changes after the gameplay/test baseline are documentation-only. Exact current branch HEAD CI [43476033245 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245); exact gameplay/test baseline CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+**Status: COMPLETE for implementation and automated acceptance on 2026-11-13.** Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). Backend (682 executions/8 files), Android JVM/Debug APK and three real Durable Object SQLite Workers-runtime tests passed. The explicit exclusions below are tested fail-closed, not partially enabled.
 
 ### Completed work
 - [x] Original Java/libGDX SPD remains authoritative for every enabled calculation; TypeScript validates native results and does not recreate RNG/combat/Buff/Mob AI/scheduler formulas.
@@ -433,13 +435,17 @@ The following are rejected before persistence and are not claimed as playable mu
 | Android JVM + Debug APK | Passed; `./gradlew test assembleDebug --no-daemon`, `BUILD SUCCESSFUL` |
 | Real Durable Object SQLite | Passed; 3 Workers-runtime integration tests |
 
+### Closeout audit — 2026-11-13
+
+The final Phase 9 audit matched enabled native effect paths to Worker validators, durable SQL transactions, sequenced client reconciliation, publisher handoff/rebase and regression coverage. Unsupported branches listed above are tested fail-closed rather than represented as supported multiplayer effects. No gameplay source change was needed during this final documentation reconciliation.
+
 Production deployment and physical-device playtest remain Phases 22 and 23, not Phase 9 claims.
 
 ## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
 ### Entry checkpoint — 2026-11-13
 
-Phase 9 is complete for implementation and automated acceptance at gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. Current documentation HEAD `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` is a documentation-only descendant validated by CI run 43476033245. The outer Java/schema protocol currently contains 25 message names, including `LEVEL_PUBLISHER_CHANGED`; `NativeLevelSnapshot` carries optional `publisherRebase` and `publisherRebaseTerm` fields. These support Phase 9 authority recovery; the canonical typed event path is not yet complete.
+Phase 9 is complete for implementation and automated acceptance at gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`. The outer Java/schema protocol currently contains 25 message names, including `LEVEL_PUBLISHER_CHANGED`; `NativeLevelSnapshot` carries optional `publisherRebase` and `publisherRebaseTerm` fields. These support Phase 9 authority recovery; the canonical typed event path is not yet complete. Read the live branch HEAD and its exact-head CI before starting Phase 10.
 
 Phase 10 must reconcile Java `MessageType`/`NetworkActionType`, serializers, `protocol/schema.json`, Worker routes, validators and Android handlers. Characterize `RemotePlayerActionReceiver` default-route behavior and migrate only with parity regressions. Define explicit malformed/unknown/unsupported outcomes. Keep Phase 11 replay/resync redesign out of scope.
 
