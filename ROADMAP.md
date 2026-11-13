@@ -435,7 +435,7 @@ The following are rejected before persistence and are not claimed as playable mu
 
 Production deployment and physical-device playtest remain Phases 22 and 23, not Phase 9 claims.
 
-## Phase 10 — Canonical Protocol Schema and One Typed Event Path## Phase 10 — Canonical Protocol Schema and One Typed Event Path
+## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
 ### Entry checkpoint — 2026-11-13
 
