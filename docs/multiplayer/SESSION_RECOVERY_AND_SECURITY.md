@@ -1,6 +1,6 @@
 # Multiplayer Session Recovery and Security Reference
 
-> Baseline: server and Java sources at documentation branch HEAD eb2075b3f09ca4779773140b7e6539a6655f6824. This page records observed controls and explicit open risks; it is not a formal security certification.
+> Current verified source/test baseline: gameplay/test HEAD bc6c46b03fee040ff20311adb473b19ff78e9bb7. This page records observed controls and explicit open risks; it is not a formal security certification.
 
 ## 1. Trust model
 
@@ -174,21 +174,29 @@ A Hero-targeted `SnipersMark` is now published at its own due native expiry, inc
 
 ## 9. Authority and ownership
 
-The current model includes:
-- a designated levelPublisher for shared native Mob/world state;
-- target-owner/delegated native combat where the target player's native Hero can resolve the actual SPD effect;
-- per-player native mutation locks;
-- attacker/target pending-combat locks;
-- stable server entity IDs mapped to local Actor IDs.
+The current authority model includes authenticated player identity from the WebSocket attachment, one designated levelPublisher with a durable monotonic generation, target-owner/delegated native combat for selected Hero outcomes, pending mutation/combat locks, and stable server entity IDs mapped separately to each device's local Actor IDs.
 
-A player being connected does not make that player the owner of every world action. Worker validation must ensure that the correct authority is submitting the correct request and target. Authority handoff and durable recovery are separate roadmap scope.
+### 9.1 Publisher handoff after disconnect
 
-Poison LifeLink is a special publisher-owned batch: the server resolves the Hero's local Actor IDs through the trusted complete level snapshot and requires the level publisher for linked Mob writes. A non-publisher's process-local Actor ID is not a shared identity and is rejected with `BUFF_TICK_MOB_AUTHORITY_REQUIRED`; reconnect or publisher handoff must not infer a new mapping from stale client state. RemoteHero/player LifeLink remains unsupported.
- For a non-publisher Poison tick with LifeLink, even an empty Mob delta is rejected because its local Actor IDs cannot authorize shared state. The returned ERROR for `SYNC_HERO_STATE` causes the client to request RESYNC. The Android JVM regression now applies a complete server-shaped `SNAPSHOT` through `MessageRouter` after the rejection and verifies restoration of the local Hero's pre-tick HP and Poison/LifeLink actor clocks plus the linked Mob's stable Actor identity/HP. The test builds this envelope deterministically from native level export and saved player state; live Worker/Cloudflare snapshot delivery remains unverified.
+When the authenticated level publisher disconnects, MatchRoom checks that no newer socket for the same player is active. Ownership transfer, term increment, pending-combat cleanup and old native mutation lock removal execute inside a Durable Object `transactionSync`. Pending combat waiting for the disconnected authority is cancelled and the original requester receives a correlated ERROR. A stale close callback after a newer same-player connection does not transfer authority.
 
+The server selects a replacement only when persisted level and Hero state pass validation. If no eligible replacement exists, it clears publisher ownership and increments the term; no other client may publish merely because the old owner disappeared. If atomic storage or the required snapshot is unavailable, handoff fails closed.
 
+The replacement receives the persisted authoritative SNAPSHOT followed by LEVEL_PUBLISHER_CHANGED. The payload carries publisherId (or null), monotonic term and reason. Android ignores older generations; a different owner under the same term cannot replace the current owner.
 
-## 10. Field-of-view disclosure
+### 9.2 Lossless publisher rebase gate
+
+A replacement restores the persisted shared world but regenerates publisher-local Actor IDs. Its LEVEL_DATA includes `publisherRebase` and `publisherRebaseTerm`. MatchRoom compares reserialized state with trusted persisted state: shared world/level fields remain equivalent; stable Mob entity IDs, native bundles and Buff rows are unchanged; Mob Actor IDs are unique; connected Hero/RemoteHero Actor IDs are complete and disjoint from Mob IDs; local LifeLink.object references resolve only to trusted Mobs; SnipersMark.object and server_entity_id identify the exact same Mob.
+
+Cross-device RemoteHero/player LifeLink or SnipersMark references that cannot be rebound are rejected. Invalid/stale rebase does not advance publisher-ready term; native world actions remain blocked until the exact current generation is committed.
+
+### 9.3 Poison LifeLink and non-publisher behavior
+
+Poison LifeLink is a publisher-owned batch. The server resolves local Actor IDs through trusted Hero/level state and requires the current publisher for linked Mob writes. A non-publisher process-local Actor ID is not a shared identity and is rejected with `BUFF_TICK_MOB_AUTHORITY_REQUIRED`, even when its Mob delta is empty. RemoteHero/player LifeLink remains unsupported.
+
+After a rejected `SYNC_HERO_STATE`, Android requests RESYNC. The deterministic JVM regression applies a server-shaped full SNAPSHOT and verifies Hero HP/Buff clocks and linked Mob state restore. Workers-runtime tests exercise SQLite rollback/eviction/handoff; deployed Worker and physical-device recovery remain Phases 22–23.
+
+## 10. Field-of-view disclosure## 10. Field-of-view disclosure
 
 broadcastWithFOV() filters event visibility in PVP_ARENA and DEATHMATCH:
 - it determines action/sender position;
