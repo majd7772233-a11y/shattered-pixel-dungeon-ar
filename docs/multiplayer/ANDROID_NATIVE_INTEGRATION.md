@@ -186,21 +186,18 @@ This is intentionally an expiry-only contract. It does not validate `SnipersMark
 
 
 
-### 4.11 SpiritBow / SnipersMark / asynchronous SpiritArrow (9-C; local lifecycle passes, authority roundtrip blocked)
+### 4.11 SpiritBow / SnipersMark / asynchronous SpiritArrow — Phase 9 complete
 
-Local `SnipersMark.doAction()` resolves SpiritBow, mark and stable Mob identity, then retains the native Hero report. The completion context validates the same Hero/Bow/mark/target and invokes native `Hero.shoot(enemy, arrow)`.
+The origin client retains the native Hero report after `SnipersMark.doAction()` and `SpiritBow.cast()`. The real MissileSprite completion callback finalizes it exactly once. If the marked target moves/disappears before completion, the pending report is cancelled, the mark is retained and RESYNC is requested instead of sending stale ATTACK. Headless JVM coverage invokes completion twice and checks exactly-once cleanup; this is not a rendered projectile animation test.
 
-Headless JVM coverage reaches original `SpiritBow.cast()` and constructs the real `MissileSprite`; it manually invokes `onComplete()` twice and verifies one ATTACK/cleanup. Target movement before completion cancels, retains the mark, requests RESYNC and emits no ATTACK. No rendered animation is tested.
+On the publisher device, MessageRouter resolves COMBAT_REQUEST using trusted Bow/mark/stable Mob metadata and runs the original Java Hero/RemoteHero combat pipeline. The report carries native target identity, position, HP/HT, Buffs and Mob bundle. The Worker validates the outcome and commits state/event/sequence atomically; it does not reimplement combat formulas.
 
-Exact HEAD CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162): Android JVM and `assembleDebug` pass; Backend build/schema pass but Vitest has 654 passed / 4 failed of 658 executions.
+The requester receives a sequenced EVENT_BATCH. Android resolves the stable server Mob ID to the current device's local Actor ID, applies bounded state and requests the authoritative full snapshot when the event carries the complete Mob bundle or secondary Mob changes. A dedicated JVM regression runs the same accepted result on two test clients with different local Mob Actor IDs and verifies the correct Mob is updated.
 
-The positive authority helper includes `attackerPos: 9`; the Java delegated-RemoteHero regression verifies the native report's position equals `remoteHero.pos`. Current failures: publisher receives `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an extra `ERROR`; forged-`attackerPos` negative test expects no requester reply but receives correlated `ERROR`. Keep missing/forged position checks strict.
+Missing/forged positions, wrong publisher/mark/target identity, stale request/generation, invalid Bow and unsupported SPEED/non-Mob branches remain rejected. Transaction rollback returns correlated errors without leaking ACTION_ACCEPTED/EVENT_BATCH. Publisher handoff requires a lossless rebase of fresh local Actor IDs; remote cross-device LifeLink/SnipersMark references that cannot map to the exact stable Mob remain fail-closed.
 
-The publisher MessageRouter calls `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`. Trace Hero deferred report, `SpiritArrow.onThrow()/completeNativeSpiritArrow()` and `MissileSprite.onComplete()` before accepting this ordering. Actual publisher MessageRouter and requester EVENT_BATCH application remain unproven.
-
-
-
-## 5. RemoteHero and RemotePlayer
+Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed Android JVM tests and Debug APK compilation, plus Backend and Workers-runtime SQLite jobs. No rendered animation or physical two-device match is claimed.
+## 5. RemoteHero and RemotePlayer## 5. RemoteHero and RemotePlayer
 
 Sources:
 - actors/hero/RemoteHero.java (32 lines at baseline);
