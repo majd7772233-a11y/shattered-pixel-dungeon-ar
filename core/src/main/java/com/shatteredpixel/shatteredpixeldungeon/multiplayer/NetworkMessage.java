@@ -114,14 +114,27 @@ public class NetworkMessage {
         if (jsonStr == null || jsonStr.trim().isEmpty()) return parseJson(jsonStr);
         try {
             JsonValue root = new JsonReader().parse(jsonStr);
-            if (root != null && root.isObject() && root.size == 6) {
+            if (root != null && root.isObject()) {
                 JsonValue version = root.get("protocolVersion");
                 JsonValue type = root.get("messageType");
                 JsonValue requestId = root.get("requestId");
                 JsonValue senderId = root.get("senderId");
                 JsonValue sequence = root.get("sequence");
                 JsonValue payload = root.get("payloadJson");
-                boolean legacyShape = version != null && version.isString()
+                int fieldCount = 0;
+                boolean knownFieldsOnly = true;
+                for (JsonValue field = root.child; field != null; field = field.next) {
+                    fieldCount++;
+                    String name = field.name;
+                    if (!"protocolVersion".equals(name) && !"messageType".equals(name)
+                            && !"requestId".equals(name) && !"senderId".equals(name)
+                            && !"sequence".equals(name) && !"payloadJson".equals(name)) {
+                        knownFieldsOnly = false;
+                        break;
+                    }
+                }
+                boolean legacyShape = knownFieldsOnly && fieldCount == 6
+                        && version != null && version.isString()
                         && PROTOCOL_VERSION.equals(version.asString())
                         && type != null && type.isString()
                         && (requestId == null || requestId.isNull() || requestId.isString())
@@ -169,7 +182,17 @@ public class NetworkMessage {
             if (root != null && root.isObject() && root.get("protocolVersion") == null) {
                 JsonValue type = root.get("messageType");
                 JsonValue payload = root.get("payloadJson");
-                boolean legacyShape = root.size == 2 && type != null && type.isString()
+                int fieldCount = 0;
+                boolean knownFieldsOnly = true;
+                for (JsonValue field = root.child; field != null; field = field.next) {
+                    fieldCount++;
+                    if (!"messageType".equals(field.name) && !"payloadJson".equals(field.name)) {
+                        knownFieldsOnly = false;
+                        break;
+                    }
+                }
+                boolean legacyShape = knownFieldsOnly && fieldCount == 2
+                        && type != null && type.isString()
                         && payload != null && (payload.isObject() || payload.isArray());
                 if (!legacyShape) return error("INVALID_MESSAGE_ENVELOPE", null);
 
