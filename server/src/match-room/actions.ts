@@ -40,9 +40,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       && data?.secondaryMobDeltas !== undefined
       && data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
       && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string";
-    const isNativeCombatAuthorityResult = payload?.action === "SYNC_MOB_STATE"
-      && typeof data?.combatRequestId === "string"
-      && typeof data?.targetEntityId === "string";
+    const isNativeCombatAuthorityResult = ["SYNC_MOB_STATE", "SYNC_PLAYER_COMBAT"].includes(String(payload?.action || ""))
+      && typeof data?.combatRequestId === "string";
     const requiresAtomicNativeAction = isNativeHeroBuffTick
       || isLethalPoisonLifeLinkBatch || isNativeCombatAuthorityResult;
 

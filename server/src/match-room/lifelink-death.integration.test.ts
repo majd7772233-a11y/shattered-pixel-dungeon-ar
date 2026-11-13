@@ -24,7 +24,10 @@ class MemoryMatchRoomSql {
   rewardClaimInsertAttempts = 0;
   failEventInsert = false;
 
+  transactionCalls = 0;
+
   transactionSync<T>(callback: () => T): T {
+    this.transactionCalls++;
     const snapshot = {
       roomMeta: new Map(this.roomMeta),
       players: new Map(Array.from(this.players, ([key, value]) => [key, { ...value }])),
@@ -453,6 +456,67 @@ function makeSpiritArrowForwardFixture() {
   };
 }
 
+
+const PVP_DEFENDER_ID = "spirit-arrow-pvp-defender-001";
+
+function makePlayerCombatRollbackFixture() {
+  const fixture = makeSpiritArrowForwardFixture();
+  const { sql, room, heroBefore } = fixture;
+  const defenderBefore = { ...heroBefore, pos: 10 };
+  const defenderAfter = { ...defenderBefore, hp: 15 };
+  const attackerBefore = JSON.stringify(heroBefore);
+  const defenderBeforeJson = JSON.stringify(defenderBefore);
+  const defenderAfterJson = JSON.stringify(defenderAfter);
+  const buffRows = Array.from({ length: Number(defenderBefore.buffCount) }, (_, index) => ({
+    serializedBundle: defenderBefore["buff_" + index],
+    cooldown: defenderBefore["buffCooldown_" + index]
+  }));
+  const buffsJson = JSON.stringify(buffRows);
+  const requestId = "delegated-player-combat-rollback-001";
+  const now = Date.now();
+  const pending = {
+    requestId, attackerId: ATTACKER_ID, authorityId: PVP_DEFENDER_ID,
+    targetType: "PLAYER", targetId: PVP_DEFENDER_ID,
+    attackerPos: 9, targetPos: 10, targetLockKey: "PLAYER:" + PVP_DEFENDER_ID,
+    depth: 1, createdAt: now,
+    attackWeaponMode: "EQUIPPED", attackWeaponBundle: fixture.bowBundle,
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1,
+    attackerStateBefore: attackerBefore, attackerStateAfter: attackerBefore,
+    targetHeroStateBefore: defenderBeforeJson
+  };
+  sql.roomMeta.set("levelPublisher", PVP_DEFENDER_ID);
+  sql.roomMeta.set("heroState:" + ATTACKER_ID, attackerBefore);
+  sql.roomMeta.set("heroState:" + PVP_DEFENDER_ID, defenderBeforeJson);
+  sql.roomMeta.set("pendingCombat:" + requestId, JSON.stringify(pending));
+  sql.roomMeta.set("pendingCombatAttacker:" + ATTACKER_ID, requestId);
+  sql.roomMeta.set("pendingCombatTarget:PLAYER:" + PVP_DEFENDER_ID, requestId);
+  sql.players.set(PVP_DEFENDER_ID, {
+    player_id: PVP_DEFENDER_ID, pos: 10, hp: 20, ht: 20, state: "ALIVE", deaths: 0
+  });
+  const attackData = {
+    combatRequestId: requestId, attackerId: ATTACKER_ID, attackerPos: 9,
+    targetType: "PLAYER", targetId: PVP_DEFENDER_ID,
+    targetHpBefore: 20, targetHtBefore: 20, targetHp: 15, targetHt: 20, damage: 5,
+    targetPos: 10, targetPosAfter: 10,
+    targetShieldBefore: 0, targetShieldAfter: 0,
+    targetHeroStateBefore: defenderBeforeJson, targetHeroStateJson: defenderAfterJson,
+    targetBuffsBefore: buffsJson, targetBuffs: buffsJson,
+    engineResult: true, engineHit: true, engineRanged: true,
+    attackKind: "RANGED", engineDistance: 1, engineActionCost: 1,
+    combatSchemaVersion: 1, combatDepth: 1,
+    secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [] }),
+    attackWeaponMode: "EQUIPPED", attackWeaponBundle: fixture.bowBundle,
+    damageMultiplier: 1, damageBonus: 0, accuracyMultiplier: 1
+  };
+  room.hasLineOfSight = vi.fn().mockReturnValue(true);
+  room.state.getWebSockets = () => [fixture.authorityWs, fixture.senderWs];
+  fixture.authorityWs.deserializeAttachment = () => ({
+    playerId: PVP_DEFENDER_ID, sessionToken: "pvp-defender-session"
+  });
+  return { ...fixture, defenderBefore, defenderAfter, defenderBeforeJson, defenderAfterJson,
+    attackerBefore, requestId, attackData, pending };
+}
+
 function makeSpiritArrowAuthorityResult(fixture: any, requestId: string, overrides: Record<string, any> = {}) {
   return {
     combatRequestId: requestId, attackerId: ATTACKER_ID, attackerPos: 9,
@@ -619,6 +683,48 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.room.worldTime).toBe(1);
   });
 
+
+
+  it("rolls back delegated SYNC_PLAYER_COMBAT atomically when event persistence fails", async () => {
+    const fixture = makePlayerCombatRollbackFixture();
+    const requestId = fixture.requestId;
+    fixture.sql.failEventInsert = true;
+    const beforeSequence = fixture.room.currentSequence;
+    const beforeWorldTime = fixture.room.worldTime;
+
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
+      action: "SYNC_PLAYER_COMBAT",
+      data: fixture.attackData,
+      heroStateJson: fixture.attackerBefore
+    })));
+
+    expect(fixture.sql.transactionCalls).toBe(1);
+    const authorityMessages = fixture.authorityWs.send.mock.calls.map(call =>
+      JSON.parse(String(call[0])) as { messageType: string; requestId?: string; sequence?: number; payloadJson?: string });
+    expect(authorityMessages.map(message => message.messageType)).toEqual(["ERROR"]);
+    expect(authorityMessages[0].requestId).toBe(requestId);
+    expect(authorityMessages[0].sequence).toBe(beforeSequence);
+    expect(JSON.parse(String(authorityMessages[0].payloadJson)).error).toBe("forced event insert failure");
+
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const requesterError = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(requesterError.messageType).toBe("ERROR");
+    expect(requesterError.requestId).toBe(requestId);
+    expect(requesterError.sequence).toBe(beforeSequence);
+    expect(JSON.parse(String(requesterError.payloadJson)).error).toBe("forced event insert failure");
+
+    expect(fixture.sql.players.get(ATTACKER_ID)).toMatchObject({ hp: 20, ht: 20, pos: 9, state: "ALIVE" });
+    expect(fixture.sql.players.get(PVP_DEFENDER_ID)).toMatchObject({ hp: 20, ht: 20, pos: 10, state: "ALIVE" });
+    expect(fixture.sql.roomMeta.get("heroState:" + ATTACKER_ID)).toBe(fixture.attackerBefore);
+    expect(fixture.sql.roomMeta.get("heroState:" + PVP_DEFENDER_ID)).toBe(fixture.defenderBeforeJson);
+    expect(fixture.sql.roomMeta.get("pendingCombat:" + requestId)).toBe(JSON.stringify(fixture.pending));
+    expect(fixture.sql.roomMeta.get("pendingCombatAttacker:" + ATTACKER_ID)).toBe(requestId);
+    expect(fixture.sql.roomMeta.get("pendingCombatTarget:PLAYER:" + PVP_DEFENDER_ID)).toBe(requestId);
+    expect(fixture.sql.processedActions.has(requestId)).toBe(false);
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(beforeSequence);
+    expect(fixture.room.worldTime).toBe(beforeWorldTime);
+  });
 
   it("resolves a stable Mob entity ID before applying the PvP target FOV gate", () => {
     const fixture = makeSpiritArrowForwardFixture();
