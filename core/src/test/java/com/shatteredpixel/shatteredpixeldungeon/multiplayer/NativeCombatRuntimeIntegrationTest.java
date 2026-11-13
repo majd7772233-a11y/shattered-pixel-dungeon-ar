@@ -1047,8 +1047,9 @@ public class NativeCombatRuntimeIntegrationTest {
 
     @Test
     public void disconnectedRemotePlayerIsRemovedFromNativeActorsAndMobTargets() throws Exception {
+        TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        manager.startSession("native-target-disconnect", "client-publisher", new TestTransport());
+        manager.startSession("native-target-disconnect", "client-publisher", transport);
 
         RemotePlayer departing = new RemotePlayer("departing-player", "Departing", "WARRIOR");
         departing.pos = hero.pos + 3;
