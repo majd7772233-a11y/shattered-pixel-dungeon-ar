@@ -243,6 +243,10 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       instance.gameStatus = "PLAYING";
       instance.state.getWebSockets = () => liveSockets;
 
+      // initDatabase() seeds default depth-one Mobs. Replace them so SQL rows and the
+      // trusted serialized level snapshot describe the same stable Mob ID and HP.
+      sql.exec("DELETE FROM mobs WHERE depth = ?", 1);
+
       for (const playerId of [oldPublisher, nextPublisher, attackerId]) {
         sql.exec(
           "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?,?)",
