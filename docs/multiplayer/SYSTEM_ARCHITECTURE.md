@@ -109,28 +109,23 @@ The old 10,095-line / approximately 659 KB figure is the pre-extraction source b
 
 ### 3.5 Protocol layer
 
-protocol/schema.json is a JSON Schema Draft-07 document with protocol version 1.0.0.
+protocol/schema.json is a JSON Schema Draft-07 document with protocol version 1.0.0. Its outer enum currently contains 25 names, including LEVEL_PUBLISHER_CHANGED; NativeLevelSnapshot carries optional publisherRebase and publisherRebaseTerm fields used by the Phase 9 handoff gate.
 
 The top-level message envelope requires protocolVersion, messageType, and payloadJson; requestId, sequence, and senderId are optional in the schema. It defines message kinds and data structures for native snapshots, Mobs, tiles, heaps, combat outcomes, damage/revival, and item payloads.
 
 The schema is not self-enforcing. Java serialization/parsing and Worker validation must implement the same semantics. Server admission must not rely on a client merely claiming that an operation was natively executed.
 
 
-### 3.5.1 SpiritArrow attack contract — current 9-C status
+### 3.5.1 SpiritArrow and publisher authority handoff — Phase 9 complete
 
-The existing ATTACK payload carries strict `SPIRIT_ARROW` metadata bound to Bow item identity, SnipersMark identity/bonus and stable Mob target identity. Backend intent validation, MatchRoom pending-combat reservation/forwarding and static schema validation exist.
+Strict SPIRIT_ARROW intent binds equipped Bow item identity, SnipersMark identity/bonus and stable Mob target identity. MatchRoom reserves the request, forwards COMBAT_REQUEST to the designated level publisher, and accepts only the publisher's native Java result. Mob/level state, event and sequence commit atomically; ACK/FOV/event delivery is deferred until commit. Failures return correlated ERROR and leave no partial state.
 
-Local `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite` callback tests pass headlessly; duplicate manual completion is exactly-once and target-moved cancellation requests RESYNC. Completion is manually invoked, not rendered.
+The requester receives the accepted sequenced EVENT_BATCH. Android resolves the target by stable server Mob entity ID, not a device-local Actor.id(); when the complete Mob bundle is present it requests the authoritative full snapshot rather than inferring Mob scheduler/AI state. JVM regressions cover two clients with different local Mob Actor IDs, exactly-once MissileSprite callback/cancel, delegated RemoteHero result capture and accepted-event reconciliation.
 
-Exact-head CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) on `9168284e67d353a956fc276e0ea8c00d1c685f1d`: Android JVM/Debug APK pass; Backend build/schema pass but Vitest has 654 passed / 4 failed executions (two SpiritArrow MatchRoom scenarios mirrored in TS/JS).
+Publisher loss uses a durable monotonic generation and atomic handoff. A replacement is selected only from valid persisted Hero/world state; pending combat tied to the old publisher is closed. The replacement receives the persisted snapshot and must submit a lossless publisher rebase. Shared Mob IDs/bundles remain unchanged while process-local Hero/RemoteHero/Mob Actor registries are refreshed. LifeLink and SnipersMark references must resolve to the exact stable Mob identity. Remote cross-device local references that cannot be safely rebound remain fail-closed.
 
-The positive result helper contains `attackerPos: 9`; Java verifies native RemoteHero serialization equals its actual position. Current failures: publisher sees `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then extra `ERROR`; forged-position negative case receives a correlated requester `ERROR` despite expecting no message. Keep position validation strict.
-
-Trace FOV exclusion by authenticated session and the post-ACK ERROR; also trace immediate MessageRouter `finishNativeSpiritArrowAttack()` after `remoteHero.shoot(...)` against asynchronous MissileSprite completion. Full requester → authority → accepted event → requester reconciliation remains unproven. Phase 9-C and Phase 9 remain open.
-
-
-
-### 3.6 Android platform bridge
+Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed Backend (682 executions), Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. This is not a production Worker deployment or a rendered projectile animation.
+### 3.6 Android platform bridge### 3.6 Android platform bridge
 
 android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java implements the core BluetoothTransport.NativeBluetoothProvider interface using Android Bluetooth APIs. This is a platform adapter. Verify its provider registration/injection path and current Android permission/manifest behavior before describing Bluetooth as ready.
 
