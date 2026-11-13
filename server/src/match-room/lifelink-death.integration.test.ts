@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { isValidNativePublisherRebase } from "../validators/publisher-rebase";
 import { MatchRoom } from "./index";
-import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
+import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds,
+  validateNativeLifeLinkDeathRewardTransition } from "../validators/hero-buffs";
 import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas, isValidNativeHeroStateJson } from "../validators/combat-state";
 import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 
@@ -1381,6 +1382,103 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.events).toHaveLength(1);
     expect(sql.rewardClaimInsertAttempts).toBe(1);
     expect(sql.players.get(PLAYER_ID)?.deaths).toBe(1);
+  });
+
+
+  it("accepts only exact non-level-up LifeLink XP and rejects updateHT/item/Monk callbacks", () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const beforeHero = fixture.beforeHero;
+    const deadDelta = {
+      ...fixture.mobDelta,
+      hpAfter: 0,
+      serializedBundleAfter: nativeMobBundle(0)
+    };
+    const acceptedEvents = buildNativeLifeLinkMobDamageEvents(
+      { complete: true, deltas: [deadDelta] }, [fixture.savedMob], PLAYER_ID, 0
+    );
+    expect(acceptedEvents).toHaveLength(1);
+
+    const afterHero = JSON.parse(JSON.stringify(beforeHero));
+    afterHero.buffCount = 1;
+    afterHero.buff_0 = JSON.stringify({ buff: {
+      __className: POISON_CLASS, id: 44, time: 10, left: 8
+    }});
+    afterHero.buffCooldown_0 = 1;
+    delete afterHero.buff_1;
+    delete afterHero.buffCooldown_1;
+    const validAfterCombat = JSON.parse(String(beforeHero.combatBundle));
+    validAfterCombat.exp = 2;
+    afterHero.combatBundle = JSON.stringify(validAfterCombat);
+    const rewardData = { buffClass: POISON_CLASS, sequenceBefore: 0 };
+
+    const validContract = validateNativeLifeLinkDeathRewardTransition(
+      beforeHero, afterHero, rewardData, acceptedEvents, [7], fixture.levelSnapshot
+    );
+    expect(validContract).toEqual({ allowExperienceChange: true, allowMonkEnergyChange: false });
+    expect(isValidNativeHeroBuffTick(
+      beforeHero, beforeHero, afterHero,
+      { ...rewardData, buffId: 44, actorClockBefore: 9 },
+      fixture.levelSnapshot, [ENTITY_ID], acceptedEvents, [7]
+    )).toBe(true);
+
+    // Cross the level-one threshold. Hero.updateHT() and item onHeroGainExp callbacks
+    // are not a partial reward contract, so the whole LifeLink transition must fail closed.
+    const levelUpBefore = JSON.parse(JSON.stringify(beforeHero));
+    const levelUpBeforeCombat = JSON.parse(String(levelUpBefore.combatBundle));
+    levelUpBeforeCombat.exp = 9;
+    levelUpBefore.combatBundle = JSON.stringify(levelUpBeforeCombat);
+    const levelUpAfter = JSON.parse(JSON.stringify(afterHero));
+    const levelUpAfterCombat = JSON.parse(String(levelUpAfter.combatBundle));
+    levelUpAfterCombat.lvl = 2;
+    levelUpAfterCombat.exp = 1;
+    levelUpAfter.combatBundle = JSON.stringify(levelUpAfterCombat);
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      levelUpBefore, levelUpAfter, rewardData, acceptedEvents, [7], fixture.levelSnapshot
+    )).toBeNull();
+
+    // Even without a level-up, a reward callback that changes inventory/equipment is not
+    // included in this bounded XP contract.
+    const callbackAfter = JSON.parse(JSON.stringify(afterHero));
+    callbackAfter.inventoryBundle = "item-callback-mutated-inventory";
+    expect(isValidNativeHeroBuffTick(
+      beforeHero, beforeHero, callbackAfter,
+      { ...rewardData, buffId: 44, actorClockBefore: 9 },
+      fixture.levelSnapshot, [ENTITY_ID], acceptedEvents, [7]
+    )).toBe(false);
+
+    // Monk's Unencumbered Spirit multiplier is explicitly outside the base-energy contract.
+    const unencumberedBefore = JSON.parse(JSON.stringify(beforeHero));
+    const unencumberedCombat = JSON.parse(String(unencumberedBefore.combatBundle));
+    unencumberedCombat.subClass = "MONK";
+    unencumberedCombat.talents_tier_1.UNENCUMBERED_SPIRIT = 1;
+    unencumberedBefore.combatBundle = JSON.stringify(unencumberedCombat);
+    const unencumberedAfter = JSON.parse(JSON.stringify(afterHero));
+    const unencumberedAfterCombat = JSON.parse(String(unencumberedAfter.combatBundle));
+    unencumberedAfterCombat.subClass = "MONK";
+    unencumberedAfterCombat.talents_tier_1.UNENCUMBERED_SPIRIT = 1;
+    unencumberedAfter.combatBundle = JSON.stringify(unencumberedAfterCombat);
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      unencumberedBefore, unencumberedAfter, rewardData,
+      acceptedEvents, [7], fixture.levelSnapshot
+    )).toBeNull();
+
+    // The Monk unarmed-ability tracker changes reward energy/cap semantics and is also
+    // rejected until its entire callback lifecycle has a separate authoritative contract.
+    const unarmedBefore = JSON.parse(JSON.stringify(beforeHero));
+    unarmedBefore.buffCount = 3;
+    unarmedBefore.buff_2 = JSON.stringify({ buff: {
+      __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.MonkEnergy$MonkAbility$UnarmedAbilityTracker",
+      id: 66, time: 9
+    }});
+    unarmedBefore.buffCooldown_2 = 0;
+    const unarmedAfter = JSON.parse(JSON.stringify(afterHero));
+    unarmedAfter.buffCount = 2;
+    unarmedAfter.buff_1 = unarmedBefore.buff_2;
+    unarmedAfter.buffCooldown_1 = 0;
+    expect(validateNativeLifeLinkDeathRewardTransition(
+      unarmedBefore, unarmedAfter, rewardData,
+      acceptedEvents, [7], fixture.levelSnapshot
+    )).toBeNull();
   });
 
   it("commits a nonlethal Poison tick and its linked Mob damage as one publisher transaction", async () => {
