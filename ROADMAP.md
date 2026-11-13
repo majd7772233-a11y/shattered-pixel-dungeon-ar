@@ -170,22 +170,6 @@ The detailed phase requirements and acceptance gates below are the authoritative
 **Priority:** P0  
 **Status: Complete for implementation and automated acceptance after the consistency audit.** Server snapshot admission now matches Android's full-snapshot requirements for typed dimensions/seed/floor entrance and exit coordinates, unique tile and exploration cells, unique Mob IDs/positions/stable IDs, unique heap/trap/plant positions and blob classes, and required native Mob runtime fields. Native bundles that the server cannot decode remain length-bounded and are validated by the native client before restore. Exact code SHA `73cf9c76c936f0dd0eade1689c8f9e8bbdb1af30` passed [CI run 39655327420](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39655327420): backend TypeScript build/tests and Android JVM tests/debug APK build both succeeded. Physical two-device testing remains a Phase 10 release gate.
 
-### Delivered bounded slice 10-B — Cross-layer routing matrix and Worker ingress admission
-
-**Implementation scope:** the complete route inventory was built from live Java/Worker/Android source, then the Worker envelope boundary was tightened without changing gameplay validators or the client event application path.
-
-- [x] Map all 25 outer message names with sender/direction, actual Worker ingress or non-inbound status, Java/Android route, and observed sequence/persistence behavior in `docs/multiplayer/PROTOCOL_MESSAGE_CATALOG.md`.
-- [x] Map all 23 NetworkActionType names to explicit Worker ACTION branches, source-specific validators/authority checks, native follow-up snapshot needs and Android result path. A Worker branch is not a guarantee that every subcase/effect is enabled.
-- [x] Separate the eight implemented Worker inbound message types from the 17 known non-inbound names. The non-inbound set includes server outputs and declared-but-unimplemented placeholders; do not label all 17 server-only.
-- [x] Add Worker envelope admission for attachment/session, text framing, object shape, required/optional field types, exact protocol version, inbound route classification and valid nested payload JSON. Stable correlated ERROR codes replace silent ignore/raw exception details for invalid/unknown/unsupported ingress.
-- [x] Add `message-admission.test.ts` and `validate-phase10-routing.mjs` to the ordinary backend npm test path. The static guard checks exact Java/schema vocabulary coverage, exact Worker route list, all 23 action branch tokens and the fail-closed INVALID_ACTION default.
-- [x] Keep `RemotePlayerActionReceiver` intact after confirming its PLAYER_LEFT Actor/Mob target cleanup and remaining legacy Mob/snapshot parsing behavior.
-- [ ] Complete field-by-field action payload schema/serializer conformance and Android parser version/required-field rejection. The Java parser still supplies defaults for some missing fields and accepts object/array payload values beyond the schema string envelope.
-- [ ] Fix/test the Java `NetworkActionBridge` unmapped-HeroAction fallback to WAIT; a generic unmapped action must not be represented as a real WAIT.
-- [ ] Establish behavior-specific parity tests for each remaining legacy receiver responsibility before consolidating the single typed event-application path.
-
-**Boundary:** no changes to the 23 action validators, native gameplay state, event sequence, replay/idempotency, reconnect/resync behavior, or MessageRouter routing were made in 10-B. Phase 11 remains out of scope. Exact-head CI for this slice must be recorded after commit; parent Phase 10 stays OPEN.
-
 ### Work items
 
 - [x] Define one documented snapshot schema/version shared by `SPDLevelSnapshot`, `MessageRouter`, `WorldSnapshot`, the server's `LEVEL_DATA` validator, `getCurrentLevelSnapshot()`, and `protocol/schema.json`.
@@ -474,6 +458,23 @@ Phase 10 must reconcile Java `MessageType`/`NetworkActionType`, serializers, `pr
 - Wired the guard into npm test. It checks vocabulary/version parity only; it does not declare every action executable or imply that every message has an inbound Worker route.
 - Implementation SHA: d8938190960af64d6efc70f4625a7411bfa3b7de. Exact-head [CI 43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend build + 682 Vitest executions, Android JVM/Debug APK, and three Durable Object SQLite runtime tests.
 - No MessageRouter, RemotePlayerActionReceiver, Worker routing or gameplay behavior was changed in slice 10-A. The parent Phase 10 remains OPEN; the next slice must map message/action direction, route, validation/authorization, sequence/persistence behavior and client handlers before touching event-path consolidation.
+
+
+### Delivered bounded slice 10-B — Cross-layer routing matrix and Worker ingress admission
+
+**Implementation scope:** the complete route inventory was built from live Java/Worker/Android source, then the Worker envelope boundary was tightened without changing gameplay validators or the client event application path.
+
+- [x] Map all 25 outer message names with sender/direction, actual Worker ingress or non-inbound status, Java/Android route, and observed sequence/persistence behavior in `docs/multiplayer/PROTOCOL_MESSAGE_CATALOG.md`.
+- [x] Map all 23 NetworkActionType names to explicit Worker ACTION branches, source-specific validators/authority checks, native follow-up snapshot needs and Android result path. A Worker branch is not a guarantee that every subcase/effect is enabled.
+- [x] Separate the eight implemented Worker inbound message types from the 17 known non-inbound names. The non-inbound set includes server outputs and declared-but-unimplemented placeholders; do not label all 17 server-only.
+- [x] Add Worker envelope admission for attachment/session, text framing, object shape, required/optional field types, exact protocol version, inbound route classification and valid nested payload JSON. Stable correlated ERROR codes replace silent ignore for invalid/unknown/unsupported ingress; existing handler exception messages remain unchanged for transaction rollback compatibility.
+- [x] Add `message-admission.test.ts` and `validate-phase10-routing.mjs` to the ordinary backend npm test path. The static guard checks exact Java/schema vocabulary coverage, exact Worker route list, all 23 action branch tokens and the fail-closed INVALID_ACTION default.
+- [x] Keep `RemotePlayerActionReceiver` intact after confirming its PLAYER_LEFT Actor/Mob target cleanup and remaining legacy Mob/snapshot parsing behavior.
+- [ ] Complete field-by-field action payload schema/serializer conformance and Android parser version/required-field rejection. The Java parser still supplies defaults for some missing fields and accepts object/array payload values beyond the schema string envelope.
+- [ ] Fix/test the Java `NetworkActionBridge` unmapped-HeroAction fallback to WAIT; a generic unmapped action must not be represented as a real WAIT.
+- [ ] Establish behavior-specific parity tests for each remaining legacy receiver responsibility before consolidating the single typed event-application path.
+
+**Verified implementation:** `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend TypeScript build and 708 Vitest executions passed, Android JVM/Debug APK passed, and all three Durable Object SQLite rollback/eviction tests passed. The first 10-B CI attempt exposed an unintended handler-exception message change; the compatibility fix retained existing transaction error messages and the exact-head rerun passed.
 
 ### Work items
 - [ ] Compare every active Java message/action enum and payload with Worker handlers and protocol/schema.json, including LEVEL_DATA and all item/effect outcomes.

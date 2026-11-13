@@ -200,3 +200,8 @@ Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [GitHub
 Backend `npm test` now runs five static guards before Vitest. The added `validate-phase10-routing.mjs` compares the exact Java/schema 25-message vocabulary with the Worker’s eight explicit inbound and 17 known non-inbound classifications, checks that the route list matches the Worker dispatch branches, checks explicit Worker branch tokens for all 23 actions, and protects the fail-closed INVALID_ACTION default. `message-admission.test.ts` covers malformed envelopes, optional field types, version mismatch, nested malformed payloads, unknown messages and known non-inbound messages.
 
 The gate is part of the ordinary `npm test` path, not a separate CI-only check. The Android workflow continues to run `./gradlew test assembleDebug --no-daemon`; this Phase 10-B slice did not change Java code. Exact-head Actions status must be checked after every resulting commit. A pure admission-helper test is not a deployed Durable Object WebSocket lifecycle test.
+
+
+### Phase 10-B exact-head CI result
+
+Corrected implementation SHA `d16be138d74bb9930777f5352efbeae3291070c6` passed [Actions run 43494769215 — all three required jobs succeeded](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend TypeScript build and 708 Vitest executions across 10 files passed; the routing guard reported eight Worker inbound types, 17 known non-inbound types and 23 explicit Worker ACTION branches. Android JVM/Debug APK and all three Durable Object SQLite rollback/eviction tests passed. The successful SHA also preserves the established handler exception message contract used by transaction rollback tests.

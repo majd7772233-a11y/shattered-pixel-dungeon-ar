@@ -315,3 +315,13 @@ This is source-route coverage, not proof that every action subcase is supported 
 
 ### Scope and exclusions
 No change was made to action validator semantics, native SPD gameplay, message sequencing, persistence/replay policy, or resync behavior. RemotePlayerActionReceiver remains in place; its PLAYER_LEFT native Actor/Mob cleanup is required until equivalent typed-path tests prove parity.
+
+
+### Exact-head verification for Phase 10-B
+
+Implementation/fix SHA: `d16be138d74bb9930777f5352efbeae3291070c6`. Exact-head CI [43494769215 — all three required jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215):
+- Backend TypeScript build passed; **10 Vitest files / 708 executions passed**. The static log confirmed 8 Worker inbound message types, 17 known non-inbound message types and 23 explicit Worker ACTION branches.
+- Android JVM tests and Debug APK compilation passed.
+- Three Durable Object SQLite rollback/eviction tests passed.
+
+The first implementation run exposed an accidental change to the existing handler-exception message contract. The implementation was corrected to preserve transaction rollback error messages; no regression assertion was weakened. The successful run above is the corrected exact SHA.

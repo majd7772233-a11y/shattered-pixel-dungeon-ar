@@ -38,8 +38,9 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 - **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 - **Verified Phase 9 gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact gameplay/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
-- **Phase 10-A protocol contract baseline:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). This protects 25 ordered MessageType values, 23 ordered NetworkActionType values and protocol version 1.0.0. Phase 10-B adds the 25/23 route matrix and explicit Worker ingress admission; its exact-head CI is pending this commit.
+- **Phase 10-A protocol contract baseline:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). This protects 25 ordered MessageType values, 23 ordered NetworkActionType values and protocol version 1.0.0.
 - Backend: TypeScript build + 682 executions across eight Vitest files passed (mirrored JS output means executions are not unique source scenarios).
+- **Phase 10-B implementation/fix:** `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI [43494769215 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend build + 708 Vitest executions across 10 files, Android JVM/Debug APK and three Durable Object SQLite tests passed.
 - Android: JVM tests and Debug APK compilation passed.
 - Workers runtime: 3 tests against real Durable Object SQLite passed.
 - The production Worker and physical-device session remain unverified; the next conversation must inspect live HEAD and its matching Actions run.

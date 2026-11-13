@@ -4,7 +4,8 @@
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
 **Starting HEAD for this slice:** fa5f7937eb55145345230de7930be8f860b74694  
 **Exact starting-HEAD CI:** [43488066751 — all three required checks passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43488066751)  
-**10-B implementation SHA / exact-head CI:** to be filled after the implementation commit and workflow verification.
+**10-B implementation/fix SHA:** `d16be138d74bb9930777f5352efbeae3291070c6`  
+**Exact-head CI:** [43494769215 — all three required checks passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215). Backend build + 708 Vitest executions (10 files), Android JVM/Debug APK and three Durable Object SQLite tests passed.
 
 ## Verified starting point
 
@@ -37,7 +38,7 @@
 
 ## Phase status
 
-Phase 10 as a whole remains OPEN. 10-A enum/version parity and the bounded 10-B route-matrix/Worker-ingress slice are implemented. Do not start Phase 11. Exact CI for the 10-B implementation SHA must be checked on the exact resulting HEAD before declaring this slice verified.
+Phase 10 as a whole remains OPEN. 10-A enum/version parity and the bounded 10-B route-matrix/Worker-ingress slice are implemented and verified at `d16be138d74bb9930777f5352efbeae3291070c6`; exact-head CI `43494769215` passed all three jobs. Do not start Phase 11.
 
 ## Next bounded slice — Phase 10-C (Android envelope and producer parity)
 
