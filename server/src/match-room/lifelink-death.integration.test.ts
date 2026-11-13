@@ -754,7 +754,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
     await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
 
-    expect(sql.players.get(oldPublisher).connected).toBe(0);
+    expect(sql.players.get(oldPublisher)).toBeDefined();
+    expect(sql.players.get(oldPublisher)?.connected).toBe(0);
     expect(sql.roomMeta.get("levelPublisher")).toBe(nextPublisher);
     expect(sql.roomMeta.get("levelPublisherTerm")).toBe("5");
     expect(sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
@@ -780,11 +781,12 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
   });
 
   it("clears Level Publisher authority when no connected living replacement exists", async () => {
-    const sql = new MemoryMatchRoomSql();
-    const room = makeRoom(sql);
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, levelSnapshot } = fixture;
     const oldPublisher = "last-publisher-001";
     sql.roomMeta.set("levelPublisher", oldPublisher);
     sql.roomMeta.set("levelPublisherTerm", "2");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
     sql.players.set(oldPublisher, {
       player_id: oldPublisher, pos: 9, hp: 0, ht: 20, state: "DEAD", connected: 1
     });
