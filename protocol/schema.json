@@ -28,6 +28,7 @@
         "ACTION",
         "LEVEL_DATA",
         "LEVEL_READY",
+        "LEVEL_PUBLISHER_CHANGED",
         "ACTION_ACCEPTED",
         "EVENT_BATCH",
         "SNAPSHOT",
@@ -53,7 +54,8 @@
       "type": "string"
     },
     "payloadJson": {
-      "type": "string"
+      "type": "string",
+      "description": "Message-specific JSON string. LEVEL_PUBLISHER_CHANGED carries a LevelPublisherChangedPayload; LEVEL_DATA carries NativeLevelSnapshot and its optional publisherRebase generation marker."
     }
   },
   "definitions": {
@@ -633,6 +635,16 @@
               "description": "Native per-unit item value for BUYBACK; -1 means partial-unit linearity is not known."
             }
           }
+        },
+        "publisherRebase": {
+          "type": "boolean",
+          "const": true,
+          "description": "Set only on the first complete native world re-serialization from the newly elected publisher after a server-authored LEVEL_PUBLISHER_CHANGED message."
+        },
+        "publisherRebaseTerm": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Must exactly match the current server-owned levelPublisherTerm. The server removes both rebase fields before persisting the accepted level snapshot."
         }
       }
     },
@@ -2267,6 +2279,39 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200000
+        }
+      }
+    },
+    "LevelPublisherChangedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publisherId",
+        "term",
+        "reason"
+      ],
+      "properties": {
+        "publisherId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "New server-elected publisher player ID, or null when no eligible connected living player exists."
+        },
+        "term": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Monotonically increasing server-owned publisher generation."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "PUBLISHER_DISCONNECTED",
+            "PUBLISHER_ASSIGNED_ON_CONNECT",
+            "RECONNECT"
+          ]
         }
       }
     }
