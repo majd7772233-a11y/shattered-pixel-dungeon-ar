@@ -356,3 +356,39 @@ Code/test SHA 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [CI 43512831773](h
 
 No MessageRouter/RemotePlayerActionReceiver relocation or deletion occurred. No Worker action route/validator, replay/resync algorithm, event ordering, or native SPD gameplay formula changed. A green CI run does not prove production deployment or physical-device play.
 
+## Phase 10-D — typed PLAYER_LEFT equivalence
+
+### Pre-migration behavior baseline
+
+The PLAYER_LEFT cleanup test was expanded while the old MessageRouter default/RemotePlayerActionReceiver path was still active. It covered:
+- RemotePlayer registry removal plus both player-to-Hero and Hero-to-player lookup cleanup;
+- RemoteHero Actor scheduler removal;
+- all active Mob target references cleared while preserving the last-known target cell required by SPD's native lost-target behavior;
+- multiple Buffs detached and removed from Actor scheduling;
+- sprite removed from its parent group and the RemoteHero sprite reference set to null;
+- malformed payload fallback to the Worker-authored senderId;
+- ignoring PLAYER_LEFT for the local player.
+
+Pre-migration test-only SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` passed [CI 43521307026](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026), all three jobs green, before any route migration.
+
+### Typed-path result and anti-double-application
+
+- The same full cleanup test now passes via the explicit `MessageRouter` PLAYER_LEFT case, which dispatches on the render thread.
+- A direct call to `RemotePlayerActionReceiver` with PLAYER_LEFT is refused and requests exactly one existing resync; it does not reapply cleanup.
+- EVENT_BATCH remains typed; duplicate event sequence still does not apply Mob state twice, and its legacy receiver guard continues to request recovery rather than parse/apply again.
+- PLAYER_JOINED remains an actual Worker output handled by the legacy default route; this one unit does not complete the overall single typed path.
+
+NativeCombatRuntimeIntegrationTest.java now has 64 @Test methods. NetworkProtocolParityTest.java remains at 15.
+
+### Exact implementation/test CI
+
+Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed [CI 43522055301](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301):
+- Backend typecheck/build: 10 test files and 708 executions passed;
+- Android JVM tests and `./gradlew test assembleDebug --no-daemon`: `BUILD SUCCESSFUL`;
+- Durable Object SQLite: 3/3 integration tests passed.
+
+The first typed-path attempt exposed a missing retained TestTransport local in the new test fixture. That compile-only defect was corrected in the final SHA; no behavior assertion was weakened or removed.
+
+### Scope and phase boundary
+
+Only the Android client route owner for PLAYER_LEFT changed. No Worker output, route/validator, schema, event order, sequence handling, replay/resync algorithm, persistence behavior or native SPD gameplay rule changed. RemotePlayerActionReceiver remains. Phase 10 is still OPEN while other actual/default routes and field-level payload parity remain; Phase 11 was not started.

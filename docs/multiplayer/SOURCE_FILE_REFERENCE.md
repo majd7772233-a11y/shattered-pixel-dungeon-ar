@@ -95,7 +95,7 @@ The package has 32 Java files:
 | InternetTransport.java | Custom TCP/TLS/WebSocket client |
 | LANTransport.java | TCP server/client and UDP host discovery |
 | LootClaimManager.java | In-memory claim helper |
-| MessageRouter.java | Structured client message/event/snapshot/combat router |
+| MessageRouter.java | Structured client message/event/snapshot/combat router; typed PLAYER_LEFT render-thread cleanup |
 | MessageType.java | Outer protocol enum |
 | MultiHeroManager.java | Native Hero enumeration/nearest-hero helper |
 | MultiplayerActionDispatcher.java | Native Hero action dispatch bridge |
@@ -116,13 +116,13 @@ The package has 32 Java files:
 | PlayerFOV.java | Local field-of-view calculation |
 | PvPMode.java | PvP rule descriptor |
 | RemotePlayer.java | Remote participant model and local Hero instance |
-| RemotePlayerActionReceiver.java | Legacy/general remote-player receiver |
+| RemotePlayerActionReceiver.java | Remaining legacy/default remote-player receiver; refuses duplicate PLAYER_LEFT and EVENT_BATCH delivery |
 | SPDLevelSnapshot.java | Native snapshot exporter |
 | SurvivalMode.java | Survival rule descriptor |
 | TransportCallback.java | Transport callback interface |
 | WorldSnapshot.java | Snapshot validation, restore, entity reconciliation and rollback |
 
-For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the current Phase 10-C protocol/Android/test references.
+For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the current Phase 10-C/10-D protocol, Android and test references.
 
 
 ## 4.1 Phase 10-C JVM protocol/receiver tests
@@ -269,3 +269,14 @@ These stages are source organization only. They do not change or renumber gamepl
 | `server/src/match-room/index.ts` | Final single exported MatchRoom class; constructor, alarm and room HTTP fetch |
 
 All layers share one instance through inheritance. This is not a new Durable Object per layer.
+
+## 4.2 Phase 10-D typed PLAYER_LEFT lifecycle regression
+
+| Test/source path | Current source evidence |
+|---|---|
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java | Explicit PLAYER_LEFT route and render-thread cleanup handler; actual Worker producer is MatchRoomBase.webSocketClose. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayerActionReceiver.java | No longer owns PLAYER_LEFT cleanup; direct duplicate delivery is refused through the existing resync request path. The class remains for other legacy/default message behavior. |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 64 @Test methods at implementation/test SHA cc61c68625f587576ca530aef3354bfaffe9e140. PLAYER_LEFT tests prove old-route baseline, typed-path equivalence, Mob target/Actor/Buff/sprite/registry cleanup, invalid payload fallback, local-player no-op and legacy duplicate rejection. |
+| server/src/match-room/base.ts | Real PLAYER_LEFT producer in webSocketClose; not modified by the client migration. |
+
+Exact implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed CI 43522055301. The parent Phase 10 remains OPEN because PLAYER_JOINED and remaining route/payload work are not all migrated/closed.

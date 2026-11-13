@@ -74,12 +74,13 @@ That presence does not mean all features have passed end-to-end acceptance.
 
 ### Current verified checkpoint — 2026-11-14
 
-- Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; exact-head CI [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) passed all three jobs.
+- Latest implementation/test SHA after the bounded Phase 10-D PLAYER_LEFT migration: `cc61c68625f587576ca530aef3354bfaffe9e140`; exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). The pre-migration behavior proof on the old route also passed all three jobs at SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI 43521307026.
 - Backend TypeScript build and 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK compilation passed; three Workers-runtime Durable Object SQLite tests passed. The 708 count includes mirrored TS/JS executions, not 708 unique source scenarios.
 - Phase 9 remains complete under its explicit fail-closed support boundary. SpiritArrow/publisher-recovery evidence is recorded in the phase and test references.
 - Phase 10-A enum/version parity and 10-B route inventory/Worker admission remain complete at their recorded implementation SHAs.
-- Phase 10-C is complete: Android parser enforces the canonical envelope; LAN/Bluetooth legacy compatibility is limited to explicitly tested transport parsers; unmapped HeroActions reject without being converted to WAIT; dedicated tests protect PLAYER_LEFT cleanup, supported legacy RemoteHero updates and EVENT_BATCH single application.
-- Phase 10 remains OPEN; next is the bounded Phase 10-D typed-path convergence. Do not remove/move RemotePlayerActionReceiver without behavior-specific equivalence tests. Phase 11 has not started.
+- Phase 10-C is complete: Android parser enforces the canonical envelope; LAN/Bluetooth legacy compatibility is limited to explicitly tested transport parsers; unmapped HeroActions reject without being converted to WAIT.
+- The bounded Phase 10-D PLAYER_LEFT unit is delivered: the Worker-produced disconnect message now has a typed render-thread MessageRouter path with full cleanup parity tests; direct legacy receiver delivery refuses reapplication and requests existing recovery. NativeCombatRuntimeIntegrationTest now has 64 test methods.
+- Phase 10 remains OPEN: PLAYER_JOINED is an actual output still handled by the default legacy route, and field-level payload/serializer parity plus other remaining behaviors still require bounded evidence. Do not remove/move RemotePlayerActionReceiver wholesale. Phase 11 has not started.
 - Branch CI does not mean production Worker deployment or physical-device gameplay; Phases 22–23 remain open.
 
 

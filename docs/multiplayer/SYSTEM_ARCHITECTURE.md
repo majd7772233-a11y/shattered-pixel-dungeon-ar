@@ -17,7 +17,7 @@ Conceptual dependency flow:
 → **native reconciliation / WorldSnapshot**
 → **rendered local and remote game state**
 
-This is an explanatory flow, not a guarantee that every event currently passes through one unified pipeline. MessageRouter still routes its default branch to RemotePlayerActionReceiver; a single typed application path is open roadmap work.
+This is an explanatory flow, not a guarantee that every message currently passes through one unified pipeline. MessageRouter has typed paths for EVENT_BATCH and PLAYER_LEFT (the latter performs disconnect cleanup on the render thread), but its default branch still routes remaining message kinds to RemotePlayerActionReceiver; a single typed application path remains open roadmap work.
 
 ## 2. Build-time module graph
 
@@ -178,14 +178,14 @@ This is the observed flow, not proof that all room state transitions or transpor
 
 ## 7. Threading and rendering
 
-Transport callbacks can occur away from the game/render thread. MessageRouter explicitly schedules EVENT_BATCH, COMBAT_REQUEST, ACTION_ACCEPTED, and default receiver work through Game.runOnRenderThread(...) in the inspected implementation. Native actor, dungeon, sprite and inventory state must only be touched on the thread required by the game runtime.
+Transport callbacks can occur away from the game/render thread. MessageRouter explicitly schedules EVENT_BATCH, PLAYER_LEFT, COMBAT_REQUEST, ACTION_ACCEPTED and default receiver work through Game.runOnRenderThread(...). PLAYER_LEFT cleanup mutates Actor scheduling, Buffs, Mob target references and sprites. Native actor, dungeon, sprite and inventory state must only be touched on the thread required by the game runtime.
 
 Do not move parsing or validation across thread boundaries casually. Separate safe immutable payload parsing from native scene mutation, and preserve deterministic event ordering when work is queued.
 
 ## 8. Key design risks
 
 - `server/src/index.ts` is a 35-line stable Wrangler entry and compatibility facade; `server/src/worker.ts` owns default request routing; `server/src/match-room/` contains the one shared-instance Durable Object inheritance chain; validator implementations live in focused modules. The three source-refactor stages are complete for implementation and automated acceptance.
-- MessageRouter still has a default receiver branch for RemotePlayerActionReceiver; the one typed event path is incomplete.
+- MessageRouter still has a default receiver branch for RemotePlayerActionReceiver. PLAYER_LEFT now has a behavior-tested typed route; PLAYER_JOINED remains a real legacy/default path and overall single typed-path convergence is incomplete.
 - Setup UI does not wait for confirmed connection and silently catches some transport startup failures.
 - Mode descriptors exist, but server-enforced mode acceptance remains open.
 - Transport implementations require protocol and physical-device verification.

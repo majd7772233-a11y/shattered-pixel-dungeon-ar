@@ -24,7 +24,8 @@ The transport layer can invoke callbacks away from the libGDX render thread. The
 - EVENT_BATCH;
 - COMBAT_REQUEST;
 - ACTION_ACCEPTED;
-- default/legacy RemotePlayerActionReceiver work.
+- PLAYER_LEFT disconnect cleanup;
+- default/legacy RemotePlayerActionReceiver work for all remaining default message kinds.
 
 Treat these as separate stages:
 1. Decode and validate immutable wire data without mutating native world state.
@@ -400,3 +401,21 @@ MessageRouter and RemotePlayerActionReceiver remain structurally unchanged. The 
 
 Exact-HEAD evidence: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5, [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) — Backend, Android and Durable Object SQLite jobs all passed.
 
+## 15. Phase 10-D — typed PLAYER_LEFT disconnect cleanup
+
+The Worker producer is `MatchRoomBase.webSocketClose`: after marking the authenticated session disconnected it broadcasts PLAYER_LEFT with the session player ID in senderId and payload. MessageRouter now handles this outer message explicitly and schedules the native cleanup with `Game.runOnRenderThread(...)`.
+
+The typed handler preserves the former receiver contract:
+- use payload.playerId only when it is a string; otherwise fall back to senderId, including malformed JSON;
+- ignore null/empty IDs and the local player's own ID;
+- clear every Mob's target reference to the departing RemoteHero while preserving SPD's last-known target cell;
+- detach all RemoteHero Buffs (including their Actor scheduler entries);
+- remove the RemoteHero from Actor scheduling;
+- unlink and null its sprite;
+- remove the RemotePlayer registry entry, which also clears both player-to-Hero and Hero-to-player lookups.
+
+RemotePlayerActionReceiver remains in place for the remaining legacy paths. Direct PLAYER_LEFT delivery to it now refuses a second cleanup and calls the existing requestResync path. PLAYER_JOINED remains a real Worker output on the default route; no claim is made that every MessageType enum name is implemented. EVENT_BATCH remains typed and its current legacy refusal/duplicate-sequence behavior is unchanged.
+
+The full cleanup regression was expanded and passed first on the old route at SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI [43521307026](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026). The same assertions pass after migration on SHA `cc61c68625f587576ca530aef3354bfaffe9e140` / exact-head CI [43522055301](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). NetworkProtocolParityTest remains at 15 tests; NativeCombatRuntimeIntegrationTest now has 64 @Test methods. Android JVM tests and Debug APK passed.
+
+This is one bounded 10-D route-convergence unit, not completion of the overall Phase 10 single-path goal. Other actual default-route behaviors and field-level payload/serializer parity remain open. No Worker validator, event ordering, sequence semantics or replay/resync algorithm changed.

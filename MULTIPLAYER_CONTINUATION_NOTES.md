@@ -1,65 +1,52 @@
-# Multiplayer Continuation Notes — Phase 10-C complete; Phase 10-D handoff
+# Multiplayer Continuation Notes — Phase 10-D PLAYER_LEFT typed-path unit delivered; Phase 10 remains OPEN
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
-**Live code/test HEAD audited for 10-C:** 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5  
-**Exact-HEAD CI:** [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773)
+**Latest implementation/test SHA:** `cc61c68625f587576ca530aef3354bfaffe9e140`  
+**Exact-HEAD CI:** [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301)
 
-## Verified starting point
+## Verified starting state
 
-- The user-supplied c8998912005e458fac7a8776618b073f33f4d642 was not the live HEAD. The branch had advanced to 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; do not reset or overwrite newer commits.
-- All 21 Markdown files in the live tree were re-read before the audit, including GPT.md, ROADMAP.md, this continuation note and PROJECT_EXECUTION_PROTOCOL_AR.md.
-- Exact-HEAD CI passed all three jobs: Backend typecheck/build + 10 Vitest files / 708 executions; Android JVM tests + Debug APK; and three Durable Object SQLite runtime tests. Workers tests are local runtime evidence, not a production deployment test.
-- Phase 10-A and 10-B remain complete and unchanged.
+- Before 10-D edits, live HEAD was `c51872ac0f3ce52513fcace478ba188456cb943e`; exact matching CI [43518516010](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43518516010) passed all three jobs.
+- All 21 tracked Markdown files were reread before source changes, including GPT.md, ROADMAP.md, this file and PROJECT_EXECUTION_PROTOCOL_AR.md.
+- The exact pre-migration behavior-test commit `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` passed CI [43521307026 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026) while PLAYER_LEFT still used the old MessageRouter default/legacy route.
+- Final source/test commit `cc61c68625f587576ca530aef3354bfaffe9e140` passed [CI 43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). Backend: 10 test files / 708 executions; Android JVM tests and Debug APK: BUILD SUCCESSFUL; Durable Object SQLite: 3/3.
 
-## Phase 10-C verified result
+## Phase 10-D delivered behavior: PLAYER_LEFT
 
-### Android envelope
+### Source-backed route
 
-- NetworkMessage.parseJson is the strict canonical decoder for protocol 1.0.0. It requires an object root and string protocolVersion, messageType and payloadJson; it rejects unsupported versions, unknown message types, malformed outer/nested JSON, wrong-typed present optional fields, and invalid/unsafe sequence values.
-- requestId and senderId are optional strings; sequence is optional and defaults to zero. When supplied, sequence must be a non-negative safe integer (an integral JSON decimal such as 1.0 is accepted consistently with Worker safe-integer admission).
-- The generic parser rejects raw object/array payloadJson, missing required fields and JSON null for optional string fields. Invalid envelopes become ERROR envelopes with explicit codes; they are never coerced into ACTION.
-- Compatibility is transport-scoped and source-backed: parseLanJson accepts only the historical six-field versioned LAN raw-object/array payload shape; parseBluetoothJson accepts only the historical two-field unversioned Bluetooth shape. Extra fields reject. Both normalize to the canonical envelope and invoke the strict parser. Internet uses only parseJson.
+- The real producer is `server/src/match-room/base.ts::webSocketClose`; on the authenticated socket close it persists connected=false and broadcasts PLAYER_LEFT with the session player as senderId and playerId in payload.
+- `MessageRouter.routeMessage` now has an explicit PLAYER_LEFT case and queues the cleanup on `Game.runOnRenderThread(...)`.
+- `MessageRouter.handlePlayerLeftMessage` preserves the old behavior: string payload.playerId wins; invalid/non-string payload ID falls back to senderId; null/empty/local IDs do nothing; a missing registry entry is removed; and a known player causes every Mob to forget that RemoteHero target, all attached Buffs to detach, the Hero to leave Actor scheduling, its sprite to be removed and nulled, and the player/hero registry association to disappear.
+- `RemotePlayerActionReceiver` still exists and handles the remaining default paths. Direct PLAYER_LEFT delivery to it is rejected with the existing `requestResync(message.sequence)` behavior, preventing a second application.
+- `EVENT_BATCH` remains exclusively typed in MessageRouter. The existing receiver guard still refuses it and requests recovery; duplicate sequence protection and event application semantics were not changed.
+- `PLAYER_JOINED` is a real Worker output from `MatchRoom.fetch` and intentionally remains on the default/legacy route. Other message names were not declared supported just because they appear in MessageType.
 
-### Action producer
+### Equivalence evidence and tests
 
-- NetworkActionBridge.mapHeroActionToNetworkAction returns Optional values for ten explicitly mapped native HeroAction classes; null and all other classes produce Optional.empty().
-- Its only production caller is MultiplayerActionDispatcher. An empty mapping calls Hero.rejectUnsupportedMultiplayerWorldAction(), which clears the pending native world mutation, displays the unsupported-action warning and returns without sending a fabricated WAIT.
-- Direct native producers for other action families remain described in docs/multiplayer/PROTOCOL_MESSAGE_CATALOG.md; neither enum membership nor a Worker ACTION branch proves every action subcase is supported.
+- Before changing route ownership, the expanded PLAYER_LEFT regression passed through the old route on SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI 43521307026. It proves player registry/reverse identity cleanup, RemoteHero Actor removal, Mob target clearing while preserving the last-known cell, multiple Buff detach + Actor removal, sprite parent/reference removal, malformed-payload senderId fallback and local-player leave rejection.
+- After migration the same full cleanup assertions run through the typed route. The test also directly calls the legacy receiver and verifies it requests one resync without reapplying cleanup.
+- NetworkProtocolParityTest.java remains 15 tests. NativeCombatRuntimeIntegrationTest.java now contains 64 @Test methods.
+- The first typed-route CI run (43521714424) exposed only a compile-time test fixture defect: a TestTransport local was not retained for the new resync assertions. The fixture was fixed in the final SHA; no assertion was deleted or weakened.
 
-### Router/receiver behavior and preserved responsibilities
+## Scope explicitly not changed
 
-- MessageRouter explicitly routes SESSION, SNAPSHOT, LEVEL_PUBLISHER_CHANGED, EVENT_BATCH, COMBAT_REQUEST, ACTION_ACCEPTED, ACK, MATCH_END and ERROR. Its default still dispatches remaining message kinds to RemotePlayerActionReceiver on the render thread.
-- PLAYER_LEFT remains in the legacy receiver. The tested path removes the RemotePlayer, detaches RemoteHero Buffs, removes the Hero from Actor scheduling, clears Mob target references, removes its sprite and clears the registry entry.
-- Existing legacy RemoteHero position/HP update behavior remains covered.
-- EVENT_BATCH remains owned by MessageRouter. The legacy receiver refuses to parse/apply it and requests the existing recovery path. A duplicate typed sequence does not apply Mob state a second time.
-- Neither MessageRouter nor RemotePlayerActionReceiver was moved, deleted or broadly refactored. The receiver's other legacy responsibilities have not all been proven redundant.
+- No Worker message producer, admission/routing validator, 25-message inventory, 23-action inventory, protocol schema, action subcase or persistence logic changed.
+- No EVENT_BATCH replay, event order, sequence semantics, resync algorithm or snapshot recovery algorithm changed.
+- No Hero, RemoteHero, Mob, Actor, Buff, sprite or native SPD gameplay implementation was changed beyond calling the existing cleanup operations from the typed router.
+- No receiver deletion/whole-class move, branch creation, main/master update, merge or PR.
+- No production Worker deployment or physical two-device match is claimed.
 
-### Tests and CI evidence
+## Phase status and next checkpoint
 
-- NetworkProtocolParityTest.java: 15 JVM tests covering canonical envelope fields/types/version/sequence, malformed JSON, unknown message types, serializer behavior, LAN/Bluetooth legacy scoping, mapped/unmapped HeroActions and transport parsing/serialization.
-- NativeCombatRuntimeIntegrationTest.java: 62 test methods at the audited HEAD; 10-C adds targeted PLAYER_LEFT cleanup, legacy RemoteHero update and EVENT_BATCH no-double-application coverage.
-- Exact HEAD 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5: [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) passed Backend, Android and Durable Object SQLite jobs.
-- No Worker route/action allowlist, native gameplay validator, message ordering, replay or resync algorithm was changed. No physical two-device match or deployed production Worker test is claimed.
+- Phase 9: complete for implementation and automated acceptance within its explicit fail-closed boundaries.
+- Phase 10-A: complete.
+- Phase 10-B: complete.
+- Phase 10-C: complete.
+- Phase 10-D: the bounded PLAYER_LEFT typed-path unit is complete. The broader Phase 10 remains **OPEN** because PLAYER_JOINED and any other supported default-route behaviors still require a separate producer/consumer audit and equivalence work; field-level payload/serializer parity also remains outstanding.
+- Phase 11 has **not** started. ROADMAP.md declares Phase 11 dependent on Phase 10. Do not silently bypass that dependency. A later Phase 11-A request must first recheck whether Phase 10 has since been formally closed and document any unmet prerequisite rather than claiming it is complete.
 
-## Phase status
+## Exact next-chat guard
 
-- Phase 9: complete for implementation and automated acceptance under its documented fail-closed support boundary.
-- Phase 10-A: complete (canonical 25-message / 23-action enum/version parity).
-- Phase 10-B: complete (all message/action routing inventory; eight Worker inputs versus 17 known non-inputs; fail-closed Worker admission and guards).
-- Phase 10-C: complete for Android envelope/parser/producer parity and the behavior-specific receiver regressions listed above.
-- Parent Phase 10: **OPEN**. Phase 11 has not started.
-
-## Next bounded slice — Phase 10-D (do not start in this conversation)
-
-Begin with a fresh branch/HEAD/CI verification and reread every Markdown file. Then audit the remaining actual behaviors that still pass through MessageRouter's default route and the legacy receiver. Pick only one cohesive, evidenced subset for a typed MessageRouter path:
-
-1. Inventory real message senders/receivers and distinguish active payloads from enum-only placeholders.
-2. For each candidate behavior, record source, direction, payload shape, thread ownership, actor/world side effects and failure/recovery path.
-3. Add focused behavioral equivalence tests before changing routing. Keep PLAYER_LEFT cleanup intact until a typed replacement test proves every native Mob-target, Buff, Actor scheduler, sprite and registry effect.
-4. Move only a narrow behavior whose typed implementation and tests are complete. Do not rewrite or delete the receiver wholesale.
-5. Preserve EVENT_BATCH as the sole typed sequenced event application path; its legacy receiver guard must continue preventing double application.
-6. Do not redesign replay/resync, sequence ordering, persistence, Worker admission, action validators or gameplay formulas. Do not start Phase 11.
-
-**Stop condition for 10-D:** the selected legacy message behavior has one proven typed route with equivalent state/thread/cleanup semantics, or the audit shows that no safe cohesive migration is ready—in that case document the blocker and stop rather than forcing a broad refactor.
-
+On a new task, re-fetch the live branch HEAD and exact matching CI, reread every Markdown file and the current PROJECT_EXECUTION_PROTOCOL_AR.md before editing. Work only on the named branch, do not create branches or PRs, and stay within the explicitly requested phase/slice. Do not begin Phase 11 or any later slice automatically.

@@ -228,7 +228,7 @@ Required behavior for all event paths:
 - advance applied client sequence only after successful state reconciliation;
 - request a complete snapshot when local pre-state cannot be proven or incremental application fails.
 
-Current migration limit: MessageRouter default cases still forward remaining message kinds to RemotePlayerActionReceiver on the render thread. PLAYER_LEFT still depends on its native Actor/Mob target, Buff, sprite and registry cleanup. EVENT_BATCH is owned by MessageRouter; the legacy receiver refuses it and requests the existing recovery path, preventing a second state application. The typed path has not replaced all older message handling. Migrate only a cohesive behavior after dedicated equivalence tests; do not move or delete the receiver wholesale.
+Current migration limit: PLAYER_LEFT is now an explicit MessageRouter typed case and its complete native cleanup runs on the render thread. The real Worker source is MatchRoomBase.webSocketClose. Pre-migration tests first proved the old default-route behavior; the same full assertions now pass through the typed path. The receiver refuses direct PLAYER_LEFT reapplication and requests the existing recovery path. MessageRouter default cases still forward remaining message kinds to RemotePlayerActionReceiver; PLAYER_JOINED is a confirmed live Worker output still using that path. EVENT_BATCH remains owned by MessageRouter and its legacy receiver guard/duplicate-sequence behavior is unchanged. The path is therefore only partially converged; keep the receiver and migrate other behaviors only after dedicated producer tracing and equivalence tests.
 
 ## 8. Inventory, loot claims, exactly-once rewards
 

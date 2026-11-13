@@ -444,9 +444,9 @@ Production deployment and physical-device playtest remain Phases 22 and 23, not 
 
 ### Current Phase 10 checkpoint — 2026-11-14
 
-Phase 9 is complete for implementation and automated acceptance. Phase 10-A canonical enum/version parity and Phase 10-B cross-layer routing/Worker ingress admission were completed and verified at the implementation SHAs recorded below. The live code/test HEAD audited for the next slice was 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5, not the older user-supplied c8998912005e458fac7a8776618b073f33f4d642.
+Phase 9 is complete for implementation and automated acceptance. Phase 10-A canonical enum/version parity and Phase 10-B cross-layer routing/Worker ingress admission were completed and verified at the implementation SHAs recorded below. The latest implementation/test SHA after the bounded 10-D PLAYER_LEFT migration is `cc61c68625f587576ca530aef3354bfaffe9e140`; its exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301).
 
-Phase 10-C was already implemented in commits between the 10-B checkpoint and this live HEAD. Its parser, compatibility, producer and receiver behavior was source-audited and its exact-HEAD CI [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773). Phase 10 remains OPEN; the next bounded slice is 10-D typed-path convergence. Keep RemotePlayerActionReceiver intact until each remaining real behavior has dedicated equivalence evidence. Do not begin Phase 11 or redesign replay/resync or event ordering.
+Phase 10-C was already implemented in commits between the 10-B checkpoint and its recorded source/test baseline. Its parser, compatibility and producer behavior passed exact-head CI [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773). The bounded 10-D PLAYER_LEFT typed-path unit is now delivered (details below). Phase 10 remains OPEN because other real legacy routes and field-level payload parity are not completed. Keep RemotePlayerActionReceiver for its remaining behavior. Do not begin Phase 11 or redesign replay/resync or event ordering.
 
 **Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
 
@@ -493,11 +493,27 @@ Phase 10-C was already implemented in commits between the 10-B checkpoint and th
 
 **Acceptance boundary:** 10-C completes Android parser/producer safety and the specific old-receiver behaviors tested above. It does not complete Phase 10's single typed event path, does not prove every outer enum has a fully supported client/server implementation, and does not mean every Worker ACTION branch accepts every item/effect subcase.
 
+### Delivered bounded slice 10-D — typed PLAYER_LEFT path (complete for this behavior)
+
+**Selection evidence:** the live Worker producer is `MatchRoomBase.webSocketClose`, which marks the authenticated session disconnected and broadcasts PLAYER_LEFT with senderId and payload.playerId. The separate PLAYER_JOINED producer in `MatchRoom.fetch` remains a real default-route behavior; it was deliberately not combined with disconnect cleanup.
+
+- [x] Re-read source and actual producers/consumers before changing route ownership; distinguish real messages from enum-only placeholders and EVENT_BATCH inner event names.
+- [x] Expand the legacy PLAYER_LEFT test before migration and prove the original default route's full effects. Pre-migration test-only SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` passed exact-head CI [43521307026 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026).
+- [x] Add explicit typed MessageRouter PLAYER_LEFT dispatch via Game.runOnRenderThread(...), preserving senderId fallback, payload identity choice, local-ID no-op, Mob target cleanup, Buff detach, Actor removal, sprite unlink/nulling and RemotePlayer registry removal.
+- [x] Make RemotePlayerActionReceiver refuse direct PLAYER_LEFT reapplication and request its existing resync path. Keep the receiver and all other legacy responsibilities; no broad relocation/deletion.
+- [x] Verify malformed PLAYER_LEFT payload fallback and local-player rejection; retain EVENT_BATCH typed sequence handling and its unchanged legacy receiver guard.
+- [x] Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301): Backend 10 files / 708 executions, Android JVM tests + Debug APK, and three Durable Object SQLite tests.
+- [ ] Migrate any remaining actual supported default-route behavior only after its own producer trace and pre-change/typed equivalence tests. PLAYER_JOINED remains a known live legacy route.
+- [ ] Complete field-level payload contract/serializer parity for remaining native action and snapshot subcases without inferring support from enum membership.
+
+**Parent-phase status:** this bounded PLAYER_LEFT convergence unit is complete; Phase 10 remains OPEN. The overall criteria for every remaining supported outer message and field-level contract parity are not claimed complete. Do not start Phase 11 automatically.
+
+
 ### Work items
 
 - [x] Retain the 25 outer-message / 23 action route inventory and exact Worker admission classification from 10-B; keep source and tests synchronized when a verified route changes.
 - [ ] Complete field-level payload contract/serializer parity for remaining native action and snapshot subcases, without inferring support from enum membership.
-- [ ] Converge remaining supported legacy outer-message behaviors into a single typed MessageRouter path in small, behavior-tested units; do not move the receiver as a whole.
+- [ ] Converge remaining supported legacy outer-message behaviors (PLAYER_JOINED is a known active producer) into typed MessageRouter paths in small, behavior-tested units; do not move the receiver as a whole. PLAYER_LEFT is the first completed unit.
 - [ ] Before migrating any receiver behavior, add exact positive/negative equivalence tests for its current behavior and preserve render-thread, identity, cleanup and rejection semantics.
 - [ ] Decide which declared-but-unused/unsupported message names need explicit typed unsupported responses versus remaining non-routed; do not add Worker ingress routes without a complete authority/persistence contract.
 

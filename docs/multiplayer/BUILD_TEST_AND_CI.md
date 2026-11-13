@@ -215,3 +215,15 @@ The Phase 10-C source/test baseline 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 pas
 - Three Durable Object SQLite runtime integration tests passed.
 The 708 backend executions include mirrored generated TypeScript/JavaScript tests and are not 708 unique source scenarios. These results do not represent a production Worker deployment or a physical-device test.
 
+## 10-D exact-head verification — typed PLAYER_LEFT route
+
+The expanded PLAYER_LEFT behavior test first passed through the original default/legacy route on pre-migration test-only SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630`, CI [43521307026](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026), with all three jobs green. This is the old-behavior proof required before changing route ownership.
+
+Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed exact-head CI [43522055301](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301):
+- Backend typecheck/build: 10 Vitest files / 708 executions passed;
+- Android: JVM test suite and Debug APK compilation passed; log ends with `BUILD SUCCESSFUL in 1m 1s`;
+- Durable Object local Workers runtime: 1 test file / 3 SQLite integration tests passed.
+
+An intermediate implementation/test run (43521714424) failed at Java test compilation because the new legacy-refusal assertions referenced a TestTransport fixture that had not been retained in the test method. The fixture was corrected in the final SHA and the exact-head full CI rerun passed. No assertion was removed or relaxed.
+
+The Android test class now contains 64 @Test methods; NetworkProtocolParityTest remains at 15. This verifies the bounded PLAYER_LEFT client migration only. It does not claim production Worker deployment, physical-device gameplay or completion of every remaining Phase 10 typed-route/payload-parity item.
