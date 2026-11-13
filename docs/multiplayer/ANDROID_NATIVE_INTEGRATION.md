@@ -393,7 +393,7 @@ The 23-value NetworkActionType enum and 23 Worker ACTION branch tokens remain a 
 ### Behavior-specific routing tests
 
 NetworkProtocolParityTest.java contributes 15 JVM tests. NativeCombatRuntimeIntegrationTest.java has 62 test methods at the audited HEAD, including:
-- PLAYER_LEFT cleanup of the remote player, RemoteHero Actor scheduler, Mob target references, Buffs and sprite;
+- PLAYER_LEFT cleanup of the remote-player registry, RemoteHero Actor scheduler and Mob target references. Explicit multiple-Buff detach and attached-sprite lifetime assertions were added in the Phase 10-D pre-migration expansion;
 - retention of the tested legacy RemoteHero movement/HP path;
 - EVENT_BATCH single-application through MessageRouter, duplicate-sequence protection and rejection by RemotePlayerActionReceiver with the existing recovery behavior.
 

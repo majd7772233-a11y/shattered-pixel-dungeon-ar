@@ -344,7 +344,7 @@ The suite checks:
 ### NativeCombatRuntimeIntegrationTest.java — receiver regressions
 
 At the audited source HEAD this class contains 62 @Test methods. Phase 10-C adds targeted behavior checks for:
-1. PLAYER_LEFT: RemotePlayer registry removal, RemoteHero Actor scheduler removal, Mob target reference cleanup, Buff detachment and sprite removal.
+1. PLAYER_LEFT: RemotePlayer registry removal, RemoteHero Actor scheduler removal and Mob target-reference cleanup. Explicit multi-Buff detach, sprite-parent/reference removal, malformed-payload senderId fallback and local-player no-op assertions were added in the Phase 10-D pre-migration baseline.
 2. Legacy remote-player updates: the default route still updates supported RemoteHero position/HP and retains its Actor registration.
 3. EVENT_BATCH single path: MessageRouter applies Mob state once, duplicate sequence does not reapply it, and direct legacy receiver delivery refuses a second application and requests the existing recovery path.
 

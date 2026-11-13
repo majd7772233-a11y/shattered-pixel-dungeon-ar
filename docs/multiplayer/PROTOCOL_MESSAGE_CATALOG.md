@@ -105,9 +105,10 @@ Outer routing at the baseline:
 - ACK → update sequence and resolve stable entity acknowledgement;
 - MATCH_END → update sequence;
 - ERROR → handle rejection/resync path;
-- default → RemotePlayerActionReceiver.handleNetworkMessage(...).
+- PLAYER_LEFT → queue native disconnect cleanup on the render thread;
+- default → RemotePlayerActionReceiver.handleNetworkMessage(...) for remaining legacy message kinds.
 
-The default route is a known transitional boundary. MessageRouter and RemotePlayerActionReceiver do not yet constitute one fully consolidated typed message path. Phase 10 owns this migration; do not silently describe it as complete.
+The default route remains a known transitional boundary for message kinds without dedicated typed cases. PLAYER_LEFT now has an explicit typed render-thread cleanup path, while PLAYER_JOINED remains a confirmed live Worker output handled by the legacy receiver. MessageRouter and RemotePlayerActionReceiver therefore do not yet constitute one fully consolidated typed message path; Phase 10 remains open until remaining real supported paths and payload contracts are addressed.
 
 ## 5. Gameplay NetworkActionType enum
 
