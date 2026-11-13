@@ -155,30 +155,25 @@ The Java regression checks the action indicator clear, preserved target Actor ID
 
 
 
-## 4.2 SpiritArrow intent, authority and asynchronous native result (9-C partial)
+## 4.2 SpiritArrow intent, authority, result and requester reconciliation — Phase 9 complete
 
-The originating player starts at native `SnipersMark.doAction()`. The local client resolves the equipped `SpiritBow`, marked Mob and stable server `targetEntityId`, obtains Bow item identity/Bundle, captures Hero pre-state and sends strict `spiritArrow` metadata inside the existing NativeAttackPayload.
+1. The originating Hero runs native `SnipersMark.doAction()` and the equipped `SpiritBow` path. The report retains Bow identity, mark identity/bonus, stable target entity ID, Hero pre-state and native target pre-state.
+2. The server validates intent against trusted Hero/Bow/mark/Mob state and current publisher generation. It reserves attacker/target locks and forwards a server-authored COMBAT_REQUEST to the level publisher.
+3. The publisher resolves SPD combat in Java. The origin-client missile completion finalizes the deferred report exactly once; target movement/removal cancels and requests RESYNC instead of sending stale ATTACK state. Delegated RemoteHero resolution uses the native Hero attack/deferred-report path.
+4. The publisher submits SYNC_MOB_STATE. MatchRoom rechecks request, authority, stable target identity, pre-state and native bundle, then commits Mob row, level snapshot, replay receipt, event and sequence in one transaction.
+5. ACTION_ACCEPTED and FOV/event delivery occur only after commit. Rollback returns a correlated error to the requester/publisher and does not leak an accepted event.
+6. The requester receives the sequenced PLAYER_ATTACKED EVENT_BATCH. Android resolves the Mob via its stable server entity ID, applies bounded scalar fields and requests a full snapshot whenever a complete targetMobBundleAfter or secondary Mob result proves scalar reconciliation incomplete.
+7. Android JVM coverage routes the same accepted SpiritArrow event to two client worlds with distinct local Mob Actor IDs but the same stable server identity. Both update the correct Mob and request the authoritative full snapshot. Backend tests cover result commit, requester delivery, correlated rejection, forged/missing position, wrong mark target and SQL rollback.
 
-The schema and Backend `isValidNativeSpiritArrowAttackIntent()` bind Bow/mark/target data to trusted Hero and level state. MatchRoom pending combat reservation and COMBAT_REQUEST forwarding pass independently.
+The accepted scope is the verified stable-Mob target path. SPEED volleys and non-Mob targets remain fail-closed. RemoteHero/player LifeLink remains unsupported because process-local Buff Actor IDs cannot be transferred safely under the current mapping contract.
 
-The local native lifecycle is covered headlessly: `SnipersMark.doAction() → SpiritBow.cast() → MissileSprite`; pending report remains deferred; completion callback is manually invoked twice and yields one ATTACK/cleanup. Target-moved test checks cancellation, mark retention, RESYNC and no ATTACK. No animation is rendered.
+### 4.3 Publisher disconnect and lossless rebase
 
-### Exact-head authority roundtrip blocker
+Level Publisher is a durable generation, not a client-side boolean. Disconnect handoff updates owner and generation transactionally, closes pending combat reservations tied to the old authority, sends the committed server snapshot and publishes LEVEL_PUBLISHER_CHANGED. If no eligible replacement exists, owner is cleared and world actions stay blocked.
 
-Current HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`; exact CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) is Backend-red (654 passed / 4 failed Vitest executions across eight files; two scenarios mirrored in TS/JS). Android JVM and Debug APK pass.
+The new publisher must send a lossless full-level rebase. Shared Mob IDs/bundles and world state remain unchanged; publisher-local Actor IDs are refreshed and checked. LifeLink.object and SnipersMark.object/server_entity_id must resolve to the exact same Mob identity. Invalid/stale rebase does not update publisher-ready term, and shared actions remain blocked until the current generation is committed.
 
-The positive MatchRoom test observes publisher socket messages `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an additional `ERROR`. It aborts before verifying requester EVENT_BATCH delivery/application. The forged-`attackerPos` negative test still expects no requester message, while the server returns a correlated `ERROR`; the omitted-position negative test is already aligned and passes.
-
-The positive helper contains `attackerPos: 9`; a Java delegated-RemoteHero regression verifies native serialization matches `remoteHero.pos`. The old “positive fixture omits attackerPos” hypothesis is stale. Inspect all `authorityValid` gates, exact ERROR payload/recipient/sequence, and event broadcast path without relaxing authority or position checks.
-
-### Publisher asynchronous lifecycle still to audit
-
-MessageRouter invokes `remoteHero.shoot(target, bow.knockArrow())` then immediately `remoteHero.finishNativeSpiritArrowAttack(target)`. Trace `RemoteHero`, Hero deferred combat reporting, `SpiritArrow.onThrow()/completeNativeSpiritArrow()` and `MissileSprite.onComplete()` to establish whether the report is finalized too early.
-
-The MatchRoom fixture uses a synthetic publisher result; it does not execute Android MessageRouter or requester EVENT_BATCH application. A joined requester → reservation/COMBAT_REQUEST → actual publisher callback → accepted sequenced event → requester reconciliation remains required. 9-C and parent Phase 9 remain open.
-
-
-## 5. Mob turns and Actor scheduling
+## 5. Mob turns and Actor scheduling## 5. Mob turns and Actor scheduling
 
 Actor scheduler is part of gameplay rules. Actor.java exposes multiplayer-specific classification and scheduler decisions: whether a shared actor is skipped on a non-publisher, whether its result should be published, and deferred publication when an actor is still resolving an attack.
 
