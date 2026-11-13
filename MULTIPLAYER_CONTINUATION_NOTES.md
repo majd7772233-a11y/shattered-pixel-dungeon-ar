@@ -1,7 +1,9 @@
 # Multiplayer Continuation Notes — Phase 10 Entry
 
-**Verified code/test HEAD:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`  
-**Exact-head CI:** [43472587588 — all three jobs successful](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)  
+**Current branch HEAD:** `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (documentation-only descendant)  
+**Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`  
+**Latest exact-HEAD CI:** [43476033245 — all three jobs successful](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245)  
+**Exact gameplay/test baseline CI:** [43472587588 — all three jobs successful](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588)  
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`  
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`
 
@@ -9,7 +11,7 @@
 
 Phase 9 — Native buffs and timed effects — is complete for implementation and automated acceptance. Enabled effects are validated against the Java SPD engine. Unsupported callback branches remain fail-closed and are listed in ROADMAP.md.
 
-Phase 10 — Canonical Protocol Schema and One Typed Event Path — is next and remains OPEN. Do not start Phase 11 in parallel.
+Phase 10 — Canonical Protocol Schema and One Typed Event Path — is next and remains OPEN. Do not start Phase 11 in parallel. The exact Phase 10 entry checklist below is the next bounded work unit.
 
 ## Exact evidence
 

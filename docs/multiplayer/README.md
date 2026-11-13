@@ -37,8 +37,9 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-13
 
 - **Repo/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Verified gameplay/test HEAD:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
-- **Exact-head CI:** [43472587588 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588): Backend build + 682 executions across eight Vitest files, Android JVM tests + Debug APK, and 3 Workers-runtime tests against real Durable Object SQLite.
+- **Current branch HEAD:** `4e9f0b1f2f8a615f5112d23d198c4705e0eb1688` (documentation-only descendant of the gameplay/test baseline).
+- **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- **Latest exact-HEAD CI:** [43476033245 — success](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245): Backend build + 682 executions across eight Vitest files, Android JVM tests + Debug APK, and 3 Workers-runtime tests against real Durable Object SQLite. The exact gameplay/test baseline also passed [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
 - **Phase 9:** complete for implementation and automated acceptance. Enabled native effects use source-specific trusted validation; unsupported XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported consumable/Buff effects remain fail-closed.
 - **SpiritArrow:** strict intent → publisher authority → native Java result → atomic commit → sequenced EVENT_BATCH → stable-identity client reconciliation is covered. A dedicated JVM regression uses two clients with different local Mob Actor IDs.
 - **Publisher recovery:** durable generation handoff, pending-combat closure, persisted snapshot, lossless rebase and local Actor identity refresh are covered, including actual DO SQLite rollback/eviction tests.
