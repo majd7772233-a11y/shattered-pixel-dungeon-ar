@@ -172,7 +172,7 @@ File: .github/workflows/multiplayer-ci.yml
 - npm ci;
 - npm run build;
 - npm test;
-- npm test runs four static protocol/schema contracts before Vitest: native mutation metadata, SpiritArrow, publisher handoff, and Phase 10 Java/schema enum plus protocol-version parity.
+- npm test runs five static protocol/schema/routing contracts before Vitest: native mutation metadata, SpiritArrow, publisher handoff, Phase 10 Java/schema enum plus protocol-version parity, and Phase 10-B message/action route coverage.
 
 ### Android job
 - Temurin Java 17;
@@ -283,3 +283,35 @@ The server/scripts/validate-phase10-protocol-enums.mjs script is invoked by serv
 The check intentionally does not claim that every enum value has a Worker route or a complete client handler. Handler/direction/authorization/sequence parity and the single typed event path remain outstanding Phase 10 work.
 
 Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [CI 43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend TypeScript build, four static protocol/schema checks and 682 Vitest executions passed; Android JVM/Debug APK and three Durable Object SQLite runtime tests also passed.
+
+## 9. Phase 10-B — cross-layer routing and Worker admission
+
+### Worker message admission tests
+File: `server/src/protocol/message-admission.test.ts`
+
+The suite covers:
+- all eight explicit client-to-Worker message types classify as inbound;
+- all 17 remaining canonical outer message names classify as known but non-inbound;
+- unknown, empty and non-string message discriminators remain distinct;
+- valid ACTION envelope admission preserves requestId;
+- non-object envelopes, missing required fields and wrong optional field types reject;
+- negative/non-integer sequence and unsupported protocol versions reject;
+- known output/placeholder types return UNSUPPORTED_MESSAGE_TYPE;
+- unknown types return UNKNOWN_MESSAGE_TYPE;
+- malformed nested payloadJson returns MALFORMED_MESSAGE_PAYLOAD with safe request correlation.
+
+These tests exercise the pure admission helper called by `MatchRoomMessages.webSocketMessage`; they do not construct a live Durable Object WebSocket lifecycle. Worker dispatch still authenticates using the accepted socket attachment and overwrites the client senderId.
+
+### Static cross-layer routing guard
+File: `server/scripts/validate-phase10-routing.mjs`
+
+The script cross-checks:
+- Java MessageType, schema messageType and the disjoint Worker inbound/non-inbound classifications cover the exact same 25 names;
+- the eight listed inbound values exactly match the eight explicit Worker dispatch branches;
+- all 23 Java NetworkActionType values have a corresponding explicit Worker ACTION branch token;
+- the Worker action dispatcher still defaults to actionValid=false / INVALID_ACTION.
+
+This is source-route coverage, not proof that every action subcase is supported or that the Android event path has been consolidated. The Phase 10-B catalog records the per-action validators/authority boundaries and every outer message direction. Android parser strictness, producer-to-action parity (including the NetworkActionBridge fallback-to-WAIT), and behavior-specific RemotePlayerActionReceiver parity remain open.
+
+### Scope and exclusions
+No change was made to action validator semantics, native SPD gameplay, message sequencing, persistence/replay policy, or resync behavior. RemotePlayerActionReceiver remains in place; its PLAYER_LEFT native Actor/Mob cleanup is required until equivalent typed-path tests prove parity.

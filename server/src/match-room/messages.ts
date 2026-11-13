@@ -1,18 +1,54 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
+import { validateWorkerInboundEnvelope } from "../protocol/message-admission";
 import { MatchRoomActions } from "./actions";
 
 export class MatchRoomMessages extends MatchRoomActions {
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    if (typeof message !== "string") return;
+  private sendProtocolError(ws: WebSocket, requestId: string | undefined, error: string): void {
+    try {
+      ws.send(JSON.stringify({
+        protocolVersion: "1.0.0",
+        messageType: "ERROR",
+        ...(requestId ? { requestId } : {}),
+        sequence: this.currentSequence,
+        payloadJson: JSON.stringify({ error })
+      }));
+    } catch (_) {
+      // A disconnected socket cannot receive a rejection; no state was committed here.
+    }
+  }
 
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     let requestId: string | undefined;
     try {
-      const msg: NetworkMessage = JSON.parse(message);
-      requestId = typeof msg.requestId === "string" && msg.requestId.length > 0
-        ? msg.requestId : undefined;
       const session = ws.deserializeAttachment() as SessionData | null;
-      if (!session) return;
+      if (!session || typeof session.playerId !== "string" || session.playerId.length === 0
+          || typeof session.sessionToken !== "string" || session.sessionToken.length === 0) {
+        this.sendProtocolError(ws, undefined, "SESSION_REQUIRED");
+        return;
+      }
 
+      if (typeof message !== "string") {
+        this.sendProtocolError(ws, undefined, "UNSUPPORTED_FRAME_TYPE");
+        return;
+      }
+
+      let rawMessage: unknown;
+      try {
+        rawMessage = JSON.parse(message);
+      } catch (_) {
+        this.sendProtocolError(ws, undefined, "MALFORMED_MESSAGE_ENVELOPE");
+        return;
+      }
+
+      const admission = validateWorkerInboundEnvelope(rawMessage);
+      if (!admission.ok) {
+        this.sendProtocolError(ws, admission.requestId, admission.error);
+        return;
+      }
+
+      const msg: NetworkMessage = admission.message;
+      requestId = admission.requestId;
+      // Never trust senderId from the frame; the accepted WebSocket attachment is authoritative.
       msg.senderId = session.playerId;
 
       if (msg.messageType === "RECONNECT") {
@@ -76,14 +112,9 @@ export class MatchRoomMessages extends MatchRoomActions {
       } else if (msg.messageType === "CHAT") {
         this.broadcast(msg);
       }
-    } catch (e) {
-      ws.send(JSON.stringify({
-        protocolVersion: "1.0.0",
-        messageType: "ERROR",
-        ...(requestId ? { requestId } : {}),
-        sequence: this.currentSequence,
-        payloadJson: JSON.stringify({ error: (e as Error).message })
-      }));
+    } catch (_) {
+      // Do not leak implementation/runtime details through the wire error payload.
+      this.sendProtocolError(ws, requestId, "MESSAGE_DISPATCH_FAILED");
     }
   }
 }

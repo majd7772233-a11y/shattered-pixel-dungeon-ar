@@ -93,7 +93,7 @@ Critical implication: pushing to multiplayer-framework-core-14118577486727081892
 | Exact HEAD branch workflow | [41490481958](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41490481958) — success |
 | Previous gameplay SHA workflow | [41489794307](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41489794307) — success |
 | Phase 8 | Complete for implementation and automated acceptance |
-| Phase 9 | In progress; incomplete; acceptance remains open |
+| Phase 9 | Complete for implementation and automated acceptance under the explicit fail-closed support boundary |
 | Phases 10–23 | Open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device playtest | Not claimed |
@@ -184,7 +184,7 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
 - Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
 - Phase 9: complete for implementation and automated acceptance. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff effects remain fail-closed.
-- Phase 10: next and OPEN. The protocol contains 25 outer names including LEVEL_PUBLISHER_CHANGED; typed-path consolidation and legacy receiver migration remain Phase 10 work.
+- Phase 10: active and OPEN. Slice 10-A enum/version parity is complete; slice 10-B cross-layer route inventory and fail-closed Worker ingress admission are implemented. Android parser/producer parity, one typed event path and parity-tested legacy receiver migration remain.
 - CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
 
@@ -194,3 +194,9 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 The backend npm test command now invokes server/scripts/validate-phase10-protocol-enums.mjs before Vitest. The script compares Java MessageType and NetworkActionType to the ordered schema enums, checks the 1.0.0 protocol version/default against NetworkMessage.java, and verifies that the existing nativeMutationAction allowlist remains a subset of declared Java actions. It is a static contract guard, not proof that every message/action has a Worker handler or an end-to-end client path.
 
 Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [GitHub Actions run 43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend build and tests, Android JVM/debug-APK compilation, and Durable Object SQLite rollback/eviction tests all succeeded.
+
+## Phase 10-B — outer-message routing admission
+
+Backend `npm test` now runs five static guards before Vitest. The added `validate-phase10-routing.mjs` compares the exact Java/schema 25-message vocabulary with the Worker’s eight explicit inbound and 17 known non-inbound classifications, checks that the route list matches the Worker dispatch branches, checks explicit Worker branch tokens for all 23 actions, and protects the fail-closed INVALID_ACTION default. `message-admission.test.ts` covers malformed envelopes, optional field types, version mismatch, nested malformed payloads, unknown messages and known non-inbound messages.
+
+The gate is part of the ordinary `npm test` path, not a separate CI-only check. The Android workflow continues to run `./gradlew test assembleDebug --no-daemon`; this Phase 10-B slice did not change Java code. Exact-head Actions status must be checked after every resulting commit. A pure admission-helper test is not a deployed Durable Object WebSocket lifecycle test.

@@ -1,40 +1,61 @@
-# Multiplayer Continuation Notes — Phase 10 (slice 10-A complete)
+# Multiplayer Continuation Notes — Phase 10-B (cross-layer routing and Worker ingress)
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
-**Phase 10-A implementation SHA:** d8938190960af64d6efc70f4625a7411bfa3b7de  
-**Exact implementation CI:** [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695)
+**Starting HEAD for this slice:** fa5f7937eb55145345230de7930be8f860b74694  
+**Exact starting-HEAD CI:** [43488066751 — all three required checks passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43488066751)  
+**10-B implementation SHA / exact-head CI:** to be filled after the implementation commit and workflow verification.
 
-## Verified result
+## Verified starting point
 
-- All 21 tracked Markdown files were read at the starting HEAD 032453bf31f722fceb41b9d164987a7f0763502f before code changes. Start-HEAD CI [43479458418](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43479458418) passed.
-- protocol/schema.json now contains the complete 23-value definitions.NetworkActionType, in the exact order of Java NetworkActionType.
-- The 25-value schema messageType enum is aligned in exact value and order with Java MessageType.
-- server/scripts/validate-phase10-protocol-enums.mjs compares both ordered enums, checks NetworkMessage.PROTOCOL_VERSION against schema.version and protocolVersion.default, and ensures the narrower nativeMutationAction list is a subset of the canonical action vocabulary.
-- The new guard is part of backend npm test. CI reported 25 message types, 23 action types, protocol 1.0.0, TypeScript build success and 682 Vitest executions (mirrored TS/JS executions, not unique-source count). Android JVM/Debug APK and three Durable Object SQLite tests also passed.
-- The first two CI attempts exposed an invalid regex in the guard and a genuine ordering mismatch for COMBAT_REQUEST; both were corrected. Final exact-head CI is green.
+- The live branch head exactly matched fa5f7937eb55145345230de7930be8f860b74694 before any write.
+- All 21 Markdown files present in that starting commit were read, including GPT.md, ROADMAP.md and this continuation note.
+- Starting-head CI passed Backend typecheck/tests, Android debug APK compile and Durable Object SQLite rollback/eviction.
+- Phase 10-A was already complete; do not repeat its enum/schema changes.
 
-## Scope boundary
+## Phase 10-B work completed in this slice
 
-Slice 10-A only establishes canonical enum/version vocabulary and static parity. It did not change MessageRouter, RemotePlayerActionReceiver, Worker dispatch, gameplay behavior, or event sequence/replay handling. Enum presence does not authorize execution or prove a handler exists.
+### Cross-layer message/action inventory
+- A source-backed matrix was added to docs/multiplayer/PROTOCOL_MESSAGE_CATALOG.md for all 25 outer messages and all 23 NetworkActionType values.
+- Eight outer messages have explicit Worker input routes: RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT.
+- The other 17 canonical outer names are known non-inbound at this Worker boundary. This intentionally includes server outputs and declared-but-unimplemented placeholders; they are not all "server-only".
+- Each of the 23 action names is matched to a Worker ACTION branch token. The catalog records relevant source producers, validators, authority/persistence/sequence, follow-up LEVEL_DATA requirements and Android handling. Branch existence does not imply all item/effect subcases are enabled.
+- The Android outer route was traced: MessageRouter explicitly handles SESSION, SNAPSHOT, LEVEL_PUBLISHER_CHANGED, EVENT_BATCH, COMBAT_REQUEST, ACTION_ACCEPTED, ACK, MATCH_END and ERROR. Its default route still points to RemotePlayerActionReceiver.
 
-Phase 10 as a whole remains OPEN. Do not start Phase 11.
+### Worker fail-closed ingress
+- Added server/src/protocol/message-admission.ts and message-admission.test.ts.
+- MatchRoomMessages.webSocketMessage now validates attachment/session, text frame, JSON object envelope, required/optional field types, exact protocol version 1.0.0, known inbound message type and syntactically valid nested payloadJson before dispatch.
+- Unknown and known non-inbound types return UNKNOWN_MESSAGE_TYPE / UNSUPPORTED_MESSAGE_TYPE. Invalid envelope, protocol, frame or nested JSON have stable error codes; a safely parsed requestId is echoed.
+- Unexpected dispatch exceptions use MESSAGE_DISPATCH_FAILED, not raw runtime details. Client senderId is overwritten from the accepted socket attachment only after admission.
+- Added server/scripts/validate-phase10-routing.mjs to npm test. It checks Java/schema coverage for all 25 message types, exact eight Worker route branches, all 23 Worker ACTION branch tokens, and the unchanged fail-closed INVALID_ACTION default.
 
-## Next bounded slice — Phase 10-B
+### Deliberately untouched
+- No action validator semantics, native Java SPD gameplay, MessageRouter route, event ordering, sequence/persistence, replay/idempotency, reconnect or resync algorithm changed.
+- RemotePlayerActionReceiver was not deleted, moved or rewritten. It still contains PLAYER_LEFT Actor/Mob cleanup and legacy event/snapshot handling; no migration is safe before equivalence tests.
+- Android NetworkMessage.parseJson was not hardened in this slice; it still defaults some missing fields and accepts object/array payload values beyond the schema's string envelope.
+- NetworkActionBridge still maps only a subset of HeroAction values and falls back to WAIT for an unmapped HeroAction. This is a client producer fail-closed gap, not proof that those actions are supported.
 
-Map each of the 25 outer messages and 23 actions across:
-1. sender/direction and envelope/body schema;
-2. exact Worker inbound branch or explicit server-originated-only / unsupported behavior;
-3. validator, authorization, persistence and sequence behavior;
-4. Java sender/serializer and Android receiver/handler;
-5. malformed or unsupported response and relevant regression test.
+## Phase status
 
-Start with a source-grounded matrix and a few highest-risk gaps. Do not migrate the legacy receiver until its behavior is characterized and equivalent parity tests exist. Do not attempt the entire typed event path in one slice.
+Phase 10 as a whole remains OPEN. 10-A enum/version parity and the bounded 10-B route-matrix/Worker-ingress slice are implemented. Do not start Phase 11. Exact CI for the 10-B implementation SHA must be checked on the exact resulting HEAD before declaring this slice verified.
+
+## Next bounded slice — Phase 10-C (Android envelope and producer parity)
+
+Start only after re-reading all Markdown files and verifying the live branch HEAD/CI. Scope:
+
+1. Harden/test Java NetworkMessage parsing against missing required fields, wrong optional field types, mismatched protocol version, malformed nested payload and unknown MessageType, while preserving documented backward-compatibility only when it is explicitly needed.
+2. Trace all NetworkActionType producers and correct the NetworkActionBridge unmapped-HeroAction fallback so an unknown native HeroAction cannot silently become WAIT. Add focused JVM regressions for mapped and rejected actions.
+3. Build behavior-specific parity tests for MessageRouter and RemotePlayerActionReceiver. Preserve PLAYER_LEFT native Actor/Mob target cleanup and every confirmed legacy behavior. Do not move/delete the receiver until equivalence is proven.
+4. Keep the Worker routing matrix and routing-guard test synchronized with any verified changes.
+5. Do not redesign replay/resync or start Phase 11; do not attempt the entire Phase 10 typed-path consolidation in one slice.
 
 ## Rules for the next conversation
 
-- Re-read all Markdown files from the live branch HEAD, then read the latest GPT.md and ROADMAP.md checkpoints.
-- Verify the live branch SHA and exact-head Actions run before any write; documentation synchronization may have added a descendant after implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de.
-- Work only on multiplayer-framework-core-14118577486727081892; do not create a branch, merge, or touch master/main.
-- Keep Java/SPD as gameplay truth, preserve fail-closed behavior, and do not broaden support merely because an enum value exists.
-- Work only on the next bounded Phase 10 slice, update docs with each change, run exact-head CI, then stop for the user's direction.
+- Re-read every Markdown file in the live branch, including newly added files; read GPT.md, ROADMAP.md and PROJECT_EXECUTION_PROTOCOL_AR.md fully.
+- Verify the only permitted branch and live HEAD; compare exact-head CI before editing.
+- Do not repeat Phase 10-A or this completed 10-B work.
+- Do not create branches, work on master/main, merge, or open a PR.
+- Keep Java/SPD as gameplay source of truth and preserve fail-closed validation.
+- Run backend build/tests and Android JVM/debug APK tests; verify CI on the exact final HEAD.
+- Update all affected docs with the implementation, record the next continuation point and stop.
+

@@ -1,4 +1,4 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-13 (PHASE 9 COMPLETE; PHASE 10 IN PROGRESS — 10-A COMPLETE)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-13 (PHASE 9 COMPLETE; PHASE 10 IN PROGRESS — 10-A AND 10-B IMPLEMENTED)
 
 - **Repository / branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`. This is the only write target. Never create a branch, work on master/main or merge this branch.
 - **Verified gameplay/test baseline:** `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
@@ -11,11 +11,11 @@
 - **Publisher handoff/rebase:** durable generation advance, valid persisted state, pending-combat cancellation, generation notification and persisted snapshot delivery. Replacement must pass lossless rebase validating shared Mob IDs/bundles plus refreshed Hero/RemoteHero/Mob Actor IDs, LifeLink and SnipersMark references before shared actions resume.
 - **Timed effects:** enabled effects are validated source-specifically against native Java results; SQL/event/sequence/outbound messages are atomic. Poison/LifeLink, shield priority, concurrent timers, approved consumables, XP/reward and base MonkEnergy boundaries have positive/negative coverage.
 - **Explicit fail-closed exclusions:** XP level-up/`Hero.updateHT()`/`onHeroGainExp`; advanced Monk Unencumbered Spirit/UnarmedAbilityTracker; RemoteHero/player LifeLink; unsupported scroll/wand/consumable/Buff callbacks; SpiritArrow SPEED volleys and non-Mob targets.
-- **Phase status:** Phases 1–9 complete for implementation and automated acceptance. Phase 10 is in progress and remains OPEN; bounded slice 10-A is complete. Phases 11–23 remain open.
+- **Phase status:** Phases 1–9 complete for implementation and automated acceptance. Phase 10 is in progress and remains OPEN; bounded slices 10-A (enum/version parity) and 10-B (cross-layer route inventory + Worker ingress admission) are implemented. Phases 11–23 remain open.
 - **Phase 10-A source/test SHA:** `d8938190960af64d6efc70f4625a7411bfa3b7de`; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). It adds the canonical 23-value `NetworkActionType` schema definition and a static guard for both ordered Java enums, protocol version `1.0.0`, and the narrower native-mutation allowlist. Backend build + 682 Vitest executions, Android JVM/Debug APK and 3 Durable Object SQLite tests passed.
-- **Phase 10-A boundary:** no changes to `MessageRouter`, `RemotePlayerActionReceiver`, Worker dispatch or gameplay handlers. The registry is vocabulary parity, not proof of runtime support. Next is bounded slice 10-B: map all outer message/action directions to Worker routes, validators/authorization, sequence/persistence semantics and Android handlers.
+- **Phase 10-B result:** source-backed matrix covers all 25 outer messages and 23 actions, differentiates eight actual Worker inbound routes from 17 known non-inbound names, records validators/authority/sequence/persistence and Android routing, and adds a fail-closed Worker envelope-admission helper. Static routing guard plus focused Vitest tests are wired into npm test; exact-head CI is pending the implementation commit.
 - **Evidence limits:** DO SQLite tests use local Workers runtime, not deployed production; projectile test is headless, not rendered; no physical two-device match. Phases 22–23 remain the release checks.
-- **Phase 10 entry:** reconcile all message/action enums, schemas, Worker routes and Java handlers; consolidate event application through one typed path; characterize/migrate `RemotePlayerActionReceiver` with parity tests; define malformed/unknown/unsupported outcomes. Keep Phase 11 out of scope.
+- **Phase 10 remaining:** strict Android parser/version/required-field parity; inspect producer mapping and remove the unknown-HeroAction-to-WAIT fallback only with appropriate native tests; establish behavior-specific parity tests before any `RemotePlayerActionReceiver` migration; then move toward one typed event path. Preserve the PLAYER_LEFT Actor/Mob cleanup. Keep Phase 11 replay/resync redesign out of scope.
 
 **Source-of-truth hierarchy:** `PROJECT_EXECUTION_PROTOCOL_AR.md` governs workflow; `ROADMAP.md` governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; `docs/multiplayer/` is the maintained architecture/test reference.
 
@@ -26,6 +26,20 @@
 - Final exact-head CI `43485367695` passed Backend, Android and Durable Object SQLite jobs. Backend output confirmed 25 message types, 23 action types, protocol 1.0.0 and 682 Vitest executions across eight files (mirrored TS/JS outputs are not unique source scenarios).
 - The initial CI exposed two real defects in the new contract guard: an invalid comment-stripping regex and a message enum order mismatch. Both were fixed without weakening exact ordered parity; the final run is green.
 - Remaining: comprehensive message/action routing matrix, inbound unsupported-message behavior, typed client event path, and parity-tested `RemotePlayerActionReceiver` migration. Keep Phase 11 replay/resync redesign out of scope.
+
+
+## Phase 10 execution log — 2026-11-13 (bounded slice 10-B — routing matrix and Worker ingress)
+
+- Start HEAD: `fa5f7937eb55145345230de7930be8f860b74694`; branch was re-fetched and exactly matched the documented HEAD before changes. The exact start-HEAD CI run `43488066751` passed Backend typecheck/tests, Android debug APK compile and Durable Object SQLite rollback/eviction.
+- Read all 21 Markdown files in the live branch before editing, including GPT.md, ROADMAP.md and MULTIPLAYER_CONTINUATION_NOTES.md.
+- Audited all 25 outer MessageType values and all 23 NetworkActionType values against Java enums, protocol/schema.json, Worker route/action branches, the native Java senders/publishers, MultiplayerManager, MessageRouter and RemotePlayerActionReceiver.
+- Confirmed eight explicit Worker inbound types; the other 17 canonical outer names are classified as known but non-inbound (a mix of server outputs and unimplemented/unused message declarations). Confirmed all 23 actions have explicit Worker ACTION branch tokens, while per-action validators and follow-up native LEVEL_DATA/authority behavior remain distinct.
+- Added `server/src/protocol/message-admission.ts` and `message-admission.test.ts`; Worker validates authenticated attachment, text frame, envelope fields/types, protocol 1.0.0, inbound classification and nested JSON before dispatch. Rejections have stable ERROR codes and safely echo a parsed requestId. The client-provided senderId remains overwritten by the socket attachment.
+- Added `server/scripts/validate-phase10-routing.mjs` to npm test. It compares the 25-value Java/schema vocabulary with inbound/non-inbound classification, the eight exact route branches and all 23 Worker ACTION branches, while retaining the INVALID_ACTION fail-closed default.
+- Updated protocol catalog, server validation/storage guide, test matrix, build/CI guide, multiplayer README and active roadmap/checkpoint/continuation docs. The catalog explicitly documents all 25 message directions and 23 action validation paths.
+- No Java/gameplay action validator, message sequence, persistence, replay/resync behavior, MessageRouter route or RemotePlayerActionReceiver code was changed. RemotePlayerActionReceiver remains necessary for PLAYER_LEFT Actor/Mob cleanup and legacy handling; do not move/delete it without parity tests.
+- Known remaining gap: NetworkActionBridge maps only a subset of HeroAction classes and falls back to WAIT for an unmapped action. This is not proof that the original action is supported; test/fix this in a dedicated client-producer slice.
+- Exact CI for the 10-B implementation commit: pending; record the resulting SHA and Actions run after the commit. Phase 10 remains OPEN; Phase 11 is not started.
 
 ## Source refactor checkpoint — Stage 3 complete (2026-11-08; exact-HEAD CI verified)
 

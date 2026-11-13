@@ -466,3 +466,43 @@ The 20 relocated MatchRoom method bodies and the four large WebSocket branch bod
 - The 200 original top-level declarations before `MatchRoom` were reconciled against the 15 destination modules; normalized declaration-text comparison found 200/200 matches and no text differences. All 118 original validator/protocol/helper exports plus the named `MatchRoom` export remain available.
 - The final class remains uniquely defined in `match-room/index.ts`. `wrangler.jsonc` still uses `src/index.ts`, binding `MATCH_ROOM`, class name `MatchRoom` and migration tag `v1`. No protocol/schema or Java source changes were needed.
 - This is source and automated-test evidence only; it is not a live Worker deployment, Durable Object runtime smoke test or physical multiplayer test.
+
+
+---
+
+## 8. Phase 10-B WebSocket ingress admission
+
+**Live implementation:** `server/src/match-room/messages.ts` delegates the outer envelope to `server/src/protocol/message-admission.ts::validateWorkerInboundEnvelope` before any request handler is called.
+
+The Worker now distinguishes three message-type classes:
+
+- Eight implemented client inputs: RECONNECT, LEVEL_DATA, LEVEL_READY, ACTION, READY, RESYNC, PING and CHAT.
+- Seventeen known canonical names that are not client-to-Worker routes. This includes server output types and declared-but-unimplemented placeholders; the names are deliberately not labelled all "server-only".
+- Unknown names outside the canonical Java/schema vocabulary.
+
+Admission is fail-closed. It requires an authenticated WebSocket attachment with non-empty playerId/sessionToken, a text frame, a JSON object envelope, required `protocolVersion/messageType/payloadJson`, correct optional requestId/sequence/senderId types, exact protocol version 1.0.0, a known implemented inbound type and syntactically valid JSON inside payloadJson. The Worker overwrites senderId only after this check, using the accepted socket attachment.
+
+| Rejection | Wire error code | State effect |
+|---|---|---|
+| Missing/invalid attachment | SESSION_REQUIRED | No request is dispatched |
+| Binary frame | UNSUPPORTED_FRAME_TYPE | No request is dispatched |
+| Invalid outer JSON | MALFORMED_MESSAGE_ENVELOPE | No request is dispatched |
+| Non-object/missing/wrong-typed fields | INVALID_MESSAGE_ENVELOPE | No request is dispatched |
+| Protocol mismatch | UNSUPPORTED_PROTOCOL_VERSION | No request is dispatched |
+| Unknown message type | UNKNOWN_MESSAGE_TYPE | No request is dispatched |
+| Known but non-inbound type | UNSUPPORTED_MESSAGE_TYPE | No request is dispatched |
+| Invalid nested payload JSON | MALFORMED_MESSAGE_PAYLOAD | No request is dispatched |
+| Unexpected handler exception | MESSAGE_DISPATCH_FAILED | Error detail is not exposed; existing handler transaction/error behavior is retained |
+
+When a non-empty requestId was parsed safely, the rejection echoes it; each error includes the current room sequence. Sending an error to a closed WebSocket is best-effort and does not affect room state.
+
+This is an envelope-level gate only. It does not replace domain validators, change who may publish a level or resolve combat, loosen native action admission, or introduce a new action. The existing `handleActionInTransaction` still starts with `actionValid = false` and `INVALID_ACTION`; all 23 canonical action names are checked against explicit Worker branch tokens by `server/scripts/validate-phase10-routing.mjs`.
+
+### 8.1 Sequence and persistence remain unchanged
+
+- Valid ACTIONs retain their existing transaction/deduplication/event sequence path: accepted actions persist `processed_actions` and `events`, increment sequence only after validation, return ACTION_ACCEPTED and broadcast the accepted event.
+- LEVEL_DATA remains publisher/native-snapshot and action-bound mutation ingress; existing authority, stable identity, snapshot completeness, native mutation lock and action-specific validators remain authoritative.
+- LEVEL_READY validates the per-player destination state and updates the transition-ready record; the existing room barrier still decides when the destination can be committed.
+- READY, PING and CHAT retain their existing lightweight SQL/broadcast behavior; RESYNC and RECONNECT retain their current SNAPSHOT/EVENT_BATCH paths.
+
+No replay or resync algorithm was modified by the admission gate. Client parser/version parity and a single typed Android event path remain Phase 10 work.
