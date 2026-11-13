@@ -1,6 +1,6 @@
 # Multiplayer Protocol and Message Catalog
 
-> Current branch HEAD: 7a6e091973051d82cb3cdf749553dd07d4ab0fce; protocol/gameplay source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7 (documentation-only descendant). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 will complete the one typed event path; enum/schema parity alone does not mean consolidation is complete.
+> Protocol/gameplay source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 will complete the one typed event path; enum/schema parity alone does not mean consolidation is complete. Verify the live branch HEAD and its exact-head Actions run before editing.
 
 ## 1. Protocol version and envelope
 
@@ -221,7 +221,7 @@ The static contract is checked by `server/scripts/validate-spirit-arrow-schema.m
 
 **Historical 9-C failure snapshot — 2026-11-12; superseded by Phase 9 completion on 2026-11-13.** At gameplay HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, [CI 43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) reported 654 passed / 4 failed mirrored Vitest executions. Those failures were subsequently resolved: publisher result commit and requester EVENT_BATCH are now covered, the forged-position negative test asserts the correlated ERROR, and Android accepted-event reconciliation is tested on two client worlds with different local Mob Actor IDs.
 
-The current gameplay/test baseline is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; current branch HEAD `7a6e091973051d82cb3cdf749553dd07d4ab0fce` changes documentation only. Exact current HEAD [CI 43476033245](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245) passed Backend 682/682 executions, Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. The code/test baseline also passed [CI 43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). Phase 9's current support boundary and exclusions are recorded in `ROADMAP.md` and `TEST_MATRIX.md`.
+The gameplay/test baseline is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). The source-level acceptance includes Backend 682/682 executions, Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. Phase 9's support boundary and exclusions are recorded in `ROADMAP.md` and `TEST_MATRIX.md`; verify any later documentation-only branch commits against their own Actions run.
 
 
 

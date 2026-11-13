@@ -196,7 +196,7 @@ The requester receives a sequenced EVENT_BATCH. Android resolves the stable serv
 
 Missing/forged positions, wrong publisher/mark/target identity, stale request/generation, invalid Bow and unsupported SPEED/non-Mob branches remain rejected. Transaction rollback returns correlated errors without leaking ACTION_ACCEPTED/EVENT_BATCH. Publisher handoff requires a lossless rebase of fresh local Actor IDs; remote cross-device LifeLink/SnipersMark references that cannot map to the exact stable Mob remain fail-closed.
 
-The gameplay/test baseline passed [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588); current documentation HEAD `7a6e091973051d82cb3cdf749553dd07d4ab0fce` passed the same Android JVM/Debug APK job plus Backend and Workers-runtime SQLite jobs in [43476033245](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245). No rendered animation or physical two-device match is claimed.
+The gameplay/test baseline passed [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588), including Android JVM/Debug APK, Backend and Workers-runtime SQLite jobs. No rendered animation or physical two-device match is claimed; every later documentation-only commit must still receive its own exact-head CI check.
 ## 5. RemoteHero and RemotePlayer
 
 Sources:

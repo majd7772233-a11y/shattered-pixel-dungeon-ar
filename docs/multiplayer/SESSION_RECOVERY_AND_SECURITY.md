@@ -1,6 +1,6 @@
 # Multiplayer Session Recovery and Security Reference
 
-> Current branch HEAD: 7a6e091973051d82cb3cdf749553dd07d4ab0fce; gameplay/source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7 (documentation-only descendant). This page records observed controls and explicit open risks; it is not a formal security certification.
+> Gameplay/source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). This page records observed controls and explicit open risks; it is not a formal security certification. Verify the live branch HEAD and its matching Actions run before changes.
 
 ## 1. Trust model
 
