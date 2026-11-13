@@ -68,6 +68,35 @@
       ],
       "description": "Native item action. READ is currently accepted only for ScrollOfRecharging after exact Hero/buff validation; all other scroll reads remain fail-closed."
     },
+    "NetworkActionType": {
+      "type": "string",
+      "enum": [
+        "MOVE",
+        "ATTACK",
+        "PICKUP",
+        "DROP",
+        "THROW",
+        "EQUIP",
+        "UNEQUIP",
+        "OPEN_CHEST",
+        "BUY",
+        "BUYBACK",
+        "SELL",
+        "INTERACT",
+        "UNLOCK",
+        "LVL_TRANSITION",
+        "MINE",
+        "ALCHEMY",
+        "USE_ITEM",
+        "USE_ABILITY",
+        "WAIT",
+        "REVIVE",
+        "SYNC_HERO_STATE",
+        "SYNC_MOB_STATE",
+        "SYNC_PLAYER_COMBAT"
+      ],
+      "description": "Canonical wire vocabulary matching the Java NetworkActionType enum. Declaring a value does not grant Worker acceptance; each action still requires an explicit server validator/handler and a typed client path."
+    },
     "NativeMobEntity": {
       "type": "object",
       "required": [
