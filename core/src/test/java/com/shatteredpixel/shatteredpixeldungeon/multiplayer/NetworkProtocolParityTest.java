@@ -80,8 +80,8 @@ public class NetworkProtocolParityTest {
     @Test
     public void acceptsIntegralDecimalSequenceExactlyLikeWorkerSafeIntegerAdmission() {
         NetworkMessage message = NetworkMessage.parseJson(
-                "{\\"protocolVersion\\":\\"1.0.0\\",\\"messageType\\":\\"PING\\","
-                        + "\\"sequence\\":1.0,\\"payloadJson\\":\\"{}\\"}");
+                "{\"protocolVersion\":\"1.0.0\",\"messageType\":\"PING\",
+                        + "\"sequence\":1.0,\"payloadJson\":\"{}\"}");
         Assert.assertEquals(MessageType.PING, message.messageType);
         Assert.assertEquals(1L, message.sequence);
     }
@@ -121,17 +121,17 @@ public class NetworkProtocolParityTest {
 
     @Test
     public void legacyBluetoothEnvelopeIsAcceptedOnlyThroughBluetoothParser() {
-        String legacy = "{\\"messageType\\":\\"CHAT\\",\\"payloadJson\\":{\\"text\\":\\"old-peer\\"}}";
+        String legacy = "{\"messageType\":\"CHAT\",\"payloadJson\":{\"text\":\"old-peer\"}}";
         assertError(legacy, "INVALID_MESSAGE_ENVELOPE");
 
         NetworkMessage received = NetworkMessage.parseBluetoothJson(legacy);
         Assert.assertEquals(MessageType.CHAT, received.messageType);
         Assert.assertEquals(NetworkMessage.PROTOCOL_VERSION, received.protocolVersion);
-        Assert.assertEquals("{\\"text\\":\\"old-peer\\"}", received.payloadJson);
+        Assert.assertEquals("{\"text\":\"old-peer\"}", received.payloadJson);
 
         NetworkMessage extraField = NetworkMessage.parseBluetoothJson(
-                "{\\"messageType\\":\\"CHAT\\",\\"senderId\\":\\"old-peer\\","
-                        + "\\"payloadJson\\":{\\"text\\":\\"old-peer\\"}}");
+                "{\"messageType\":\"CHAT\",\"senderId\":\"old-peer\",
+                        + "\"payloadJson\":{\"text\":\"old-peer\"}}");
         Assert.assertEquals(MessageType.ERROR, extraField.messageType);
     }
 
