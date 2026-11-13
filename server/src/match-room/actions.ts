@@ -713,22 +713,30 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         if (isPublisherRebase) {
           const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
             "heroState:" + session.playerId).toArray()[0];
-          const connectedRows = this.sql.exec(
+          const playerRows = this.sql.exec(
             "SELECT player_id FROM players ORDER BY player_id ASC").toArray();
-          const connectedHeroStates: PublisherRebaseHeroState[] = [];
-          for (const player of connectedRows) {
+          const playerHeroStates: PublisherRebaseHeroState[] = [];
+          let publisherHeroStateSetComplete = true;
+          for (const player of playerRows) {
             const playerId = String(player.player_id || "");
-            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
-              "heroState:" + playerId).toArray()[0];
-            if (!playerId || !heroRow || typeof heroRow.value !== "string") {
-              connectedHeroStates.length = 0;
+            if (!playerId) {
+              publisherHeroStateSetComplete = false;
               break;
             }
-            connectedHeroStates.push({ playerId, heroStateJson: String(heroRow.value) });
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+              "heroState:" + playerId).toArray()[0];
+            if (!heroRow || typeof heroRow.value !== "string") {
+              // A player can join before creating a Hero. Such an empty RemoteHero has no
+              // saved Buff references; its freshly assigned Actor ID is accepted as an extra
+              // process-local ID, while every persisted Hero/Buff identity is checked below.
+              if (playerId === session.playerId) publisherHeroStateSetComplete = false;
+              continue;
+            }
+            playerHeroStates.push({ playerId, heroStateJson: String(heroRow.value) });
           }
-          if (!trustedHeroRow || connectedHeroStates.length !== connectedRows.length
+          if (!trustedHeroRow || !publisherHeroStateSetComplete
               || !isValidNativePublisherRebase(previousSnapshot, level, session.playerId,
-                trustedHeroRow.value, connectedHeroStates)) {
+                trustedHeroRow.value, playerHeroStates)) {
             ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
               sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_PUBLISHER_REBASE_SNAPSHOT" }) }));
             return;
