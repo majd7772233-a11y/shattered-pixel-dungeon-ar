@@ -1,6 +1,6 @@
 # Multiplayer Protocol and Message Catalog
 
-> Baseline: branch commit eb2075b3f09ca4779773140b7e6539a6655f6824. This catalog reconciles protocol/schema.json, Java enums and serialization, client routing, and explicit Worker routes. It distinguishes envelope messages from event types carried inside EVENT_BATCH.
+> Current protocol source/test baseline: gameplay/test HEAD bc6c46b03fee040ff20311adb473b19ff78e9bb7. This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 will complete the one typed event path; enum/schema parity alone does not mean consolidation is complete.
 
 ## 1. Protocol version and envelope
 
@@ -23,7 +23,7 @@ NetworkMessage.java defaults messageType to ACTION, parses the outer JSON, reads
 
 ## 2. Outer message-type enum
 
-The Java MessageType enum and schema messageType enum both contain these 24 values at the baseline:
+The Java MessageType enum and schema messageType enum currently contain **25 outer message names**:
 
 | Message type | Intended direction / observed use |
 |---|---|
@@ -39,6 +39,7 @@ The Java MessageType enum and schema messageType enum both contain these 24 valu
 | ACTION | Client → server gameplay request; payload includes action/action data and native state when required |
 | LEVEL_DATA | Client → server native level snapshot or accepted native mutation snapshot |
 | LEVEL_READY | Client → server destination-floor readiness report |
+| LEVEL_PUBLISHER_CHANGED | Server → room peers after assignment/handoff; carries publisherId (or null), monotonic term and reason |
 | ACTION_ACCEPTED | Server → requesting client after an accepted action; includes requestId and sequence |
 | COMBAT_REQUEST | Server/client native authority request path supported by Java routing; no explicit inbound Worker branch at the baseline |
 | EVENT_BATCH | Server → clients with ordered event records; message.sequence accompanies payload records |
@@ -53,6 +54,14 @@ The Java MessageType enum and schema messageType enum both contain these 24 valu
 | ERROR | Server → client rejection or invalid-input response |
 
 The following distinction is essential: a message being present in both enum and JSON Schema proves that a name is recognized by the contract, not that the Worker handles it in both directions or that a client path is complete.
+
+### LEVEL_PUBLISHER_CHANGED and NativeLevelSnapshot.publisherRebase
+
+`LEVEL_PUBLISHER_CHANGED` is a server-authored control message. Its payload contains `publisherId` (or null when no eligible replacement exists), a durable monotonic `term`, and the handoff/assignment `reason`. A client accepts only a non-stale term; an older message cannot restore obsolete authority, and a different owner under the same term is not accepted.
+
+A replacement publisher's full `LEVEL_DATA` snapshot may carry `publisherRebase` and `publisherRebaseTerm`. This refreshes process-local Hero/Mob/RemoteHero Actor IDs while preserving shared world state, stable Mob entity IDs and native bundles. The Worker validates LifeLink and SnipersMark references against the trusted stable Mob mapping and does not open the publisher action gate until the current generation is committed. Invalid/stale rebase stays fail-closed.
+
+These fields support Phase 9 authority handoff. Phase 10 still owns full enum/schema/handler parity and consolidation of the legacy client default route.
 
 ## 3. Explicit Worker inbound routes
 
