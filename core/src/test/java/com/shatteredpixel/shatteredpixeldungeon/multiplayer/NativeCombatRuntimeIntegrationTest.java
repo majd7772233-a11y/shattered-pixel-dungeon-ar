@@ -1089,6 +1089,32 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void defaultRouterRetainsLegacyRemoteHeroJoinAndStateUpdates() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("legacy-remote-route", "local-player", new TestTransport());
+
+        NetworkMessage joined = new NetworkMessage(MessageType.PLAYER_JOINED,
+                "{\"event\":\"PLAYER_MOVED\",\"to\":17,\"hp\":6}");
+        joined.senderId = "legacy-remote-player";
+        MessageRouter.routeMessage(joined);
+
+        CountDownLatch routed = new CountDownLatch(1);
+        Game.runOnRenderThread(routed::countDown);
+        Assert.assertTrue("Default route must deliver legacy player updates on the render thread",
+                routed.await(10, TimeUnit.SECONDS));
+
+        RemotePlayer remote = manager.getRemotePlayer("legacy-remote-player");
+        Assert.assertNotNull("Legacy receiver still creates the remote-player registry entry", remote);
+        Assert.assertNotNull("Legacy receiver still creates the native RemoteHero replica", remote.heroInstance);
+        Assert.assertEquals(17, remote.pos);
+        Assert.assertEquals(17, remote.heroInstance.pos);
+        Assert.assertEquals(6, remote.hp);
+        Assert.assertEquals(6, remote.heroInstance.HP);
+        Assert.assertSame("RemoteHero remains registered in the native Actor scheduler",
+                remote.heroInstance, Actor.findById(remote.heroInstance.id()));
+    }
+
+    @Test
     public void eventBatchUsesOneTypedStatePathAndLegacyReceiverRefusesSecondApplication() throws Exception {
         TestTransport transport = new TestTransport();
         MultiplayerManager manager = MultiplayerManager.getInstance();
