@@ -64,6 +64,7 @@ Workflow name: Multiplayer Branch Validation.
 |---|---|---|---|
 | server — Backend typecheck and tests | Ubuntu, Node 20 | npm ci, npm run build, npm test in server/ | Backend typecheck, static schema check, Vitest suite |
 | android — Android debug APK compile | Ubuntu, Temurin Java 17 | Enable wrapper, ./gradlew test assembleDebug --no-daemon | JVM tests and debug APK compilation |
+| durable-object-sqlite — Durable Object SQLite rollback and eviction | Ubuntu, Node + Workers runtime test runner | Run server/src/match-room/durable-object-sqlite.integration.do.mjs | Real DO SQLite commit/rollback, eviction/reconstruction and publisher-handoff evidence under local Workers runtime |
 
 Concurrency group is branch/ref-scoped and cancels an older in-progress run when a newer run for the same ref starts. Permissions are read-only contents: read.
 
@@ -171,17 +172,15 @@ The source-preservation audit reconciled all 200 original top-level declarations
 
 Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: the Backend typecheck/build and full tests (including schema validation) succeeded, and Android JVM tests plus debug APK compilation succeeded. Backend reported 568 executions across six test files; generated/mirrored TypeScript and JavaScript outputs mean this is not 568 unique source scenarios. A green workflow is not a live Worker deployment or a physical-device multiplayer result. The deploy workflow remains scoped to `master`/`main` pushes or manual dispatch.
 
-## 9. Current active branch checkpoint — 2026-11-12
+## 9. Current verified branch checkpoint — 2026-11-13
 
-- Current branch HEAD (documentation-only): `89ff19fc9369ca990ffac4f3105f6022a6985d22`; latest gameplay/test HEAD: `9168284e67d353a956fc276e0ea8c00d1c685f1d`. The docs commit does not modify source/tests.
-- Docs-head exact workflow [43294778145 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43294778145); backend still reports 654 passed / 4 failed of 658 Vitest executions; Android JVM and Debug APK compile pass.
-- Latest commit: `Type payload on SpiritArrow publisher messages`; parent `f5f88a11c693589a4f6f41486ab0dc65824306f7`; test-local `payloadJson` typing only.
-- Exact-head workflow [43290836162 — FAILURE](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162).
-- Backend TypeScript build/schema checks passed; Vitest 8 files, 654 passed / 4 failed of 658 executions. Failures are two distinct SpiritArrow MatchRoom cases mirrored in TypeScript/generated JavaScript.
-- Positive path publisher socket sees `COMBAT_REQUEST`, `ACTION_ACCEPTED`, then an extra `ERROR`; the test stops before requester EVENT_BATCH is verified.
-- Forged-`attackerPos` negative test still expects no requester send, while server sends a correlated `ERROR`. Omitted-`attackerPos` negative test has already been aligned and passes.
-- Positive fixture includes `attackerPos: 9`; Java delegated-RemoteHero regression verifies the actual native report equals `remoteHero.pos`. Do not repeat the old missing-field hypothesis or weaken checks.
-- Android `./gradlew test assembleDebug --no-daemon`; JVM tests and Debug APK compile passed.
-- `f5f88a11` changed FOV sender exclusion to authenticated player ID as well as WebSocket object identity; trace remaining post-ACK ERROR.
-- No Worker deployment, Durable Object SQLite/restart, rendered projectile or physical two-device test is proved by CI.
+- Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
+- Verified gameplay/test HEAD: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- Exact-head workflow: [43472587588 — all three jobs succeeded](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- Backend: TypeScript build passed; 8 Vitest files; 682 test executions passed. Generated/mirrored TS/JS outputs mean this is not a count of unique source scenarios.
+- Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
+- Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
+- Phase 9: complete for implementation and automated acceptance. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff effects remain fail-closed.
+- Phase 10: next and OPEN. The protocol contains 25 outer names including LEVEL_PUBLISHER_CHANGED; typed-path consolidation and legacy receiver migration remain Phase 10 work.
+- CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
