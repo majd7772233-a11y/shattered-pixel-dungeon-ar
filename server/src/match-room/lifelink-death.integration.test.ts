@@ -70,6 +70,19 @@ class MemoryMatchRoomSql {
       const value = this.roomMeta.get("levelPublisher");
       return this.cursor(value === undefined ? [] : [{ value }]);
     }
+    if (query === "SELECT key,value FROM room_meta WHERE key LIKE 'pendingCombat:%'") {
+      return this.cursor(Array.from(this.roomMeta.entries())
+        .filter(([key]) => key.startsWith("pendingCombat:"))
+        .map(([key,value]) => ({ key, value })));
+    }
+    if (query === "SELECT player_id,pos,hp,ht FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => String(player.state) === "ALIVE" && Number(player.connected) === 1)
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({
+          player_id: player.player_id, pos: player.pos, hp: player.hp, ht: player.ht
+        })));
+    }
     if (query === "SELECT value FROM room_meta WHERE key = ?") {
       const value = this.roomMeta.get(String(args[0]));
       return this.cursor(value === undefined ? [] : [{ value }]);
@@ -131,6 +144,16 @@ class MemoryMatchRoomSql {
         this.mobs.delete(id);
         this.mobDeletes++;
       }
+      return this.cursor();
+    }
+    if (query.startsWith("UPDATE players SET connected = 0 WHERE player_id = ?")) {
+      const row = this.players.get(String(args[0]));
+      if (row) row.connected = 0;
+      return this.cursor();
+    }
+    if (query.startsWith("UPDATE players SET connected = 1 WHERE player_id = ?")) {
+      const row = this.players.get(String(args[0]));
+      if (row) row.connected = 1;
       return this.cursor();
     }
     if (query.startsWith("UPDATE players SET hp = ? WHERE player_id = ?")) {
@@ -684,6 +707,111 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
   });
 
 
+
+
+  it("hands Level Publisher authority to a connected living player and cancels its pending combat", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const oldPublisher = "publisher-z-old-001";
+    const nextPublisher = "publisher-a-next-001";
+    const attackerId = "publisher-y-attacker-001";
+    const requestId = "publisher-handoff-pending-combat-001";
+    const heroJson = JSON.stringify(heroBefore);
+
+    sql.roomMeta.set("levelPublisher", oldPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "4");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [oldPublisher, nextPublisher, attackerId]) {
+      sql.roomMeta.set("heroState:" + playerId, heroJson);
+      sql.players.set(playerId, {
+        player_id: playerId, pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1
+      });
+    }
+    sql.roomMeta.set("pendingCombat:" + requestId, JSON.stringify({
+      requestId, attackerId, authorityId: oldPublisher, targetType: "MOB",
+      targetLockKey: "MOB:" + ENTITY_ID, createdAt: Date.now()
+    }));
+    sql.roomMeta.set("pendingCombatAttacker:" + attackerId, requestId);
+    sql.roomMeta.set("pendingCombatTarget:MOB:" + ENTITY_ID, requestId);
+    sql.roomMeta.set("nativeMutationPending:" + oldPublisher, JSON.stringify({
+      playerId: oldPublisher, requestId: "old-publisher-mutation-001", actionType: "ATTACK"
+    }));
+
+    const closingSocket = {
+      deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "old-publisher-token" }),
+      send: vi.fn()
+    };
+    const nextPublisherSocket = {
+      deserializeAttachment: () => ({ playerId: nextPublisher, sessionToken: "next-publisher-token" }),
+      send: vi.fn()
+    };
+    const attackerSocket = {
+      deserializeAttachment: () => ({ playerId: attackerId, sessionToken: "attacker-token" }),
+      send: vi.fn()
+    };
+    room.state.getWebSockets = () => [nextPublisherSocket, attackerSocket];
+    room.broadcastCurrentSnapshot = vi.fn();
+
+    await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
+
+    expect(sql.players.get(oldPublisher).connected).toBe(0);
+    expect(sql.roomMeta.get("levelPublisher")).toBe(nextPublisher);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("5");
+    expect(sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
+    expect(sql.roomMeta.has("pendingCombatAttacker:" + attackerId)).toBe(false);
+    expect(sql.roomMeta.has("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(false);
+    expect(sql.roomMeta.has("nativeMutationPending:" + oldPublisher)).toBe(false);
+    expect(room.broadcastCurrentSnapshot).toHaveBeenCalledTimes(1);
+
+    const requesterError = attackerSocket.send.mock.calls
+      .map(call => JSON.parse(String(call[0])))
+      .find(message => message.messageType === "ERROR" && message.requestId === requestId);
+    expect(requesterError).toBeTruthy();
+    expect(JSON.parse(String(requesterError.payloadJson)).error).toBe("NATIVE_COMBAT_AUTHORITY_CHANGED");
+
+    const publisherChange = nextPublisherSocket.send.mock.calls
+      .map(call => JSON.parse(String(call[0])))
+      .find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+    expect(publisherChange).toBeTruthy();
+    expect(publisherChange.sequence).toBe(room.currentSequence);
+    expect(JSON.parse(String(publisherChange.payloadJson))).toMatchObject({
+      publisherId: nextPublisher, term: 5, reason: "PUBLISHER_DISCONNECTED"
+    });
+  });
+
+  it("clears Level Publisher authority when no connected living replacement exists", async () => {
+    const sql = new MemoryMatchRoomSql();
+    const room = makeRoom(sql);
+    const oldPublisher = "last-publisher-001";
+    sql.roomMeta.set("levelPublisher", oldPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "2");
+    sql.players.set(oldPublisher, {
+      player_id: oldPublisher, pos: 9, hp: 0, ht: 20, state: "DEAD", connected: 1
+    });
+
+    const closingSocket = {
+      deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "last-publisher-token" }),
+      send: vi.fn()
+    };
+    const spectatorSocket = {
+      deserializeAttachment: () => ({ playerId: "spectator-001", sessionToken: "spectator-token" }),
+      send: vi.fn()
+    };
+    room.state.getWebSockets = () => [spectatorSocket];
+    room.broadcastCurrentSnapshot = vi.fn();
+
+    await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
+
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("3");
+    const publisherChange = spectatorSocket.send.mock.calls
+      .map(call => JSON.parse(String(call[0])))
+      .find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+    expect(publisherChange).toBeTruthy();
+    expect(JSON.parse(String(publisherChange.payloadJson))).toMatchObject({
+      publisherId: null, term: 3, reason: "PUBLISHER_DISCONNECTED"
+    });
+  });
 
   it("rolls back delegated SYNC_PLAYER_COMBAT atomically when event persistence fails", async () => {
     const fixture = makePlayerCombatRollbackFixture();

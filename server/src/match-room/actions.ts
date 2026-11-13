@@ -206,6 +206,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   sequence: this.currentSequence,
                   payloadJson: JSON.stringify(missingEvents)
                 }));
+                ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
                 return;
               }
             }
@@ -231,6 +232,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 level: this.getCurrentLevelSnapshot()
               })
             }));
+            ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
             return;
           }
         } catch (_) {}

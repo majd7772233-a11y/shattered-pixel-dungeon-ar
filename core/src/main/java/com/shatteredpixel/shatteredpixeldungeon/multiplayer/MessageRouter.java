@@ -28,6 +28,9 @@ public final class MessageRouter {
             case SNAPSHOT:
                 handleSnapshotMessage(message);
                 break;
+            case LEVEL_PUBLISHER_CHANGED:
+                Game.runOnRenderThread(() -> handleLevelPublisherChanged(message));
+                break;
             case EVENT_BATCH:
                 // Event batches update native actors, hero state, sprites and loot. Transport
                 // callbacks may run off-thread, so serialize their application with game turns.
@@ -55,6 +58,23 @@ public final class MessageRouter {
             default:
                 Game.runOnRenderThread(() -> RemotePlayerActionReceiver.handleNetworkMessage(message));
                 break;
+        }
+    }
+
+    private static void handleLevelPublisherChanged(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            if (payload == null || !payload.isObject()) {
+                throw new IllegalArgumentException("Invalid publisher state");
+            }
+            String publisherId = stringValue(payload.get("publisherId"), null);
+            long term = longValue(payload.get("term"), -1L);
+            if (term < 0L) throw new IllegalArgumentException("Missing publisher generation");
+            manager.applyLevelPublisherChange(publisherId, term);
+        } catch (RuntimeException invalidState) {
+            manager.requestResync(message.sequence);
         }
     }
 

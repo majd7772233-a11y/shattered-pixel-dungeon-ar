@@ -17,6 +17,8 @@ public class MultiplayerManager implements TransportCallback {
 
     private boolean isMultiplayerActive = false;
     private volatile boolean levelPublisher = false;
+    private volatile String levelPublisherId;
+    private volatile long levelPublisherTerm = -1L;
     private volatile boolean floorTransitionPending = false;
     private volatile boolean resolvingAuthorityCombat = false;
     private volatile String authorityCombatRequestId;
@@ -70,6 +72,8 @@ public class MultiplayerManager implements TransportCallback {
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.levelPublisherId = null;
+        this.levelPublisherTerm = -1L;
         this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.lastSequence = 0L;
@@ -103,6 +107,8 @@ public class MultiplayerManager implements TransportCallback {
         this.serverEntityIdToActor.clear();
         this.sessionToken = null;
         this.levelPublisher = false;
+        this.levelPublisherId = null;
+        this.levelPublisherTerm = -1L;
         this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.localPlayerId = null;
@@ -117,6 +123,20 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     public boolean isLevelPublisher() { return levelPublisher; }
+
+    public String getLevelPublisherId() { return levelPublisherId; }
+
+    public long getLevelPublisherTerm() { return levelPublisherTerm; }
+
+    /** Applies only server-authored, non-stale publisher generations. */
+    public synchronized void applyLevelPublisherChange(String publisherId, long term) {
+        if (term < 0L || term < levelPublisherTerm) return;
+        if (term == levelPublisherTerm && levelPublisherTerm >= 0L
+                && !java.util.Objects.equals(levelPublisherId, publisherId)) return;
+        levelPublisherTerm = term;
+        levelPublisherId = publisherId;
+        levelPublisher = publisherId != null && publisherId.equals(localPlayerId);
+    }
 
     public boolean isFloorTransitionPending() { return floorTransitionPending; }
 
@@ -592,7 +612,18 @@ public class MultiplayerManager implements TransportCallback {
                     this.sessionToken = tokenValue.asString();
                 }
                 JsonValue publisherValue = payload.get("isLevelPublisher");
-                this.levelPublisher = publisherValue != null && !publisherValue.isNull() && publisherValue.asBoolean();
+                JsonValue publisherIdValue = payload.get("levelPublisherId");
+                JsonValue publisherTermValue = payload.get("publisherTerm");
+                if (publisherTermValue != null && !publisherTermValue.isNull()) {
+                    applyLevelPublisherChange(
+                            publisherIdValue == null || publisherIdValue.isNull()
+                                    ? null : publisherIdValue.asString(),
+                            publisherTermValue.asLong());
+                } else {
+                    this.levelPublisher = publisherValue != null && !publisherValue.isNull()
+                            && publisherValue.asBoolean();
+                    this.levelPublisherId = levelPublisher ? localPlayerId : null;
+                }
                 JsonValue seqValue = payload.get("sequence");
                 if (seqValue != null && !seqValue.isNull()) {
                     updateLastSequence(seqValue.asLong());
