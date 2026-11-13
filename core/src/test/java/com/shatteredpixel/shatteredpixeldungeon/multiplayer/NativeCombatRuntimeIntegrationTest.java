@@ -1106,7 +1106,7 @@ public class NativeCombatRuntimeIntegrationTest {
         // Preserve the legacy receiver's actual JSON key-scanning contract: the nested "to"
         // closes before the sibling hp field, so both values are independently parseable.
         NetworkMessage update = new NetworkMessage(MessageType.PLAYER_JOINED,
-                "{\"position\":{\"to\":17},\"hp\":6}");
+                "{\"event\":\"PLAYER_MOVED\",\"position\":{\"to\":17},\"hp\":6}");
         update.senderId = "legacy-remote-player";
         MessageRouter.routeMessage(update);
 
