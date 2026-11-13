@@ -84,7 +84,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–8 complete for implementation and automated acceptance; Phase 9 in progress/open; Phases 10–23 open |
+| Phase state | Phases 1–9 complete for implementation and automated acceptance; Phase 10 next/open; Phases 11–23 open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 
