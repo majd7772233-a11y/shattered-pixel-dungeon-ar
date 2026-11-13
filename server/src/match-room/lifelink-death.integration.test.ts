@@ -71,6 +71,11 @@ class MemoryMatchRoomSql {
       const value = this.roomMeta.get("levelPublisher");
       return this.cursor(value === undefined ? [] : [{ value }]);
     }
+    if (query === "SELECT player_id FROM players ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({ player_id: player.player_id })));
+    }
     if (query === "SELECT player_id FROM players WHERE connected = 1 ORDER BY player_id ASC") {
       return this.cursor(Array.from(this.players.values())
         .filter(player => Number(player.connected) === 1)
@@ -778,6 +783,48 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(true);
     rebase.nativeRemoteHeroActorIds = [21];
     expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(false);
+  });
+
+
+  it("blocks native actions until the active publisher generation has committed its rebase", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.sql.roomMeta.set("levelPublisherTerm", "9");
+    fixture.sql.roomMeta.set("levelPublisherReadyTerm", "8");
+
+    await fixture.room.handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage("publisher-rebase-gate-action-001", { action: "WAIT", data: {} }),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(response.requestId).toBe("publisher-rebase-gate-action-001");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("PUBLISHER_REBASE_REQUIRED");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.processedActions.size).toBe(0);
+    expect(fixture.room.currentSequence).toBe(0);
+  });
+
+  it("rejects a stale publisher rebase generation without opening the action gate", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.sql.roomMeta.set("levelPublisherTerm", "9");
+    fixture.sql.roomMeta.set("levelPublisherReadyTerm", "8");
+    const staleRebase = {
+      publisherRebase: true,
+      publisherRebaseTerm: 8,
+      depth: 1
+    };
+
+    await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify({
+      protocolVersion: "1.0.0", messageType: "LEVEL_DATA", requestId: "publisher-rebase-stale-001",
+      payloadJson: JSON.stringify(staleRebase)
+    }));
+
+    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("INVALID_PUBLISHER_REBASE_GENERATION");
+    expect(fixture.sql.roomMeta.get("levelPublisherReadyTerm")).toBe("8");
   });
 
   it("hands Level Publisher authority to a connected living player and cancels its pending combat", async () => {

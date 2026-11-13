@@ -198,7 +198,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             this.sql.exec(`UPDATE players SET connected = 1 WHERE player_id = ?`, session.playerId);
             const gap = this.currentSequence - lastSeq;
 
-            if (gap > 0 && gap <= 50) {
+            const publisherRow = this.sql.exec(
+              "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
+            const isCurrentPublisherReconnect = String(publisherRow?.value || "") === session.playerId;
+            if (!isCurrentPublisherReconnect && gap > 0 && gap <= 50) {
               const missingEvents = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? ORDER BY sequence ASC`, lastSeq).toArray();
               if (missingEvents.length === gap) {
                 ws.send(JSON.stringify({

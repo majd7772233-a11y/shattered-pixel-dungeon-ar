@@ -320,9 +320,12 @@ export class MatchRoom extends MatchRoomMessages {
         payloadJson: JSON.stringify({ playerId, pos: spawnPos })
       }, server);
 
-      if (promotedOnConnect) {
-        if (activateAfterSnapshot) this.broadcastCurrentSnapshot(null);
-        this.broadcast(this.levelPublisherStateMessage("PUBLISHER_ASSIGNED_ON_CONNECT"));
+      const publisherNeedsRebase = !promotedOnConnect && this.gameStatus === "PLAYING"
+        && currentPublisherId !== null && !this.isLevelPublisherReady();
+      if (promotedOnConnect || publisherNeedsRebase) {
+        if (activateAfterSnapshot || publisherNeedsRebase) this.broadcastCurrentSnapshot(null);
+        this.broadcast(this.levelPublisherStateMessage(
+          publisherNeedsRebase ? "PUBLISHER_REBASE_REQUIRED" : "PUBLISHER_ASSIGNED_ON_CONNECT"));
       }
 
       return new Response(null, { status: 101, webSocket: client });
