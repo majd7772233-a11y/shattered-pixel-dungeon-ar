@@ -358,7 +358,7 @@ The requester receives the accepted sequenced PLAYER_ATTACKED event. Android res
 
 Publisher disconnect handoff uses a durable generation. Its SQL transaction transfers or clears the owner, advances the term and cancels combat reservations tied to the old publisher. A replacement does not gain write authority until its restored persisted snapshot and `publisherRebase` are accepted as a lossless shared-world reserialization. Mob stable IDs/bundles and gameplay state remain fixed; process-local Hero/RemoteHero/Mob Actor IDs are refreshed and checked. LifeLink/SnipersMark references must point to the exact stable Mob; unsupported remote references fail closed.
 
-The Workers runtime suite exercises real Durable Object SQLite rollback, replay, eviction/reconstruction and publisher handoff after a persisted snapshot. Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed all three jobs. The test runtime is local Workers emulation, not a deployed production Worker smoke test.
+The Workers runtime suite exercises real Durable Object SQLite rollback, replay, eviction/reconstruction and publisher handoff after a persisted snapshot. Gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7` passed exact-code CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588); current branch HEAD `7a6e091973051d82cb3cdf749553dd07d4ab0fce` passed all three exact-head jobs in [43476033245](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245). The test runtime is local Workers emulation, not a deployed production Worker smoke test.
 
 ### 6.2 Poison damage against a native Hero Barrier
 

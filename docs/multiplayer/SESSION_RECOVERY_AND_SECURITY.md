@@ -1,6 +1,6 @@
 # Multiplayer Session Recovery and Security Reference
 
-> Current verified source/test baseline: gameplay/test HEAD bc6c46b03fee040ff20311adb473b19ff78e9bb7. This page records observed controls and explicit open risks; it is not a formal security certification.
+> Current branch HEAD: 7a6e091973051d82cb3cdf749553dd07d4ab0fce; gameplay/source-test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7 (documentation-only descendant). This page records observed controls and explicit open risks; it is not a formal security certification.
 
 ## 1. Trust model
 

@@ -1,6 +1,6 @@
 # Multiplayer Automated Test Matrix
 
-> Current verification baseline: gameplay/test HEAD bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact CI run 43472587588 passed. Counts distinguish source declarations from mirrored CI executions. This is not a formal security certification or physical-device result.
+> Current branch HEAD: 7a6e091973051d82cb3cdf749553dd07d4ab0fce (documentation-only descendant of gameplay/test baseline bc6c46b03fee040ff20311adb473b19ff78e9bb7). Latest exact-HEAD CI run 43476033245 passed all three jobs; exact code/test baseline CI 43472587588 also passed. Counts distinguish source declarations from mirrored CI executions. This is not a formal security certification or physical-device result.
 
 
 ## Source-refactor compatibility
@@ -17,7 +17,7 @@ Stage 1 keeps the existing backend test files and their `./index` import path. T
 | Other multiplayer JVM tests | Five files, 19 @Test methods combined | Stable IDs, level metadata, authority and NPC/item safety |
 | Arabic text handler | ArabicHandlerTest.java | Separate Arabic handler tests; not general multiplayer acceptance |
 
-Current exact-head evidence is gameplay/test SHA bc6c46b03fee040ff20311adb473b19ff78e9bb7; CI run 43472587588 passed 682 executions across eight Vitest files. The number includes generated/mirrored JavaScript and is not a unique-case count. Android JVM/Debug APK and three Workers-runtime SQLite tests also passed.
+Current gameplay/test baseline is bc6c46b03fee040ff20311adb473b19ff78e9bb7; current branch HEAD 7a6e091973051d82cb3cdf749553dd07d4ab0fce adds documentation only. Exact current HEAD CI run 43476033245 passed 682 executions across eight Vitest files. The number includes generated/mirrored JavaScript and is not a unique-case count. Android JVM/Debug APK and three Workers-runtime SQLite tests also passed. The code/test baseline's own exact CI is run 43472587588.
 
 ## 2. Backend suite map — server/src/index.test.ts
 
@@ -252,8 +252,10 @@ This uses real Durable Object SQLite under local Cloudflare Workers runtime, not
 
 ### Exact-head CI
 
-- Code/test SHA: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
-- Workflow: [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
+- Gameplay/test baseline SHA: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`.
+- Current branch/documentation HEAD: `7a6e091973051d82cb3cdf749553dd07d4ab0fce` (documentation-only descendant).
+- Latest exact-HEAD workflow: [43476033245 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43476033245).
+- Exact gameplay/test baseline workflow: [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
 - Backend: TypeScript build passed; 8 Vitest files; **682 executions passed** (mirrored TS/JS).
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests and Debug APK passed (`BUILD SUCCESSFUL`).
 - Workers runtime: one integration file; **3/3 tests passed** against real Durable Object SQLite.

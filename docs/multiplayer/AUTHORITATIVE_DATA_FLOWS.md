@@ -135,7 +135,7 @@ Every changed row still passes its class-specific identity, timing, native-field
 
 Exact-head CI on `b68b66e686b98dbf343997202b215e2c828b7b89` passed [run 42777941791](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42777941791): TypeScript build and 644 Vitest executions across eight files, Android JVM tests and Debug APK compilation. Some TypeScript/generated-JavaScript suites mirror cases; this is an execution count, not a unique-scenario count.
 
-The MatchRoom adapter models rollback deterministically but does not instantiate Cloudflare's actual Durable Object SQLite runtime or simulate a Worker restart. No Worker deployment or physical-device multiplayer session has been performed. Phase 9 remains open.
+This original MatchRoom adapter remains a deterministic in-memory SQL test and does not itself instantiate Cloudflare Durable Object SQLite. Phase 9 subsequently added `server/src/match-room/durable-object-sqlite.integration.do.mjs`, which runs three tests against real Durable Object SQLite under the local Workers runtime: Poison LifeLink transaction rollback/replay across eviction, persisted-snapshot publisher handoff with pending-combat closure, and committed-state reconstruction after eviction. The deployed production Worker and physical-device multiplayer session have not been tested; those remain Phases 22 and 23. Phase 9 is complete for implementation and automated acceptance under its explicit fail-closed support boundary.
 
 
 
