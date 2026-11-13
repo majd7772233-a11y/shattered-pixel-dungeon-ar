@@ -26,7 +26,7 @@
 - Added server/src/protocol/message-admission.ts and message-admission.test.ts.
 - MatchRoomMessages.webSocketMessage now validates attachment/session, text frame, JSON object envelope, required/optional field types, exact protocol version 1.0.0, known inbound message type and syntactically valid nested payloadJson before dispatch.
 - Unknown and known non-inbound types return UNKNOWN_MESSAGE_TYPE / UNSUPPORTED_MESSAGE_TYPE. Invalid envelope, protocol, frame or nested JSON have stable error codes; a safely parsed requestId is echoed.
-- Unexpected dispatch exceptions use MESSAGE_DISPATCH_FAILED, not raw runtime details. Client senderId is overwritten from the accepted socket attachment only after admission.
+- Unexpected handler exceptions preserve their original error-message payload to maintain the pre-existing transaction rollback contract; envelope admission errors detected before dispatch still use stable codes. Client senderId is overwritten from the accepted socket attachment only after admission.
 - Added server/scripts/validate-phase10-routing.mjs to npm test. It checks Java/schema coverage for all 25 message types, exact eight Worker route branches, all 23 Worker ACTION branch tokens, and the unchanged fail-closed INVALID_ACTION default.
 
 ### Deliberately untouched

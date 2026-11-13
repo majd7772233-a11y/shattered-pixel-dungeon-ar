@@ -492,7 +492,7 @@ Admission is fail-closed. It requires an authenticated WebSocket attachment with
 | Unknown message type | UNKNOWN_MESSAGE_TYPE | No request is dispatched |
 | Known but non-inbound type | UNSUPPORTED_MESSAGE_TYPE | No request is dispatched |
 | Invalid nested payload JSON | MALFORMED_MESSAGE_PAYLOAD | No request is dispatched |
-| Unexpected handler exception | MESSAGE_DISPATCH_FAILED | Error detail is not exposed; existing handler transaction/error behavior is retained |
+| Unexpected handler exception | Existing handler exception message (unchanged) | Preserves the established transaction rollback/error contract; admission rejections use the stable codes above |
 
 When a non-empty requestId was parsed safely, the rejection echoes it; each error includes the current room sequence. Sending an error to a closed WebSocket is best-effort and does not affect room state.
 

@@ -112,9 +112,11 @@ export class MatchRoomMessages extends MatchRoomActions {
       } else if (msg.messageType === "CHAT") {
         this.broadcast(msg);
       }
-    } catch (_) {
-      // Do not leak implementation/runtime details through the wire error payload.
-      this.sendProtocolError(ws, requestId, "MESSAGE_DISPATCH_FAILED");
+    } catch (error) {
+      // Preserve the existing handler-error contract used by transaction rollback regressions.
+      // Envelope admission failures above remain stable, explicit protocol error codes.
+      this.sendProtocolError(ws, requestId,
+        error instanceof Error && error.message ? error.message : "UNKNOWN_ERROR");
     }
   }
 }
