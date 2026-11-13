@@ -62,6 +62,24 @@ jobs:
       - name: Backend tests
         run: npm test
 
+  durable-object:
+    name: Durable Object SQLite rollback and eviction
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Install backend dependencies
+        run: npm ci
+      - name: Install Workers runtime test runner
+        run: npm install --no-save --package-lock=false @cloudflare/vitest-plugin@1.8.0 vitest@5.1.0
+      - name: Test real Durable Object SQLite rollback and eviction recovery
+        run: npx vitest run --config vitest.durable-objects.config.mjs
+
   android:
     name: Android debug APK compile
     runs-on: ubuntu-latest
