@@ -59,8 +59,8 @@ public class BluetoothTransport implements NetworkTransport {
     public void send(NetworkMessage message) {
         if (nativeProvider != null && nativeProvider.isConnected()) {
             try {
-                String serialized = "{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
-                        "\",\"payloadJson\":" + (message.payloadJson != null ? message.payloadJson : "{}") + "}\n";
+                if (message == null) throw new IllegalArgumentException("Network message is required");
+                String serialized = message.toJson() + "\n";
                 nativeProvider.sendData(serialized.getBytes("UTF-8"));
             } catch (Exception e) {
                 if (callback != null) callback.onError(e);

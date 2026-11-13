@@ -10,6 +10,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class LANTransport implements NetworkTransport {
     public static final int DEFAULT_TCP_PORT = 8990;
@@ -163,26 +164,38 @@ public class LANTransport implements NetworkTransport {
     }
 
     public void sendAuthorityEvent(NetworkMessage eventMsg) {
-        String jsonStr = serializeMessage(eventMsg);
-        broadcastToClients(jsonStr);
-        if (callback != null) {
-            callback.onMessageReceived(eventMsg);
+        final String jsonStr;
+        try {
+            jsonStr = serializeMessage(eventMsg);
+        } catch (RuntimeException invalidMessage) {
+            if (callback != null) callback.onError(invalidMessage);
+            return;
         }
+        broadcastToClients(jsonStr);
+        if (callback != null) callback.onMessageReceived(eventMsg);
     }
 
     @Override
     public void send(NetworkMessage message) {
-        String jsonStr = serializeMessage(message);
+        final String jsonStr;
+        try {
+            jsonStr = serializeMessage(message);
+        } catch (RuntimeException invalidMessage) {
+            if (callback != null) callback.onError(invalidMessage);
+            return;
+        }
         if (isServer) {
             if (hostAuthority != null && message.messageType == MessageType.ACTION) {
-                NetworkActionType actionType = parseActionType(message.payloadJson);
-                int pos = parsePositionFromAction(message.payloadJson);
-                hostAuthority.processAction(message.senderId, actionType, pos);
+                Optional<NetworkActionType> actionType = parseActionType(message.payloadJson);
+                if (actionType.isPresent()) {
+                    int pos = parsePositionFromAction(message.payloadJson);
+                    hostAuthority.processAction(message.senderId, actionType.get(), pos);
+                } else if (callback != null) {
+                    callback.onError(new IllegalArgumentException("Unsupported LAN action payload"));
+                }
             } else {
                 broadcastToClients(jsonStr);
-                if (callback != null) {
-                    callback.onMessageReceived(message);
-                }
+                if (callback != null) callback.onMessageReceived(message);
             }
         } else if (out != null && isConnected) {
             out.println(jsonStr);
@@ -205,15 +218,19 @@ public class LANTransport implements NetworkTransport {
         }
     }
 
-    private NetworkActionType parseActionType(String json) {
-        if (json == null) return NetworkActionType.WAIT;
+    static Optional<NetworkActionType> parseActionType(String json) {
+        if (json == null || json.trim().isEmpty()) return Optional.empty();
         try {
             com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+            if (root == null || !root.isObject()) return Optional.empty();
             com.badlogic.gdx.utils.JsonValue action = root.get("action");
-            if (action == null && root.get("data") != null) action = root.get("data").get("action");
-            return action == null ? NetworkActionType.WAIT : NetworkActionType.valueOf(action.asString());
+            if (action == null && root.get("data") != null && root.get("data").isObject()) {
+                action = root.get("data").get("action");
+            }
+            if (action == null || !action.isString() || action.asString().isEmpty()) return Optional.empty();
+            return Optional.of(NetworkActionType.valueOf(action.asString()));
         } catch (RuntimeException ignored) {
-            return NetworkActionType.WAIT;
+            return Optional.empty();
         }
     }
 
@@ -226,12 +243,7 @@ public class LANTransport implements NetworkTransport {
     }
 
     private String serializeMessage(NetworkMessage msg) {
-        String sender = msg.senderId == null ? "" : msg.senderId.replace("\\", "\\\\").replace("\"", "\\\"");
-        String payload = msg.payloadJson == null || msg.payloadJson.trim().isEmpty() ? "{}" : msg.payloadJson;
-        return "{\"protocolVersion\":\"" + NetworkMessage.PROTOCOL_VERSION + "\",\"messageType\":\""
-                + (msg.messageType != null ? msg.messageType.name() : "ERROR") + "\",\"senderId\":\"" + sender
-                + "\",\"requestId\":" + (msg.requestId == null ? "null" : "\"" + msg.requestId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
-                + ",\"sequence\":" + msg.sequence + ",\"payloadJson\":" + payload + "}";
+        return msg.toJson();
     }
 
     private NetworkMessage parseMessage(String jsonStr) {
@@ -282,10 +294,16 @@ public class LANTransport implements NetworkTransport {
                 String line;
                 while (isConnected && (line = reader.readLine()) != null) {
                     NetworkMessage msg = parseMessage(line);
+                    if (msg.messageType == MessageType.ERROR) {
+                        // Invalid or unknown envelopes are never relayed to the room.
+                        continue;
+                    }
                     if (isServer && hostAuthority != null && msg.messageType == MessageType.ACTION) {
-                        NetworkActionType actionType = parseActionType(msg.payloadJson);
-                        int pos = parsePositionFromAction(msg.payloadJson);
-                        hostAuthority.processAction(msg.senderId, actionType, pos);
+                        Optional<NetworkActionType> actionType = parseActionType(msg.payloadJson);
+                        if (actionType.isPresent()) {
+                            int pos = parsePositionFromAction(msg.payloadJson);
+                            hostAuthority.processAction(msg.senderId, actionType.get(), pos);
+                        }
                         // Never relay an unvalidated client intent as if it were an authoritative event.
                     } else {
                         broadcastToClients(line);

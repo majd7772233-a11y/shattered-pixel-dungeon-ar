@@ -1046,7 +1046,7 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void disconnectedRemotePlayerIsRemovedFromNativeActorsAndMobTargets() {
+    public void disconnectedRemotePlayerIsRemovedFromNativeActorsAndMobTargets() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-target-disconnect", "client-publisher", new TestTransport());
 
@@ -1069,7 +1069,11 @@ public class NativeCombatRuntimeIntegrationTest {
 
         NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT, "{\"playerId\":\"departing-player\"}");
         left.senderId = departing.playerId;
-        RemotePlayerActionReceiver.handleNetworkMessage(left);
+        MessageRouter.routeMessage(left);
+        CountDownLatch routed = new CountDownLatch(1);
+        Game.runOnRenderThread(routed::countDown);
+        Assert.assertTrue("The default MessageRouter path must finish PLAYER_LEFT cleanup on the render thread",
+                routed.await(10, TimeUnit.SECONDS));
 
         Assert.assertNull("Disconnected player must leave the remote-player registry",
                 manager.getRemotePlayer(departing.playerId));
@@ -1082,6 +1086,52 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals("", acting.multiplayerTargetEntityId());
         Assert.assertEquals("Last-known target cell is retained for SPD's native lost-target logic",
                 remoteHero.pos, acting.multiplayerTargetCell());
+    }
+
+    @Test
+    public void eventBatchUsesOneTypedStatePathAndLegacyReceiverRefusesSecondApplication() throws Exception {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("typed-event-single-path", "local-player", transport);
+
+        Rat mob = addRat(hero.pos + 2, 18);
+        int originalPosition = mob.pos;
+        int acceptedPosition = originalPosition + 1;
+        String payload = "[{\"sequence\":1,\"eventType\":\"MOB_MOVED\","
+                + "\"action\":{\"mobId\":" + mob.id()
+                + ",\"toPos\":" + acceptedPosition + "}}]";
+        NetworkMessage batch = new NetworkMessage(MessageType.EVENT_BATCH, payload);
+        batch.senderId = "SERVER";
+        batch.sequence = 1L;
+
+        MessageRouter.routeMessage(batch);
+        CountDownLatch firstApply = new CountDownLatch(1);
+        Game.runOnRenderThread(firstApply::countDown);
+        Assert.assertTrue("Typed EVENT_BATCH routing must finish on the render thread",
+                firstApply.await(10, TimeUnit.SECONDS));
+        Assert.assertEquals("The typed router applies the accepted Mob position once",
+                acceptedPosition, mob.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertFalse("The valid typed event does not need fallback or resync",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        MessageRouter.routeMessage(batch);
+        CountDownLatch duplicateProcessed = new CountDownLatch(1);
+        Game.runOnRenderThread(duplicateProcessed::countDown);
+        Assert.assertTrue(duplicateProcessed.await(10, TimeUnit.SECONDS));
+        Assert.assertEquals("A duplicate sequence cannot apply the native state update twice",
+                acceptedPosition, mob.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+
+        int resyncsBeforeLegacyGuard = (int) transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.RESYNC).count();
+        RemotePlayerActionReceiver.handleNetworkMessage(batch);
+        Assert.assertEquals("Legacy receiver must not run a second Mob state update", acceptedPosition, mob.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        int resyncsAfterLegacyGuard = (int) transport.sent.stream()
+                .filter(message -> message.messageType == MessageType.RESYNC).count();
+        Assert.assertEquals("Legacy EVENT_BATCH guard requests recovery instead of replaying the event",
+                resyncsBeforeLegacyGuard + 1, resyncsAfterLegacyGuard);
     }
 
     @Test

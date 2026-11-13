@@ -188,12 +188,8 @@ public class InternetTransport implements NetworkTransport {
     public synchronized void send(NetworkMessage message) {
         if (!isConnected || out == null) return;
         try {
-            String escapedPayload = message.payloadJson != null ? message.payloadJson.replace("\"", "\\\"") : "{}";
-            String json = "{\"messageType\":\"" + (message.messageType != null ? message.messageType.name() : "ACTION") +
-                    "\",\"senderId\":\"" + (message.senderId != null ? message.senderId : "") +
-                    "\",\"payloadJson\":\"" + escapedPayload + "\"}";
-
-            byte[] payload = json.getBytes("UTF-8");
+            if (message == null) throw new IllegalArgumentException("Network message is required");
+            byte[] payload = message.toJson().getBytes("UTF-8");
             byte[] mask = new byte[4];
             new SecureRandom().nextBytes(mask);
 

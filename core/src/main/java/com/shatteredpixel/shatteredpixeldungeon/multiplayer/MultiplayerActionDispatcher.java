@@ -8,6 +8,8 @@ import com.shatteredpixel.shatteredpixeldungeon.actors.mobs.npcs.Shopkeeper;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroAction;
 import com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition;
 
+import java.util.Optional;
+
 public class MultiplayerActionDispatcher {
 
     /** Only the Shopkeeper has a complete inventory/economy action protocol in this phase. */
@@ -44,7 +46,13 @@ public class MultiplayerActionDispatcher {
         Hero hero = Dungeon.hero;
         if (!manager.isMultiplayerActive() || action == null || hero == null || Dungeon.level == null) return;
 
-        NetworkActionType actionType = NetworkActionBridge.mapHeroActionToNetworkAction(action);
+        Optional<NetworkActionType> mappedAction = NetworkActionBridge.mapHeroActionToNetworkAction(action);
+        if (!mappedAction.isPresent()) {
+            // An unmapped native action must not be advertised as a real WAIT operation.
+            hero.rejectUnsupportedMultiplayerWorldAction();
+            return;
+        }
+        NetworkActionType actionType = mappedAction.get();
         int currentPos = hero.pos;
         int currentDepth = Dungeon.depth;
         int targetPos = action.dst;

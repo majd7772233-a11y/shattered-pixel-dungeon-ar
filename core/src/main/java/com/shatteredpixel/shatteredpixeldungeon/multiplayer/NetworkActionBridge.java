@@ -2,30 +2,22 @@ package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.HeroAction;
 
+import java.util.Optional;
+
 public class NetworkActionBridge {
 
-    public static NetworkActionType mapHeroActionToNetworkAction(HeroAction action) {
-        if (action instanceof HeroAction.Move) {
-            return NetworkActionType.MOVE;
-        } else if (action instanceof HeroAction.Attack) {
-            return NetworkActionType.ATTACK;
-        } else if (action instanceof HeroAction.PickUp) {
-            return NetworkActionType.PICKUP;
-        } else if (action instanceof HeroAction.OpenChest) {
-            return NetworkActionType.OPEN_CHEST;
-        } else if (action instanceof HeroAction.Buy) {
-            return NetworkActionType.BUY;
-        } else if (action instanceof HeroAction.Interact) {
-            return NetworkActionType.INTERACT;
-        } else if (action instanceof HeroAction.Unlock) {
-            return NetworkActionType.UNLOCK;
-        } else if (action instanceof HeroAction.LvlTransition) {
-            return NetworkActionType.LVL_TRANSITION;
-        } else if (action instanceof HeroAction.Mine) {
-            return NetworkActionType.MINE;
-        } else if (action instanceof HeroAction.Alchemy) {
-            return NetworkActionType.ALCHEMY;
-        }
-        return NetworkActionType.WAIT;
+    /** Maps only native HeroAction classes with an explicit multiplayer producer. */
+    public static Optional<NetworkActionType> mapHeroActionToNetworkAction(HeroAction action) {
+        if (action instanceof HeroAction.Move) return Optional.of(NetworkActionType.MOVE);
+        if (action instanceof HeroAction.Attack) return Optional.of(NetworkActionType.ATTACK);
+        if (action instanceof HeroAction.PickUp) return Optional.of(NetworkActionType.PICKUP);
+        if (action instanceof HeroAction.OpenChest) return Optional.of(NetworkActionType.OPEN_CHEST);
+        if (action instanceof HeroAction.Buy) return Optional.of(NetworkActionType.BUY);
+        if (action instanceof HeroAction.Interact) return Optional.of(NetworkActionType.INTERACT);
+        if (action instanceof HeroAction.Unlock) return Optional.of(NetworkActionType.UNLOCK);
+        if (action instanceof HeroAction.LvlTransition) return Optional.of(NetworkActionType.LVL_TRANSITION);
+        if (action instanceof HeroAction.Mine) return Optional.of(NetworkActionType.MINE);
+        if (action instanceof HeroAction.Alchemy) return Optional.of(NetworkActionType.ALCHEMY);
+        return Optional.empty();
     }
 }

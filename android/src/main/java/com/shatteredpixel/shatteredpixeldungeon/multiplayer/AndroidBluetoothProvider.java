@@ -78,7 +78,7 @@ public class AndroidBluetoothProvider implements BluetoothTransport.NativeBlueto
             String line;
             while (isConnected && reader != null && (line = reader.readLine()) != null) {
                 if (callback != null) {
-                    NetworkMessage msg = NetworkMessage.parseJson(line);
+                    NetworkMessage msg = NetworkMessage.parseBluetoothJson(line);
                     if (msg != null) {
                         callback.onMessageReceived(msg);
                     }
