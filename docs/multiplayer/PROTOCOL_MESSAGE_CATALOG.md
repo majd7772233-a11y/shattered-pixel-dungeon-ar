@@ -219,9 +219,9 @@ SpiritArrow is **not** a new outer `MessageType` and is not a separate `NetworkA
 
 The static contract is checked by `server/scripts/validate-spirit-arrow-schema.mjs`, included in backend `npm test`.
 
-At exact HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, [CI 43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) passes TypeScript/schema validation and Android JVM/Debug APK, but Backend Vitest is red (654 passed / 4 failed of 658 executions; two MatchRoom scenarios mirrored in TS/JS). The positive authority helper contains `attackerPos: 9`; Java verifies the native RemoteHero result uses `remoteHero.pos`, so the older omission theory is stale.
+**Historical 9-C failure snapshot — 2026-11-12; superseded by Phase 9 completion on 2026-11-13.** At gameplay HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, [CI 43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) reported 654 passed / 4 failed mirrored Vitest executions. Those failures were subsequently resolved: publisher result commit and requester EVENT_BATCH are now covered, the forged-position negative test asserts the correlated ERROR, and Android accepted-event reconciliation is tested on two client worlds with different local Mob Actor IDs.
 
-The positive test currently observes publisher `COMBAT_REQUEST → ACTION_ACCEPTED → ERROR`; requester EVENT_BATCH is not verified because the test stops at the extra error. The forged-position negative case receives a correlated requester `ERROR`, while its expectation is stale. Trace error recipient/payload/sequence, authenticated FOV sender exclusion, all authority predicates and asynchronous native completion. Full publisher MessageRouter/requester event reconciliation remains unproven.
+The current verified gameplay/test SHA is `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact-head [CI 43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed Backend 682/682 executions, Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. Phase 9's current support boundary and exclusions are recorded in `ROADMAP.md` and `TEST_MATRIX.md`.
 
 
 
