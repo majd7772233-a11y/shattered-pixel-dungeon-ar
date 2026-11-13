@@ -462,7 +462,7 @@ const PVP_DEFENDER_ID = "spirit-arrow-pvp-defender-001";
 function makePlayerCombatRollbackFixture() {
   const fixture = makeSpiritArrowForwardFixture();
   const { sql, room, heroBefore } = fixture;
-  const defenderBefore = { ...heroBefore, pos: 10 };
+  const defenderBefore: Record<string, any> = { ...heroBefore, pos: 10 };
   const defenderAfter = { ...defenderBefore, hp: 15 };
   const attackerBefore = JSON.stringify(heroBefore);
   const defenderBeforeJson = JSON.stringify(defenderBefore);
