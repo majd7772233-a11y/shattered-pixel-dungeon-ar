@@ -348,19 +348,19 @@ The WebSocket boundary in `MatchRoomMessages.webSocketMessage()` preserves the p
 
 
 
-### 6.1.2 SpiritArrow publisher-result validation — 9-C partial
+### 6.1.2 SpiritArrow result commit and publisher rebase — Phase 9 complete
 
-The Worker validates SpiritArrow metadata against trusted Hero/Bow/SnipersMark/Mob identities. MatchRoom reserves and forwards pending combat to the level publisher; those separate tests pass.
+Strict SpiritArrow intent is validated against trusted Hero/Bow/SnipersMark/Mob state and a pending request reservation. Only the active level publisher may return the matching native result. Validation binds request ID, publisher identity/generation, stable target entity ID, attacker/target positions, native pre-state and post-bundle; missing/forged position, stale generation, wrong target and wrong mark-to-Mob identity are rejected.
 
-At HEAD `9168284e67d353a956fc276e0ea8c00d1c685f1d`, exact CI [43290836162](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43290836162) reports 654 passed / 4 failed. The positive result helper already includes `attackerPos: 9`; Java verifies the RemoteHero native serializer uses its actual position. Keep `hasStrictNativeCombatFields()` and `isValidNativeCombatEvent()` strict.
+The supported publisher result enters the scoped native combat transaction. Mob SQL state, full level snapshot, processed request, event and sequence are committed together. ACTION_ACCEPTED and FOV/EVENT_BATCH delivery are deferred until commit. On failure the SQL transaction and in-memory sequence/world-time checkpoint roll back; the requester receives a correlated error.
 
-Current symptoms: publisher socket sees `COMBAT_REQUEST`, then `ACTION_ACCEPTED`, then an extra `ERROR`; the forged-position negative test is correctly rejected but the requester is sent a correlated `ERROR` that the test does not yet expect. Inspect the exact error payload, recipient, sequence and post-accept broadcast path. The current test has not proven requester EVENT_BATCH application.
+The requester receives the accepted sequenced PLAYER_ATTACKED event. Android resolves it by stable server entity ID and asks for a full snapshot when the native Mob bundle is present. A dedicated JVM regression verifies reconciliation across two client worlds with different local Mob Actor IDs.
 
-This fixture does not execute Android MessageRouter, RemoteHero asynchronous missile completion or requester EVENT_BATCH application. Those remain required for 9-C.
+Publisher disconnect handoff uses a durable generation. Its SQL transaction transfers or clears the owner, advances the term and cancels combat reservations tied to the old publisher. A replacement does not gain write authority until its restored persisted snapshot and `publisherRebase` are accepted as a lossless shared-world reserialization. Mob stable IDs/bundles and gameplay state remain fixed; process-local Hero/RemoteHero/Mob Actor IDs are refreshed and checked. LifeLink/SnipersMark references must point to the exact stable Mob; unsupported remote references fail closed.
 
+The Workers runtime suite exercises real Durable Object SQLite rollback, replay, eviction/reconstruction and publisher handoff after a persisted snapshot. Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed all three jobs. The test runtime is local Workers emulation, not a deployed production Worker smoke test.
 
-
-### 6.2 Poison damage against a native Hero Barrier
+### 6.2 Poison damage against a native Hero Barrier### 6.2 Poison damage against a native Hero Barrier
 
 The Hero Buff validator also accounts for a bounded secondary row mutation during a Poison tick: `Char.damage()` may invoke `ShieldBuff.processDamage()`, which consumes a Hero's active `Barrier` before HP changes. This exception is Poison-only; native Hunger damage explicitly bypasses shield buffs.
 
