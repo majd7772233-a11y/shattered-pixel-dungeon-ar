@@ -71,8 +71,12 @@ public final class MessageRouter {
             }
             String publisherId = stringValue(payload.get("publisherId"), null);
             long term = longValue(payload.get("term"), -1L);
+            String reason = stringValue(payload.get("reason"), "");
             if (term < 0L) throw new IllegalArgumentException("Missing publisher generation");
             manager.applyLevelPublisherChange(publisherId, term);
+            if (manager.isLevelPublisher()) {
+                manager.publishPublisherRebase("RECONNECT".equals(reason));
+            }
         } catch (RuntimeException invalidState) {
             manager.requestResync(message.sequence);
         }

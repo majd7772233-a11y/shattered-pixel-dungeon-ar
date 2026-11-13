@@ -114,6 +114,14 @@ export class MatchRoom extends MatchRoomMessages {
           "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
           "levelPublisherTerm", String(nextTerm)
         );
+        if (nextPublisherId && this.gameStatus !== "PLAYING") {
+          this.sql.exec(
+            "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "levelPublisherReadyTerm", String(nextTerm)
+          );
+        } else {
+          this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
+        }
         if (nextPublisherId) {
           this.sql.exec(
             "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -265,6 +273,14 @@ export class MatchRoom extends MatchRoomMessages {
               "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
               "levelPublisherTerm", String(currentTerm + 1)
             );
+            if (this.gameStatus !== "PLAYING") {
+              this.sql.exec(
+                "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "levelPublisherReadyTerm", String(currentTerm + 1)
+              );
+            } else {
+              this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
+            }
             promotedOnConnect = true;
           });
         }

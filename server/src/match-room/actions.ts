@@ -7,6 +7,7 @@ import { isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFa
 import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds, nativeHeroBuffLifeLinkMobActorIds, validateNativeLifeLinkEnvironmentDeathRewardTransition, mergeNativeLifeLinkDeathExperienceBundle } from "../validators/hero-buffs";
 import { isValidNativeFloorItemIdentitySet, reserveNativeLootClaim, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, classifyNativeMutationLock } from "../validators/inventory-claims";
 import { sameNativeItemValue } from "../validators/inventory-economy";
+import { isValidNativePublisherRebase, type PublisherRebaseHeroState } from "../validators/publisher-rebase";
 import { isValidNativeBuybackIntent, mergeNativeItemStatusState, isValidNativeUseItemIntent } from "../validators/item-state";
 import { isValidNativeBuyIntent, isValidNativeSellIntent } from "../validators/shop";
 import { isValidNativeWorldActionIntent } from "../validators/world-actions";
@@ -241,8 +242,25 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   protected async handleLevelData(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
         const level = JSON.parse(msg.payloadJson || "{}");
         const isNativeWorldMutation = level.nativeWorldMutation === true;
+        const isPublisherRebase = level.publisherRebase === true;
         const authority = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'levelPublisher'`).toArray();
         const isLevelPublisher = authority.length > 0 && String(authority[0].value) === session.playerId;
+        const publisherTerm = this.currentLevelPublisherTerm();
+        const isRebaseGenerationValid = isPublisherRebase && isLevelPublisher
+          && publisherTerm >= 0 && Number(level.publisherRebaseTerm) === publisherTerm
+          && this.gameStatus === "PLAYING" && Number(level.depth) === this.currentDepth
+          && level.nativeWorldTick !== true && !isNativeWorldMutation
+          && this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length === 0;
+        if (isPublisherRebase && !isRebaseGenerationValid) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_PUBLISHER_REBASE_GENERATION" }) }));
+          return;
+        }
+        if (!isPublisherRebase && !this.isLevelPublisherReady()) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PUBLISHER_REBASE_REQUIRED" }) }));
+          return;
+        }
         if (!isLevelPublisher && !isNativeWorldMutation) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "LEVEL_PUBLISHER_ONLY" }) }));
@@ -689,6 +707,30 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));
           return;
         }
+        if (isPublisherRebase) {
+          const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+            "heroState:" + session.playerId).toArray()[0];
+          const connectedRows = this.sql.exec(
+            "SELECT player_id FROM players WHERE connected = 1 ORDER BY player_id ASC").toArray();
+          const connectedHeroStates: PublisherRebaseHeroState[] = [];
+          for (const player of connectedRows) {
+            const playerId = String(player.player_id || "");
+            const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
+              "heroState:" + playerId).toArray()[0];
+            if (!playerId || !heroRow || typeof heroRow.value !== "string") {
+              connectedHeroStates.length = 0;
+              break;
+            }
+            connectedHeroStates.push({ playerId, heroStateJson: String(heroRow.value) });
+          }
+          if (!trustedHeroRow || connectedHeroStates.length !== connectedRows.length
+              || !isValidNativePublisherRebase(previousSnapshot, level, session.playerId,
+                trustedHeroRow.value, connectedHeroStates)) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+              sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_PUBLISHER_REBASE_SNAPSHOT" }) }));
+            return;
+          }
+        }
         if (isNativeWorldTurn) {
           const trustedTurnHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
             "heroState:" + session.playerId).toArray()[0];
@@ -709,7 +751,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             return;
           }
         }
-        if (!isNativeWorldTurn && level.nativeWorldTurnCounter !== undefined) {
+        if (!isNativeWorldTurn && Number(level.nativeWorldTurnCounter ?? 0) !== storedTurnCounter) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "UNMARKED_NATIVE_WORLD_TURN" }) }));
           return;
@@ -742,9 +784,19 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           ON CONFLICT(depth) DO UPDATE SET width=excluded.width,height=excluded.height,
           entrance_pos=excluded.entrance_pos,exit_pos=excluded.exit_pos,seed=excluded.seed`,
           depth,width,height,Number(level.entrancePos),Number(level.exitPos),Number(level.seed)||this.matchSeed);
+        if (isPublisherRebase) {
+          delete level.publisherRebase;
+          delete level.publisherRebaseTerm;
+        }
         this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
           ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
           `levelSnapshot:${depth}`, JSON.stringify(level));
+        if (isPublisherRebase) {
+          this.sql.exec(
+            "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "levelPublisherReadyTerm", String(publisherTerm)
+          );
+        }
         const heroStateToStore = verifiedMutationHeroStateJson || level.heroStateJson;
         if (typeof heroStateToStore === "string" && heroStateToStore.length <= 200000) {
           this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
@@ -887,6 +939,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   }
 
   protected handleActionInTransaction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
+        if (!this.isLevelPublisherReady()) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PUBLISHER_REBASE_REQUIRED" }) }));
+          return;
+        }
         if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "TRANSITION_PENDING" }) }));

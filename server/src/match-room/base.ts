@@ -28,6 +28,24 @@ export class MatchRoomBase {
     }
   }
 
+  protected currentLevelPublisherTerm(): number {
+    const row = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
+    if (row === undefined) return 0;
+    const term = Number(row.value);
+    return Number.isSafeInteger(term) && term >= 0 ? term : -1;
+  }
+
+  protected isLevelPublisherReady(): boolean {
+    const owner = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
+    if (!owner || typeof owner.value !== "string" || !owner.value) return false;
+    const term = this.currentLevelPublisherTerm();
+    const ready = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelPublisherReadyTerm").toArray()[0];
+    return term >= 0 && ready !== undefined && Number(ready.value) === term;
+  }
+
   protected levelPublisherStateMessage(reason: string): NetworkMessage {
     const publisherRow = this.sql.exec(
       "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];

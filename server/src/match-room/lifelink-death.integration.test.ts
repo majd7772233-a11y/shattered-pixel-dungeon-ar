@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { isValidNativePublisherRebase } from "../validators/publisher-rebase";
 import { MatchRoom } from "./index";
 import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds } from "../validators/hero-buffs";
 import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas, isValidNativeHeroStateJson } from "../validators/combat-state";
@@ -69,6 +70,12 @@ class MemoryMatchRoomSql {
     if (query === "SELECT value FROM room_meta WHERE key = 'levelPublisher'") {
       const value = this.roomMeta.get("levelPublisher");
       return this.cursor(value === undefined ? [] : [{ value }]);
+    }
+    if (query === "SELECT player_id FROM players WHERE connected = 1 ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => Number(player.connected) === 1)
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({ player_id: player.player_id })));
     }
     if (query === "SELECT key,value FROM room_meta WHERE key LIKE 'pendingCombat:%'") {
       return this.cursor(Array.from(this.roomMeta.entries())
@@ -708,6 +715,64 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
 
 
+
+
+  it("accepts only lossless publisher rebase snapshots with stable Mob and Hero Actor identities", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { levelSnapshot, heroBefore } = fixture;
+    const ownHero = JSON.parse(JSON.stringify(heroBefore));
+    ownHero.combatBundle = JSON.stringify({ id: 11, time: 10, STR: 10, buffs: [] });
+    ownHero.buffCount = 0;
+    delete ownHero.buff_0;
+    delete ownHero.buffCooldown_0;
+    const ownJson = JSON.stringify(ownHero);
+    const connected = [{ playerId: ATTACKER_ID, heroStateJson: ownJson }];
+    const rebase = JSON.parse(JSON.stringify(levelSnapshot));
+    rebase.heroStateJson = ownJson;
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(true);
+
+    const changedMobActor = JSON.parse(JSON.stringify(rebase));
+    changedMobActor.mobs[0].mobId += 100;
+    expect(isValidNativePublisherRebase(levelSnapshot, changedMobActor, ATTACKER_ID, ownJson, connected)).toBe(false);
+
+    const changedTerrain = JSON.parse(JSON.stringify(rebase));
+    changedTerrain.tiles[20].terrain = 4;
+    expect(isValidNativePublisherRebase(levelSnapshot, changedTerrain, ATTACKER_ID, ownJson, connected)).toBe(false);
+
+    const changedHero = JSON.parse(JSON.stringify(ownHero));
+    changedHero.hp--;
+    expect(isValidNativePublisherRebase(levelSnapshot, {
+      ...rebase, heroStateJson: JSON.stringify(changedHero)
+    }, ATTACKER_ID, ownJson, connected)).toBe(false);
+  });
+
+  it("requires the exact Actor IDs of every connected RemoteHero", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { levelSnapshot, heroBefore } = fixture;
+    const ownHero = JSON.parse(JSON.stringify(heroBefore));
+    ownHero.combatBundle = JSON.stringify({ id: 11, time: 10, STR: 10, buffs: [] });
+    ownHero.buffCount = 0;
+    delete ownHero.buff_0;
+    delete ownHero.buffCooldown_0;
+    const remoteHero = JSON.parse(JSON.stringify(ownHero));
+    remoteHero.combatBundle = JSON.stringify({ id: 21, time: 10, STR: 10, buffs: [] });
+    remoteHero.buffCount = 1;
+    remoteHero.buff_0 = JSON.stringify({ buff: {
+      __className: "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison", id: 88, time: 10
+    }});
+    remoteHero.buffCooldown_0 = 1;
+    const ownJson = JSON.stringify(ownHero), remoteJson = JSON.stringify(remoteHero);
+    const rebase = JSON.parse(JSON.stringify(levelSnapshot));
+    rebase.heroStateJson = ownJson;
+    rebase.nativeRemoteHeroActorIds = [21, 88];
+    const connected = [
+      { playerId: ATTACKER_ID, heroStateJson: ownJson },
+      { playerId: "remote-player-identity-002", heroStateJson: remoteJson }
+    ];
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(true);
+    rebase.nativeRemoteHeroActorIds = [21];
+    expect(isValidNativePublisherRebase(levelSnapshot, rebase, ATTACKER_ID, ownJson, connected)).toBe(false);
+  });
 
   it("hands Level Publisher authority to a connected living player and cancels its pending combat", async () => {
     const fixture = makeSpiritArrowForwardFixture();

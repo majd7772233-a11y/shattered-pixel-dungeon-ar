@@ -416,6 +416,7 @@ public final class SPDLevelSnapshot {
             }
         }
         out.heroStateJson = currentHeroStateJson();
+        out.nativeWorldTurnCounter = MultiplayerManager.getInstance().getNativeWorldTurnCounter();
         // RemoteHero replicas are Actor scheduler members, but their native Actor IDs are
         // process-local and are not represented by the level's Mob collection. Include their
         // identities and Buff actor IDs so the server can verify MOB_BUFF source uniqueness.

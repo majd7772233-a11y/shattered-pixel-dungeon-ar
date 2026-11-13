@@ -19,6 +19,8 @@ public class MultiplayerManager implements TransportCallback {
     private volatile boolean levelPublisher = false;
     private volatile String levelPublisherId;
     private volatile long levelPublisherTerm = -1L;
+    private volatile long publisherRebaseSentTerm = -1L;
+    private final Map<String, Long> publisherRebaseRequests = new ConcurrentHashMap<>();
     private volatile boolean floorTransitionPending = false;
     private volatile boolean resolvingAuthorityCombat = false;
     private volatile String authorityCombatRequestId;
@@ -74,6 +76,8 @@ public class MultiplayerManager implements TransportCallback {
         this.levelPublisher = false;
         this.levelPublisherId = null;
         this.levelPublisherTerm = -1L;
+        this.publisherRebaseSentTerm = -1L;
+        this.publisherRebaseRequests.clear();
         this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.lastSequence = 0L;
@@ -109,6 +113,8 @@ public class MultiplayerManager implements TransportCallback {
         this.levelPublisher = false;
         this.levelPublisherId = null;
         this.levelPublisherTerm = -1L;
+        this.publisherRebaseSentTerm = -1L;
+        this.publisherRebaseRequests.clear();
         this.floorTransitionPending = false;
         this.endAuthorityCombat();
         this.localPlayerId = null;
@@ -133,9 +139,11 @@ public class MultiplayerManager implements TransportCallback {
         if (term < 0L || term < levelPublisherTerm) return;
         if (term == levelPublisherTerm && levelPublisherTerm >= 0L
                 && !java.util.Objects.equals(levelPublisherId, publisherId)) return;
+        boolean changed = term > levelPublisherTerm || !java.util.Objects.equals(levelPublisherId, publisherId);
         levelPublisherTerm = term;
         levelPublisherId = publisherId;
         levelPublisher = publisherId != null && publisherId.equals(localPlayerId);
+        if (changed && levelPublisher) publisherRebaseSentTerm = -1L;
     }
 
     public boolean isFloorTransitionPending() { return floorTransitionPending; }
@@ -152,6 +160,34 @@ public class MultiplayerManager implements TransportCallback {
 
     public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
         if (acceptedTurn >= 0L) nativeWorldTurnCounter = acceptedTurn;
+    }
+
+    public synchronized long getNativeWorldTurnCounter() {
+        return nativeWorldTurnCounter;
+    }
+
+    /** Publish the unchanged restored world before the Worker enables this publisher generation. */
+    public synchronized void publishPublisherRebase(boolean force) {
+        if (!isMultiplayerActive || !levelPublisher || activeTransport == null || Dungeon.level == null
+                || Dungeon.branch != 0 || floorTransitionPending || resolvingAuthorityCombat
+                || levelPublisherTerm < 0L) return;
+        if (!force && publisherRebaseSentTerm == levelPublisherTerm) return;
+        String snapshot = SPDLevelSnapshot.currentLevelJson();
+        if (snapshot == null || snapshot.length() < 2 || snapshot.charAt(snapshot.length() - 1) != '}') {
+            requestResync(lastSequence);
+            return;
+        }
+        String payload = snapshot.substring(0, snapshot.length() - 1)
+                + ",\\"publisherRebase\\":true,\\"publisherRebaseTerm\\":" + levelPublisherTerm + "}";
+        NetworkMessage message = new NetworkMessage();
+        message.messageType = MessageType.LEVEL_DATA;
+        message.senderId = localPlayerId;
+        message.requestId = UUID.randomUUID().toString();
+        message.payloadJson = payload;
+        publisherRebaseRequests.put(message.requestId, levelPublisherTerm);
+        pendingActions.put(message.requestId, message);
+        publisherRebaseSentTerm = levelPublisherTerm;
+        activeTransport.send(message);
     }
 
     public boolean isResolvingAuthorityCombat() { return resolvingAuthorityCombat; }
@@ -349,6 +385,10 @@ public class MultiplayerManager implements TransportCallback {
             JsonValue turnCounter = payload == null ? null : payload.get("nativeWorldTurnCounter");
             if (turnCounter != null && turnCounter.isNumber() && turnCounter.asLong() >= 0L) {
                 nativeWorldTurnCounter = Math.max(nativeWorldTurnCounter, turnCounter.asLong());
+            }
+            Long rebaseTerm = message.requestId == null ? null : publisherRebaseRequests.remove(message.requestId);
+            if (rebaseTerm != null && rebaseTerm.longValue() == levelPublisherTerm && levelPublisher) {
+                publisherRebaseSentTerm = levelPublisherTerm;
             }
             if (message.requestId != null) pendingActions.remove(message.requestId);
             JsonValue entities = payload == null ? null : payload.get("entities");
