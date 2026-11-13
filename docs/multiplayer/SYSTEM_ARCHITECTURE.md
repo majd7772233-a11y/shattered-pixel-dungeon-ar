@@ -125,7 +125,7 @@ The requester receives the accepted sequenced EVENT_BATCH. Android resolves the 
 Publisher loss uses a durable monotonic generation and atomic handoff. A replacement is selected only from valid persisted Hero/world state; pending combat tied to the old publisher is closed. The replacement receives the persisted snapshot and must submit a lossless publisher rebase. Shared Mob IDs/bundles remain unchanged while process-local Hero/RemoteHero/Mob Actor registries are refreshed. LifeLink and SnipersMark references must resolve to the exact stable Mob identity. Remote cross-device local references that cannot be safely rebound remain fail-closed.
 
 Exact gameplay/test CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588) passed Backend (682 executions), Android JVM/Debug APK and three Workers-runtime Durable Object SQLite tests. This is not a production Worker deployment or a rendered projectile animation.
-### 3.6 Android platform bridge### 3.6 Android platform bridge
+### 3.6 Android platform bridge
 
 android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java implements the core BluetoothTransport.NativeBluetoothProvider interface using Android Bluetooth APIs. This is a platform adapter. Verify its provider registration/injection path and current Android permission/manifest behavior before describing Bluetooth as ready.
 
