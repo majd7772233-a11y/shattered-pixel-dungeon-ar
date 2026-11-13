@@ -59,6 +59,11 @@ export function isValidNativePublisherRebase(
     delete copy.nativeRemoteHeroActorIds;
     delete copy.publisherRebase;
     delete copy.publisherRebaseTerm;
+    // The last accepted shared-Actor marker describes the previous turn, not world state.
+    // The accepted counter is intentionally retained and must still match exactly.
+    for (const key of ["nativeWorldTick", "nativeActorClock", "nativeWorldActorId",
+      "nativeWorldActorClass", "nativeWorldActorKind", "nativeWorldActorEntityId",
+      "nativeMobActorId", "nativeMobEntityId"]) delete copy[key];
     return copy;
   };
   if (!sameNativeItemValue(stripLocalFields(previous), stripLocalFields(next))) return false;
