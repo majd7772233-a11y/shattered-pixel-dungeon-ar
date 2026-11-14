@@ -59,16 +59,136 @@ public final class MessageRouter {
             case ERROR:
                 handleErrorMessage(message);
                 break;
+            case PLAYER_JOINED:
+                // The server-authored join envelope has one typed owner; never infer a Hero
+                // update from arbitrary JSON keys or from the sender of an unrelated message.
+                Game.runOnRenderThread(() -> handlePlayerJoinedMessage(message));
+                break;
             case PLAYER_LEFT:
                 // Disconnect cleanup mutates native Actors, Buffs, Mob targets and sprites.
                 Game.runOnRenderThread(() -> handlePlayerLeftMessage(message));
                 break;
+            case READY:
+                Game.runOnRenderThread(() -> handleReadyMessage(message));
+                break;
+            case PING:
+                // PING is transport liveness only. The Worker returns {pong:true}; it has no
+                // player/entity semantics and must never enter the legacy Hero receiver.
+                handlePingMessage(message);
+                break;
+            case CHAT:
+                // The Worker currently relays CHAT, but this Android client has no chat surface.
+                // Keep it explicitly non-routed until a typed chat UI/contract is implemented.
+                break;
+            case HELLO:
+            case CREATE_ROOM:
+            case JOIN_ROOM:
+            case ROOM_STATE:
+            case MATCH_START:
+            case ACTION:
+            case LEVEL_DATA:
+            case LEVEL_READY:
+            case RESYNC:
+            case RECONNECT:
+            case LEAVE:
+                // Declared protocol values that are not server-to-client gameplay notifications.
+                // They are deliberately not dispatched to RemotePlayerActionReceiver.
+                break;
             default:
-                Game.runOnRenderThread(() -> RemotePlayerActionReceiver.handleNetworkMessage(message));
+                // A future enum value must be assigned a typed route before it can mutate SPD.
+                manager.requestResync(message.sequence);
                 break;
         }
     }
 
+    private static void handlePlayerJoinedMessage(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.payloadJson == null) {
+            manager.requestResync(message == null ? manager.getLastSequence() : message.sequence);
+            return;
+        }
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            String playerId = stringValue(payload == null ? null : payload.get("playerId"), null);
+            JsonValue positionValue = payload == null ? null : payload.get("pos");
+            if (payload == null || !payload.isObject() || playerId == null || playerId.isEmpty()
+                    || message.senderId == null || !message.senderId.equals(playerId)
+                    || positionValue == null || !positionValue.isNumber()) {
+                throw new IllegalArgumentException("Invalid PLAYER_JOINED identity or position");
+            }
+            double rawPosition = positionValue.asDouble();
+            if (!Double.isFinite(rawPosition) || rawPosition != Math.floor(rawPosition)
+                    || rawPosition < 0d || rawPosition > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("Invalid PLAYER_JOINED position");
+            }
+            int position = (int) rawPosition;
+            if (Dungeon.level != null && position >= Dungeon.level.length()) {
+                throw new IllegalArgumentException("PLAYER_JOINED position is outside the active level");
+            }
+            if (playerId.equals(manager.getLocalPlayerId())) return;
+
+            RemotePlayer remote = manager.getRemotePlayer(playerId);
+            if (remote == null) {
+                remote = new RemotePlayer(playerId, "Player", "WARRIOR");
+                remote.pos = position;
+                remote.hp = 20;
+                remote.ht = 20;
+                manager.addRemotePlayer(remote);
+                RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+            } else {
+                int oldPosition = remote.pos;
+                remote.pos = position;
+                if (remote.heroInstance != null) {
+                    remote.heroInstance.pos = position;
+                    if (remote.heroInstance.sprite != null && oldPosition != position) {
+                        remote.heroInstance.sprite.move(oldPosition, position);
+                    }
+                }
+            }
+        } catch (RuntimeException invalidJoin) {
+            manager.requestResync(message.sequence);
+        }
+    }
+
+    private static void handleReadyMessage(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            String playerId = stringValue(payload == null ? null : payload.get("playerId"), null);
+            JsonValue readyValue = payload == null ? null : payload.get("ready");
+            if (payload == null || !payload.isObject() || playerId == null || playerId.isEmpty()
+                    || message.senderId == null || !message.senderId.equals(playerId)
+                    || readyValue == null
+                    || !(readyValue.isBoolean() || (readyValue.isNumber()
+                        && (readyValue.asDouble() == 0d || readyValue.asDouble() == 1d)))) {
+                throw new IllegalArgumentException("Invalid READY identity or state");
+            }
+            if (playerId.equals(manager.getLocalPlayerId())) return;
+            RemotePlayer remote = manager.getRemotePlayer(playerId);
+            if (remote == null) {
+                // PLAYER_JOINED is ordered before READY by the Worker; a missing player means
+                // the client has missed control state and must request the authoritative snapshot.
+                manager.requestResync(message.sequence);
+                return;
+            }
+            remote.isReady = readyValue.isBoolean() ? readyValue.asBoolean() : readyValue.asInt() == 1;
+        } catch (RuntimeException invalidReady) {
+            manager.requestResync(message.sequence);
+        }
+    }
+
+    private static void handlePingMessage(NetworkMessage message) {
+        if (message == null || message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            JsonValue pong = payload == null ? null : payload.get("pong");
+            // The response is intentionally consumed without touching sequence, actors or state.
+            if (pong != null && pong.isBoolean() && pong.asBoolean()) return;
+        } catch (RuntimeException ignored) {
+            // Liveness frames are not world state; malformed PINGs are discarded, not replayed.
+        }
+    }
     private static void handlePlayerLeftMessage(NetworkMessage message) {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         if (message == null || message.payloadJson == null) return;
@@ -696,6 +816,7 @@ public final class MessageRouter {
             Game.runOnRenderThread(() -> {
                 try {
                     if (WorldSnapshot.restoreWorld(snapshot)) {
+                        applySnapshotPlayerReadiness(root.get("players"));
                         manager.markSnapshotApplied(snapshot.sequence);
                         manager.synchronizeNativeWorldTurnCounter(snapshot.nativeWorldTurnCounter);
                         if (manager.isFloorTransitionPending()) {
@@ -720,6 +841,21 @@ public final class MessageRouter {
         }
     }
 
+    private static void applySnapshotPlayerReadiness(JsonValue players) {
+        if (players == null || !players.isArray()) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        for (JsonValue player = players.child; player != null; player = player.next) {
+            String playerId = stringValue(player.get("player_id"), stringValue(player.get("playerId"), null));
+            JsonValue ready = player.get("ready");
+            if (playerId == null || playerId.isEmpty() || ready == null) continue;
+            RemotePlayer remote = manager.getRemotePlayer(playerId);
+            if (remote == null) continue;
+            if (ready.isBoolean()) remote.isReady = ready.asBoolean();
+            else if (ready.isNumber() && (ready.asDouble() == 0d || ready.asDouble() == 1d)) {
+                remote.isReady = ready.asInt() == 1;
+            }
+        }
+    }
     private static void handleEventBatchMessage(NetworkMessage message) {
         if (message.payloadJson == null) return;
         try {

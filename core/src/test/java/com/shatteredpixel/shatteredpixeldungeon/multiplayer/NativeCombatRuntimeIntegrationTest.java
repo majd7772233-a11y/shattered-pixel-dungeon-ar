@@ -1090,7 +1090,7 @@ public class NativeCombatRuntimeIntegrationTest {
         MessageRouter.routeMessage(left);
         CountDownLatch routed = new CountDownLatch(1);
         Game.runOnRenderThread(routed::countDown);
-        Assert.assertTrue("The default MessageRouter path must finish PLAYER_LEFT cleanup on the render thread",
+        Assert.assertTrue("The typed MessageRouter path must finish PLAYER_LEFT cleanup on the render thread",
                 routed.await(10, TimeUnit.SECONDS));
 
         Assert.assertNull("Disconnected player must leave the remote-player registry",
@@ -1166,42 +1166,126 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void defaultRouterRetainsLegacyRemoteHeroStateUpdates() throws Exception {
+    public void playerJoinedAndReadyUseExplicitTypedRoutes() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
-        manager.startSession("legacy-remote-route", "local-player", new TestTransport());
+        manager.startSession("typed-player-join-ready", "local-player", new TestTransport());
+        int joinedPosition = hero.pos + 3;
 
-        RemotePlayer remote = new RemotePlayer("legacy-remote-player", "Legacy", "WARRIOR");
-        remote.pos = hero.pos + 3;
-        remote.hp = remote.ht = 20;
-        RemoteHero remoteHero = new RemoteHero();
-        remoteHero.pos = remote.pos;
-        remoteHero.HP = remoteHero.HT = 20;
-        remote.heroInstance = remoteHero;
-        manager.addRemotePlayer(remote);
-        Actor.add(remoteHero);
+        NetworkMessage joined = new NetworkMessage(MessageType.PLAYER_JOINED,
+                "{\"playerId\":\"typed-remote-player\",\"pos\":" + joinedPosition + "}");
+        joined.senderId = "typed-remote-player";
+        MessageRouter.routeMessage(joined);
 
-        // Preserve the legacy receiver's actual JSON key-scanning contract: the nested "to"
-        // closes before the sibling hp field, so both values are independently parseable.
-        NetworkMessage update = new NetworkMessage(MessageType.PLAYER_JOINED,
-                "{\"event\":\"PLAYER_MOVED\",\"position\":{\"to\":17},\"hp\":6}");
-        update.senderId = "legacy-remote-player";
-        MessageRouter.routeMessage(update);
+        CountDownLatch joinRouted = new CountDownLatch(1);
+        Game.runOnRenderThread(joinRouted::countDown);
+        Assert.assertTrue("PLAYER_JOINED must finish on the render thread", joinRouted.await(10, TimeUnit.SECONDS));
+
+        RemotePlayer remote = manager.getRemotePlayer("typed-remote-player");
+        Assert.assertNotNull("A server-authored PLAYER_JOINED must register the remote player", remote);
+        Assert.assertEquals(joinedPosition, remote.pos);
+        Assert.assertNotNull("The typed join path must create the same native RemoteHero replica", remote.heroInstance);
+        Assert.assertSame(remote.heroInstance, Actor.findById(remote.heroInstance.id()));
+
+        NetworkMessage duplicateJoin = new NetworkMessage(MessageType.PLAYER_JOINED,
+                "{\"playerId\":\"typed-remote-player\",\"pos\":" + (joinedPosition + 1) + "}");
+        duplicateJoin.senderId = "typed-remote-player";
+        MessageRouter.routeMessage(duplicateJoin);
+        CountDownLatch duplicateRouted = new CountDownLatch(1);
+        Game.runOnRenderThread(duplicateRouted::countDown);
+        Assert.assertTrue(duplicateRouted.await(10, TimeUnit.SECONDS));
+        Assert.assertSame("A duplicate join must not replace the existing remote player", remote,
+                manager.getRemotePlayer("typed-remote-player"));
+        Assert.assertSame("A duplicate join must not create a second Hero Actor", remote.heroInstance,
+                Actor.findById(remote.heroInstance.id()));
+
+        NetworkMessage ready = new NetworkMessage(MessageType.READY,
+                "{\"playerId\":\"typed-remote-player\",\"ready\":true}");
+        ready.senderId = "typed-remote-player";
+        MessageRouter.routeMessage(ready);
+        CountDownLatch readyRouted = new CountDownLatch(1);
+        Game.runOnRenderThread(readyRouted::countDown);
+        Assert.assertTrue("READY must finish on the render thread", readyRouted.await(10, TimeUnit.SECONDS));
+        Assert.assertTrue("A server-authored READY broadcast must update the existing remote room state",
+                remote.isReady);
+
+        NetworkMessage notReady = new NetworkMessage(MessageType.READY,
+                "{\"playerId\":\"typed-remote-player\",\"ready\":false}");
+        notReady.senderId = "typed-remote-player";
+        MessageRouter.routeMessage(notReady);
+        CountDownLatch notReadyRouted = new CountDownLatch(1);
+        Game.runOnRenderThread(notReadyRouted::countDown);
+        Assert.assertTrue(notReadyRouted.await(10, TimeUnit.SECONDS));
+        Assert.assertFalse("READY false must clear the room flag without recreating the Hero", remote.isReady);
+        Assert.assertSame(remote, manager.getRemotePlayer("typed-remote-player"));
+    }
+
+    @Test
+    public void pingChatAndDeclaredNonInboundMessagesNeverCreateRemoteHeroes() throws Exception {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("typed-control-message-routes", "local-player", transport);
+
+        NetworkMessage ping = new NetworkMessage(MessageType.PING, "{\"pong\":true}");
+        MessageRouter.routeMessage(ping);
+        NetworkMessage chat = new NetworkMessage(MessageType.CHAT,
+                "{\"text\":\"hello\",\"playerId\":\"chat-peer\"}");
+        chat.senderId = "chat-peer";
+        MessageRouter.routeMessage(chat);
+        NetworkMessage roomState = new NetworkMessage(MessageType.ROOM_STATE,
+                "{\"playerId\":\"must-not-be-a-remote-player\",\"pos\":17}");
+        roomState.senderId = "must-not-be-a-remote-player";
+        MessageRouter.routeMessage(roomState);
+        NetworkMessage hello = new NetworkMessage(MessageType.HELLO, "{\"playerId\":\"hello-peer\"}");
+        hello.senderId = "hello-peer";
+        MessageRouter.routeMessage(hello);
 
         CountDownLatch routed = new CountDownLatch(1);
         Game.runOnRenderThread(routed::countDown);
-        Assert.assertTrue("Default route must deliver legacy player updates on the render thread",
-                routed.await(10, TimeUnit.SECONDS));
-
-        Assert.assertSame("The existing remote player remains registered", remote,
-                manager.getRemotePlayer("legacy-remote-player"));
-        Assert.assertEquals(17, remote.pos);
-        Assert.assertEquals(17, remoteHero.pos);
-        Assert.assertEquals(6, remote.hp);
-        Assert.assertEquals(6, remoteHero.HP);
-        Assert.assertSame("RemoteHero remains registered in the native Actor scheduler",
-                remoteHero, Actor.findById(remoteHero.id()));
+        Assert.assertTrue(routed.await(10, TimeUnit.SECONDS));
+        Assert.assertNull("CHAT must not construct a remote Hero before a chat UI exists",
+                manager.getRemotePlayer("chat-peer"));
+        Assert.assertNull("A declared but non-inbound ROOM_STATE must not construct a remote Hero",
+                manager.getRemotePlayer("must-not-be-a-remote-player"));
+        Assert.assertNull("HELLO must not be interpreted as an entity update", manager.getRemotePlayer("hello-peer"));
+        Assert.assertTrue("Ignored control messages must not request gameplay resync",
+                transport.sent.stream().noneMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
+    @Test
+    public void playerJoinedRejectsMismatchedSenderIdentityWithoutCreatingAReplica() throws Exception {
+        TestTransport transport = new TestTransport();
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("typed-player-join-identity", "local-player", transport);
+
+        NetworkMessage joined = new NetworkMessage(MessageType.PLAYER_JOINED,
+                "{\"playerId\":\"claimed-player\",\"pos\":17}");
+        joined.senderId = "different-sender";
+        MessageRouter.routeMessage(joined);
+
+        CountDownLatch routed = new CountDownLatch(1);
+        Game.runOnRenderThread(routed::countDown);
+        Assert.assertTrue(routed.await(10, TimeUnit.SECONDS));
+        Assert.assertNull("The payload cannot create a player under an identity different from senderId",
+                manager.getRemotePlayer("claimed-player"));
+        Assert.assertTrue("Invalid join identity must request an authoritative recovery snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void snapshotRestoresRemotePlayerReadyFlags() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("typed-snapshot-player-ready", "local-player", new TestTransport());
+        RemotePlayer remote = new RemotePlayer("snapshot-ready-player", "Player", "WARRIOR");
+        manager.addRemotePlayer(remote);
+
+        JsonValue players = new JsonReader().parse("[{\"player_id\":\"snapshot-ready-player\",\"ready\":1}]");
+        java.lang.reflect.Method restoreReady = MessageRouter.class.getDeclaredMethod(
+                "applySnapshotPlayerReadiness", JsonValue.class);
+        restoreReady.setAccessible(true);
+        restoreReady.invoke(null, players);
+
+        Assert.assertTrue("A room snapshot must restore the server-persisted ready flag", remote.isReady);
+    }
     @Test
     public void eventBatchUsesOneTypedStatePathAndLegacyReceiverRefusesSecondApplication() throws Exception {
         TestTransport transport = new TestTransport();

@@ -55,7 +55,7 @@
     },
     "payloadJson": {
       "type": "string",
-      "description": "Message-specific JSON string. LEVEL_PUBLISHER_CHANGED carries a LevelPublisherChangedPayload; LEVEL_DATA carries NativeLevelSnapshot and its optional publisherRebase generation marker."
+      "description": "A JSON-encoded message-specific payload string. ACTION uses definitions.NativeActionEnvelope; LEVEL_DATA/SNAPSHOT and other notifications use their documented source-owned payload contracts."
     }
   },
   "definitions": {
@@ -2343,6 +2343,30 @@
           ]
         }
       }
+    },
+    "NativeActionEnvelope": {
+      "type": "object",
+      "description": "Inner JSON object carried by the outer ACTION envelope's string-valued payloadJson. This defines the stable wrapper only; action-specific data is inventoried in protocol/action-data-contracts.json and remains Worker-validator-owned.",
+      "required": [
+        "action",
+        "data",
+        "heroStateJson"
+      ],
+      "properties": {
+        "action": {
+          "$ref": "#/definitions/NetworkActionType"
+        },
+        "data": {
+          "type": "object",
+          "description": "Action-specific native evidence. Consult action-data-contracts.json; the Worker validator is authoritative for required fields and supported subcases."
+        },
+        "heroStateJson": {
+          "type": "string",
+          "maxLength": 200000,
+          "description": "Opaque serialized native SPD Hero state captured by the native producer."
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

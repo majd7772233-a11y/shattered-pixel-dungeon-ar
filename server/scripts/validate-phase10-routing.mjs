@@ -74,8 +74,42 @@ assert.match(actionSource, /let actionValid\s*=\s*false\s*;/,
 assert.match(actionSource, /let actionErrorCode\s*=\s*"INVALID_ACTION"\s*;/,
   "Unknown/unaccepted actions must retain the fail-closed INVALID_ACTION result");
 
+const androidRouterSource = readRepoFile(
+  "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java"
+);
+const androidRouteStart = androidRouterSource.indexOf("public static void routeMessage(NetworkMessage message)");
+const androidRouteEnd = androidRouterSource.indexOf("private static void handlePlayerLeftMessage", androidRouteStart);
+assert.ok(androidRouteStart >= 0 && androidRouteEnd > androidRouteStart,
+  "Android MessageRouter must expose one inspectable top-level routeMessage switch");
+const androidRoute = androidRouterSource.slice(androidRouteStart, androidRouteEnd);
+const androidRoutes = [...androidRoute.matchAll(/case\s+([A-Z][A-Z0-9_]*)\s*:/g)].map(match => match[1]);
+assert.equal(new Set(androidRoutes).size, androidRoutes.length,
+  "Android top-level routing must not contain duplicate message cases");
+assert.deepEqual([...androidRoutes].sort(), [...messageEnum].sort(),
+  "Every canonical MessageType must have exactly one explicit Android route decision");
+assert.ok(!androidRoute.includes("RemotePlayerActionReceiver.handleNetworkMessage"),
+  "The Android router must never forward unrelated message types into the legacy Hero receiver");
+for (const [type, handler] of [
+  ["PLAYER_JOINED", "handlePlayerJoinedMessage"],
+  ["PLAYER_LEFT", "handlePlayerLeftMessage"],
+  ["READY", "handleReadyMessage"],
+  ["PING", "handlePingMessage"]
+]) {
+  const caseStart = androidRoute.indexOf("case " + type + ":");
+  const nextCase = androidRoute.indexOf("\n            case ", caseStart + 1);
+  const caseBlock = androidRoute.slice(caseStart, nextCase < 0 ? androidRoute.length : nextCase);
+  assert.ok(caseStart >= 0 && caseBlock.includes(handler),
+    "Android " + type + " must have its own typed handler");
+}
+const chatStart = androidRoute.indexOf("case CHAT:");
+const chatEnd = androidRoute.indexOf("\n            case ", chatStart + 1);
+assert.ok(chatStart >= 0 && androidRoute.slice(chatStart, chatEnd).includes("break;"),
+  "CHAT must have an explicit support decision instead of falling through to a Hero parser");
+assert.ok(androidRouterSource.includes('applySnapshotPlayerReadiness(root.get("players"))'),
+  "A successful room snapshot must restore RemotePlayer readiness metadata");
+
 console.log(
   "Phase 10 routing contract: " + inbound.length + " Worker inbound message types, "
   + knownNonInbound.length + " known non-inbound types, " + actionEnum.length
-  + " explicit Worker ACTION branches"
+  + " explicit Worker ACTION branches, and " + androidRoutes.length + " explicit Android MessageType routes"
 );

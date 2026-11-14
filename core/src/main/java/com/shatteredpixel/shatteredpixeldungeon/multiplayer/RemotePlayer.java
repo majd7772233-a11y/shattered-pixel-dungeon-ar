@@ -12,6 +12,8 @@ public class RemotePlayer {
     public int hp;
     public int ht;
     public boolean isAlive = true;
+    /** Last server-authored room readiness state; this is not native Hero/gameplay state. */
+    public boolean isReady = false;
 
     public Hero heroInstance;
 
