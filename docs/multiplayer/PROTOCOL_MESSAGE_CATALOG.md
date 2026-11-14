@@ -96,7 +96,7 @@ The manager removes pending actions when ACTION_ACCEPTED/ACK arrives, handles ER
 
 ### MessageRouter
 
-Outer routing at the baseline:
+Historical outer routing at the Phase 10-B baseline (superseded by §11.7):
 - SESSION → update manager sequence/session state;
 - SNAPSHOT → handleSnapshotMessage(...);
 - EVENT_BATCH → queue handleEventBatchMessage(...) on the render thread;
@@ -106,7 +106,7 @@ Outer routing at the baseline:
 - MATCH_END → update sequence;
 - ERROR → handle rejection/resync path;
 - PLAYER_LEFT → queue native disconnect cleanup on the render thread;
-- default → RemotePlayerActionReceiver.handleNetworkMessage(...) for remaining legacy message kinds.
+- default → RemotePlayerActionReceiver.handleNetworkMessage(...) for remaining legacy message kinds at that historical baseline only. At the Phase 10-E closeout, all 25 known MessageType values have explicit decisions and unknown future values fail closed without legacy forwarding.
 
 Phase 10-E closeout supersedes the historical transitional-route description: MessageRouter now has one explicit route decision for every canonical MessageType, with no generic default forwarding to RemotePlayerActionReceiver. PLAYER_JOINED, PLAYER_LEFT and READY have typed render-thread handling; PING is transport-only; CHAT is explicitly non-routed on Android because there is no chat surface. See §11.7 for the exact boundary and CI.
 
@@ -369,7 +369,7 @@ Historical 10-D status: at that checkpoint PLAYER_JOINED remained a live message
 - READY is a typed room-metadata update. It validates sender identity and boolean/0/1 state, updates RemotePlayer.isReady, and successful SNAPSHOT restore reapplies the persisted players[].ready values.
 - PING is consumed as transport liveness only. CHAT is explicitly non-routed on Android because no chat surface exists. Other client-to-Worker or declared placeholder enum values are explicit non-inbound/no-op decisions; their presence in the enum does not imply a server-originated gameplay path.
 - The ACTION payloadJson inner object has the stable required fields action, data and heroStateJson. NativeActionEnvelope.oneOf selects 23 action-specific data-field inventories in protocol/schema.json. protocol/action-data-contracts.json records the Worker handler/validator sources, Java producer files and a split between Java-source-referenced and Worker-only field names.
-- The static contract reconciles 361 Worker-consumed field names: 346 present in the listed Java producer sources and 15 derived or completed inside Worker handling. The 18 required NativeLevelSnapshot fields are checked against the Java wire model and Worker full-snapshot validator. Worker validators remain authoritative for actual types, requiredness, allowed values and per-subcase support.
+- The static contract inventories 361 Worker-consumed field names: 346 are source-referenced in the listed Java producer sources and 15 are Worker-only. This static name-presence inventory does not prove runtime serialization on every code branch. The 18 required NativeLevelSnapshot fields are checked against the Java wire model and Worker full-snapshot validator. Worker validators remain authoritative for actual types, requiredness, allowed values and per-subcase support.
 - WAIT and USE_ABILITY are declared protocol/Worker action names with no Android producer or NetworkActionBridge mapping; they remain fail-closed. No fabricated native action was added.
 - NativeCombatRuntimeIntegrationTest has 67 @Test methods; NetworkProtocolParityTest has 15. Backend CI ran six static guards and 10 Vitest files / 708 executions, Android JVM and Debug APK, and three Durable Object SQLite tests.
 

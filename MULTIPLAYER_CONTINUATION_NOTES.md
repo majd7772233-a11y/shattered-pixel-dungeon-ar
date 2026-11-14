@@ -3,7 +3,7 @@
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
 **Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74  
-**Exact-HEAD CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089)
+**Exact code/test CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089)
 
 ## 2026-11-14 — Phase 10-E final closure
 
@@ -11,7 +11,7 @@
 - Android MessageRouter now contains one explicit decision for all 25 canonical outer message types. There is no generic fallback into RemotePlayerActionReceiver.
 - PLAYER_JOINED, PLAYER_LEFT, READY and PING are explicit typed paths. Join validates senderId/playerId equality and a finite integral in-level position; duplicate join reuses the same RemoteHero. READY validates identity/state and updates RemotePlayer.isReady; successful snapshot restore applies the persisted ready flag. PING only consumes pong. CHAT is explicitly non-routed because Android has no chat UI.
 - Remote Hero registration now has a render-thread-owned synchronous setup method. It creates a sprite only when a GameScene is present; this avoids scene-dependent sprite initialization inside a queued headless test callback.
-- The ACTION envelope has a canonical action-specific schema for all 23 actions. protocol/action-data-contracts.json reconciles 361 per-action Worker field names (346 found in the source-listed Java producer files, 15 Worker-only) and 18 required NativeLevelSnapshot fields. Worker validators remain authoritative for actual field value types, requiredness and supported variants.
+- The ACTION envelope has a canonical action-specific schema for all 23 actions. protocol/action-data-contracts.json inventories 361 per-action Worker field names (346 source-referenced in the listed Java producer files, 15 Worker-only) and 18 required NativeLevelSnapshot fields. The Java-source reference count is a static name-presence check, not proof that every field is serialized on every branch; Worker validators remain authoritative for actual field value types, requiredness and supported variants.
 - WAIT and USE_ABILITY are declared Worker/schema action names with no Android native producer or bridge; both remain fail-closed. This is explicit scope, not an unfinished implicit fallback.
 - CI 43618725089: Backend build + six static guards + 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK passed; Durable Object SQLite integration 3/3 passed. No deployed Worker smoke test or physical multi-device session is claimed.
 - No Worker producer/validator/SQL, sequence/replay/resync, event ordering or native SPD gameplay semantics changed.

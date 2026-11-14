@@ -280,7 +280,7 @@ The server/scripts/validate-phase10-protocol-enums.mjs script is invoked by serv
 - The schema version and protocolVersion default must match NetworkMessage.PROTOCOL_VERSION (1.0.0).
 - Every entry in the narrower NativeLevelSnapshot.nativeMutationAction allowlist must be a declared Java action.
 
-The check intentionally does not claim that every enum value has a Worker route or a complete client handler. Handler/direction/authorization/sequence parity and the single typed event path remain outstanding Phase 10 work.
+At the Phase 10-A checkpoint, the guard intentionally did not claim that every enum value had a Worker route or a complete client handler. Handler/direction/authorization/sequence parity and the single typed event path remained outstanding then; Phase 10-E later closed the agreed client route and field-name inventory scope.
 
 Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [CI 43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695): Backend TypeScript build, four static protocol/schema checks and 682 Vitest executions passed; Android JVM/Debug APK and three Durable Object SQLite runtime tests also passed.
 
@@ -394,7 +394,7 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. No Worker output, route/validator, SQL persistence, sequence handling, replay/resync algorithm or native SPD gameplay rule changed; Phase 11 remains unstarted.
 
 
-## Phase 11-A dependency preflight — 2026-11-14
+## Historical Phase 11-A dependency preflight — 2026-11-14 (blocked at the time; now unblocked)
 
 Historical preflight note: at parent HEAD cf3714c82a210eace79614ab7c575acb04b8aebb, Phase 10 remained open and Phase 11-A tests were intentionally blocked. Phase 10-E subsequently closed the dependency at SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. No Phase 11 implementation is included.
 
@@ -404,14 +404,14 @@ The current coverage is narrower than the Phase 11 acceptance criteria:
 - Existing reconnect/recovery tests cover selected event replay and Durable Object SQLite rollback/eviction cases. The exact boundary between contiguous retained replay and full snapshot, including gaps caused by truncated/missing rows and current-publisher reconnect, still needs explicit matrix coverage.
 - Existing snapshot restore tests cover stale sequence rejection, validation-before-mutation, idempotency and rollback. Keep those regressions unchanged while future Phase 11 work adds integration between event gap detection and the full-snapshot fallback.
 
-When Phase 10 is formally closed, the first Phase 11-A test slice must start with behavior-characterization tests against the then-current code before implementation, and cover duplicate/late/out-of-order/gap events, stale state, request ID reuse by player/action/payload, rejected-event atomicity, and the existing reconnect/RESYNC branches. Do not start Phase 11-B from this checkpoint.
+Phase 10 is now formally closed. A separately requested Phase 11-A slice must first re-fetch the live branch and characterize current behavior before implementation, covering duplicate/late/out-of-order/gap events, stale state, request ID reuse by player/action/payload, rejected-event atomicity, and existing reconnect/RESYNC branches. This historical preflight did not implement those fixes; do not start Phase 11-B from this checkpoint.
 
 
 ## 9. Phase 10-E exact-head closure evidence
 
 Implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74. Exact-head [CI 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089) passed all three jobs.
 
-- Backend: TypeScript build passed, all six static guards ran, and 10 Vitest files / 708 executions passed. The routing guard reported 25 explicit Android message decisions, eight Worker inbound routes, 17 known non-inbound types and 23 Worker action branches. The payload guard reported 23 action envelopes, 361 per-action Worker field names (346 source-referenced in Java producer files, 15 Worker-only) and 18 required native snapshot fields. The 708 executions include mirrored/generated TS/JS files and are not 708 unique scenarios.
+- Backend: TypeScript build passed, all six static guards ran, and 10 Vitest files / 708 executions passed. The routing guard reported 25 explicit Android message decisions, eight Worker inbound routes, 17 known non-inbound types and 23 Worker action branches. The payload guard reported 23 action envelopes, 361 per-action Worker field names (346 source-referenced in the listed Java producer files, 15 Worker-only; static name presence does not prove runtime serialization on each branch) and 18 required native snapshot fields. The 708 executions include mirrored/generated TS/JS files and are not 708 unique scenarios.
 - Android: JVM tests and Debug APK compile passed (BUILD SUCCESSFUL). NetworkProtocolParityTest has 15 @Test methods; NativeCombatRuntimeIntegrationTest has 67.
 - Durable Object Workers runtime: 3 SQLite rollback/eviction integration tests passed.
 

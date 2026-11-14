@@ -72,16 +72,18 @@ The source tree contains client classes for Internet, LAN, and Bluetooth transpo
 
 That presence does not mean all features have passed end-to-end acceptance.
 
-### Current verified checkpoint — 2026-11-14
+### Current verified checkpoint — 2026-11-14 — Phase 10 closed
 
-- Latest implementation/test SHA after the bounded Phase 10-D PLAYER_LEFT migration: `cc61c68625f587576ca530aef3354bfaffe9e140`; exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). The pre-migration behavior proof on the old route also passed all three jobs at SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI 43521307026.
-- Backend TypeScript build and 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK compilation passed; three Workers-runtime Durable Object SQLite tests passed. The 708 count includes mirrored TS/JS executions, not 708 unique source scenarios.
-- Phase 9 remains complete under its explicit fail-closed support boundary. SpiritArrow/publisher-recovery evidence is recorded in the phase and test references.
-- Phase 10-A enum/version parity and 10-B route inventory/Worker admission remain complete at their recorded implementation SHAs.
-- Phase 10-C is complete: Android parser enforces the canonical envelope; LAN/Bluetooth legacy compatibility is limited to explicitly tested transport parsers; unmapped HeroActions reject without being converted to WAIT.
-- The bounded Phase 10-D PLAYER_LEFT unit is delivered: the Worker-produced disconnect message now has a typed render-thread MessageRouter path with full cleanup parity tests; direct legacy receiver delivery refuses reapplication and requests existing recovery. NativeCombatRuntimeIntegrationTest now has 64 test methods.
-- Phase 10 remains OPEN: PLAYER_JOINED is an actual output still handled by the default legacy route, and field-level payload/serializer parity plus other remaining behaviors still require bounded evidence. Do not remove/move RemotePlayerActionReceiver wholesale. Phase 11 has not started.
-- Branch CI does not mean production Worker deployment or physical-device gameplay; Phases 22–23 remain open.
+- Latest implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74; exact code/test CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). The later docs-only branch HEAD before this audit was 9899ec8d315e4199d262e26f618188524857ab0b; its exact-head CI [43619273512](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43619273512) also passed all three jobs.
+- Phase 9 remains complete within its explicit fail-closed support boundary.
+- Phase 10-A through 10-E are complete for implementation and automated acceptance. The final client route has 25 explicit MessageType decisions; PLAYER_JOINED, PLAYER_LEFT and READY are typed render-thread paths, PING is transport-only, and CHAT is deliberately non-routed because Android has no chat surface. The top-level generic fallback into RemotePlayerActionReceiver is removed; the receiver class remains for explicit helper duties.
+- The join path checks senderId/playerId identity, finite integral position and level bounds; duplicate joins reuse the same RemoteHero. READY updates RemotePlayer.isReady, and successful SNAPSHOT restore reapplies stored readiness metadata.
+- The ACTION contract covers all 23 action names with action-specific schema field inventories. protocol/action-data-contracts.json tracks 361 Worker-consumed field names: 346 are source-referenced in the listed Java producer files and 15 are Worker-only. The name inventory does not prove runtime serialization on every branch; Worker validators remain authoritative for value types, requiredness, preconditions and supported variants. The 18 required NativeLevelSnapshot fields are checked against Java wire declarations and Worker completeness validation.
+- WAIT and USE_ABILITY remain declared Worker/schema actions but have no Android native producer or bridge mapping and remain fail-closed. CHAT remains non-routed on Android.
+- NativeCombatRuntimeIntegrationTest contains 67 @Test methods; NetworkProtocolParityTest contains 15. Exact-head CI passed Backend build + six static guards + 10 Vitest files / 708 executions, Android JVM tests + Debug APK, and three Durable Object SQLite integration tests.
+- No production Worker deployment smoke test or physical two-device multiplayer session is claimed. Those remain Phases 22–23.
+- Phase 11 dependency is satisfied, but Phase 11 implementation/tests have not started. Phase 11-A is the next eligible scope only after a fresh branch/CI audit and a separate explicit request.
+
 
 
 ## 6. Modes and transports: do not infer readiness

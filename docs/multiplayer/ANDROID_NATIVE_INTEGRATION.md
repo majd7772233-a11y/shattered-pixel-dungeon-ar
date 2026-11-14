@@ -20,12 +20,14 @@ The multiplayer layer adds action capture, authority selection, identity mapping
 
 ## 2. Threading boundary
 
-The transport layer can invoke callbacks away from the libGDX render thread. The inspected MessageRouter explicitly schedules native-state work on Game.runOnRenderThread(...) for:
-- EVENT_BATCH;
-- COMBAT_REQUEST;
-- ACTION_ACCEPTED;
+The transport layer can invoke callbacks away from the libGDX render thread. At the Phase 10-E closeout, MessageRouter explicitly routes all 25 canonical MessageType values. It schedules native-state work on Game.runOnRenderThread(...) for:
+- EVENT_BATCH and SNAPSHOT application;
+- PLAYER_JOINED remote-Actor creation/update;
 - PLAYER_LEFT disconnect cleanup;
-- default/legacy RemotePlayerActionReceiver work for all remaining default message kinds.
+- READY room-metadata updates;
+- COMBAT_REQUEST and ACTION_ACCEPTED.
+
+PING is consumed as transport liveness only; CHAT and known non-inbound values do not mutate game state. Unknown future message values fail closed. RemotePlayerActionReceiver is retained for explicitly invoked native Hero setup/legacy helper duties and is not a generic default outer-message route.
 
 Treat these as separate stages:
 1. Decode and validate immutable wire data without mutating native world state.

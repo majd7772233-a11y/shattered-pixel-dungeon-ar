@@ -290,7 +290,7 @@ Exact implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed 
 | core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayer.java | Server-authored isReady metadata for the remote participant. |
 | core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayerActionReceiver.java | setupRemoteHeroInstanceOnRenderThread creates the native Actor and attaches HeroSprite only in GameScene; receiver retained, not a generic outer-message route. |
 | protocol/schema.json | NativeActionEnvelope.oneOf plus 23 NativeActionData_<ACTION> definitions; required NativeLevelSnapshot fields remain declared. |
-| protocol/action-data-contracts.json | 23 action rows; 361 Worker field names, 346 present in listed Java producer source and 15 Worker-only; per-action validators and producer references. |
+| protocol/action-data-contracts.json | 23 action rows; 361 Worker field names, 346 source-referenced in listed Java producer sources and 15 Worker-only (static name presence is not proof of runtime serialization on every branch); per-action validators and producer references. |
 | server/scripts/validate-phase10-action-contracts.mjs | CI static parity guard for action enums, schema field inventories, Worker fields, Java-source-referenced/Worker-only split and native snapshot required fields. |
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 67 @Test methods at SHA f2d79038d1e420461be7a1956471324de5c1ef74; join identity, duplicate join, READY, CHAT/PING/non-inbound rejection and snapshot readiness regression coverage. |
 

@@ -37,11 +37,11 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-14 — Phase 10 closed
 
 - **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
-- **Latest implementation/test HEAD:** f2d79038d1e420461be7a1956471324de5c1ef74.
+- **Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74. The latest docs-only HEAD at the previous checkpoint was 9899ec8d315e4199d262e26f618188524857ab0b; its own Actions run 43619273512 passed all three jobs.
 - **Exact-head CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). Backend typecheck, six static guards and 10 Vitest files / 708 executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 3/3.
 - **Phase 10:** closed for implementation and automated acceptance, including typed outer-message routing, the ACTION envelope/field inventory, source references and snapshot field parity guards.
 - **Android routes:** all 25 canonical MessageType values have one explicit route decision. PLAYER_JOINED, PLAYER_LEFT, READY and PING have typed handlers. CHAT is deliberately non-routed without a chat UI. The general default path into RemotePlayerActionReceiver has been removed.
-- **ACTION inventory:** all 23 action names have action-specific schema entries and a source-backed Worker/Java field inventory: 361 fields (346 names found in Java producer source, 15 Worker-only); 18 required native snapshot fields are cross-checked.
+- **ACTION inventory:** all 23 action names have action-specific schema entries and a source-backed Worker/Java field inventory: 361 field names (346 source-referenced in listed Java producer files, 15 Worker-only); 18 required native snapshot fields are cross-checked.
 - **Fail-closed boundaries:** WAIT and USE_ABILITY are declared Worker/schema names but have no Android producer/bridge and are not synthesized. Worker validators continue to define per-field types, requiredness and supported subcases.
 - **Phase 11:** dependency is satisfied but implementation has not started. Phase 11-A is the next eligible scope after a fresh live-HEAD audit and an explicit request.
 - **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
@@ -123,6 +123,6 @@ The three-stage source refactor is complete for implementation, source parity an
 
 The Phase 9 roadmap and source/test evidence were re-audited. All 11 completion items remain satisfied, including Poison/LifeLink atomic batching, supported timed Buff effects, Wand.Charger/Recharging, SpiritArrow authority result and requester reconciliation, and durable publisher handoff/rebase. Unsupported effects remain deliberate, regression-tested fail-closed exclusions. No Phase 9 implementation task remains open under the accepted scope. Stale technical-reference descriptions were reconciled; no game or Worker source changed.
 
-## 2026-11-14 — Phase 11-A dependency gate
+## Historical 2026-11-14 — Phase 11-A dependency preflight (blocked at that time)
 
-The live parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb` passed matching CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982), all three jobs. The audit found Phase 10 still OPEN; Phase 11-A was not started. `PLAYER_JOINED` remains a real Worker output handled by the client default receiver, other real default-route messages still need explicit support decisions, and remaining action/snapshot payload/serializer parity is unfinished. The sequence/replay/resync findings are audit-only. No Java, Worker or test implementation changed.
+At parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb`, matching CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) passed all three jobs. That audit found Phase 10 still OPEN and intentionally did not start Phase 11-A. Phase 10-E subsequently closed the route and payload-inventory dependency at implementation/test SHA `f2d79038d1e420461be7a1956471324de5c1ef74` / CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). The sequence/replay/resync findings remain audit-only Phase 11-A targets; no Phase 11 implementation is included in the Phase 10 closeout.
