@@ -117,6 +117,10 @@ public class NativeCombatRuntimeIntegrationTest {
         // The first real ranged hit initializes FloatingText, which resolves its icon atlas
         // through TextureFilm before the hit can complete.
         seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Effects.TEXT_ICONS, 7, 8);
+        // PLAYER_JOINED now creates the real native HeroSprite asynchronously. Keep its normal
+        // Warrior sheet and tier-film dependencies available to the headless render thread.
+        seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.WARRIOR, 96, 315);
+        seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Sprites.ROGUE, 96, 315);
     }
 
     private static void seedHeadlessTexture(Object key, int width, int height) {
