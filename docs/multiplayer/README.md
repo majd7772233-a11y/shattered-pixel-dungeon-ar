@@ -34,16 +34,15 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
-## Active project checkpoint — 2026-11-14 — Phase 10 closed
+## Active project checkpoint — 2026-11-14 — Phase 11-A characterization
 
 - **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
-- **Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74. The latest docs-only HEAD at the previous checkpoint was 9899ec8d315e4199d262e26f618188524857ab0b; its own Actions run 43619273512 passed all three jobs.
-- **Exact-head CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). Backend typecheck, six static guards and 10 Vitest files / 708 executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 3/3.
-- **Phase 10:** closed for implementation and automated acceptance, including typed outer-message routing, the ACTION envelope/field inventory, source references and snapshot field parity guards.
-- **Android routes:** all 25 canonical MessageType values have one explicit route decision. PLAYER_JOINED, PLAYER_LEFT, READY and PING have typed handlers. CHAT is deliberately non-routed without a chat UI. The general default path into RemotePlayerActionReceiver has been removed.
-- **ACTION inventory:** all 23 action names have action-specific schema entries and a source-backed Worker/Java field inventory: 361 field names (346 source-referenced in listed Java producer files, 15 Worker-only); 18 required native snapshot fields are cross-checked.
-- **Fail-closed boundaries:** WAIT and USE_ABILITY are declared Worker/schema names but have no Android producer/bridge and are not synthesized. Worker validators continue to define per-field types, requiredness and supported subcases.
-- **Phase 11:** dependency is satisfied but implementation has not started. Phase 11-A is the next eligible scope after a fresh live-HEAD audit and an explicit request.
+- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`; exact starting CI [43623254456 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456).
+- **Phase 10:** closed for implementation and automated acceptance.
+- **Phase 11-A:** five Worker and three Android behavior-characterization tests have been added; exact new-commit CI is pending.
+- **Worker cases:** replay at 50, snapshot fallback at 51, fallback on incomplete retention, RESYNC full SNAPSHOT, and same-player requestId reuse with a different action/payload returning the stored original result under current code.
+- **Android cases:** out-of-order/gapped events, malformed-event watermark timing (with no malformed-row Hero mutation), and stale full-snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 methods; NetworkProtocolParityTest remains at 15.
+- **Important:** runtime Worker/SQL, Android router/manager/snapshot code, protocol and native SPD gameplay are unchanged. The tests document gaps for Phase 11-B; the parent Phase 11 remains OPEN.
 - **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
 
 ## Source-of-truth hierarchy
@@ -85,7 +84,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–10 complete for implementation and automated acceptance; Phase 11–23 open (Phase 11-A eligible next, not yet started) |
+| Phase state | Phases 1–10 complete; Phase 11-A characterization tests added (exact-head CI pending); parent Phase 11 and Phases 12–23 remain open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 

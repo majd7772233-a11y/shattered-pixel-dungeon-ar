@@ -1,11 +1,21 @@
-# Multiplayer Continuation Notes — Phase 10 closed; Phase 11-A eligible next (not started)
+# Multiplayer Continuation Notes — Phase 11-A characterization tests added; parent Phase 11 remains open
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
-**Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74  
-**Exact code/test CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089)
+**Starting audited HEAD:** 3a1924c7e482757543b2500dda86b1d3e94960af  
+**Exact starting CI:** [43623254456 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456)  
+**Phase 11-A test commit and exact-head CI:** pending verification
 
-## 2026-11-14 — Phase 10-E final closure
+## 2026-11-14 — Phase 11-A characterization slice
+
+- Phase 10-A through 10-E remain complete. Phase 11-A now has a separate user-requested characterization scope; the parent phase remains OPEN.
+- Added five Worker MatchRoom scenarios: replay at the 50-event boundary; full snapshot above 50; incomplete-retention fallback; RESYNC full snapshot; and same-player requestId reuse with a changed action/payload returning the previously stored result under current behavior.
+- Added three Android JVM cases: gap/out-of-order batch behavior, malformed-event watermark behavior, and stale full snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 @Test methods; NetworkProtocolParityTest remains at 15.
+- Existing stale/duplicate combat-event, snapshot rollback, and Worker transaction rollback coverage remains unchanged.
+- No Worker handler/validator/SQL, Android runtime router/manager/snapshot implementation, protocol, event/sequence/replay/resync algorithm, or native SPD gameplay changed.
+- Exact new test SHA and CI are pending verification. No production Worker deployment or physical-device session is claimed.
+
+## Historical Phase 10-E final closure
 
 - Phase 10-A through 10-E are complete for implementation and automated acceptance at the SHA above. The Phase 10 dependency for Phase 11 is satisfied; Phase 11 implementation/tests remain untouched.
 - Android MessageRouter now contains one explicit decision for all 25 canonical outer message types. There is no generic fallback into RemotePlayerActionReceiver.
@@ -16,9 +26,9 @@
 - CI 43618725089: Backend build + six static guards + 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK passed; Durable Object SQLite integration 3/3 passed. No deployed Worker smoke test or physical multi-device session is claimed.
 - No Worker producer/validator/SQL, sequence/replay/resync, event ordering or native SPD gameplay semantics changed.
 
-## Next handoff — Phase 11-A only
+## Next handoff — verify Phase 11-A exact-head CI
 
-Re-check the live branch HEAD and exact-head CI, then re-read ROADMAP.md, GPT.md and the Phase 11-A preflight findings in SESSION_RECOVERY_AND_SECURITY.md. Begin with behavior-characterization tests for duplicate, late, out-of-order and gap events; rejected-event atomicity; same-player request-ID reuse with different action/payload; replay-window truncation; and stale/full snapshot recovery. Implement only the specific 11-A scope. Do not begin 11-B or redesign unrelated gameplay/transport behavior.
+Inspect the matching workflow for the new test commit and require all three jobs (Backend, Android JVM/Debug APK, Durable Object SQLite) to pass. Update this note with the final test SHA, run ID and actual execution counts. The known gaps intentionally captured by the tests—non-contiguous EVENT_BATCH acceptance/watermark timing and same-player requestId reuse without payload binding—remain for a separately requested Phase 11-B. Do not begin Phase 11-B or Phase 12 automatically.
 
 ## Historical records
 

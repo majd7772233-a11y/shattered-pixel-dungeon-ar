@@ -238,3 +238,10 @@ Exact implementation/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed [A
 - Durable Object Workers runtime passed all three SQLite rollback/eviction integration tests.
 
 The 708 backend executions include mirrored/generated TypeScript/JavaScript and are not 708 unique source scenarios. CI does not deploy the production Worker and does not count as a physical two-device test. Phase 10 is closed for implementation/automated acceptance; Phase 11-A has not started. WAIT/USE_ABILITY are declared but non-emitted by Android and remain fail-closed; Android CHAT remains explicitly non-routed.
+
+
+## Phase 11-A characterization test gate — 2026-11-14 (exact-head CI pending)
+
+Starting audited branch HEAD `3a1924c7e482757543b2500dda86b1d3e94960af` passed [CI 43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456): Backend typecheck/tests, Android JVM/Debug APK and Durable Object SQLite 3/3 all succeeded.
+
+The Phase 11-A test-only change adds five Worker MatchRoom scenarios in `server/src/match-room/lifelink-death.integration.test.ts` and three Android JVM tests in `NativeCombatRuntimeIntegrationTest.java`. No Worker handler/validator/SQL, Android runtime class, protocol or native game source changes. Record exact new commit SHA, actual test totals and matching Actions run only after all three jobs pass.

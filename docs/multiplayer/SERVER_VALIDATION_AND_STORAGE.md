@@ -506,3 +506,12 @@ This is an envelope-level gate only. It does not replace domain validators, chan
 - READY, PING and CHAT retain their existing lightweight SQL/broadcast behavior; RESYNC and RECONNECT retain their current SNAPSHOT/EVENT_BATCH paths.
 
 No replay or resync algorithm was modified by the admission gate or Phase 10-E. The Android envelope parser and fail-closed HeroAction producer mapping remain complete. Phase 10-E closed the client route migration and field-name inventory: MessageRouter now has 25 explicit decisions (PLAYER_JOINED/PLAYER_LEFT/READY/PING typed; CHAT explicitly non-routed without an Android chat surface), with no generic default forwarding to RemotePlayerActionReceiver. The schema includes the ACTION inner envelope and 23 action-specific field inventories; a static guard reconciles 361 Worker field names with 346 source-referenced in Java producer files and 15 Worker-only fields plus the 18 required native snapshot fields. This did not change any Worker message producer/handler, inbound route, validator rule, SQL persistence path, sequence behavior, event ordering or EVENT_BATCH replay/resync semantics. Phase 10 closeout SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed exact-head CI 43618725089.
+
+
+## Phase 11-A — request replay and reconnect characterization (2026-11-14)
+
+The current `processed_actions` replay key is `request_id`. `classifyRequestReplay(existing, playerId)` compares only the stored player ID. The same player receives the original `ACTION_ACCEPTED` sequence/result even when the incoming action and payload differ; a different player gets `REQUEST_ID_CONFLICT`. Phase 11-A adds a MatchRoom handler test for the changed-action/payload collision without changing the classifier or SQL schema.
+
+`MatchRoomActions.handleReconnect` replays at most 50 events only for a non-current level publisher. It requires the ordered query's row count to equal the sequence gap; otherwise it falls back to a full snapshot. Phase 11-A adds exact 50/51 boundary and incomplete-retention tests. The threshold is current source policy, not a protocol constant.
+
+RESYNC remains a full-SNAPSHOT response. Its payload includes stored event rows in addition to authoritative player/Mob/level state; it is not an EVENT_BATCH replay path. The new test pins that distinction. No Worker action validator, event insert, SQL schema or request-replay algorithm changed in Phase 11-A.

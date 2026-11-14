@@ -266,15 +266,25 @@ The current unit suite tests many validators and replay/ownership cases but does
 Large-source decomposition is intentionally separate. This document maps current security/session responsibilities in the monolithic index.ts; it does not split it. Batch 3 must decide whether to preserve one Worker entry while extracting cohesive pure validator modules, persistence/claim services, room lifecycle, action domains and event broadcasting into separate files. The proposed design must be reviewed before code moves.
 
 
-## 16. Phase 11-A dependency-gate audit — 2026-11-14 (dependency satisfied by Phase 10 closeout; no algorithm change)
+## 16. Phase 11-A characterization baseline — 2026-11-14 (test-only; no runtime fix)
 
-Historical live branch preflight parent: cf3714c82a210eace79614ab7c575acb04b8aebb; matching Actions run [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) passed all three jobs. Phase 10 subsequently closed at f2d79038d1e420461be7a1956471324de5c1ef74 with exact-head CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). Phase 11-A has not started; the observations below remain audit findings, not implemented fixes.
+The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice adds tests that pin current behavior before replay/sequence implementation changes. Starting audited branch HEAD was `3a1924c7e482757543b2500dda86b1d3e94960af`; its exact-head CI [43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456) passed Backend, Android JVM/Debug APK and three Durable Object SQLite tests. Exact new test SHA and matching CI remain pending.
 
-- **Worker event replay:** `MatchRoomActions.handleReconnect` calculates `gap = currentSequence - lastSequence`. For a non-current publisher and `0 < gap <= 50`, it reads rows ordered by sequence above the client's last sequence and sends EVENT_BATCH only when the row count equals the gap. A current-publisher reconnect, empty/non-positive gap, gap above 50, or incomplete retained rows falls back to a full SNAPSHOT. The source constant 50 is an existing policy, not a general protocol guarantee.
-- **RESYNC:** `MatchRoomMessages.webSocketMessage` answers RESYNC with a full current SNAPSHOT (players, mobs, level and stored event rows). It does not send those rows as a replay EVENT_BATCH. Treat the full authoritative level/player state—not the bundled historical event listing—as the recovery state.
-- **Android EVENT_BATCH:** `MessageRouter.handleEventBatchMessage` ignores `sequence <= lastSequence`, but advances the local watermark for a newer event before validating the event payload and finishing its application. It does not require contiguous `lastSequence + 1`. A malformed event can therefore trigger RESYNC after the watermark has already moved. `MultiplayerManager.updateLastSequence` is a monotonic maximum, not a gap detector.
-- **Accepted response ordering:** ACTION_ACCEPTED advances sequence in the router before applying the accepted action; the manager's receive path also monotonically tracks the envelope sequence for non-SNAPSHOT/non-EVENT_BATCH messages. This requires a deliberately designed request/event correlation contract before any change.
-- **Request-ID reuse:** `processed_actions.request_id` is globally unique. The current `classifyRequestReplay` compares only the stored player ID: another player's reuse conflicts, while the same player receives the original accepted result. The duplicate request path does not bind the reused ID to the incoming action type or payload fingerprint. Do not treat the current owner check as complete request semantic replay protection.
-- **Snapshot guard:** `WorldSnapshot.restoreWorld` rejects snapshots older than the current client sequence, runs validation before mutating live world state, and retains rollback behavior. `MessageRouter` marks the snapshot sequence applied only when restore succeeds. These controls do not compensate for missing EVENT_BATCH contiguity.
+### Worker behavior characterized
 
-These findings define Phase 11-A characterization/test targets (duplicate, delayed, out-of-order, gaps, malformed event/no partial application, same-player request ID reuse, replay-window truncation and stale snapshots). They are not assertions that any fix has been implemented. Phase 10 is now formally closed; a separately requested Phase 11-A slice may start by reproducing these risks in tests before changing replay/sequence/request/persistence/RESYNC behavior. No Phase 11 implementation is included in the Phase 10 closeout.
+- **Reconnect replay window:** `MatchRoomActions.handleReconnect` replays only for a non-current publisher when `0 < gap <= 50`, and sends EVENT_BATCH only if the ordered result row count equals the gap. Tests pin ordered replay of 50 rows, SNAPSHOT fallback at 51, and SNAPSHOT fallback when retained rows are incomplete. The 50-event threshold is current source policy, not a protocol-wide guarantee.
+- **RESYNC:** `MatchRoomMessages.webSocketMessage` returns a full SNAPSHOT with current players/Mobs/level and stored event rows. It is not an incremental EVENT_BATCH response.
+- **Same-player request-ID collision:** the duplicate branch classifies only stored player identity. The same player receives the original ACTION_ACCEPTED sequence/result even if incoming action/payload differs; another player's reuse conflicts. A test now pins the changed-action/payload behavior.
+
+### Android behavior characterized
+
+- Existing stale-combat-event coverage remains: an older event cannot overwrite newer Mob HP.
+- A new gap/out-of-order test sends sequence 2 followed by sequence 1 from a zero watermark; the current router advances to sequence 2, skips sequence 1, and does not request RESYNC for the missing sequence.
+- A malformed new event currently advances the sequence watermark before requesting RESYNC. The test pins that order and checks no native Hero state changed for the malformed row.
+- A structurally valid full snapshot older than the applied sequence is rejected without changing live Hero state, level dimensions, or applied watermark.
+
+### Scope and interpretation
+
+These are characterization tests, not approval of current behavior. Phase 11-B must design/fix contiguous EVENT_BATCH application, validate before advancing the applied watermark, bind request IDs to the original action/payload, and define the gap replay versus full-snapshot policy. Keep these tests as regression constraints; do not weaken them to make a later implementation pass.
+
+No Worker route/validator/SQL, event persistence, Android router/manager/snapshot implementation, protocol schema, SPD gameplay formula, production deployment or physical-device test changed or is claimed in Phase 11-A. The parent Phase 11 remains OPEN; Phase 12 is out of scope.

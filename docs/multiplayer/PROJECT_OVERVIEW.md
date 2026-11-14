@@ -80,9 +80,9 @@ That presence does not mean all features have passed end-to-end acceptance.
 - The join path checks senderId/playerId identity, finite integral position and level bounds; duplicate joins reuse the same RemoteHero. READY updates RemotePlayer.isReady, and successful SNAPSHOT restore reapplies stored readiness metadata.
 - The ACTION contract covers all 23 action names with action-specific schema field inventories. protocol/action-data-contracts.json tracks 361 Worker-consumed field names: 346 are source-referenced in the listed Java producer files and 15 are Worker-only. The name inventory does not prove runtime serialization on every branch; Worker validators remain authoritative for value types, requiredness, preconditions and supported variants. The 18 required NativeLevelSnapshot fields are checked against Java wire declarations and Worker completeness validation.
 - WAIT and USE_ABILITY remain declared Worker/schema actions but have no Android native producer or bridge mapping and remain fail-closed. CHAT remains non-routed on Android.
-- NativeCombatRuntimeIntegrationTest contains 67 @Test methods; NetworkProtocolParityTest contains 15. Exact-head CI passed Backend build + six static guards + 10 Vitest files / 708 executions, Android JVM tests + Debug APK, and three Durable Object SQLite integration tests.
+- At Phase 10 closeout, NativeCombatRuntimeIntegrationTest contained 67 @Test methods and NetworkProtocolParityTest 15. Phase 11-A adds three Android characterization tests (70 methods total) and five Worker MatchRoom scenarios; exact new-commit CI is pending.
 - No production Worker deployment smoke test or physical two-device multiplayer session is claimed. Those remain Phases 22–23.
-- Phase 11 dependency is satisfied, but Phase 11 implementation/tests have not started. Phase 11-A is the next eligible scope only after a fresh branch/CI audit and a separate explicit request.
+- Phase 11-A characterization tests have been added after a fresh exact-HEAD/CI audit. They expose sequence-gap/watermark and same-player requestId-binding gaps without changing runtime behavior. Parent Phase 11 remains OPEN; exact new-commit CI is pending.
 
 
 

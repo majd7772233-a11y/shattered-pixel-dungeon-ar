@@ -394,18 +394,33 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. No Worker output, route/validator, SQL persistence, sequence handling, replay/resync algorithm or native SPD gameplay rule changed; Phase 11 remains unstarted.
 
 
-## Historical Phase 11-A dependency preflight — 2026-11-14 (blocked at the time; now unblocked)
+## Phase 11-A — event ordering and replay characterization (test-only)
 
-Historical preflight note: at parent HEAD cf3714c82a210eace79614ab7c575acb04b8aebb, Phase 10 remained open and Phase 11-A tests were intentionally blocked. Phase 10-E subsequently closed the dependency at SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. No Phase 11 implementation is included.
+Starting audited HEAD `3a1924c7e482757543b2500dda86b1d3e94960af` passed exact-head CI [43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456). Exact SHA and matching CI for the Phase 11-A test commit are pending.
 
-The current coverage is narrower than the Phase 11 acceptance criteria:
-- Existing EVENT_BATCH tests demonstrate duplicate sequence suppression and prevent legacy receiver reapplication; they do not prove contiguous sequence enforcement, skipped-sequence detection, full-batch ordering, or that malformed/rejected events leave the applied watermark and native state unchanged.
-- Existing Worker request replay coverage checks cross-player request ID conflict and same-player replay response, but the replay classifier does not bind a same-player reused ID to the original action/payload. Add same-player changed-action/changed-payload collision cases only after the Phase 10 gate.
-- Existing reconnect/recovery tests cover selected event replay and Durable Object SQLite rollback/eviction cases. The exact boundary between contiguous retained replay and full snapshot, including gaps caused by truncated/missing rows and current-publisher reconnect, still needs explicit matrix coverage.
-- Existing snapshot restore tests cover stale sequence rejection, validation-before-mutation, idempotency and rollback. Keep those regressions unchanged while future Phase 11 work adds integration between event gap detection and the full-snapshot fallback.
+### Worker MatchRoom coverage
 
-Phase 10 is now formally closed. A separately requested Phase 11-A slice must first re-fetch the live branch and characterize current behavior before implementation, covering duplicate/late/out-of-order/gap events, stale state, request ID reuse by player/action/payload, rejected-event atomicity, and existing reconnect/RESYNC branches. This historical preflight did not implement those fixes; do not start Phase 11-B from this checkpoint.
+Five additional scenarios were added to `server/src/match-room/lifelink-death.integration.test.ts`:
+1. Reconnect at a 50-sequence gap replays exactly 50 retained rows in ascending order.
+2. A 51-sequence gap uses full SNAPSHOT fallback.
+3. A replay-sized gap with missing retained rows uses full SNAPSHOT fallback.
+4. RESYNC returns one full SNAPSHOT; bundled event history does not turn it into EVENT_BATCH replay.
+5. Reusing one requestId from the same player with a different action/payload currently returns the stored ACTION_ACCEPTED result. This documents a replay-binding gap, not accepted final behavior.
 
+The in-memory MatchRoom SQL adapter gained only the exact query responses needed by these tests. They exercise MatchRoom handlers with a deterministic adapter, not a production Durable Object deployment. The separate real local Durable Object SQLite CI remains the transactional/eviction gate.
+
+### Android JVM coverage
+
+Three additional tests were added to `NativeCombatRuntimeIntegrationTest.java` (67 → 70 methods):
+- Sequence 2 followed by sequence 1 from a zero watermark advances to 2 and does not request gap RESYNC under current behavior.
+- A malformed event with a new sequence advances the watermark before requesting RESYNC; the malformed event itself does not mutate native Hero state.
+- A structurally valid full snapshot older than the applied sequence is rejected without changing live Hero state, level dimensions or applied watermark.
+
+Existing stale/duplicate combat-event suppression, snapshot validation-before-mutation, idempotency and rollback tests remain intact. `NetworkProtocolParityTest.java` remains at 15 methods.
+
+### Known limitations retained for Phase 11-B
+
+This slice is intentionally characterization-only. It does not fix non-contiguous EVENT_BATCH acceptance, watermark advancement before validation/application, same-player requestId reuse with a changed action/payload, or the current bounded reconnect replay policy. The parent Phase 11 remains OPEN. Passing these tests is not event-reliability acceptance.
 
 ## 9. Phase 10-E exact-head closure evidence
 

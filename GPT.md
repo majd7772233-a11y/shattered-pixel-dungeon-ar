@@ -1,18 +1,18 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-14 (PHASE 10 CLOSED; PHASE 11 NOT STARTED)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-14 (PHASE 11-A CHARACTERIZATION; PARENT PHASE 11 OPEN)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892. Never create another branch, work on master/main, merge, or open a PR.
-- **Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74. Exact code/test CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). The then-current docs-only branch HEAD 9899ec8d315e4199d262e26f618188524857ab0b passed [CI 43619273512](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43619273512).
-- **Phase 10 status:** CLOSED for implementation and automated acceptance. Phase 10-A through 10-E are recorded in ROADMAP.md. The Phase 11 dependency is now satisfied, but no Phase 11 source/test work was started.
+- **Starting audited HEAD for Phase 11-A:** 3a1924c7e482757543b2500dda86b1d3e94960af; exact matching CI [43623254456 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456). Exact test-commit SHA and matching CI remain pending.
+- **Phase status:** Phase 10 is CLOSED. Phase 11-A adds behavior-characterization tests only; the parent Phase 11 remains OPEN and no event-reliability fix is claimed.
 - **Outer-message routing:** MessageRouter has one explicit route decision for each of the 25 canonical MessageType values. PLAYER_JOINED, PLAYER_LEFT, READY and PING use typed handling. CHAT is deliberately non-routed because Android has no chat surface. Client-to-Worker and declared placeholder values have explicit non-inbound decisions. The catch-all default forwarding to RemotePlayerActionReceiver has been removed.
 - **PLAYER_JOINED:** validates object payload, senderId/playerId equality, finite integral position and active-level bounds; ignores the local player; creates/reuses one RemotePlayer/RemoteHero; duplicate joins update the existing actor rather than replacing it.
 - **READY and SNAPSHOT:** READY validates identity and boolean/0/1 state, updates RemotePlayer.isReady, and asks for recovery if the sender's already-joined remote player is missing. Successful snapshot restore reapplies the persisted ready state.
 - **Render-thread safety:** remote Hero actor setup has a synchronous render-thread helper; HeroSprite is attached only if a GameScene exists. The headless JVM suite no longer tries to construct a scene-dependent sprite from a queued callback.
 - **ACTION contract:** all 23 action names have an action-specific schema inventory and source references in protocol/action-data-contracts.json. 361 Worker-consumed field names are inventoried (346 source-referenced in the listed Java producer files, 15 Worker-only); this static presence check is not proof of runtime serialization on every branch. Eighteen required NativeLevelSnapshot fields are checked against Java wire declarations and the Worker completeness validator.
 - **Explicit unsupported declarations:** WAIT and USE_ABILITY have no Android native producer/bridge mapping and remain fail-closed. CHAT has no Android UI and is explicitly consumed without gameplay mutation. Do not infer implementation from enum/branch presence.
-- **Tests:** NetworkProtocolParityTest.java has 15 tests; NativeCombatRuntimeIntegrationTest.java has 67 @Test methods. Backend CI passed six static guards + 10 Vitest files / 708 executions; Durable Object local SQLite integration passed 3/3; Android JVM tests and Debug APK passed (BUILD SUCCESSFUL).
-- **No gameplay/recovery redesign:** Worker message producers, inbound routing, validators, SQLite persistence, event ordering, sequence semantics, replay/resync algorithms and native SPD gameplay formulas were not changed. Phase 11 has not started.
+- **Tests:** NetworkProtocolParityTest.java remains at 15 tests. Phase 11-A adds three Android characterization tests (NativeCombatRuntimeIntegrationTest: 67 → 70 methods) and five Worker MatchRoom scenarios. Exact new-commit execution counts and CI are pending.
+- **No runtime behavior change in 11-A:** Worker producers/validators/SQL, Android MessageRouter/MultiplayerManager/WorldSnapshot, protocol, event/sequence/replay/resync behavior and SPD gameplay formulas remain untouched. New tests expose current gaps.
 - **Evidence limits:** CI is automated/local-runtime evidence. No production Worker deployment or physical two-device session is claimed; Phases 22–23 still own those release checks.
-- **Next eligible phase:** Phase 11-A — event ordering, replay protection and resynchronization. Start only in a new, explicitly requested slice, first re-reading ROADMAP.md, GPT.md, the continuation note, and exact live HEAD/CI. Characterize current behavior before implementation; do not jump to Phase 11-B.
+- **Next action:** verify the exact Phase 11-A test commit with Backend, Android and Durable Object SQLite CI, then record that exact SHA/run. Do not start Phase 11-B or Phase 12 automatically.
 
 **Source-of-truth hierarchy:** PROJECT_EXECUTION_PROTOCOL_AR.md governs workflow; ROADMAP.md governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; docs/multiplayer/ is the maintained architecture/test reference.
 
@@ -228,14 +228,14 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - WAIT and USE_ABILITY remain declared but non-emitted Android actions and fail-closed. Do not infer feature support from an enum or Worker branch.
 - NativeCombatRuntimeIntegrationTest contains 67 @Test methods; NetworkProtocolParityTest contains 15.
 - **Phase status:** Phases 1–10 are complete for implementation and automated acceptance; Phases 11–21 remain open and dependency-ordered; Phase 22 is deployment/cross-layer preflight; Phase 23 is the user's final physical-device playtest.
-- Phase 11's dependency is satisfied, but Phase 11 implementation and tests have not started. The next eligible scope is Phase 11-A only after a separate user request and a fresh exact-HEAD/CI audit.
+- Phase 11-A characterization tests were added after a fresh exact-HEAD/CI audit: five Worker scenarios and three Android cases. Exact new-commit CI is pending; no runtime behavior was changed.
 - CI does not prove a production Worker deployment, live production WebSocket lifecycle or physical multi-device gameplay. Those remain explicit Phases 22–23 gates.
 
 ### Phase status
 
 - **Phases 1–9:** complete for implementation and automated acceptance under the limits recorded in ROADMAP.md.
 - **Phase 10:** complete for implementation and automated acceptance at code/test SHA `f2d79038d1e420461be7a1956471324de5c1ef74`; typed outer-message routing, ACTION field-name inventory and required native snapshot field checks are integrated and green.
-- **Phase 11:** event ordering, replay protection and resynchronization; eligible next, not started.
+- **Phase 11:** OPEN — Phase 11-A characterization tests added; behavior fixes and parent-phase acceptance remain outstanding.
 - **Phase 12:** durable recovery, reconnect and authority handoff.
 - **Phase 13:** transport-independent room/session lifecycle.
 - **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).

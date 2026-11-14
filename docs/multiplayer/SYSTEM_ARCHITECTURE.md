@@ -207,3 +207,13 @@ Current authority boundaries observed:
 - Do not move server admission/replay responsibilities into Android or let Android invent missing state. Do not treat a successfully parsed message, a high watermark, or a request ID as complete replay protection.
 
 The live gaps and safe future test targets are documented in ROADMAP.md and SESSION_RECOVERY_AND_SECURITY.md. No Worker validator, Java router, event persistence, native gameplay semantics or recovery algorithm changed in this gate review.
+
+
+## Phase 11-A current reliability findings (2026-11-14)
+
+The test-only Phase 11-A pass records the current responsibilities and limits:
+- MatchRoom owns the persisted event sequence, processed request IDs, retained rows, reconnect replay-window decision and full snapshot generation.
+- MultiplayerManager stores the observed client sequence watermark and sends reconnect/RESYNC requests; its update method remains a monotonic maximum.
+- MessageRouter applies EVENT_BATCH rows on the render thread and WorldSnapshot validates/restores full world state. The current event path skips lower/equal sequences, accepts a higher sequence without checking contiguity, and updates the watermark before validating/applying the event body.
+
+The added tests characterize this behavior, the 50-row reconnect replay threshold/fallbacks, same-player requestId collisions, and stale snapshot protection. No runtime implementation is changed in Phase 11-A; corrected contiguous ordering and request binding remain Phase 11-B work.

@@ -230,6 +230,17 @@ Required behavior for all event paths:
 
 Phase 10-E closeout: MessageRouter now has one explicit route decision for all 25 canonical outer message values, with no catch-all forwarding to RemotePlayerActionReceiver. PLAYER_JOINED is a typed render-thread path with senderId/payload identity and position validation; PLAYER_LEFT retains its tested cleanup; READY updates server-authored RemotePlayer readiness metadata and snapshots restore it; PING is transport-only. CHAT is explicitly non-routed on Android because there is no chat UI. Client-to-Worker and declared placeholder enum values are explicit non-inbound decisions. The receiver remains in the source tree for explicit Hero setup/legacy helper duties, including render-thread actor creation and scene-conditional HeroSprite attachment. EVENT_BATCH sequence/application semantics were not changed by Phase 10. Exact closeout SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 43618725089.
 
+### Phase 11-A current behavior characterization (2026-11-14)
+
+Tests now pin the current reliability boundaries without changing runtime behavior:
+- Worker reconnect replays only a complete retained sequence range for a non-current publisher when the gap is at most 50; a gap above 50 or an incomplete row range falls back to a full SNAPSHOT.
+- RESYNC emits a full SNAPSHOT with current player/Mob/level state and an event-history field; this is not an EVENT_BATCH response.
+- Same-player requestId reuse currently returns the stored accepted result without comparing incoming action/payload with the original request.
+- Android EVENT_BATCH does not require contiguous sequence values and advances the watermark before validating/applying a new event body.
+- Full SNAPSHOT restore rejects snapshots older than the currently applied client sequence before mutating the live world.
+
+These are known gaps for Phase 11-B, not accepted reliability guarantees. The Phase 11-A tests characterize them; no runtime code changed.
+
 ## 8. Inventory, loot claims, exactly-once rewards
 
 Native item actions must run through original SPD item methods. Client captures item class, stable ID, stack quantity, serialized bundle, inventory/container/equipment/quickslot changes, heap changes and native action cost.

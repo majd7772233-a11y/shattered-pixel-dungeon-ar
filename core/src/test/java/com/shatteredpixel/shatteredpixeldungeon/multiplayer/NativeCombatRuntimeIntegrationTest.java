@@ -3355,6 +3355,58 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals("Sequence tracking must remain monotonic", 2L, manager.getLastSequence());
     }
 
+
+    @Test
+    public void eventBatchCurrentlyAcceptsSequenceGapsAndSkipsLowerOutOfOrderEvents() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-sequence-gap-characterization", "client-a", transport);
+
+        String batch = "[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}},"
+                + "{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]";
+        routeEventBatch(batch, 2L);
+
+        Assert.assertEquals("The current client watermark advances to the highest observed event", 2L,
+                manager.getLastSequence());
+        Assert.assertFalse("The current router does not request resync for the missing sequence 1",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void malformedNewEventCurrentlyAdvancesSequenceBeforeRequestingResync() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-malformed-event-characterization", "client-a", transport);
+
+        routeEventBatch("[{\\"sequence\\":4,\\"eventType\\":\\"PLAYER_ATTACKED\\"}]", 4L);
+
+        Assert.assertEquals("The current router records the event watermark before validating its action body",
+                4L, manager.getLastSequence());
+        Assert.assertTrue("The malformed event still requests a full authoritative snapshot",
+                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void staleFullSnapshotIsRejectedWithoutChangingLiveWorldOrAppliedSequence() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("runtime-stale-snapshot-characterization", "client-a", new TestTransport());
+        manager.updateLastSequence(3L);
+        int oldHeroHp = hero.HP;
+        int oldHeroPos = hero.pos;
+        int oldWidth = level.width();
+
+        WorldSnapshot stale = makeSnapshotWithMob(2L, null, "");
+        Assert.assertTrue("The test snapshot must be structurally valid before sequence rejection",
+                WorldSnapshot.validateForRestore(stale));
+        Assert.assertFalse(WorldSnapshot.restoreWorld(stale));
+
+        Assert.assertEquals(3L, manager.getLastSequence());
+        Assert.assertEquals(oldHeroHp, hero.HP);
+        Assert.assertEquals(oldHeroPos, hero.pos);
+        Assert.assertEquals(oldWidth, level.width());
+        Assert.assertTrue(WorldSnapshot.lastRestoreDiagnostic().contains("stale sequence"));
+    }
+
     @Test
     public void acceptedCombatEventConvergesAcrossClientsWithDifferentLocalActorIds() throws Exception {
         final String stableMobId = "stable-native-mob-0001";

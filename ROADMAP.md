@@ -87,7 +87,18 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
+### Phase 11-A characterization slice — 2026-11-14 (tests added; exact-head CI pending)
+
+- **Repository / only working branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
+- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`, the documentation-only Phase 10 closeout checkpoint. Its exact-head CI [run 43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456) passed Backend typecheck/tests, Android JVM/Debug APK, and all three Durable Object SQLite tests.
+- **Phase boundary:** Phase 10 is closed. This Phase 11-A pass adds behavior-characterization tests only. It does not alter event ordering, sequence watermarks, request replay policy, reconnect/resync behavior, Worker persistence, or native gameplay.
+- **Worker cases added:** the inclusive 50-event replay boundary; full snapshot fallback above 50; fallback when retained rows do not fill the gap; RESYNC's full-SNAPSHOT response; and same-player requestId reuse with a different action/payload returning the original stored result under current behavior.
+- **Android cases added:** an out-of-order/gapped batch currently advances to the highest observed sequence without gap RESYNC; a malformed new event currently advances the watermark before RESYNC; and a structurally valid snapshot older than the applied sequence is rejected without changing the live world.
+- **Existing evidence retained:** stale/duplicate combat-event suppression, snapshot validation-before-mutation, restore rollback and Worker transaction rollback tests remain enabled.
+- **Known gaps deliberately not fixed in 11-A:** EVENT_BATCH is not contiguous and advances before validating/applying; same-player request replay is not bound to action/payload identity. These are observations, not desired behavior.
+- **Status:** parent Phase 11 remains OPEN. Exact-head CI for the new test commit is required before this characterization slice is called verified. Phase 11-B and Phase 12 are out of scope.
+
+### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
 - Repository/only working branch: majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
 - Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; this is newer than the user-supplied c8998912005e458fac7a8776618b073f33f4d642. Do not reset to the older checkpoint.
