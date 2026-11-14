@@ -87,7 +87,7 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Active project checkpoint — 2026-11-14 (Phase 9 complete; Phase 10-A/B/C delivered; 10-D next)
+### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D delivery and the Phase 11-A preflight)
 
 - Repository/only working branch: majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
 - Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; this is newer than the user-supplied c8998912005e458fac7a8776618b073f33f4d642. Do not reset to the older checkpoint.
@@ -95,7 +95,7 @@ The historical documentation batches established the technical references now in
 - Phase 10-A: canonical 25-message / 23-action enum and version parity complete at d8938190960af64d6efc70f4625a7411bfa3b7de, CI [43485367695](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695).
 - Phase 10-B: 25-message/23-action route inventory, eight actual Worker ingress types versus 17 known non-inbound types, fail-closed Worker ingress and static/test guards complete at d16be138d74bb9930777f5352efbeae3291070c6, CI [43494769215](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43494769215).
 - Phase 10-C: Android envelope/parser parity, transport-scoped legacy envelope compatibility, fail-closed HeroAction mapping, and behavior-specific MessageRouter/RemotePlayerActionReceiver tests are complete at the audited code/test HEAD above; exact-head CI passed.
-- Phase 10 remains OPEN; next bounded slice is 10-D typed-path convergence. Do not repeat 10-A/B/C, do not start Phase 11, and do not change replay/resync policy or event-ordering algorithms.
+- At the timestamp represented by this historical checkpoint, Phase 10 remained OPEN and 10-D was next. This was superseded by the bounded 10-D PLAYER_LEFT delivery recorded in the Phase 10 section below; parent Phase 10 remains OPEN for the other real routes and field-level payload/serializer parity. Do not infer that 10-D is still next.
 - RemotePlayerActionReceiver remains present and unchanged; PLAYER_LEFT still performs required Actor/Mob-target/Buff/sprite cleanup. Do not remove/move it without dedicated equivalence tests for each behavior being migrated.
 - No deployed production Worker smoke test or physical two-device match is claimed. These remain Phases 22–23.
 
@@ -118,7 +118,7 @@ The historical documentation batches established the technical references now in
 - **All native Hero Buff ticks now commit atomically:** every `SYNC_HERO_STATE` `BUFF_TICK` with the expected native envelope enters `transactionSync`, so Hero state, player HP, processed request, event, sequence and outbound messages cannot split on a late SQL error. Validation remains source-specific; the wrapper does not broaden accepted effect classes. A Healing rollback regression proves the HP/Buff/player/event/sequence checkpoint is restored on final event insertion failure.
 - **Snapshot serializer fix:** `SPDLevelSnapshot.buildLevelJson()` disables libGDX prototype elision so required default-valued schema fields and empty arrays are included in complete level JSON. Android regression checks schema version, branch zero, explicit false lock flag, tile position zero and required collections before submitting the snapshot through the client router.
 - **Fail-closed exclusions:** level-up XP and `Hero.earnExp()` item callbacks, Unencumbered Spirit, UnarmedAbilityTracker, RemoteHero/player LifeLink and non-publisher Mob writes remain unsupported. No protected Java file (`Hero.java`, `Mob.java`, `WorldSnapshot.java`) was changed.
-- **Remaining Phase 9 work:** real Durable Object/SQLite integration, crash/restart/authority handoff, XP level-up/item callbacks, Monk talent/ability variants, RemoteHero links, reconnect/expiry edges, more consumables and overlapping DOT/HoT/shield/detach callbacks, malformed/replay/resync. No live Worker smoke test or physical two-device match has been performed.
+- **Historical remaining Phase 9 work at the 2026-11-09 checkpoint only (superseded by the 2026-11-13 closeout):** real Durable Object/SQLite integration, crash/restart/authority handoff, XP level-up/item callbacks, Monk talent/ability variants, RemoteHero links, reconnect/expiry edges, more consumables and overlapping DOT/HoT/shield/detach callbacks, malformed/replay/resync. These were subsequently implemented and tested where included in the accepted Phase 9 scope, or explicitly retained as fail-closed exclusions. This is not current Phase 9 backlog. No live Worker smoke test or physical two-device match was claimed at that historical checkpoint.
 
 
 ### Historical continuation checkpoint — 2026-10-31 (superseded by 2026-11-09)
@@ -127,7 +127,7 @@ The historical documentation batches established the technical references now in
 - **Working branch:** `multiplayer-framework-core-14118577486727081892`; never merge to `main` unless the user asks.
 - **Latest tested gameplay code/test SHA:** `d1c2f180f29846ce16d20c010a38805754b9b70f`. Exact-SHA CI [41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476) passed Backend typecheck/tests and Android JVM tests/debug APK compilation.
 - **Phase 8:** complete for implementation and automated acceptance on `e36bc8030755050e3eae3d45ccab4db1040a65f5`; [CI 41230208577](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41230208577) passed 472/472 Vitest tests, Java tests and Android debug APK compilation.
-- **Phase 9:** in progress, not complete. All work items and acceptance criteria remain unchecked. Current implementation/verification commits: `4f383d560d728c25a9894dc80e498f8954732098` ([CI 41240321050](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240321050)) and `d1c2f180f29846ce16d20c010a38805754b9b70f` ([CI 41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476)); both exact-SHA workflows passed.
+- **Phase 9 status at this 2026-10-31 historical checkpoint:** in progress and not complete at that time. Its implementation/verification commits were: `4f383d560d728c25a9894dc80e498f8954732098` ([CI 41240321050](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240321050)) and `d1c2f180f29846ce16d20c010a38805754b9b70f` ([CI 41240428476](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/41240428476)); both exact-SHA workflows passed.
 - The current code parses native nested Hero Buff classes from the wider SPD package while keeping non-source rows immutable. It narrowly permits Frost/MagicalSleep removal during an effective-damage Hunger/Poison tick. Poison LifeLink Mob damage is accepted only as a two-event sequence: the existing Mob damage event commits the Mob result once, and the later Hero Buff tick correlates an accepted `LifeLink`-source `CHAR_DAMAGED` event from that Poison tick without reapplying Mob HP, SQL, death, or loot writes. Background Levitation expiry remains rejected because native detach occupies the Hero's tile.
 - Still open: Wand.Charger/Recharging with exact per-wand charge and scheduler validation; BrokenSeal.WarriorShield, Blocking.BlockBuff and Berserk tick behavior; other damage side effects and linked/dead targets; broader consumable-effect lifetimes; concurrent ticks, exact-once/replay, expiry boundaries and reconnect/resync timing.
 - **Next action:** complete the Wand.Charger/Recharging audit against native wand, RingOfEnergy, Regeneration and inventory bundles. Do not accept a charge tick until the server can bind it to one owned wand and validate the native formula and complete before/after item delta.
@@ -255,7 +255,7 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Vitest reported 220 executions passed across the TypeScript test file and its generated JavaScript counterpart (the two files exercise corresponding test cases; this is not 220 distinct source scenarios).
 - `NativeCombatRuntimeIntegrationTest` contains 36 integration test methods at this checkpoint, including the new callback-driven special Mob test.
 - No physical two-device session or deployed Worker end-to-end run is claimed. Real-device/network verification remains an explicit Phase 10 release gate.
-- At the time of this Phase 3 checkpoint, Phase 4 was next. Its implementation and automated acceptance are recorded in the 2026-10-22 Phase 4 verification entry below; Phase 5 is now next. Phase 9 publisher-disconnect/authority handoff remains separate and open.
+- At the time of this 2026-10 Phase 3 checkpoint, Phase 4 was next. Its implementation and automated acceptance are recorded in the 2026-10-22 Phase 4 verification entry below; Phase 5 was next at that historical point. Phase 9 publisher-disconnect/authority handoff was still pending then and was completed in the 2026-11-13 Phase 9 closeout.
 
 ## Phase 4 — Complete Movement, Floors, Doors and World Interactions
 
@@ -288,7 +288,7 @@ The Worker **does not run Java SPD or independently reproduce its RNG/damage for
 - Vitest reported 242 successful executions across `index.test.ts` and the generated `index.test.js` counterpart (121 source cases mirrored across the two files, not 242 distinct scenarios). `NativeCombatRuntimeIntegrationTest` contains 37 test methods at this checkpoint.
 - No physical two-device session or deployed Worker end-to-end test is claimed. Those remain explicit Phase 10 release checks; CI proves build and automated contract/runtime tests, not live device timing or transport behavior.
 - **Follow-up verification on the later branch tip:** code HEAD `ab81c507c5f1ae0b767732a7247cf7afe5afd917` also passed both jobs in [CI 39859774332](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/39859774332). The follow-up commits primarily extend stable inventory/item transaction handling; this confirms that the later combined tree still builds and passes the automated suites, while the phase-specific implementation checkpoint remains `c0c231a501bb2996f261e7e9e4e5d66e4136d70b`.
-- Next whole phase: Phase 5 — items and effects. Phase 9 authority handoff and Phase 10 real-device/deployment verification remain separate and open.
+- At the time of this 2026-10-22 Phase 4 verification, Phase 5 was next; Phase 9 publisher handoff and the then-planned release verification were pending. Publisher handoff was completed under Phase 9 on 2026-11-13; deployed-service and physical-device checks are now tracked by Phases 22–23.
 
 ## Phase 5 — Stable Item Identity and Pickup Claims
 
