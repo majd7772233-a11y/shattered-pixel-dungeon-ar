@@ -28,7 +28,7 @@ assert.equal(schema.properties.payloadJson.type, "string");
 const manager = readRepoFile(
   "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java"
 );
-assert.match(manager, /message\.messageType\s*=\s*MessageType\.ACTION/);
+assert.match(manager, /\b[A-Za-z_$][\w$]*\.messageType\s*=\s*MessageType\.ACTION/);
 for (const key of ["action", "data", "heroStateJson"]) {
   assert.ok(new RegExp("\\\\?\"" + key + "\\\\?\"").test(manager),
     "MultiplayerManager must serialize ACTION wrapper field " + key);
