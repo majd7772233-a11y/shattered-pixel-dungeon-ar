@@ -85,7 +85,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–9 complete for implementation and automated acceptance; Phase 10-A/B/C delivered and parent Phase 10 remains open (10-D next); Phases 11–23 open |
+| Phase state | Phases 1–9 complete for implementation and automated acceptance; Phase 10-A/B/C and bounded 10-D PLAYER_LEFT delivered while parent Phase 10 remains open; Phases 11–23 open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 
@@ -118,6 +118,10 @@ Batch 1 and Batch 2 were documentation-only. The separate source-refactor Stage 
 
 The three-stage source refactor is complete for implementation, source parity and automated acceptance; its permanent status and module map are recorded above and in SOURCE_FILE_REFERENCE.md. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.
 
+
+## 2026-11-14 — Phase 9 revalidation
+
+The Phase 9 roadmap and source/test evidence were re-audited. All 11 completion items remain satisfied, including Poison/LifeLink atomic batching, supported timed Buff effects, Wand.Charger/Recharging, SpiritArrow authority result and requester reconciliation, and durable publisher handoff/rebase. Unsupported effects remain deliberate, regression-tested fail-closed exclusions. No Phase 9 implementation task remains open under the accepted scope. Stale technical-reference descriptions were reconciled; no game or Worker source changed.
 
 ## 2026-11-14 — Phase 11-A dependency gate
 

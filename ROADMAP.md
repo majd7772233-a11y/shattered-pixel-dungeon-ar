@@ -438,6 +438,12 @@ The following are rejected before persistence and are not claimed as playable mu
 
 The final Phase 9 audit matched enabled native effect paths to Worker validators, durable SQL transactions, sequenced client reconciliation, publisher handoff/rebase and regression coverage. Unsupported branches listed above are tested fail-closed rather than represented as supported multiplayer effects. No gameplay source change was needed during this final documentation reconciliation.
 
+### Revalidation audit — 2026-11-14
+
+Phase 9 was rechecked against the live Java publishers/native callbacks, Worker validators and transaction boundaries, JVM integration tests, Backend tests and Durable Object SQLite runtime suite. The 11 completed-work items above remain satisfied; there is no unchecked Phase 9 work item. The unsupported cases remain deliberate fail-closed exclusions, not unfinished acceptance criteria. The SpiritArrow publisher result/requester reconciliation and durable publisher handoff/rebase are implemented and tested. Several technical-reference sentences still described those completed behaviors as open Phase 9 work; those documentation contradictions are corrected in the same revalidation commit. No Phase 9 Java/Worker behavior or test was changed because no missing Phase 9 implementation was found.
+
+Verification basis: Phase 9 implementation/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7` passed exact code CI [43472587588](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). The live branch tip before this revalidation is `11baec7ad870f666b61424a2638220355f4113cb`, whose exact-head CI [43611989142](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43611989142) also passed all three jobs, including the Phase 9 regressions in the current test suite.
+
 Production deployment and physical-device playtest remain Phases 22 and 23, not Phase 9 claims.
 
 ## Phase 10 — Canonical Protocol Schema and One Typed Event Path

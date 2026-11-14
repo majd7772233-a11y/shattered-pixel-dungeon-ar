@@ -169,7 +169,7 @@ The same Poison transition is checked against native `ShieldBuff.processDamage()
 
 ### 8.3 SnipersMark expiry and restore boundary
 
-A Hero-targeted `SnipersMark` is now published at its own due native expiry, including its remaining timer, target Actor ID and damage bonus in the trusted Hero before-state. The source-specific validator rejects early removal and disappearance hidden inside another Buff tick. Snapshot restoration must retain the mark's remaining cooldown and re-run its native attach side effect so the local `ActionIndicator` is reconstructed. This does not prove SpiritArrow selection/target identity or arrow damage is shared; those action semantics remain separate Phase 9 scope.
+A Hero-targeted `SnipersMark` is now published at its own due native expiry, including its remaining timer, target Actor ID and damage bonus in the trusted Hero before-state. The source-specific validator rejects early removal and disappearance hidden inside another Buff tick. Snapshot restoration must retain the mark's remaining cooldown and re-run its native attach side effect so the local `ActionIndicator` is reconstructed. This expiry-only test does not itself prove SpiritArrow selection/target identity or arrow damage. Those separate action semantics are covered by the completed stable-Mob SpiritArrow intent, publisher-result and requester-reconciliation path documented in `AUTHORITATIVE_DATA_FLOWS.md` §4.2. RemoteHero/player LifeLink and SpiritArrow SPEED/non-Mob branches remain explicit fail-closed exclusions, not unfinished Phase 9 work.
 
 
 ## 9. Authority and ownership
