@@ -95,7 +95,7 @@ The package has 32 Java files:
 | InternetTransport.java | Custom TCP/TLS/WebSocket client |
 | LANTransport.java | TCP server/client and UDP host discovery |
 | LootClaimManager.java | In-memory claim helper |
-| MessageRouter.java | Structured client message/event/snapshot/combat router; typed PLAYER_LEFT render-thread cleanup |
+| MessageRouter.java | Exhaustive 25-value outer-message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING and snapshot readiness restore |
 | MessageType.java | Outer protocol enum |
 | MultiHeroManager.java | Native Hero enumeration/nearest-hero helper |
 | MultiplayerActionDispatcher.java | Native Hero action dispatch bridge |
@@ -115,14 +115,14 @@ The package has 32 Java files:
 | NetworkTransport.java | Common transport interface |
 | PlayerFOV.java | Local field-of-view calculation |
 | PvPMode.java | PvP rule descriptor |
-| RemotePlayer.java | Remote participant model and local Hero instance |
-| RemotePlayerActionReceiver.java | Remaining legacy/default remote-player receiver; refuses duplicate PLAYER_LEFT and EVENT_BATCH delivery |
+| RemotePlayer.java | Remote participant model, local Hero replica and server-authored isReady room metadata |
+| RemotePlayerActionReceiver.java | Explicit RemoteHero setup/legacy helper; no longer a generic top-level default receiver for outer message kinds |
 | SPDLevelSnapshot.java | Native snapshot exporter |
 | SurvivalMode.java | Survival rule descriptor |
 | TransportCallback.java | Transport callback interface |
 | WorldSnapshot.java | Snapshot validation, restore, entity reconciliation and rollback |
 
-For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the current Phase 10-C/10-D protocol, Android and test references.
+For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Phase 10-E protocol, Android and test closeout references.
 
 
 ## 4.1 Phase 10-C JVM protocol/receiver tests
@@ -130,7 +130,7 @@ For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the current 
 | Test path | Current source evidence |
 |---|---|
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NetworkProtocolParityTest.java | 15 JVM tests for canonical envelope parser/serializer, strict required and optional fields, version/sequence, malformed JSON, unknown types, scoped LAN/Bluetooth legacy compatibility, HeroAction Optional mapping and transport framing/action parsing. |
-| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 62 @Test methods at the Phase 10-C audited HEAD. Includes PLAYER_LEFT native cleanup, legacy RemoteHero position/HP compatibility and EVENT_BATCH no-double-application coverage. |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 67 @Test methods at the Phase 10-E closeout HEAD. Includes PLAYER_LEFT native cleanup, legacy RemoteHero position/HP compatibility and EVENT_BATCH no-double-application coverage. |
 
 These are automated JVM tests. They do not prove a production Worker deployment or a physical two-device session.
 
@@ -270,13 +270,28 @@ These stages are source organization only. They do not change or renumber gamepl
 
 All layers share one instance through inheritance. This is not a new Durable Object per layer.
 
-## 4.2 Phase 10-D typed PLAYER_LEFT lifecycle regression
+## 4.2 Historical Phase 10-D typed PLAYER_LEFT lifecycle regression
 
 | Test/source path | Current source evidence |
 |---|---|
 | core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java | Explicit PLAYER_LEFT route and render-thread cleanup handler; actual Worker producer is MatchRoomBase.webSocketClose. |
-| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayerActionReceiver.java | No longer owns PLAYER_LEFT cleanup; direct duplicate delivery is refused through the existing resync request path. The class remains for other legacy/default message behavior. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayerActionReceiver.java | No longer owns PLAYER_LEFT cleanup; direct duplicate delivery is refused through the existing resync request path. The class remains for explicitly invoked native Hero setup and legacy helper behavior; it is no longer the top-level catch-all route. |
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 64 @Test methods at implementation/test SHA cc61c68625f587576ca530aef3354bfaffe9e140. PLAYER_LEFT tests prove old-route baseline, typed-path equivalence, Mob target/Actor/Buff/sprite/registry cleanup, invalid payload fallback, local-player no-op and legacy duplicate rejection. |
 | server/src/match-room/base.ts | Real PLAYER_LEFT producer in webSocketClose; not modified by the client migration. |
 
-Exact implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed CI 43522055301. The parent Phase 10 remains OPEN because PLAYER_JOINED and remaining route/payload work are not all migrated/closed.
+Exact implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed CI 43522055301. That was the bounded 10-D state; Phase 10-E subsequently closed the parent phase.
+
+
+## 4.3 Phase 10-E typed routing and payload contract closeout
+
+| Test/source path | Current source evidence |
+|---|---|
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java | Exact 25-value switch, typed PLAYER_JOINED/PLAYER_LEFT/READY/PING handlers, snapshot readiness restoration and explicit CHAT/non-inbound decisions; no generic default-to-legacy receiver. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayer.java | Server-authored isReady metadata for the remote participant. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RemotePlayerActionReceiver.java | setupRemoteHeroInstanceOnRenderThread creates the native Actor and attaches HeroSprite only in GameScene; receiver retained, not a generic outer-message route. |
+| protocol/schema.json | NativeActionEnvelope.oneOf plus 23 NativeActionData_<ACTION> definitions; required NativeLevelSnapshot fields remain declared. |
+| protocol/action-data-contracts.json | 23 action rows; 361 Worker field names, 346 present in listed Java producer source and 15 Worker-only; per-action validators and producer references. |
+| server/scripts/validate-phase10-action-contracts.mjs | CI static parity guard for action enums, schema field inventories, Worker fields, Java-source-referenced/Worker-only split and native snapshot required fields. |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 67 @Test methods at SHA f2d79038d1e420461be7a1956471324de5c1ef74; join identity, duplicate join, READY, CHAT/PING/non-inbound rejection and snapshot readiness regression coverage. |
+
+Exact source/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 43618725089 across Backend (six guards + 708 executions), Android JVM/Debug APK and three Durable Object SQLite tests. WAIT and USE_ABILITY remain explicitly non-emitted by Android; CHAT remains non-routed without a client UI. This closeout does not claim production deployment or physical-device validation.

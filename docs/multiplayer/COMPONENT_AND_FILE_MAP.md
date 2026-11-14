@@ -22,7 +22,7 @@ The audited tree contains 32 Java files:
 | InternetTransport.java | Custom socket/TLS/WebSocket client implementing NetworkTransport. | Worker WebSocket endpoint, handshake/framing, manager callbacks; framing changes require server and integration tests. |
 | LANTransport.java | TCP server/client and UDP host discovery; sends network messages and exposes connected state. | Setup scene, host/client topology, socket lifecycle, discovery, peer compatibility and multi-device tests. |
 | LootClaimManager.java | In-memory claim/release/clear helper scoped by depth/branch and heap/item/player. | Server durable claims and pickup/drop logic; not a substitute for durable Worker claims. |
-| MessageRouter.java | Central client message routing; handles session, snapshots, event batches, combat requests, accepted actions, acknowledgements, match end, errors and typed PLAYER_LEFT cleanup. PLAYER_LEFT native cleanup is scheduled on the render thread. | NetworkMessage, MultiplayerManager, WorldSnapshot, RemotePlayerActionReceiver; remaining default route is still a migration boundary. |
+| MessageRouter.java | Exhaustive 25-value client message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING handlers, snapshot readiness restore, explicit non-inbound decisions |
 | MessageType.java | Java message-type enum. | NetworkMessage, MessageRouter, Worker and protocol schema; additions/removals require cross-layer parity audit. |
 | MultiHeroManager.java | Gets all active Heroes and nearest Hero for native behavior. | Dungeon, local Hero, remote Hero registry and Mob AI target selection. |
 | MultiplayerActionDispatcher.java | Native Hero action hook and supported NPC/pickup/movement/pit-fall dispatch. | Hero, NetworkActionType, MultiplayerManager, Worker validators. |
@@ -42,8 +42,8 @@ The audited tree contains 32 Java files:
 | NetworkTransport.java | Common connect/send/disconnect/connected/type interface. | All transport implementations and MultiplayerManager; interface changes require every implementation and tests. |
 | PlayerFOV.java | Calculates local player field of view. | Hero, Level, competitive visibility policy, server broadcastWithFOV. |
 | PvPMode.java | PvP rule descriptor. | GameMode, server ownership/target rules, FOV and UI. |
-| RemotePlayer.java | Remote-player metadata and local Hero instance. | MultiplayerManager, RemotePlayerActionReceiver, MultiHeroManager, sprites and Mob targeting. |
-| RemotePlayerActionReceiver.java | Legacy/general receiver for remaining default messages and older remote-player paths. Direct PLAYER_LEFT and EVENT_BATCH delivery are refused and request the existing recovery path. | MessageRouter still forwards remaining legacy message kinds here; PLAYER_LEFT cleanup now belongs to its typed render-thread path. Keep the receiver until each remaining behavior has dedicated equivalence tests. |
+| RemotePlayer.java | Remote participant model, native Hero replica and server-authored isReady room metadata |
+| RemotePlayerActionReceiver.java | Retained native RemoteHero setup/legacy helper boundary; no longer the top-level default handler for unrelated outer messages |
 | SPDLevelSnapshot.java | Captures native level, tiles, transitions, Mobs, buffs, items, inventory, quickslots, heaps, plants, traps and blobs. | Level, Hero, Mob, Worker full-snapshot validator, protocol definitions and WorldSnapshot. |
 | SurvivalMode.java | Survival GameMode rule descriptor. | GameMode, Worker lifecycle/score/rules and UI; enforce rather than merely expose properties. |
 | TransportCallback.java | Transport connected/disconnected/message/error callbacks. | Every transport and MultiplayerManager; callback threading/order must remain explicit. |
@@ -96,14 +96,16 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/util/seeded-rng.ts | Original deterministic SeededRNG helper. | Keep deterministic sequence compatibility.
 | server/scripts/validate-spirit-arrow-schema.mjs | Static contract test for `SPIRIT_ARROW`, strict `spiritArrow` metadata and conditional ranged Mob rules. | Run in `npm test`; proves schema structure, not local projectile runtime or authority roundtrip. |
 | server/scripts/validate-phase10-protocol-enums.mjs | Static ordered parity check between Java `MessageType`/`NetworkActionType`, JSON Schema and protocol version. | Run in `npm test`; proves wire vocabulary/version parity only, not Worker route or client-handler support. |
-| server/scripts/validate-phase10-routing.mjs | Static cross-layer guard for the 25 outer messages, eight Worker ingress routes, 17 known non-inbound names, 23 Worker action branches and fail-closed `INVALID_ACTION` default. | Run in `npm test`; route-branch presence is not proof that every native action subcase is supported. |
+| server/scripts/validate-phase10-routing.mjs | Static guard for 25 Android route decisions, eight Worker ingress types, 17 known non-inbound values and 23 Worker ACTION branches |
+| server/scripts/validate-phase10-action-contracts.mjs | Static Java/schema/Worker contract guard for all 23 action field inventories, Java-source-referenced versus Worker-only fields and native snapshot required fields |
 | server/src/index.test.ts | Main backend validator/contract test suite, retained on the root `./index` import path. | Add focused positive/negative cases beside the affected validator/action domain. |
 | server/src/native-pickup-side-effect.test.ts | Focused pickup side-effect policy regressions. | Update for pickup preflight/side-effect changes. |
 | server/scripts/validate-phase7-native-mutation-schema.mjs | Static action-metadata/schema validation. | Update alongside schema/validator contract when necessary. |
 | server/package.json and package-lock.json | Backend scripts and dependency lock. | Lockfile changes must correspond to manifest changes; npm ci must work. |
 | server/tsconfig.json | TypeScript compilation configuration. | Affects backend source/test typing. |
 | server/wrangler.jsonc | Worker entry, Durable Object binding and SQLite migration config. | Class/binding/migration changes need deploy and storage compatibility review. |
-| protocol/schema.json | Shared message envelope and native payload schema. | Schema changes require Java parser/serializer, Worker validator, tests and docs updates. |
+| protocol/schema.json | Shared outer message envelope, NativeActionEnvelope.oneOf and 23 action-specific data-field schemas. | Schema changes require Java parser/serializer, Worker validator, tests and docs updates. |
+| protocol/action-data-contracts.json | Source-backed per-action Worker field, validator, native producer and Java/Worker field-origin inventory. | Keep synchronized with the matching Worker branch, Java producer and schema definitions. |
 | .github/workflows/multiplayer-ci.yml | Backend and Android branch-validation workflow. | Trigger path/toolchain/job changes affect exact commit evidence. |
 | .github/workflows/deploy-server.yml | Cloudflare Worker deployment automation. | Auto-deploy currently only from master/main server changes or manual dispatch; not this branch push. |
 | settings.gradle, build.gradle, core/build.gradle, android/build.gradle, gradle.properties, gradlew and wrapper files | Gradle module/toolchain/native dependency configuration. | Affects CI and all application targets. |
@@ -151,8 +153,15 @@ Mirrored TypeScript/JavaScript outputs may execute the same source cases more th
 - `server/src/index.ts` — stable Wrangler entry and compatibility facade; `server/src/worker.ts` owns default request routing; `server/src/match-room/` owns the shared Durable Object class layers.
 - WorldSnapshot.java — complex native restore, entity reconciliation and rollback.
 - MultiplayerManager.java — session, authority, sequence and stable player/entity identity hub.
-- MessageRouter.java plus RemotePlayerActionReceiver.java — transitional routing overlap.
+- MessageRouter.java — exhaustive 25-value typed outer-message route; RemotePlayerActionReceiver.java — explicit native Hero setup/legacy helper only, not a generic message fallback.
 - Hero.java, Mob.java, Actor.java, Level.java — native engine callbacks and scheduler behavior.
 - protocol/schema.json — contracts can drift unless parser/validator tests enforce parity.
 
 Do not make a large refactor of these files merely to improve documentation. Plan structural refactors separately and preserve active gameplay phase scope.
+
+
+## Phase 10-E closeout (2026-11-14)
+
+At SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089, MessageRouter has 25 explicit route decisions and no catch-all forwarding to RemotePlayerActionReceiver. PLAYER_JOINED, PLAYER_LEFT, READY and PING are typed; CHAT is explicitly not routed to game state. RemotePlayer adds server-backed isReady metadata. The receiver remains available for explicit native Hero setup and legacy helper duties, including the render-thread-only setup helper that defers HeroSprite creation until GameScene exists.
+
+The ACTION schema now has 23 action-specific field definitions. The source inventory tracks 361 Worker-consumed field names (346 present in listed Java producer files, 15 Worker-only) and checks 18 required NativeLevelSnapshot fields. The ordinary npm test path runs the new validate-phase10-action-contracts.mjs guard. WAIT and USE_ABILITY remain declared but non-emitted by Android and fail-closed.

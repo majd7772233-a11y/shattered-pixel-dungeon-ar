@@ -1,4 +1,28 @@
-# Multiplayer Continuation Notes — Phase 11-A blocked at dependency gate; Phase 10 remains OPEN
+# Multiplayer Continuation Notes — Phase 10 closed; Phase 11-A eligible next (not started)
+
+**Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
+**Only working branch:** multiplayer-framework-core-14118577486727081892  
+**Latest implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74  
+**Exact-HEAD CI:** [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089)
+
+## 2026-11-14 — Phase 10-E final closure
+
+- Phase 10-A through 10-E are complete for implementation and automated acceptance at the SHA above. The Phase 10 dependency for Phase 11 is satisfied; Phase 11 implementation/tests remain untouched.
+- Android MessageRouter now contains one explicit decision for all 25 canonical outer message types. There is no generic fallback into RemotePlayerActionReceiver.
+- PLAYER_JOINED, PLAYER_LEFT, READY and PING are explicit typed paths. Join validates senderId/playerId equality and a finite integral in-level position; duplicate join reuses the same RemoteHero. READY validates identity/state and updates RemotePlayer.isReady; successful snapshot restore applies the persisted ready flag. PING only consumes pong. CHAT is explicitly non-routed because Android has no chat UI.
+- Remote Hero registration now has a render-thread-owned synchronous setup method. It creates a sprite only when a GameScene is present; this avoids scene-dependent sprite initialization inside a queued headless test callback.
+- The ACTION envelope has a canonical action-specific schema for all 23 actions. protocol/action-data-contracts.json reconciles 361 per-action Worker field names (346 found in the source-listed Java producer files, 15 Worker-only) and 18 required NativeLevelSnapshot fields. Worker validators remain authoritative for actual field value types, requiredness and supported variants.
+- WAIT and USE_ABILITY are declared Worker/schema action names with no Android native producer or bridge; both remain fail-closed. This is explicit scope, not an unfinished implicit fallback.
+- CI 43618725089: Backend build + six static guards + 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK passed; Durable Object SQLite integration 3/3 passed. No deployed Worker smoke test or physical multi-device session is claimed.
+- No Worker producer/validator/SQL, sequence/replay/resync, event ordering or native SPD gameplay semantics changed.
+
+## Next handoff — Phase 11-A only
+
+Re-check the live branch HEAD and exact-head CI, then re-read ROADMAP.md, GPT.md and the Phase 11-A preflight findings in SESSION_RECOVERY_AND_SECURITY.md. Begin with behavior-characterization tests for duplicate, late, out-of-order and gap events; rejected-event atomicity; same-player request-ID reuse with different action/payload; replay-window truncation; and stale/full snapshot recovery. Implement only the specific 11-A scope. Do not begin 11-B or redesign unrelated gameplay/transport behavior.
+
+## Historical records
+
+The entries below preserve the evidence and decisions at the time each bounded slice was completed. Statements that Phase 10 remained open or PLAYER_JOINED still used the default route are historical and superseded by the Phase 10-E closeout above.
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
@@ -13,7 +37,7 @@
 - Corrected stale technical-reference statements that mislabeled completed publisher handoff/SpiritArrow behavior as unfinished Phase 9 work, and corrected the outdated 10-D-next status row. Unsupported RemoteHero/player LifeLink, XP level-ups/item callbacks, advanced Monk callbacks, unapproved item/Buff effects, and SpiritArrow SPEED/non-Mob targets remain explicitly fail-closed exclusions. The older 2026-11-09 and October ROADMAP continuation entries were also explicitly tagged as historical/superseded so their former Phase 9 backlog is not mistaken for current work.
 - No gameplay Java/Worker or test source changed; no Phase 10 or 11 behavior was started.
 
-## 2026-11-14 — Phase 11-A preflight blocked by Phase 10
+## 2026-11-14 — Historical Phase 11-A preflight (blocked at that time by Phase 10)
 
 - Verified live branch HEAD before documentation: `cf3714c82a210eace79614ab7c575acb04b8aebb`.
 - Exact matching CI: [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) — all three jobs succeeded (Backend, Durable Object SQLite, Android).

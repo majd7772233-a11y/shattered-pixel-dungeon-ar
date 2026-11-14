@@ -13,7 +13,7 @@ Inspected server/package.json:
 | Script | Command | Purpose |
 |---|---|---|
 | build | tsc | Compile/type-check TypeScript according to tsconfig.json. |
-| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && node scripts/validate-publisher-handoff-schema.mjs && node scripts/validate-phase10-protocol-enums.mjs && node scripts/validate-phase10-routing.mjs && vitest run | Run five static native/schema/protocol/routing contracts, then Vitest. |
+| test | node scripts/validate-phase7-native-mutation-schema.mjs && node scripts/validate-spirit-arrow-schema.mjs && node scripts/validate-publisher-handoff-schema.mjs && node scripts/validate-phase10-protocol-enums.mjs && node scripts/validate-phase10-routing.mjs && vitest run | Run six static native/schema/protocol/routing/payload contracts, then Vitest. |
 
 Normal backend validation sequence from repository root:
 
@@ -172,7 +172,7 @@ The source-preservation audit reconciled all 200 original top-level declarations
 
 Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: the Backend typecheck/build and full tests (including schema validation) succeeded, and Android JVM tests plus debug APK compilation succeeded. Backend reported 568 executions across six test files; generated/mirrored TypeScript and JavaScript outputs mean this is not 568 unique source scenarios. A green workflow is not a live Worker deployment or a physical-device multiplayer result. The deploy workflow remains scoped to `master`/`main` pushes or manual dispatch.
 
-## 9. Current verified branch checkpoint — 2026-11-13
+## 9. Historical verified branch checkpoint — 2026-11-13
 
 - Repository/branch: `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 - Gameplay/test baseline: `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test workflow [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
@@ -184,7 +184,7 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
 - Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
 - Phase 9: complete for implementation and automated acceptance. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff effects remain fail-closed.
-- Phase 10: active and OPEN. Slices 10-A (enum/version parity), 10-B (route inventory/Worker admission) and 10-C (Android parser/producer parity plus targeted receiver behavior regressions) are complete. The next bounded slice is 10-D typed-path convergence; do not change replay/resync under this scope.
+- Phase 10: closed at exact-head SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. See the current Phase 10-E closeout below. Phase 11 is eligible next but not started.
 - CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
 
@@ -197,7 +197,7 @@ Exact implementation SHA d8938190960af64d6efc70f4625a7411bfa3b7de passed [GitHub
 
 ## Phase 10-B — outer-message routing admission
 
-Backend `npm test` now runs five static guards before Vitest. The added `validate-phase10-routing.mjs` compares the exact Java/schema 25-message vocabulary with the Worker’s eight explicit inbound and 17 known non-inbound classifications, checks that the route list matches the Worker dispatch branches, checks explicit Worker branch tokens for all 23 actions, and protects the fail-closed INVALID_ACTION default. `message-admission.test.ts` covers malformed envelopes, optional field types, version mismatch, nested malformed payloads, unknown messages and known non-inbound messages.
+Backend `npm test` now runs six static guards before Vitest. The added `validate-phase10-routing.mjs` compares the exact Java/schema 25-message vocabulary with the Worker’s eight explicit inbound and 17 known non-inbound classifications, checks that the route list matches the Worker dispatch branches, checks explicit Worker branch tokens for all 23 actions, and protects the fail-closed INVALID_ACTION default. `message-admission.test.ts` covers malformed envelopes, optional field types, version mismatch, nested malformed payloads, unknown messages and known non-inbound messages.
 
 The gate is part of the ordinary `npm test` path, not a separate CI-only check. The Android workflow continues to run `./gradlew test assembleDebug --no-daemon`; this Phase 10-B slice did not change Java code. Exact-head Actions status must be checked after every resulting commit. A pure admission-helper test is not a deployed Durable Object WebSocket lifecycle test.
 
@@ -226,4 +226,15 @@ Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed 
 
 An intermediate implementation/test run (43521714424) failed at Java test compilation because the new legacy-refusal assertions referenced a TestTransport fixture that had not been retained in the test method. The fixture was corrected in the final SHA and the exact-head full CI rerun passed. No assertion was removed or relaxed.
 
-The Android test class now contains 64 @Test methods; NetworkProtocolParityTest remains at 15. This verifies the bounded PLAYER_LEFT client migration only. It does not claim production Worker deployment, physical-device gameplay or completion of every remaining Phase 10 typed-route/payload-parity item.
+At that historical 10-D implementation SHA, the Android test class contained 64 @Test methods and verified the bounded PLAYER_LEFT migration. The later 10-E closeout contains 67 @Test methods and completes the agreed route/payload acceptance; see §11. Production Worker deployment and physical-device gameplay are still not claimed.
+
+
+## 11. Phase 10-E exact-head closure verification — 2026-11-14
+
+Exact implementation/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed [Actions run 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089), with all three required jobs successful:
+
+- Backend typecheck/build, six static guards and 10 Vitest files / 708 executions passed. Routing contract output: eight Worker inbound message types, 17 known non-inbound types, 23 Worker ACTION branches and 25 explicit Android route decisions. ACTION field contract output: 23 per-action envelopes, 361 Worker-consumed field names (346 source-referenced in Java producer files and 15 Worker-only), 18 required native snapshot fields.
+- Android JVM suite and ./gradlew test assembleDebug --no-daemon passed; build log ends with BUILD SUCCESSFUL. NetworkProtocolParityTest contains 15 tests; NativeCombatRuntimeIntegrationTest contains 67 @Test methods.
+- Durable Object Workers runtime passed all three SQLite rollback/eviction integration tests.
+
+The 708 backend executions include mirrored/generated TypeScript/JavaScript and are not 708 unique source scenarios. CI does not deploy the production Worker and does not count as a physical two-device test. Phase 10 is closed for implementation/automated acceptance; Phase 11-A has not started. WAIT/USE_ABILITY are declared but non-emitted by Android and remain fail-closed; Android CHAT remains explicitly non-routed.

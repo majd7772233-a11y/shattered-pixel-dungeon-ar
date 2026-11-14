@@ -31,7 +31,7 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 7 | Inventory actions and item economy | Complete for implementation and automated acceptance |
 | 8 | Inventory persistence, restoration and exactly-once rewards | Complete for implementation and automated acceptance |
 | 9 | Native buffs and timed effects | Complete for implementation and automated acceptance; unsupported branches explicitly fail-closed |
-| 10 | Canonical protocol schema and one typed event path | Open |
+| 10 | Canonical protocol schema and one typed event path | Complete for implementation and automated acceptance (2026-11-14) |
 | 11 | Event ordering, replay protection and resynchronization | Open |
 | 12 | Durable recovery, reconnect and authority handoff | Open |
 | 13 | Common room/session lifecycle and readiness | Open |
@@ -87,7 +87,7 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D delivery and the Phase 11-A preflight)
+### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
 - Repository/only working branch: majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
 - Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; this is newer than the user-supplied c8998912005e458fac7a8776618b073f33f4d642. Do not reset to the older checkpoint.
@@ -448,14 +448,22 @@ Production deployment and physical-device playtest remain Phases 22 and 23, not 
 
 ## Phase 10 — Canonical Protocol Schema and One Typed Event Path
 
-### Current Phase 10 checkpoint — 2026-11-14
+### Current Phase 10 checkpoint — 2026-11-14 — CLOSED
 
-Phase 9 is complete for implementation and automated acceptance. Phase 10-A canonical enum/version parity and Phase 10-B cross-layer routing/Worker ingress admission were completed and verified at the implementation SHAs recorded below. The latest implementation/test SHA after the bounded 10-D PLAYER_LEFT migration is `cc61c68625f587576ca530aef3354bfaffe9e140`; its exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301).
+**Status: Complete for implementation and automated acceptance on the authorized branch.** Phase 10-A through 10-E are closed at exact code/test SHA f2d79038d1e420461be7a1956471324de5c1ef74; matching CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
 
-Phase 10-C was already implemented in commits between the 10-B checkpoint and its recorded source/test baseline. Its parser, compatibility and producer behavior passed exact-head CI [43512831773 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773). The bounded 10-D PLAYER_LEFT typed-path unit is now delivered (details below). Phase 10 remains OPEN because other real legacy routes and field-level payload parity are not completed. Keep RemotePlayerActionReceiver for its remaining behavior. Do not begin Phase 11 or redesign replay/resync or event ordering.
+- **Canonical vocabulary and ingress:** all 25 outer message values and 23 action values remain in exact Java/schema order; the Worker admits exactly eight implemented client inputs, classifies 17 known non-inbound values, and retains fail-closed unknown/unsupported admission.
+- **Android routing:** MessageRouter has exactly one explicit route decision for every one of the 25 canonical MessageType values. PLAYER_JOINED, PLAYER_LEFT, READY and PING have typed handling; CHAT is deliberately consumed without a game-state side effect because Android has no chat surface. Client-to-Worker and declared placeholder types are explicit non-inbound/no-op decisions, not falsely advertised as server events. The general default-to-RemotePlayerActionReceiver fallback is gone.
+- **Join/readiness correctness:** PLAYER_JOINED verifies senderId against payload playerId and a finite integral in-level position, creates/reuses one RemoteHero actor and updates duplicates without replacing it. READY validates sender identity/state and updates RemotePlayer.isReady; successful SNAPSHOT restoration reapplies persisted player readiness. Native sprite construction occurs synchronously only on the render thread and only when a GameScene exists.
+- **ACTION contract:** schema now defines the outer ACTION inner envelope and 23 action-specific data-field inventories. The maintained protocol/action-data-contracts.json inventory links each action to its Worker handler/validators and native Java producer evidence. It classifies 361 Worker-consumed fields: 346 found in Java producer sources and 15 derived/added by Worker validation. The 18 required NativeLevelSnapshot fields are checked against the Java wire model and the Worker completeness validator.
+- **Explicit non-emitted actions:** WAIT and USE_ABILITY remain named Worker/schema actions but have no Android native producer/bridge mapping; both remain fail-closed. CHAT likewise remains explicitly non-routed until a client chat surface exists. These are declared support boundaries, not silently fabricated behavior.
+- **Regression coverage:** NativeCombatRuntimeIntegrationTest.java now has 67 @Test methods; NetworkProtocolParityTest.java has 15. New tests cover PLAYER_JOINED, duplicate join, sender-identity mismatch, READY true/false, control-message non-routing and SNAPSHOT readiness restoration.
+- **Automated guard integration:** ordinary npm test runs the Phase 10 routing and action-payload static guards before Vitest. CI output reports 25 explicit Android message routes, 23 action contracts, 361 action data fields and 18 snapshot-required fields.
+- **Exact-head CI:** Backend TypeScript build; six static guards; 10 Vitest files / 708 executions; Android JVM tests and Debug APK (BUILD SUCCESSFUL); and three Durable Object SQLite integration tests all passed.
+- **Scope protection:** no Worker producer, inbound route, validator behavior, SQL/persistence, event ordering, sequence/replay/resync algorithm or native SPD gameplay formula was changed. No Phase 11 source/test work was started.
+- **Evidence limits:** CI is local/automated evidence. No production Worker deployment smoke test or physical two-device session is claimed; those remain Phases 22–23.
 
-**Priority:** P0 · **Dependencies:** accepted contracts from phases 1–9.
-
+**Gate:** Phase 10's dependency for Phase 11 is now satisfied. Phase 11-A is eligible to begin only as the next separately requested work slice; no Phase 11 implementation is included in this closeout.
 
 ### Delivered bounded slice 10-A — Canonical enum/version registry (complete)
 
@@ -499,7 +507,7 @@ Phase 10-C was already implemented in commits between the 10-B checkpoint and it
 
 **Acceptance boundary:** 10-C completes Android parser/producer safety and the specific old-receiver behaviors tested above. It does not complete Phase 10's single typed event path, does not prove every outer enum has a fully supported client/server implementation, and does not mean every Worker ACTION branch accepts every item/effect subcase.
 
-### Delivered bounded slice 10-D — typed PLAYER_LEFT path (complete for this behavior)
+### Historical bounded slice 10-D — typed PLAYER_LEFT path (complete for this behavior at that checkpoint)
 
 **Selection evidence:** the live Worker producer is `MatchRoomBase.webSocketClose`, which marks the authenticated session disconnected and broadcasts PLAYER_LEFT with senderId and payload.playerId. The separate PLAYER_JOINED producer in `MatchRoom.fetch` remains a real default-route behavior; it was deliberately not combined with disconnect cleanup.
 
@@ -509,37 +517,68 @@ Phase 10-C was already implemented in commits between the 10-B checkpoint and it
 - [x] Make RemotePlayerActionReceiver refuse direct PLAYER_LEFT reapplication and request its existing resync path. Keep the receiver and all other legacy responsibilities; no broad relocation/deletion.
 - [x] Verify malformed PLAYER_LEFT payload fallback and local-player rejection; retain EVENT_BATCH typed sequence handling and its unchanged legacy receiver guard.
 - [x] Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed exact-head CI [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301): Backend 10 files / 708 executions, Android JVM tests + Debug APK, and three Durable Object SQLite tests.
-- [ ] Migrate any remaining actual supported default-route behavior only after its own producer trace and pre-change/typed equivalence tests. PLAYER_JOINED remains a known live legacy route.
-- [ ] Complete field-level payload contract/serializer parity for remaining native action and snapshot subcases without inferring support from enum membership.
+- [x] Migrate the remaining supported PLAYER_JOINED behavior to a typed identity-checked path with producer trace and positive/negative tests (completed in 10-E).
+- [x] Complete the agreed field-name payload contract inventory for all 23 native action declarations and the 18 required native snapshot fields (completed in 10-E; Worker validators remain authoritative for value types/requiredness).
 
-**Parent-phase status:** this bounded PLAYER_LEFT convergence unit is complete; Phase 10 remains OPEN. The overall criteria for every remaining supported outer message and field-level contract parity are not claimed complete. Do not start Phase 11 automatically.
+**Historical parent-phase status at the 10-D checkpoint:** this bounded PLAYER_LEFT convergence unit was complete, while Phase 10 remained OPEN. The remaining route and payload inventory work was completed by Phase 10-E below; do not treat this old checkpoint as the current status.
 
+
+### Delivered bounded slice 10-E — typed message closure and field-level ACTION contract (complete)
+
+**Implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74; exact-head CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
+
+- [x] Trace the actual Worker producers and payload contracts for PLAYER_JOINED, READY, PING and CHAT. PLAYER_JOINED's payload identity and senderId agree; SNAPSHOT carries each player's ready flag.
+- [x] Add typed render-thread PLAYER_JOINED handling with sender/payload identity equality, finite integral position/range validation, local-player no-op, duplicate-player update and one RemoteHero Actor registration.
+- [x] Add typed READY handling with identity/state validation, update RemotePlayer readiness metadata, request recovery if the joined player is unexpectedly missing, and restore ready flags from a successful room snapshot.
+- [x] Route PING as transport-only pong; explicitly decide CHAT as non-routed because no Android chat UI exists. Do not forward either into a generic Hero parser.
+- [x] Replace MessageRouter's catch-all default dispatch with an exhaustive 25-value switch: each canonical MessageType has exactly one explicit decision, and future unknown types fail closed.
+- [x] Preserve RemotePlayerActionReceiver without a whole-class move/deletion. Add a synchronous render-thread RemoteHero setup helper; attach a HeroSprite only when GameScene exists, avoiding queued sprite construction in headless/non-game scenes.
+- [x] Add JVM regressions for join, duplicate join, sender mismatch, readiness true/false, PING/CHAT/non-inbound no-phantom-player behavior, snapshot readiness restore and existing PLAYER_LEFT cleanup. Current NativeCombatRuntimeIntegrationTest contains 67 @Test methods; NetworkProtocolParityTest contains 15.
+- [x] Add per-action NativeActionEnvelope.oneOf and 23 NativeActionData_<ACTION> schema definitions. Track each action's Worker-consumed fields, validator sources, Java producer sources, Java-source-referenced fields and Worker-only fields in protocol/action-data-contracts.json.
+- [x] Reconcile 361 per-action Worker fields: 346 names are found in the listed native Java producer source files; 15 are explicitly classified as Worker-only. Match all 23 action names/order against Java's enum and the JSON Schema.
+- [x] Reconcile the 18 required NativeLevelSnapshot fields against the Java wire model and Worker complete-snapshot validator.
+- [x] Keep WAIT and USE_ABILITY explicit but non-emitted by Android: no native producer/bridge mapping exists, so do not synthesize either. Preserve their fail-closed behavior. Keep CHAT explicitly non-routed on Android until a real chat surface is delivered.
+- [x] Add both static protocol guards to the ordinary backend npm test path and verify the reported message/action coverage on exact-head CI.
+- [x] Confirm no Worker handler/producer, Worker validator, SQLite persistence, sequence/replay/resync algorithm or native SPD gameplay rule changed in this closeout.
+
+**Exact-head evidence:** [CI 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089) passed all three jobs:
+- Backend typecheck/build and six static guards passed; 10 Vitest files / 708 executions passed.
+- Android JVM tests and Debug APK compile passed; log ended with BUILD SUCCESSFUL in 33s.
+- Durable Object local Workers runtime passed all three SQLite rollback/eviction integration tests.
+
+PLAYER_JOINED/READY readiness and route decisions are now explicit. This does not imply every enum value is an implemented message producer or every optional Worker action subcase is enabled. Worker validators remain authoritative for detailed field typing, requiredness and accepted variants.
 
 ### Work items
 
 - [x] Retain the 25 outer-message / 23 action route inventory and exact Worker admission classification from 10-B; keep source and tests synchronized when a verified route changes.
-- [ ] Complete field-level payload contract/serializer parity for remaining native action and snapshot subcases, without inferring support from enum membership.
-- [ ] Converge remaining supported legacy outer-message behaviors (PLAYER_JOINED is a known active producer) into typed MessageRouter paths in small, behavior-tested units; do not move the receiver as a whole. PLAYER_LEFT is the first completed unit.
-- [ ] Before migrating any receiver behavior, add exact positive/negative equivalence tests for its current behavior and preserve render-thread, identity, cleanup and rejection semantics.
-- [ ] Decide which declared-but-unused/unsupported message names need explicit typed unsupported responses versus remaining non-routed; do not add Worker ingress routes without a complete authority/persistence contract.
+- [x] Complete the agreed Phase 10 field-name parity inventory and source references for all 23 actions and required native snapshot fields.
+- [x] Converge remaining supported real player/control outer-message behaviors into typed MessageRouter paths; explicitly classify non-routed/non-inbound values and remove the generic default-to-legacy-receiver fallback.
+- [x] Add positive/negative tests for join/readiness/control routing and preserve render-thread, identity, cleanup and rejection semantics.
+- [x] Give every declared outer message exactly one explicit client route decision; keep Worker ingress routes and authority/persistence contracts unchanged.
 
 ### Acceptance criteria
 
-- Schema, Java messages, Worker validators and client handlers describe the same contract.
-- No event can be applied twice through both typed and legacy paths.
-- Remaining supported messages have one typed application path; unsupported messages reject safely and observably.
-- Receiver migration is limited to behavior proven equivalent by dedicated tests.
+- [x] Canonical schema, Java message/action enums, Worker admission, client route decisions and source-backed payload inventories agree.
+- [x] Every declared MessageType has one explicit Android route decision; every supported server-originated player/control message has one typed client application path.
+- [x] No player/control message is forwarded through a generic default Hero parser; typed/legacy double application is prevented by route ownership and regression tests.
+- [x] Known unsupported/non-inbound messages and actions are explicit and fail-closed; no support is inferred from enum presence or Worker branch names.
+- [x] Per-action Worker field inventories and Java producer evidence are reconciled, with Worker-only fields and non-emitted actions called out.
+- [x] Receiver responsibilities are retained unless a behavior has its own equivalence proof; no whole-class migration/deletion was needed.
+- [x] Exact-head CI is green across backend, Android JVM/Debug APK and Durable Object SQLite runtime tests.
+
+**Parent-phase status:** Phase 10 is CLOSED for implementation and automated acceptance at f2d79038d1e420461be7a1956471324de5c1ef74. This does not close Phase 11 or Phases 22–23.
 
 
-### 2026-11-14 — Phase 11-A dependency preflight: BLOCKED (no Phase 11 work started)
 
-**Live audit baseline:** branch `multiplayer-framework-core-14118577486727081892`, parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb). Exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) completed successfully: Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile all passed. The latest implementation/test baseline remains `cc61c68625f587576ca530aef3354bfaffe9e140` with CI 43522055301. This preflight made no source or test changes.
+### 2026-11-14 — Phase 11-A dependency preflight: UNBLOCKED BY PHASE 10 (no Phase 11 work started)
 
-**Phase 10 is still OPEN, so the Phase 11 dependency is not met.** The remaining closure work is concrete:
+**Historical preflight baseline:** branch multiplayer-framework-core-14118577486727081892, parent HEAD cf3714c82a210eace79614ab7c575acb04b8aebb. Its exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) passed all three jobs. The findings below record the open items at that time; Phase 10 later closed at SHA f2d79038d1e420461be7a1956471324de5c1ef74 with exact-head CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
 
-1. **Actual client message routes:** `server/src/match-room/index.ts::fetch` broadcasts `PLAYER_JOINED` after SESSION; Android `MessageRouter` sends it through its default branch to `RemotePlayerActionReceiver`, not a typed route. The Worker also emits `READY` and `CHAT` broadcasts and a `PING` pong response, which currently fall through the default client route. Trace each real producer/consumer, decide which are supported versus intentionally non-routed, and add behavior-equivalence/negative tests before changing route ownership. Keep the legacy receiver until its remaining behavior is proven migrated.
-2. **Field-level contract parity:** Phase 10-A/B/C establish enum/version parity, route inventory/admission, strict outer-envelope parsing and producer mapping; Phase 10-D proves only the `PLAYER_LEFT` typed behavior. They do not reconcile every remaining native action and snapshot subcase field-by-field across Java serialization, `protocol/schema.json`, Worker validators and Android handlers. Required/optional fields, defaults, nested JSON encoding, payload identities and unsupported subcases still need source-backed parity evidence.
-3. **Single-path acceptance:** prove that every remaining supported real message has one application path, that typed and legacy paths cannot both apply it, and that unsupported declarations fail safely or are deliberately left non-routed. Do not infer implementation from enum membership or ACTION branch tokens.
+**Phase 10 dependency is now met.** The route and payload closure items identified at the earlier preflight were delivered in 10-E; the following records what was incomplete at the old preflight timestamp:
+
+1. **Actual client message routes (status at the historical preflight):** the Worker broadcast PLAYER_JOINED after SESSION; Android had no typed route for it. READY, CHAT and PING also lacked explicit route decisions. Phase 10-E subsequently added the join/readiness/liveness routes, deliberately left CHAT non-routed, and made all 25 Android route decisions explicit.
+2. **Field-level contract parity (status at the historical preflight):** field-name parity for each Worker action and required native snapshot fields had not yet been inventoried. Phase 10-E later added the action-specific schema and Java/Worker source inventory; actual field types, per-subcase requiredness and support remain enforced by Worker validators.
+3. **Single-path acceptance (closed in 10-E):** the Android route switch has one explicit branch decision for all 25 values; it contains no generic RemotePlayerActionReceiver fallback. Join/readiness/control routes and non-routed cases have JVM coverage.
 
 **Phase 11-A source observations (audit only; not implementation):**
 
@@ -548,7 +587,7 @@ Phase 10-C was already implemented in commits between the 10-B checkpoint and it
 - `processed_actions.request_id` is the durable primary key. The current replay classifier `classifyRequestReplay(existing, playerId)` returns REPLAY for the same player and CONFLICT for a different player; the duplicate branch returns the prior ACTION_ACCEPTED result without comparing the new request's action or payload to the original one. This does not prove protection against same-player request-ID reuse for a different action/payload.
 - `WorldSnapshot.restoreWorld` rejects a snapshot whose sequence is older than the client's current sequence, validates before live mutation, and retains rollback behavior; the router marks a snapshot applied after restoration succeeds. These safeguards do not replace contiguous EVENT_BATCH validation.
 
-**Gate decision:** do not implement Phase 11-A ordering/replay/resync logic, do not add Phase 11 tests, and do not change Worker validators, event persistence, sequence rules or recovery algorithms while Phase 10 is OPEN. Re-open Phase 11-A only after Phase 10's remaining route and payload/serializer parity items are formally accepted on a verified branch tip.
+**Gate decision after Phase 10 closeout:** the dependency is now satisfied. Phase 11-A may begin in a separate user-requested work slice after re-reading the live branch and current source. This closeout itself did not implement Phase 11, add Phase 11 tests, or change Worker validators, event persistence, event ordering, sequence, replay or recovery algorithms. Start Phase 11 with behavior-characterization tests against the then-current code.
 
 ## Phase 11 — Event Ordering, Replay Protection and Resynchronization
 

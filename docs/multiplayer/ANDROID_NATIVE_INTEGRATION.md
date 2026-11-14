@@ -358,14 +358,14 @@ Before changing native multiplayer behavior:
 5. Check all Buff/item/NPC/loot/death/scene side effects.
 6. Trace stable entity/item identity.
 7. Follow Worker admission and every persistence/event update.
-8. Follow MessageRouter and legacy receiver behavior.
+8. Follow MessageRouter's exhaustive typed route switch and explicit legacy helper behavior.
 9. Confirm render-thread ownership.
 10. Add positive, negative, replay and malformed-state regressions.
 11. Update ROADMAP.md, GPT.md, this guide and affected protocol/test references in the same logical work unit.
 
 ## 13. Baseline test evidence
 
-NativeCombatRuntimeIntegrationTest.java contains 46 @Test methods at the baseline. It includes shared Actor scheduling, disconnect cleanup, native Mob AI/timing, native world restore/rollback/idempotency, Hero timed effects, native combat outcomes, Ankh behavior, delegated combat/PvP, secondary Mob effects, replica death without rewards, resync and cross-client Actor-ID convergence.
+NativeCombatRuntimeIntegrationTest.java contained 46 @Test methods at the historical baseline; it now contains 67 at the Phase 10 closeout. It includes shared Actor scheduling, disconnect cleanup, native Mob AI/timing, native world restore/rollback/idempotency, Hero timed effects, native combat outcomes, Ankh behavior, delegated combat/PvP, secondary Mob effects, replica death without rewards, resync and cross-client Actor-ID convergence.
 
 Other multiplayer JVM test files add stable entity identity, item/heap identity, level metadata, combat authority policy and native NPC item side-effect policy. See TEST_MATRIX.md.
 
@@ -397,11 +397,11 @@ NetworkProtocolParityTest.java contributes 15 JVM tests. NativeCombatRuntimeInte
 - retention of the tested legacy RemoteHero movement/HP path;
 - EVENT_BATCH single-application through MessageRouter, duplicate-sequence protection and rejection by RemotePlayerActionReceiver with the existing recovery behavior.
 
-MessageRouter and RemotePlayerActionReceiver remain structurally unchanged. The default legacy route is still a migration boundary; do not remove/move the receiver without per-behavior equivalence tests. Phase 10-D owns the next narrow typed-path convergence work.
+Historical pre-10-E statement: MessageRouter and RemotePlayerActionReceiver were structurally unchanged and a default legacy route remained. Phase 10-E subsequently replaced the top-level fallback with an exhaustive 25-value switch; the receiver remains only for explicit helper/legacy responsibilities.
 
 Exact-HEAD evidence: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5, [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773) — Backend, Android and Durable Object SQLite jobs all passed.
 
-## 15. Phase 10-D — typed PLAYER_LEFT disconnect cleanup
+## 15. Historical Phase 10-D — typed PLAYER_LEFT disconnect cleanup
 
 The Worker producer is `MatchRoomBase.webSocketClose`: after marking the authenticated session disconnected it broadcasts PLAYER_LEFT with the session player ID in senderId and payload. MessageRouter now handles this outer message explicitly and schedules the native cleanup with `Game.runOnRenderThread(...)`.
 
@@ -414,8 +414,28 @@ The typed handler preserves the former receiver contract:
 - unlink and null its sprite;
 - remove the RemotePlayer registry entry, which also clears both player-to-Hero and Hero-to-player lookups.
 
-RemotePlayerActionReceiver remains in place for the remaining legacy paths. Direct PLAYER_LEFT delivery to it now refuses a second cleanup and calls the existing requestResync path. PLAYER_JOINED remains a real Worker output on the default route; no claim is made that every MessageType enum name is implemented. EVENT_BATCH remains typed and its current legacy refusal/duplicate-sequence behavior is unchanged.
+Historical 10-D note: at that checkpoint RemotePlayerActionReceiver remained on the legacy default route for PLAYER_JOINED and other remaining paths. Phase 10-E superseded that state by adding an exhaustive 25-value MessageRouter switch with no generic receiver fallback. The receiver class itself remains for explicit native Hero setup/helper duties. EVENT_BATCH application/sequence semantics were not changed by that migration.
 
-The full cleanup regression was expanded and passed first on the old route at SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI [43521307026](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026). The same assertions pass after migration on SHA `cc61c68625f587576ca530aef3354bfaffe9e140` / exact-head CI [43522055301](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). NetworkProtocolParityTest remains at 15 tests; NativeCombatRuntimeIntegrationTest now has 64 @Test methods. Android JVM tests and Debug APK passed.
+The full cleanup regression was expanded and passed first on the old route at SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` / CI [43521307026](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43521307026). The same assertions passed after 10-D migration on SHA `cc61c68625f587576ca530aef3354bfaffe9e140` / CI [43522055301](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301). At that checkpoint NetworkProtocolParityTest had 15 tests and NativeCombatRuntimeIntegrationTest had 64; Phase 10-E later increased the latter to 67 and completed the broader typed route. Android JVM tests and Debug APK passed.
 
-This is one bounded 10-D route-convergence unit, not completion of the overall Phase 10 single-path goal. Other actual default-route behaviors and field-level payload/serializer parity remain open. No Worker validator, event ordering, sequence semantics or replay/resync algorithm changed.
+Historical 10-D boundary: this one PLAYER_LEFT unit did not complete Phase 10 at that checkpoint. Phase 10-E completed the agreed remaining route and payload inventory scope; no Worker validator, event ordering, sequence semantics or replay/resync algorithm changed.
+
+
+## 16. Phase 10-E — exhaustive outer-message routing and typed player lifecycle
+
+Exact implementation/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed [CI 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
+
+- MessageRouter.routeMessage has one explicit switch decision for each of the 25 canonical MessageType values. Its default no longer forwards arbitrary message JSON to RemotePlayerActionReceiver; future unrecognized values request resync.
+- PLAYER_JOINED runs on the game render thread. It validates playerId/senderId equality and an integral in-level position, ignores the local player and avoids replacing an already-registered RemoteHero on duplicate join.
+- PLAYER_LEFT retains the earlier typed cleanup path.
+- READY validates sender identity and true/false state, updates RemotePlayer.isReady, and requests recovery when a known room participant has not been registered. After a successful WorldSnapshot restore, existing RemotePlayer records receive the persisted ready flag from the room players list.
+- PING is liveness-only. CHAT is explicitly not applied to game state because Android does not provide a chat surface. ROOM_STATE, HELLO, client-to-server message values and other known non-inbound names have explicit route decisions and are not parsed as remote Hero state.
+- The new setupRemoteHeroInstanceOnRenderThread helper registers the RemoteHero Actor on the render thread. It creates/attaches a HeroSprite only when Game.scene() is a GameScene; it does not create a scene-dependent sprite in the headless test environment.
+- NativeCombatRuntimeIntegrationTest contains 67 @Test methods; the join, duplicate, identity mismatch, READY, CHAT/PING/non-inbound and snapshot-readiness cases are covered. NetworkProtocolParityTest remains at 15 tests.
+
+### 16.1 Outer ACTION contract boundary
+
+The Android producer serializes ACTION as a JSON string body with action, data and heroStateJson. protocol/schema.json defines NativeActionEnvelope.oneOf with 23 action-specific data field inventories. protocol/action-data-contracts.json reconciles 361 Worker-consumed names (346 source-referenced in Java producer files and 15 Worker-only) with the corresponding Worker action handler and validator modules. The contract guard also checks all 18 required NativeLevelSnapshot fields against the Java wire model and Worker completeness check.
+
+WAIT and USE_ABILITY remain declared names but have no Android native action producer/bridge. They stay fail-closed and no action is fabricated. Worker validators continue to decide actual field types, requiredness, allowed values and feature-specific subcases; field-name inventory alone is not proof of runtime support.
+

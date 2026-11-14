@@ -172,7 +172,7 @@ File: .github/workflows/multiplayer-ci.yml
 - npm ci;
 - npm run build;
 - npm test;
-- npm test runs five static protocol/schema/routing contracts before Vitest: native mutation metadata, SpiritArrow, publisher handoff, Phase 10 Java/schema enum plus protocol-version parity, and Phase 10-B message/action route coverage.
+- npm test runs six static protocol/schema/routing/payload contracts before Vitest: native mutation metadata, SpiritArrow, publisher handoff, Phase 10 Java/schema enum plus protocol-version parity, Phase 10-B message/action route coverage, and Phase 10-E action-payload/source parity.
 
 ### Android job
 - Temurin Java 17;
@@ -311,7 +311,7 @@ The script cross-checks:
 - all 23 Java NetworkActionType values have a corresponding explicit Worker ACTION branch token;
 - the Worker action dispatcher still defaults to actionValid=false / INVALID_ACTION.
 
-This is source-route coverage, not proof that every action subcase is supported or that the Android event path has been consolidated. The Phase 10-B catalog records the per-action validators/authority boundaries and every outer message direction. Android parser/producer parity and the listed behavior-specific RemotePlayerActionReceiver regressions were completed in Phase 10-C; the remaining default-route migration belongs to Phase 10-D.
+At the historical 10-C checkpoint, this was source-route coverage, not proof that every action subcase was supported or that the Android event path had been consolidated. Phase 10-E later completed the agreed typed-route migration and added the per-action source field inventory; Worker validators still define supported action subcases.
 
 ### Scope and exclusions
 No change was made to action validator semantics, native SPD gameplay, message sequencing, persistence/replay policy, or resync behavior. RemotePlayerActionReceiver remains in place; its PLAYER_LEFT native Actor/Mob cleanup is required until equivalent typed-path tests prove parity.
@@ -343,9 +343,9 @@ The suite checks:
 
 ### NativeCombatRuntimeIntegrationTest.java — receiver regressions
 
-At the audited source HEAD this class contains 62 @Test methods. Phase 10-C adds targeted behavior checks for:
+At the Phase 10-C audited source HEAD this class contained 62 @Test methods. Phase 10-C added targeted behavior checks for:
 1. PLAYER_LEFT: RemotePlayer registry removal, RemoteHero Actor scheduler removal and Mob target-reference cleanup. Explicit multi-Buff detach, sprite-parent/reference removal, malformed-payload senderId fallback and local-player no-op assertions were added in the Phase 10-D pre-migration baseline.
-2. Legacy remote-player updates: the default route still updates supported RemoteHero position/HP and retains its Actor registration.
+2. Historical legacy remote-player updates: before 10-E, the default route updated supported RemoteHero position/HP and retained its Actor registration.
 3. EVENT_BATCH single path: MessageRouter applies Mob state once, duplicate sequence does not reapply it, and direct legacy receiver delivery refuses a second application and requests the existing recovery path.
 
 ### Exact-HEAD acceptance
@@ -356,7 +356,7 @@ Code/test SHA 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [CI 43512831773](h
 
 No MessageRouter/RemotePlayerActionReceiver relocation or deletion occurred. No Worker action route/validator, replay/resync algorithm, event ordering, or native SPD gameplay formula changed. A green CI run does not prove production deployment or physical-device play.
 
-## Phase 10-D — typed PLAYER_LEFT equivalence
+## Historical Phase 10-D — typed PLAYER_LEFT equivalence
 
 ### Pre-migration behavior baseline
 
@@ -376,9 +376,9 @@ Pre-migration test-only SHA `6e5ea7c88ba0238d46c3d728ca0fb4437d3f3630` passed [C
 - The same full cleanup test now passes via the explicit `MessageRouter` PLAYER_LEFT case, which dispatches on the render thread.
 - A direct call to `RemotePlayerActionReceiver` with PLAYER_LEFT is refused and requests exactly one existing resync; it does not reapply cleanup.
 - EVENT_BATCH remains typed; duplicate event sequence still does not apply Mob state twice, and its legacy receiver guard continues to request recovery rather than parse/apply again.
-- PLAYER_JOINED remains an actual Worker output handled by the legacy default route; this one unit does not complete the overall single typed path.
+- At the historical 10-D checkpoint, PLAYER_JOINED remained an actual Worker output handled by the legacy default route; Phase 10-E later migrated it to an identity-checked typed route.
 
-NativeCombatRuntimeIntegrationTest.java now has 64 @Test methods. NetworkProtocolParityTest.java remains at 15.
+At the historical 10-D source/test SHA, NativeCombatRuntimeIntegrationTest had 64 @Test methods. At the Phase 10-E closeout SHA it has 67; NetworkProtocolParityTest remains at 15.
 
 ### Exact implementation/test CI
 
@@ -391,12 +391,12 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 
 ### Scope and phase boundary
 
-Only the Android client route owner for PLAYER_LEFT changed. No Worker output, route/validator, schema, event order, sequence handling, replay/resync algorithm, persistence behavior or native SPD gameplay rule changed. RemotePlayerActionReceiver remains. Phase 10 is still OPEN while other actual/default routes and field-level payload parity remain; Phase 11 was not started.
+That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. No Worker output, route/validator, SQL persistence, sequence handling, replay/resync algorithm or native SPD gameplay rule changed; Phase 11 remains unstarted.
 
 
 ## Phase 11-A dependency preflight — 2026-11-14
 
-The live parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb` passed exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982), but Phase 10 remains OPEN. Phase 11-A test implementation is therefore blocked; no test or production source was added in this preflight.
+Historical preflight note: at parent HEAD cf3714c82a210eace79614ab7c575acb04b8aebb, Phase 10 remained open and Phase 11-A tests were intentionally blocked. Phase 10-E subsequently closed the dependency at SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. No Phase 11 implementation is included.
 
 The current coverage is narrower than the Phase 11 acceptance criteria:
 - Existing EVENT_BATCH tests demonstrate duplicate sequence suppression and prevent legacy receiver reapplication; they do not prove contiguous sequence enforcement, skipped-sequence detection, full-batch ordering, or that malformed/rejected events leave the applied watermark and native state unchanged.
@@ -405,3 +405,16 @@ The current coverage is narrower than the Phase 11 acceptance criteria:
 - Existing snapshot restore tests cover stale sequence rejection, validation-before-mutation, idempotency and rollback. Keep those regressions unchanged while future Phase 11 work adds integration between event gap detection and the full-snapshot fallback.
 
 When Phase 10 is formally closed, the first Phase 11-A test slice must start with behavior-characterization tests against the then-current code before implementation, and cover duplicate/late/out-of-order/gap events, stale state, request ID reuse by player/action/payload, rejected-event atomicity, and the existing reconnect/RESYNC branches. Do not start Phase 11-B from this checkpoint.
+
+
+## 9. Phase 10-E exact-head closure evidence
+
+Implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74. Exact-head [CI 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089) passed all three jobs.
+
+- Backend: TypeScript build passed, all six static guards ran, and 10 Vitest files / 708 executions passed. The routing guard reported 25 explicit Android message decisions, eight Worker inbound routes, 17 known non-inbound types and 23 Worker action branches. The payload guard reported 23 action envelopes, 361 per-action Worker field names (346 source-referenced in Java producer files, 15 Worker-only) and 18 required native snapshot fields. The 708 executions include mirrored/generated TS/JS files and are not 708 unique scenarios.
+- Android: JVM tests and Debug APK compile passed (BUILD SUCCESSFUL). NetworkProtocolParityTest has 15 @Test methods; NativeCombatRuntimeIntegrationTest has 67.
+- Durable Object Workers runtime: 3 SQLite rollback/eviction integration tests passed.
+
+New Android behavior regressions cover PLAYER_JOINED, duplicate joins, sender/payload identity mismatch, READY true/false, PING/CHAT/non-inbound no-phantom-player handling and readiness restore after SNAPSHOT. Existing PLAYER_LEFT cleanup and EVENT_BATCH single-application tests remain enabled.
+
+These tests validate source and local/CI runtimes only. They do not prove production Worker deployment, live WebSocket operation in production or a physical two-device session. WAIT and USE_ABILITY remain non-emitted Android action declarations; CHAT remains non-routed without a client chat surface. Phase 10 is closed for its agreed implementation/automated-acceptance scope; Phase 11 is the next eligible phase but has not started.

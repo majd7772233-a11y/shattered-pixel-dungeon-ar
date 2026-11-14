@@ -1,6 +1,6 @@
 # Multiplayer Protocol and Message Catalog
 
-> Phase 10-A protocol contract source/test SHA: d8938190960af64d6efc70f4625a7411bfa3b7de; exact-head CI [43485367695 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43485367695). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 remains open: enum/schema parity is only the first bounded slice, not completion of the typed event path. Verify the live branch HEAD and its exact-head Actions run before editing.
+> Phase 10 closeout SHA: f2d79038d1e420461be7a1956471324de5c1ef74; exact-head CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). This catalog records the observed Java enums, JSON Schema, Worker routes and Android handlers. Phase 10 is closed for implementation and automated acceptance; see §11.7 for the final typed-route and per-action payload inventory. Verify the live branch HEAD and its exact-head Actions run before editing.
 
 ## 1. Protocol version and envelope
 
@@ -61,7 +61,7 @@ The following distinction is essential: a message being present in both enum and
 
 A replacement publisher's full `LEVEL_DATA` snapshot may carry `publisherRebase` and `publisherRebaseTerm`. This refreshes process-local Hero/Mob/RemoteHero Actor IDs while preserving shared world state, stable Mob entity IDs and native bundles. The Worker validates LifeLink and SnipersMark references against the trusted stable Mob mapping and does not open the publisher action gate until the current generation is committed. Invalid/stale rebase stays fail-closed.
 
-These fields support Phase 9 authority handoff. Phase 10 still owns full enum/schema/handler parity and consolidation of the legacy client default route.
+These fields support Phase 9 authority handoff. Phase 10's enum/schema/handler reconciliation and typed client routing are complete at the closeout recorded in §11.7.
 
 ## 3. Explicit Worker inbound routes
 
@@ -108,7 +108,7 @@ Outer routing at the baseline:
 - PLAYER_LEFT → queue native disconnect cleanup on the render thread;
 - default → RemotePlayerActionReceiver.handleNetworkMessage(...) for remaining legacy message kinds.
 
-The default route remains a known transitional boundary for message kinds without dedicated typed cases. PLAYER_LEFT now has an explicit typed render-thread cleanup path, while PLAYER_JOINED remains a confirmed live Worker output handled by the legacy receiver. MessageRouter and RemotePlayerActionReceiver therefore do not yet constitute one fully consolidated typed message path; Phase 10 remains open until remaining real supported paths and payload contracts are addressed.
+Phase 10-E closeout supersedes the historical transitional-route description: MessageRouter now has one explicit route decision for every canonical MessageType, with no generic default forwarding to RemotePlayerActionReceiver. PLAYER_JOINED, PLAYER_LEFT and READY have typed render-thread handling; PING is transport-only; CHAT is explicitly non-routed on Android because there is no chat surface. See §11.7 for the exact boundary and CI.
 
 ## 5. Gameplay NetworkActionType enum
 
@@ -352,8 +352,26 @@ The Android parser/producer work was present in the live source/test HEAD 2d9a36
 - MessageRouter and RemotePlayerActionReceiver remain in place; no broad typed-path migration was made. The 10-D slice must inventory remaining live legacy behavior and migrate only a tested cohesive subset.
 - Exact source/test SHA 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5 passed [CI 43512831773](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43512831773): Backend 10 files / 708 executions, Android JVM/Debug APK and three Durable Object SQLite tests.
 
-### 11.6 Phase 10-D — PLAYER_LEFT typed route evidence
+### 11.6 Historical Phase 10-D — PLAYER_LEFT typed route evidence
 
 The only behavior migrated in this slice is the top-level PLAYER_LEFT lifecycle message. Its real source is `MatchRoomBase.webSocketClose`; it is not inferred from the enum. The route is explicit in MessageRouter and scheduled on the game/render thread. The full legacy cleanup behavior is covered by an old-path test commit before migration and the same assertions after migration. See ANDROID_NATIVE_INTEGRATION.md §15 and TEST_MATRIX.md for exact test and CI evidence.
 
-PLAYER_JOINED remains a live message from `MatchRoom.fetch` and continues through the default receiver path. The continued presence of this path means the overall Phase 10 single typed path acceptance criterion remains OPEN. No 25-message inventory, eight Worker inbound routes, 17 non-inbound classifications, 23 action branch tokens, Worker validation or persistence behavior changed.
+Historical 10-D status: at that checkpoint PLAYER_JOINED remained a live message from `MatchRoom.fetch` and continued through the default receiver path. Phase 10-E subsequently replaced that fallback with an identity-checked typed PLAYER_JOINED handler and an exhaustive 25-value route switch. No Worker producer, validator, persistence or message-direction behavior changed during that client migration.
+
+
+### 11.7 Phase 10-E — final typed-route and ACTION payload closeout
+
+**Exact implementation/test SHA:** f2d79038d1e420461be7a1956471324de5c1ef74; [CI 43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089) passed Android, backend and Durable Object SQLite jobs.
+
+- Android MessageRouter uses an exhaustive 25-value switch: one explicit decision per canonical MessageType, with no generic default forwarding to RemotePlayerActionReceiver.
+- PLAYER_JOINED is a typed render-thread path. The handler validates payload object shape, senderId/playerId equality, finite integral position and active-level bounds; ignores the local player; creates or reuses one RemoteHero; and preserves the actor on duplicate joins.
+- PLAYER_LEFT remains typed and retains the tested cleanup of RemoteHero Actor, Mob targets, Buffs, sprite and registry.
+- READY is a typed room-metadata update. It validates sender identity and boolean/0/1 state, updates RemotePlayer.isReady, and successful SNAPSHOT restore reapplies the persisted players[].ready values.
+- PING is consumed as transport liveness only. CHAT is explicitly non-routed on Android because no chat surface exists. Other client-to-Worker or declared placeholder enum values are explicit non-inbound/no-op decisions; their presence in the enum does not imply a server-originated gameplay path.
+- The ACTION payloadJson inner object has the stable required fields action, data and heroStateJson. NativeActionEnvelope.oneOf selects 23 action-specific data-field inventories in protocol/schema.json. protocol/action-data-contracts.json records the Worker handler/validator sources, Java producer files and a split between Java-source-referenced and Worker-only field names.
+- The static contract reconciles 361 Worker-consumed field names: 346 present in the listed Java producer sources and 15 derived or completed inside Worker handling. The 18 required NativeLevelSnapshot fields are checked against the Java wire model and Worker full-snapshot validator. Worker validators remain authoritative for actual types, requiredness, allowed values and per-subcase support.
+- WAIT and USE_ABILITY are declared protocol/Worker action names with no Android producer or NetworkActionBridge mapping; they remain fail-closed. No fabricated native action was added.
+- NativeCombatRuntimeIntegrationTest has 67 @Test methods; NetworkProtocolParityTest has 15. Backend CI ran six static guards and 10 Vitest files / 708 executions, Android JVM and Debug APK, and three Durable Object SQLite tests.
+
+**Boundary:** this closes the agreed Phase 10 schema/routing migration and automated acceptance. It does not claim every declared message/action is executable, every optional item/effect subcase is enabled, a Worker was deployed, or two physical devices were play-tested. No replay, sequence, resync, Worker handler, SQL persistence or native SPD gameplay semantics changed in this phase closeout.
+
