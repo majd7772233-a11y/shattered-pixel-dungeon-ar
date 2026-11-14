@@ -71,22 +71,22 @@ for (let index = 0; index < contracts.actions.length; index++) {
   assert.ok(route.required.includes("action") && route.required.includes("data"));
   assert.equal(item.envelopeSerializer, managerPath);
   assert.ok(Array.isArray(item.nativeProducerFiles));
-  assert.ok(Array.isArray(item.nativeProducerFields) && Array.isArray(item.workerDerivedFields));
+  assert.ok(Array.isArray(item.javaSourceReferencedFields) && Array.isArray(item.workerOnlyFields));
   assert.deepEqual(
-    [...item.nativeProducerFields, ...item.workerDerivedFields].sort(),
+    [...item.javaSourceReferencedFields, ...item.workerOnlyFields].sort(),
     [...item.dataFields].sort(),
-    item.action + " must classify every Worker field as Java-emitted or Worker-derived"
+    item.action + " must classify every Worker field as Java-source-referenced or Worker-derived"
   );
   let producerSource = "";
   for (const path of item.nativeProducerFiles) producerSource += "\n" + readRepoFile(path);
-  for (const field of item.nativeProducerFields) {
+  for (const field of item.javaSourceReferencedFields) {
     assert.ok(producerSource.includes(field),
       item.action + " native producer field " + field + " must exist in its Java producer sources");
     producerFieldCount++;
   }
-  for (const field of item.workerDerivedFields) {
+  for (const field of item.workerOnlyFields) {
     assert.ok(!producerSource.includes(field),
-      item.action + " Worker-derived field " + field + " must not be claimed as Java-emitted");
+      item.action + " Worker-derived field " + field + " must not be claimed as Java-source-referenced");
     derivedFieldCount++;
   }
   if (item.nativeProducerStatus === "implemented") {
@@ -94,7 +94,7 @@ for (let index = 0; index < contracts.actions.length; index++) {
   } else {
     assert.equal(item.nativeProducerStatus, "not_emitted_by_android");
     assert.equal(item.nativeProducerFiles.length, 0);
-    assert.equal(item.nativeProducerFields.length, 0);
+    assert.equal(item.javaSourceReferencedFields.length, 0);
     assert.ok(item.nativeProducerNote.length > 20);
     assert.ok(!bridge.includes("NetworkActionType." + item.action));
   }
@@ -116,8 +116,8 @@ assert.match(levelSource, /wireJson\.setUsePrototypes\(false\)/);
 assert.match(levelSource, /wireJson\.toJson\(out\)/);
 assert.match(readRepoFile("server/src/validators/world-state.ts"), /hasCompleteNativeLevelSnapshot/);
 console.log("Phase 10 payload contract: " + contracts.actions.length + " action envelopes, "
-  + fieldCount + " per-action Worker fields (" + producerFieldCount + " Java-emitted, "
-  + derivedFieldCount + " Worker-derived), " + levelSchema.required.length
+  + fieldCount + " per-action Worker field names (" + producerFieldCount + " referenced in Java producer source, "
+  + derivedFieldCount + " Worker-only), " + levelSchema.required.length
   + " required native snapshot fields; "
   + contracts.actions.filter(a => a.nativeProducerStatus === "not_emitted_by_android").length
   + " declared actions explicitly remain non-emitted by Android");

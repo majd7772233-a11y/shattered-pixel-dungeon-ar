@@ -1,6 +1,6 @@
 {
   "protocolVersion": "1.0.0",
-  "description": "Source-derived native ACTION contract inventory. dataFields are the union of fields read by the matching Worker action handler and its listed validators. nativeProducerFields are evidenced in the listed Java producer files; workerDerivedFields are consumed/derived by the Worker and absent from those native producers. Field types, requiredness, state preconditions, and supported subcases remain enforced by the Worker validators. WAIT and USE_ABILITY are declared protocol/server action names but have no Android native producer and remain fail-closed.",
+  "description": "Source-derived native ACTION contract inventory. dataFields are the union of field names consumed by the matching Worker action handler and validators. javaSourceReferencedFields are names found in the listed Java producer source files; this static presence check does not prove runtime serialization on every branch. workerOnlyFields are names consumed/derived in Worker source but absent from the listed Java producer files. Worker validators remain authoritative for actual value types, requiredness, preconditions and supported variants. WAIT and USE_ABILITY are declared protocol/server action names but have no Android native producer and remain fail-closed.",
   "envelope": {
     "type": "ACTION",
     "payloadJson": "JSON string",
@@ -31,15 +31,15 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "from",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "ATTACK",
@@ -96,7 +96,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/weapon/SpiritBow.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "accuracyMultiplier",
         "attackKind",
         "attackWeaponBundle",
@@ -137,11 +139,9 @@
         "targetShieldBefore",
         "targetType"
       ],
-      "workerDerivedFields": [
+      "workerOnlyFields": [
         "projectileResultItemId"
-      ],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      ]
     },
     {
       "action": "PICKUP",
@@ -171,7 +171,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "engineActionCost",
@@ -186,9 +188,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "DROP",
@@ -217,7 +217,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "engineActionCost",
@@ -232,9 +234,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "THROW",
@@ -265,7 +265,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "engineActionCost",
@@ -282,9 +284,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "EQUIP",
@@ -308,7 +308,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "expectedEquipped",
@@ -318,9 +320,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "UNEQUIP",
@@ -344,7 +344,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "expectedEquipped",
@@ -354,9 +356,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "OPEN_CHEST",
@@ -378,7 +378,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "from",
@@ -386,9 +388,7 @@
         "heapType",
         "targetPos"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "BUY",
@@ -424,7 +424,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "acquiredByInventory",
         "branch",
         "cursed",
@@ -446,9 +448,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "BUYBACK",
@@ -484,7 +484,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "buybackItemClass",
         "buybackItemId",
@@ -506,9 +508,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "SELL",
@@ -549,7 +549,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "engineActionCost",
@@ -576,9 +578,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "INTERACT",
@@ -598,15 +598,15 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "from",
         "targetPos"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "UNLOCK",
@@ -626,15 +626,15 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "from",
         "targetPos"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "LVL_TRANSITION",
@@ -657,7 +657,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "from",
@@ -666,9 +668,7 @@
         "to",
         "transitionKind"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "MINE",
@@ -689,16 +689,16 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "depth",
         "engineActionCost",
         "from",
         "sourceTerrain",
         "targetPos"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "ALCHEMY",
@@ -731,7 +731,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "alchemyEnergyAfter",
         "alchemyEnergyBefore",
         "branch",
@@ -750,9 +752,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "USE_ITEM",
@@ -780,7 +780,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "branch",
         "depth",
         "engineActionCost",
@@ -794,9 +796,7 @@
         "targetPos",
         "to"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "USE_ABILITY",
@@ -821,8 +821,10 @@
       ],
       "nativeProducerFiles": [],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [],
-      "workerDerivedFields": [
+      "nativeProducerStatus": "not_emitted_by_android",
+      "nativeProducerNote": "No native USE_ABILITY publisher or NetworkActionBridge mapping exists. ArmorAbility callbacks can carry ability-specific side effects; retain fail-closed behavior until a dedicated native producer and validator contract exist.",
+      "javaSourceReferencedFields": [],
+      "workerOnlyFields": [
         "abilityClass",
         "armorChargeAfter",
         "armorChargeBefore",
@@ -835,9 +837,7 @@
         "from",
         "targetPos",
         "to"
-      ],
-      "nativeProducerStatus": "not_emitted_by_android",
-      "nativeProducerNote": "No native USE_ABILITY publisher or NetworkActionBridge mapping exists. ArmorAbility callbacks can carry ability-specific side effects; retain fail-closed behavior until a dedicated native producer and validator contract exist."
+      ]
     },
     {
       "action": "WAIT",
@@ -848,10 +848,10 @@
       ],
       "nativeProducerFiles": [],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [],
-      "workerDerivedFields": [],
       "nativeProducerStatus": "not_emitted_by_android",
-      "nativeProducerNote": "The native HeroAction model has no Wait action and NetworkActionBridge has no WAIT mapping. Keep this declared Worker action fail-closed; do not synthesize it from unmapped native actions."
+      "nativeProducerNote": "The native HeroAction model has no Wait action and NetworkActionBridge has no WAIT mapping. Keep this declared Worker action fail-closed; do not synthesize it from unmapped native actions.",
+      "javaSourceReferencedFields": [],
+      "workerOnlyFields": []
     },
     {
       "action": "REVIVE",
@@ -885,7 +885,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "ankhCountAfter",
         "ankhCountBefore",
         "blessedAnkhCountAfter",
@@ -904,12 +906,10 @@
         "targetShieldAfter",
         "targetShieldBefore"
       ],
-      "workerDerivedFields": [
+      "workerOnlyFields": [
         "levelWasLocked",
         "revivalKind"
-      ],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      ]
     },
     {
       "action": "SYNC_HERO_STATE",
@@ -962,7 +962,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeHeroBuffTickPublisher.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "actorClockBefore",
         "ankhCountAfter",
         "ankhCountBefore",
@@ -999,9 +1001,7 @@
         "targetState",
         "wandItemId"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "SYNC_MOB_STATE",
@@ -1062,7 +1062,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "attackKind",
         "attackerId",
         "attackerPos",
@@ -1109,9 +1111,7 @@
         "targetShieldBefore",
         "targetState"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     },
     {
       "action": "SYNC_PLAYER_COMBAT",
@@ -1156,7 +1156,9 @@
         "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java"
       ],
       "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-      "nativeProducerFields": [
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": "",
+      "javaSourceReferencedFields": [
         "attackKind",
         "attackerId",
         "attackerPos",
@@ -1187,9 +1189,7 @@
         "targetShieldBefore",
         "targetType"
       ],
-      "workerDerivedFields": [],
-      "nativeProducerStatus": "implemented",
-      "nativeProducerNote": ""
+      "workerOnlyFields": []
     }
   ]
 }
