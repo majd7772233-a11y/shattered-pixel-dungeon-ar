@@ -42,7 +42,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **Phase 10-A:** ordered 25-message / 23-action enum and protocol version parity complete; see implementation d8938190960af64d6efc70f4625a7411bfa3b7de.
 - **Phase 10-B:** all 25 message / 23 action routes inventoried; eight Worker inbound message types distinguished from 17 known non-inbound types; fail-closed ingress and static/test guards complete at d16be138d74bb9930777f5352efbeae3291070c6.
 - **Phase 10-C:** strict Android canonical envelope parsing, transport-scoped LAN/Bluetooth legacy compatibility, fail-closed HeroAction producer mapping, and PLAYER_LEFT/legacy RemoteHero/EVENT_BATCH routing regressions complete at 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5.
-- **Phase 10 remains OPEN; Phase 10-D is next.** Continue test-led typed-path convergence in a narrow behavior-specific unit. Keep RemotePlayerActionReceiver and PLAYER_LEFT cleanup intact until full equivalence is proven. Phase 11 has not started.
+- **Phase 10 remains OPEN after the bounded 10-D PLAYER_LEFT route.** PLAYER_JOINED and remaining real default-route behavior plus field-level payload/serializer parity remain outstanding. A 2026-11-14 Phase 11-A preflight confirmed that the Phase 10 dependency is still unsatisfied; Phase 11 has not started. See ROADMAP.md and MULTIPLAYER_CONTINUATION_NOTES.md for the exact gate and source findings.
 - **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
 
 
@@ -117,3 +117,8 @@ Batch 1 and Batch 2 were documentation-only. The separate source-refactor Stage 
 9. Never mark a phase, mode, transport or feature complete based only on source presence or compilation.
 
 The three-stage source refactor is complete for implementation, source parity and automated acceptance; its permanent status and module map are recorded above and in SOURCE_FILE_REFERENCE.md. Hero.java, Mob.java and WorldSnapshot.java remain unchanged.
+
+
+## 2026-11-14 — Phase 11-A dependency gate
+
+The live parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb` passed matching CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982), all three jobs. The audit found Phase 10 still OPEN; Phase 11-A was not started. `PLAYER_JOINED` remains a real Worker output handled by the client default receiver, other real default-route messages still need explicit support decisions, and remaining action/snapshot payload/serializer parity is unfinished. The sequence/replay/resync findings are audit-only. No Java, Worker or test implementation changed.

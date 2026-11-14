@@ -525,6 +525,25 @@ Phase 10-C was already implemented in commits between the 10-B checkpoint and it
 - Receiver migration is limited to behavior proven equivalent by dedicated tests.
 
 
+### 2026-11-14 — Phase 11-A dependency preflight: BLOCKED (no Phase 11 work started)
+
+**Live audit baseline:** branch `multiplayer-framework-core-14118577486727081892`, parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb). Exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) completed successfully: Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile all passed. The latest implementation/test baseline remains `cc61c68625f587576ca530aef3354bfaffe9e140` with CI 43522055301. This preflight made no source or test changes.
+
+**Phase 10 is still OPEN, so the Phase 11 dependency is not met.** The remaining closure work is concrete:
+
+1. **Actual client message routes:** `server/src/match-room/index.ts::fetch` broadcasts `PLAYER_JOINED` after SESSION; Android `MessageRouter` sends it through its default branch to `RemotePlayerActionReceiver`, not a typed route. The Worker also emits `READY` and `CHAT` broadcasts and a `PING` pong response, which currently fall through the default client route. Trace each real producer/consumer, decide which are supported versus intentionally non-routed, and add behavior-equivalence/negative tests before changing route ownership. Keep the legacy receiver until its remaining behavior is proven migrated.
+2. **Field-level contract parity:** Phase 10-A/B/C establish enum/version parity, route inventory/admission, strict outer-envelope parsing and producer mapping; Phase 10-D proves only the `PLAYER_LEFT` typed behavior. They do not reconcile every remaining native action and snapshot subcase field-by-field across Java serialization, `protocol/schema.json`, Worker validators and Android handlers. Required/optional fields, defaults, nested JSON encoding, payload identities and unsupported subcases still need source-backed parity evidence.
+3. **Single-path acceptance:** prove that every remaining supported real message has one application path, that typed and legacy paths cannot both apply it, and that unsupported declarations fail safely or are deliberately left non-routed. Do not infer implementation from enum membership or ACTION branch tokens.
+
+**Phase 11-A source observations (audit only; not implementation):**
+
+- Android `MessageRouter.handleEventBatchMessage` skips `seq <= lastSequence`, but for a newer event it calls `updateLastSequence(seq)` before validating the event body or completing state application; it does not require the next contiguous sequence (`lastSequence + 1`). A malformed event can therefore request RESYNC after the local watermark has already advanced. `MultiplayerManager.updateLastSequence` is a monotonic maximum, not a gap detector. `ACTION_ACCEPTED` also advances the sequence before its accepted action is applied.
+- The Worker `RECONNECT` path replays only for a non-current publisher when `gap > 0 && gap <= 50`, and sends `EVENT_BATCH` when the number of rows returned by the ordered query equals the gap; otherwise it sends a full `SNAPSHOT`. The current publisher reconnect path uses a full snapshot. `RESYNC` always returns a full snapshot; its body includes stored events, but Android snapshot restoration is the full-state path, not event replay.
+- `processed_actions.request_id` is the durable primary key. The current replay classifier `classifyRequestReplay(existing, playerId)` returns REPLAY for the same player and CONFLICT for a different player; the duplicate branch returns the prior ACTION_ACCEPTED result without comparing the new request's action or payload to the original one. This does not prove protection against same-player request-ID reuse for a different action/payload.
+- `WorldSnapshot.restoreWorld` rejects a snapshot whose sequence is older than the client's current sequence, validates before live mutation, and retains rollback behavior; the router marks a snapshot applied after restoration succeeds. These safeguards do not replace contiguous EVENT_BATCH validation.
+
+**Gate decision:** do not implement Phase 11-A ordering/replay/resync logic, do not add Phase 11 tests, and do not change Worker validators, event persistence, sequence rules or recovery algorithms while Phase 10 is OPEN. Re-open Phase 11-A only after Phase 10's remaining route and payload/serializer parity items are formally accepted on a verified branch tip.
+
 ## Phase 11 — Event Ordering, Replay Protection and Resynchronization
 
 **Priority:** P0 · **Dependencies:** Phase 10.

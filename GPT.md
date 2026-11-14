@@ -1,4 +1,4 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-14 (PHASE 9 COMPLETE; PHASE 10-A/B/C COMPLETE; 10-D PLAYER_LEFT SUBSET DELIVERED)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-14 (PHASE 10 OPEN; PHASE 11-A PREFLIGHT BLOCKED)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892. Never create another branch, work on master/main, merge, or open a PR.
 - **Latest implementation/test SHA:** `cc61c68625f587576ca530aef3354bfaffe9e140`. This exact SHA passed [CI 43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301).
@@ -10,6 +10,10 @@
 - Phase 9 is complete for implementation and automated acceptance under the documented fail-closed support boundary. Phase 10-A, 10-B and 10-C remain complete at their recorded exact SHAs in ROADMAP.md.
 - No Worker routing matrix, 25-message/23-action vocabulary, Worker validator, event ordering, sequence semantics, replay/resync algorithm, persistence path or native SPD gameplay formula changed. Phase 11 has not started.
 - **Evidence limits:** CI used local Workers runtime for Durable Object SQLite tests; it does not prove production deployment or physical two-device gameplay. Phases 22–23 remain the deployed-service and user-led device checks.
+
+- **Phase 11-A preflight parent HEAD:** `cf3714c82a210eace79614ab7c575acb04b8aebb`; exact-head CI [43523497982 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982). This is the live branch tip audited before the documentation-only gate record.
+- **Phase 10 gate remains OPEN:** `PLAYER_JOINED` is still a real Worker output on the default/legacy Android route, other live default-route outputs need an explicit support/unsupported decision, and field-level payload/serializer parity for remaining action/snapshot subcases is incomplete.
+- **Phase 11 has NOT started.** The dependency is not satisfied. Event-sequence, request-replay and recovery findings from this preflight are recorded as audit observations only; no Phase 11 source, test, Worker validator, persistence or gameplay behavior was changed.
 
 **Source-of-truth hierarchy:** `PROJECT_EXECUTION_PROTOCOL_AR.md` governs workflow; `ROADMAP.md` governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; `docs/multiplayer/` is the maintained architecture/test reference.
 

@@ -193,3 +193,17 @@ Do not move parsing or validation across thread boundaries casually. Separate sa
 - Current exact-head CI proves automated backend and Android JVM/debug-APK validation only. It does not prove live Worker deployment or device networking.
 
 The Worker integration tests live in `server/src/entrypoint.test.ts`; they verify deterministic routing contracts, not live deployment or physical-device behavior. See AUTHORITATIVE_DATA_FLOWS.md and COMPONENT_AND_FILE_MAP.md for edit-level impact details.
+
+
+## Phase 11-A preflight: sequence/replay ownership and dependency gate (2026-11-14)
+
+This is an audit checkpoint, not a behavior change. The preflight parent `cf3714c82a210eace79614ab7c575acb04b8aebb` passed exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982). Phase 10 remains OPEN because PLAYER_JOINED and other actual default-route behavior plus field-level payload/serializer parity remain incomplete. As a result, Phase 11's dependency is unsatisfied and no Phase 11 implementation or tests have started.
+
+Current authority boundaries observed:
+- Worker/Durable Object owns authoritative request admission, action validation, durable request-result records, event sequence allocation, retained event rows, bounded reconnect replay and full snapshot responses.
+- Android MultiplayerManager owns the client's observed sequence watermark, pending request correlation and reconnect/RESYNC requests.
+- Android MessageRouter owns typed EVENT_BATCH application and full SNAPSHOT routing on the game/render thread; WorldSnapshot owns validation, full world restoration and rollback. The legacy RemotePlayerActionReceiver remains for messages not yet converged to typed routes.
+- The server's event sequence is authoritative; a requestId is not an event sequence. The present same-player request replay lookup does not bind a duplicate ID to the attempted action/payload, and the Android sequence maximum does not prove contiguous delivery.
+- Do not move server admission/replay responsibilities into Android or let Android invent missing state. Do not treat a successfully parsed message, a high watermark, or a request ID as complete replay protection.
+
+The live gaps and safe future test targets are documented in ROADMAP.md and SESSION_RECOVERY_AND_SECURITY.md. No Worker validator, Java router, event persistence, native gameplay semantics or recovery algorithm changed in this gate review.

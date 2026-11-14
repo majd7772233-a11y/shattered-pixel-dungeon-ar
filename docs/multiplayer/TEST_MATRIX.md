@@ -392,3 +392,16 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 ### Scope and phase boundary
 
 Only the Android client route owner for PLAYER_LEFT changed. No Worker output, route/validator, schema, event order, sequence handling, replay/resync algorithm, persistence behavior or native SPD gameplay rule changed. RemotePlayerActionReceiver remains. Phase 10 is still OPEN while other actual/default routes and field-level payload parity remain; Phase 11 was not started.
+
+
+## Phase 11-A dependency preflight — 2026-11-14
+
+The live parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb` passed exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982), but Phase 10 remains OPEN. Phase 11-A test implementation is therefore blocked; no test or production source was added in this preflight.
+
+The current coverage is narrower than the Phase 11 acceptance criteria:
+- Existing EVENT_BATCH tests demonstrate duplicate sequence suppression and prevent legacy receiver reapplication; they do not prove contiguous sequence enforcement, skipped-sequence detection, full-batch ordering, or that malformed/rejected events leave the applied watermark and native state unchanged.
+- Existing Worker request replay coverage checks cross-player request ID conflict and same-player replay response, but the replay classifier does not bind a same-player reused ID to the original action/payload. Add same-player changed-action/changed-payload collision cases only after the Phase 10 gate.
+- Existing reconnect/recovery tests cover selected event replay and Durable Object SQLite rollback/eviction cases. The exact boundary between contiguous retained replay and full snapshot, including gaps caused by truncated/missing rows and current-publisher reconnect, still needs explicit matrix coverage.
+- Existing snapshot restore tests cover stale sequence rejection, validation-before-mutation, idempotency and rollback. Keep those regressions unchanged while future Phase 11 work adds integration between event gap detection and the full-snapshot fallback.
+
+When Phase 10 is formally closed, the first Phase 11-A test slice must start with behavior-characterization tests against the then-current code before implementation, and cover duplicate/late/out-of-order/gap events, stale state, request ID reuse by player/action/payload, rejected-event atomicity, and the existing reconnect/RESYNC branches. Do not start Phase 11-B from this checkpoint.
