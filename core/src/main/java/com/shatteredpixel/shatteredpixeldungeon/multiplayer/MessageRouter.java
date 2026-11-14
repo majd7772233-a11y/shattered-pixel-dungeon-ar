@@ -134,7 +134,7 @@ public final class MessageRouter {
                 remote.hp = 20;
                 remote.ht = 20;
                 manager.addRemotePlayer(remote);
-                RemotePlayerActionReceiver.setupRemoteHeroInstance(remote);
+                RemotePlayerActionReceiver.setupRemoteHeroInstanceOnRenderThread(remote);
             } else {
                 int oldPosition = remote.pos;
                 remote.pos = position;

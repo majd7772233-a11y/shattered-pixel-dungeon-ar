@@ -163,6 +163,29 @@ public class RemotePlayerActionReceiver {
         }
     }
 
+    /** Registers a remote Hero while the caller already owns the game render thread. */
+    public static void setupRemoteHeroInstanceOnRenderThread(RemotePlayer remote) {
+        if (remote == null) return;
+        if (remote.heroInstance == null) {
+            remote.heroInstance = new RemoteHero();
+            remote.heroInstance.pos = remote.pos;
+            remote.heroInstance.HP = remote.hp;
+            remote.heroInstance.HT = remote.ht;
+            Actor.add(remote.heroInstance);
+        }
+
+        // A headless test or a non-game scene has no place to attach a visual. Avoid constructing
+        // HeroSprite (which depends on the active Dungeon hero and sprite atlases) until a real
+        // GameScene is present. Active gameplay joins arrive on this same render-thread route.
+        if (remote.heroInstance.sprite == null && Game.scene() instanceof GameScene) {
+            HeroSprite sprite = new HeroSprite();
+            sprite.link(remote.heroInstance);
+            if (GameScene.addRemoteHeroSprite(sprite)) {
+                remote.heroInstance.sprite = sprite;
+                sprite.place(remote.pos);
+            }
+        }
+    }
     public static void setupRemoteHeroInstance(RemotePlayer remote) {
         if (remote.heroInstance == null) {
             remote.heroInstance = new RemoteHero();
