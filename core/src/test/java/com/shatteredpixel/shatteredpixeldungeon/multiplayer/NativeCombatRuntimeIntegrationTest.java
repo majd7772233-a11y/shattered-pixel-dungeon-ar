@@ -3362,8 +3362,8 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-sequence-gap-characterization", "client-a", transport);
 
-        String batch = "[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}},"
-                + "{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]";
+        String batch = "[{\"sequence\":2,\"eventType\":\"MATCH_END\",\"action\":{}},"
+                + "{\"sequence\":1,\"eventType\":\"MATCH_END\",\"action\":{}}]";
         routeEventBatch(batch, 2L);
 
         Assert.assertEquals("The current client watermark advances to the highest observed event", 2L,
@@ -3377,11 +3377,16 @@ public class NativeCombatRuntimeIntegrationTest {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-malformed-event-characterization", "client-a", transport);
+        int oldHeroHp = hero.HP;
+        int oldHeroPos = hero.pos;
 
-        routeEventBatch("[{\\"sequence\\":4,\\"eventType\\":\\"PLAYER_ATTACKED\\"}]", 4L);
+
+        routeEventBatch("[{\"sequence\":4,\"eventType\":\"PLAYER_ATTACKED\"}]", 4L);
 
         Assert.assertEquals("The current router records the event watermark before validating its action body",
                 4L, manager.getLastSequence());
+        Assert.assertEquals("The malformed row itself does not mutate native Hero HP", oldHeroHp, hero.HP);
+        Assert.assertEquals("The malformed row itself does not mutate native Hero position", oldHeroPos, hero.pos);
         Assert.assertTrue("The malformed event still requests a full authoritative snapshot",
                 transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
