@@ -1,6 +1,6 @@
 {
   "protocolVersion": "1.0.0",
-  "description": "Source-derived inventory of the native ACTION inner-envelope. dataFields is the union of named fields read by each Worker branch and validator family; it does not mean every field is required for every subcase. Worker validators remain authoritative; unsupported subcases remain fail-closed.",
+  "description": "Source-derived native ACTION contract inventory. dataFields are the union of fields read by the matching Worker action handler and its listed validators. nativeProducerFields are evidenced in the listed Java producer files; workerDerivedFields are consumed/derived by the Worker and absent from those native producers. Field types, requiredness, state preconditions, and supported subcases remain enforced by the Worker validators. WAIT and USE_ABILITY are declared protocol/server action names but have no Android native producer and remain fail-closed.",
   "envelope": {
     "type": "ACTION",
     "payloadJson": "JSON string",
@@ -9,7 +9,8 @@
       "data",
       "heroStateJson"
     ],
-    "serializer": "MultiplayerManager.sendAction/sendAuthorityAction"
+    "serializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java#sendAction",
+    "wireShape": "{action,data,heroStateJson}"
   },
   "actions": [
     {
@@ -20,15 +21,25 @@
         "from",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/floor-transitions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "from",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "ATTACK",
@@ -74,16 +85,63 @@
         "targetShieldBefore",
         "targetType"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/weapon/SpiritBow.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/combat-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/weapon/SpiritBow.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "accuracyMultiplier",
+        "attackKind",
+        "attackWeaponBundle",
+        "attackWeaponMode",
+        "attackerId",
+        "attackerPos",
+        "attackerStateBefore",
+        "combatDepth",
+        "combatRequestId",
+        "combatSchemaVersion",
+        "damage",
+        "damageBonus",
+        "damageMultiplier",
+        "engineActionCost",
+        "engineDistance",
+        "engineHit",
+        "engineRanged",
+        "engineResult",
+        "projectileHeaps",
+        "projectileMutation",
+        "projectileOutcome",
+        "secondaryMobDeltas",
+        "spiritArrow",
+        "targetBuffs",
+        "targetBuffsBefore",
+        "targetEntityId",
+        "targetHeroStateBefore",
+        "targetHeroStateJson",
+        "targetHp",
+        "targetHpBefore",
+        "targetHt",
+        "targetHtBefore",
+        "targetId",
+        "targetMobBundleAfter",
+        "targetPos",
+        "targetPosAfter",
+        "targetShieldAfter",
+        "targetShieldBefore",
+        "targetType"
+      ],
+      "workerDerivedFields": [
+        "projectileResultItemId"
+      ],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "PICKUP",
@@ -102,16 +160,35 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-items.ts",
         "server/src/validators/inventory-economy.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "engineActionCost",
+        "expectedQuantity",
+        "from",
+        "heapId",
+        "itemBundle",
+        "itemClass",
+        "itemId",
+        "itemPos",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "DROP",
@@ -130,15 +207,34 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-items.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/Item.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "engineActionCost",
+        "expectedQuantity",
+        "from",
+        "heapId",
+        "itemClass",
+        "itemId",
+        "resultItemId",
+        "sourceQuantityBefore",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "THROW",
@@ -159,16 +255,36 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-items.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/Item.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "engineActionCost",
+        "expectedQuantity",
+        "from",
+        "heapId",
+        "itemClass",
+        "itemId",
+        "projectileImpact",
+        "projectileItemId",
+        "resultItemId",
+        "sourceQuantityBefore",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "EQUIP",
@@ -182,15 +298,29 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/equipment.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/EquipableItem.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "expectedEquipped",
+        "from",
+        "itemClass",
+        "itemId",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "UNEQUIP",
@@ -204,15 +334,29 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/equipment.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/items/EquipableItem.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "expectedEquipped",
+        "from",
+        "itemClass",
+        "itemId",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "OPEN_CHEST",
@@ -224,16 +368,27 @@
         "heapType",
         "targetPos"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-actions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "from",
+        "heapId",
+        "heapType",
+        "targetPos"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "BUY",
@@ -259,15 +414,41 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/shop.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/windows/WndTradeItem.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "acquiredByInventory",
+        "branch",
+        "cursed",
+        "cursedKnown",
+        "depth",
+        "engineActionCost",
+        "expectedQuantity",
+        "from",
+        "heapId",
+        "itemBundle",
+        "itemClass",
+        "itemId",
+        "itemLevel",
+        "price",
+        "resultHeapId",
+        "resultItemId",
+        "sourceQuantityBefore",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "BUYBACK",
@@ -293,15 +474,41 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/item-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/npcs/Shopkeeper.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "buybackItemClass",
+        "buybackItemId",
+        "buybackQuantity",
+        "cursed",
+        "cursedKnown",
+        "depth",
+        "engineActionCost",
+        "from",
+        "itemClass",
+        "itemLevel",
+        "nativeUnitValue",
+        "nativeValue",
+        "price",
+        "resultItemBundle",
+        "resultItemId",
+        "shopEntityId",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "SELL",
@@ -332,15 +539,46 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/shop.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/windows/WndTradeItem.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "engineActionCost",
+        "from",
+        "itemClass",
+        "price",
+        "resultCursed",
+        "resultCursedKnown",
+        "resultItemBundle",
+        "resultItemId",
+        "resultItemLevel",
+        "resultNativeUnitValue",
+        "resultNativeValue",
+        "shopEntityId",
+        "soldQuantity",
+        "sourceCursed",
+        "sourceCursedKnown",
+        "sourceItemId",
+        "sourceItemLevel",
+        "sourceNativeUnitValue",
+        "sourceNativeValue",
+        "sourceQuantityBefore",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "INTERACT",
@@ -350,15 +588,25 @@
         "from",
         "targetPos"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-actions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "from",
+        "targetPos"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "UNLOCK",
@@ -368,15 +616,25 @@
         "from",
         "targetPos"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-actions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "from",
+        "targetPos"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "LVL_TRANSITION",
@@ -389,15 +647,28 @@
         "to",
         "transitionKind"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/floor-transitions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "from",
+        "pitPos",
+        "stairsPos",
+        "to",
+        "transitionKind"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "MINE",
@@ -408,15 +679,26 @@
         "sourceTerrain",
         "targetPos"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-actions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "depth",
+        "engineActionCost",
+        "from",
+        "sourceTerrain",
+        "targetPos"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "ALCHEMY",
@@ -439,15 +721,38 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/world-items.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/scenes/AlchemyScene.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "alchemyEnergyAfter",
+        "alchemyEnergyBefore",
+        "branch",
+        "depth",
+        "engineActionCost",
+        "from",
+        "ingredients",
+        "resultHeapId",
+        "resultItemClass",
+        "resultItemId",
+        "resultLocation",
+        "resultNativeUnitValue",
+        "resultNativeValue",
+        "resultQuantity",
+        "resultStackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "USE_ITEM",
@@ -465,15 +770,33 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/item-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "branch",
+        "depth",
+        "engineActionCost",
+        "expectedQuantity",
+        "from",
+        "itemAction",
+        "itemClass",
+        "itemId",
+        "sourceQuantityBefore",
+        "stackable",
+        "targetPos",
+        "to"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "USE_ABILITY",
@@ -491,27 +814,44 @@
         "targetPos",
         "to"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeItemActionPublisher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/abilities.ts"
-      ]
+      ],
+      "nativeProducerFiles": [],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [],
+      "workerDerivedFields": [
+        "abilityClass",
+        "armorChargeAfter",
+        "armorChargeBefore",
+        "armorChargeUse",
+        "armorClass",
+        "armorItemId",
+        "branch",
+        "depth",
+        "engineActionCost",
+        "from",
+        "targetPos",
+        "to"
+      ],
+      "nativeProducerStatus": "not_emitted_by_android",
+      "nativeProducerNote": "No native USE_ABILITY publisher or NetworkActionBridge mapping exists. ArmorAbility callbacks can carry ability-specific side effects; retain fail-closed behavior until a dedicated native producer and validator contract exist."
     },
     {
       "action": "WAIT",
       "dataFields": [],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerActionDispatcher.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts"
-      ]
+      ],
+      "nativeProducerFiles": [],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "not_emitted_by_android",
+      "nativeProducerNote": "The native HeroAction model has no Wait action and NetworkActionBridge has no WAIT mapping. Keep this declared Worker action fail-closed; do not synthesize it from unmapped native actions."
     },
     {
       "action": "REVIVE",
@@ -536,14 +876,40 @@
         "targetShieldAfter",
         "targetShieldBefore"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/combat-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "ankhCountAfter",
+        "ankhCountBefore",
+        "blessedAnkhCountAfter",
+        "blessedAnkhCountBefore",
+        "combatDepth",
+        "heaps",
+        "heroStateJson",
+        "targetBuffs",
+        "targetBuffsBefore",
+        "targetHp",
+        "targetHpBefore",
+        "targetHt",
+        "targetHtBefore",
+        "targetPosAfter",
+        "targetPosBefore",
+        "targetShieldAfter",
+        "targetShieldBefore"
+      ],
+      "workerDerivedFields": [
+        "levelWasLocked",
+        "revivalKind"
+      ],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "SYNC_HERO_STATE",
@@ -584,17 +950,58 @@
         "targetState",
         "wandItemId"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeHeroBuffTickPublisher.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/hero-buffs.ts",
         "server/src/validators/combat-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeHeroBuffTickPublisher.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "actorClockBefore",
+        "ankhCountAfter",
+        "ankhCountBefore",
+        "blessedAnkhCountAfter",
+        "blessedAnkhCountBefore",
+        "buffClass",
+        "buffId",
+        "combatDepth",
+        "damage",
+        "effectiveDamage",
+        "engineHit",
+        "heaps",
+        "heroStateBeforeJson",
+        "secondaryMobDeltas",
+        "sequenceBefore",
+        "sourceActionCost",
+        "sourceAttackKind",
+        "sourceClass",
+        "sourceEntityId",
+        "sourceMobBuffs",
+        "sourceMobBuffsBefore",
+        "sourceMobBundleAfter",
+        "sourceMobDamage",
+        "sourceMobShieldAfter",
+        "sourceMobShieldBefore",
+        "sourceType",
+        "targetBuffs",
+        "targetBuffsBefore",
+        "targetHpBefore",
+        "targetHtBefore",
+        "targetPlayerId",
+        "targetPosBefore",
+        "targetShieldBefore",
+        "targetState",
+        "wandItemId"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "SYNC_MOB_STATE",
@@ -645,16 +1052,66 @@
         "targetShieldBefore",
         "targetState"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/combat-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "attackKind",
+        "attackerId",
+        "attackerPos",
+        "buffsAfter",
+        "buffsBefore",
+        "combatDepth",
+        "combatRequestId",
+        "combatSchemaVersion",
+        "damage",
+        "engineActionCost",
+        "engineDamageResult",
+        "engineDistance",
+        "engineHit",
+        "engineRanged",
+        "engineResult",
+        "entityId",
+        "heaps",
+        "hpAfter",
+        "hpBefore",
+        "htAfter",
+        "htBefore",
+        "posAfter",
+        "posBefore",
+        "projectileHeaps",
+        "projectileMutation",
+        "projectileOutcome",
+        "secondaryMobDeltas",
+        "serializedBundleAfter",
+        "shieldAfter",
+        "shieldBefore",
+        "sourceClass",
+        "sourceType",
+        "targetBuffs",
+        "targetBuffsBefore",
+        "targetEntityId",
+        "targetHp",
+        "targetHpBefore",
+        "targetHt",
+        "targetHtBefore",
+        "targetMobBundleAfter",
+        "targetPos",
+        "targetPosAfter",
+        "targetShieldAfter",
+        "targetShieldBefore",
+        "targetState"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     },
     {
       "action": "SYNC_PLAYER_COMBAT",
@@ -689,15 +1146,50 @@
         "targetShieldBefore",
         "targetType"
       ],
-      "producerFiles": [
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
-        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java"
-      ],
       "workerHandler": "server/src/match-room/actions.ts#handleAction",
       "validatorFiles": [
         "server/src/match-room/actions.ts",
         "server/src/validators/combat-state.ts"
-      ]
+      ],
+      "nativeProducerFiles": [
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/Hero.java",
+        "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/mobs/Mob.java"
+      ],
+      "envelopeSerializer": "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java",
+      "nativeProducerFields": [
+        "attackKind",
+        "attackerId",
+        "attackerPos",
+        "combatRequestId",
+        "damage",
+        "engineActionCost",
+        "engineDistance",
+        "engineHit",
+        "engineRanged",
+        "engineResult",
+        "heaps",
+        "projectileHeaps",
+        "projectileMutation",
+        "projectileOutcome",
+        "secondaryMobDeltas",
+        "targetBuffs",
+        "targetBuffsBefore",
+        "targetHeroStateBefore",
+        "targetHeroStateJson",
+        "targetHp",
+        "targetHpBefore",
+        "targetHt",
+        "targetHtBefore",
+        "targetId",
+        "targetPos",
+        "targetPosAfter",
+        "targetShieldAfter",
+        "targetShieldBefore",
+        "targetType"
+      ],
+      "workerDerivedFields": [],
+      "nativeProducerStatus": "implemented",
+      "nativeProducerNote": ""
     }
   ]
 }

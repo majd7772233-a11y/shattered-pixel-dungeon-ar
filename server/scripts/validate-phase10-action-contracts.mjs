@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+
 const readRepoFile = (path) => readFileSync(new URL("../../" + path, import.meta.url), "utf8");
 const schema = JSON.parse(readRepoFile("protocol/schema.json"));
 const contracts = JSON.parse(readRepoFile("protocol/action-data-contracts.json"));
@@ -24,44 +25,84 @@ assert.equal(envelope.properties.action.$ref, "#/definitions/NetworkActionType")
 assert.equal(envelope.properties.data.type, "object");
 assert.equal(envelope.properties.heroStateJson.type, "string");
 assert.equal(envelope.additionalProperties, false);
+assert.equal(envelope.oneOf.length, actionEnum.length);
 assert.equal(schema.properties.payloadJson.type, "string");
-const manager = readRepoFile(
-  "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java"
-);
+
+const managerPath = "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java";
+const manager = readRepoFile(managerPath);
 assert.match(manager, /\b[A-Za-z_$][\w$]*\.messageType\s*=\s*MessageType\.ACTION/);
 for (const key of ["action", "data", "heroStateJson"]) {
   assert.ok(new RegExp("\\\\?\"" + key + "\\\\?\"").test(manager),
     "MultiplayerManager must serialize ACTION wrapper field " + key);
 }
 assert.match(manager, /sendAuthorityAction[\s\S]*?MessageType\.ACTION/);
-const workerSources = [
-  "server/src/match-room/actions.ts",
-  "server/src/validators/abilities.ts",
-  "server/src/validators/combat-state.ts",
-  "server/src/validators/equipment.ts",
-  "server/src/validators/floor-transitions.ts",
-  "server/src/validators/hero-buffs.ts",
-  "server/src/validators/inventory-economy.ts",
-  "server/src/validators/item-state.ts",
-  "server/src/validators/shop.ts",
-  "server/src/validators/world-actions.ts",
-  "server/src/validators/world-items.ts"
-].map(readRepoFile).join("\n");
-let fieldCount = 0;
-for (const item of contracts.actions) {
-  assert.ok(Array.isArray(item.dataFields) && new Set(item.dataFields).size === item.dataFields.length,
-    item.action + " must list unique action data fields");
-  assert.ok(item.producerFiles.length > 0 && item.validatorFiles.length > 0,
-    item.action + " must identify Java producer and Worker validator evidence");
-  for (const producer of item.producerFiles) readRepoFile(producer);
-  const validators = item.validatorFiles.map(readRepoFile).join("\n");
-  assert.ok(validators.length > 0 && item.workerHandler === "server/src/match-room/actions.ts#handleAction");
+assert.equal(contracts.envelope.serializer, managerPath + "#sendAction");
+
+const actionFile = "server/src/match-room/actions.ts";
+const actionHandler = readRepoFile(actionFile);
+const bridge = readRepoFile(
+  "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NetworkActionBridge.java"
+);
+const heroAction = readRepoFile(
+  "core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/hero/HeroAction.java"
+);
+let fieldCount = 0, producerFieldCount = 0, derivedFieldCount = 0;
+const seenSchemaDefinitions = new Set();
+for (let index = 0; index < contracts.actions.length; index++) {
+  const item = contracts.actions[index];
+  assert.ok(Array.isArray(item.dataFields) && new Set(item.dataFields).size === item.dataFields.length);
+  assert.equal(item.workerHandler, actionFile + "#handleAction");
+  const actionSource = [actionHandler, ...item.validatorFiles.map(readRepoFile)].join("\n");
   for (const field of item.dataFields) {
-    assert.ok(workerSources.includes(field),
-      item.action + " field " + field + " must be present in Worker action/validator source");
+    assert.ok(actionSource.includes(field),
+      item.action + " field " + field + " must exist in its own Worker handler/validator sources");
     fieldCount++;
   }
+  const dataName = "NativeActionData_" + item.action;
+  const dataSchema = schema.definitions[dataName];
+  assert.ok(dataSchema && dataSchema.type === "object", item.action + " schema data definition is required");
+  assert.deepEqual(Object.keys(dataSchema.properties || {}).sort(), [...item.dataFields].sort(),
+    item.action + " schema fields must match its Worker field inventory");
+  assert.equal(dataSchema.additionalProperties, true);
+  seenSchemaDefinitions.add(dataName);
+  const route = envelope.oneOf[index];
+  assert.equal(route.properties.action.const, item.action);
+  assert.equal(route.properties.data.$ref, "#/definitions/" + dataName);
+  assert.ok(route.required.includes("action") && route.required.includes("data"));
+  assert.equal(item.envelopeSerializer, managerPath);
+  assert.ok(Array.isArray(item.nativeProducerFiles));
+  assert.ok(Array.isArray(item.nativeProducerFields) && Array.isArray(item.workerDerivedFields));
+  assert.deepEqual(
+    [...item.nativeProducerFields, ...item.workerDerivedFields].sort(),
+    [...item.dataFields].sort(),
+    item.action + " must classify every Worker field as Java-emitted or Worker-derived"
+  );
+  let producerSource = "";
+  for (const path of item.nativeProducerFiles) producerSource += "\n" + readRepoFile(path);
+  for (const field of item.nativeProducerFields) {
+    assert.ok(producerSource.includes(field),
+      item.action + " native producer field " + field + " must exist in its Java producer sources");
+    producerFieldCount++;
+  }
+  for (const field of item.workerDerivedFields) {
+    assert.ok(!producerSource.includes(field),
+      item.action + " Worker-derived field " + field + " must not be claimed as Java-emitted");
+    derivedFieldCount++;
+  }
+  if (item.nativeProducerStatus === "implemented") {
+    assert.ok(item.nativeProducerFiles.length > 0);
+  } else {
+    assert.equal(item.nativeProducerStatus, "not_emitted_by_android");
+    assert.equal(item.nativeProducerFiles.length, 0);
+    assert.equal(item.nativeProducerFields.length, 0);
+    assert.ok(item.nativeProducerNote.length > 20);
+    assert.ok(!bridge.includes("NetworkActionType." + item.action));
+  }
 }
+assert.equal(seenSchemaDefinitions.size, actionEnum.length);
+assert.ok(!/class\s+Wait\b/.test(heroAction),
+  "HeroAction has no native Wait class; Worker WAIT remains declared but not emitted by Android");
+
 const levelSchema = schema.definitions.NativeLevelSnapshot;
 assert.ok(levelSchema && Array.isArray(levelSchema.required));
 const levelSource = readRepoFile(
@@ -74,6 +115,9 @@ for (const field of levelSchema.required) {
 assert.match(levelSource, /wireJson\.setUsePrototypes\(false\)/);
 assert.match(levelSource, /wireJson\.toJson\(out\)/);
 assert.match(readRepoFile("server/src/validators/world-state.ts"), /hasCompleteNativeLevelSnapshot/);
-console.log("Phase 10 payload contract: " + contracts.actions.length
-  + " action envelopes, " + fieldCount + " referenced data fields, "
-  + levelSchema.required.length + " required native snapshot fields");
+console.log("Phase 10 payload contract: " + contracts.actions.length + " action envelopes, "
+  + fieldCount + " per-action Worker fields (" + producerFieldCount + " Java-emitted, "
+  + derivedFieldCount + " Worker-derived), " + levelSchema.required.length
+  + " required native snapshot fields; "
+  + contracts.actions.filter(a => a.nativeProducerStatus === "not_emitted_by_android").length
+  + " declared actions explicitly remain non-emitted by Android");

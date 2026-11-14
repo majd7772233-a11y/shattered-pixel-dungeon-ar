@@ -2346,7 +2346,7 @@
     },
     "NativeActionEnvelope": {
       "type": "object",
-      "description": "Inner JSON object carried by the outer ACTION envelope's string-valued payloadJson. This defines the stable wrapper only; action-specific data is inventoried in protocol/action-data-contracts.json and remains Worker-validator-owned.",
+      "description": "Inner JSON object carried by the outer ACTION envelope's string-valued payloadJson. oneOf selects an action-specific data-field inventory. Field types, requiredness, and accepted variants are enforced by the matching Worker handler/validators.",
       "required": [
         "action",
         "data",
@@ -2366,7 +2366,921 @@
           "description": "Opaque serialized native SPD Hero state captured by the native producer."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "MOVE",
+          "properties": {
+            "action": {
+              "const": "MOVE"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_MOVE"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "ATTACK",
+          "properties": {
+            "action": {
+              "const": "ATTACK"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_ATTACK"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "PICKUP",
+          "properties": {
+            "action": {
+              "const": "PICKUP"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_PICKUP"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "DROP",
+          "properties": {
+            "action": {
+              "const": "DROP"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_DROP"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "THROW",
+          "properties": {
+            "action": {
+              "const": "THROW"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_THROW"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "EQUIP",
+          "properties": {
+            "action": {
+              "const": "EQUIP"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_EQUIP"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "UNEQUIP",
+          "properties": {
+            "action": {
+              "const": "UNEQUIP"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_UNEQUIP"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "OPEN_CHEST",
+          "properties": {
+            "action": {
+              "const": "OPEN_CHEST"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_OPEN_CHEST"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "BUY",
+          "properties": {
+            "action": {
+              "const": "BUY"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_BUY"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "BUYBACK",
+          "properties": {
+            "action": {
+              "const": "BUYBACK"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_BUYBACK"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "SELL",
+          "properties": {
+            "action": {
+              "const": "SELL"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_SELL"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "INTERACT",
+          "properties": {
+            "action": {
+              "const": "INTERACT"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_INTERACT"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "UNLOCK",
+          "properties": {
+            "action": {
+              "const": "UNLOCK"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_UNLOCK"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "LVL_TRANSITION",
+          "properties": {
+            "action": {
+              "const": "LVL_TRANSITION"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_LVL_TRANSITION"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "MINE",
+          "properties": {
+            "action": {
+              "const": "MINE"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_MINE"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "ALCHEMY",
+          "properties": {
+            "action": {
+              "const": "ALCHEMY"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_ALCHEMY"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "USE_ITEM",
+          "properties": {
+            "action": {
+              "const": "USE_ITEM"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_USE_ITEM"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "USE_ABILITY",
+          "properties": {
+            "action": {
+              "const": "USE_ABILITY"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_USE_ABILITY"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "WAIT",
+          "properties": {
+            "action": {
+              "const": "WAIT"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_WAIT"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "REVIVE",
+          "properties": {
+            "action": {
+              "const": "REVIVE"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_REVIVE"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "SYNC_HERO_STATE",
+          "properties": {
+            "action": {
+              "const": "SYNC_HERO_STATE"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_SYNC_HERO_STATE"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "SYNC_MOB_STATE",
+          "properties": {
+            "action": {
+              "const": "SYNC_MOB_STATE"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_SYNC_MOB_STATE"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "SYNC_PLAYER_COMBAT",
+          "properties": {
+            "action": {
+              "const": "SYNC_PLAYER_COMBAT"
+            },
+            "data": {
+              "$ref": "#/definitions/NativeActionData_SYNC_PLAYER_COMBAT"
+            }
+          },
+          "required": [
+            "action",
+            "data"
+          ]
+        }
+      ]
+    },
+    "NativeActionData_MOVE": {
+      "type": "object",
+      "title": "MOVE native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_ATTACK": {
+      "type": "object",
+      "title": "ATTACK native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "accuracyMultiplier": {},
+        "attackKind": {},
+        "attackWeaponBundle": {},
+        "attackWeaponMode": {},
+        "attackerId": {},
+        "attackerPos": {},
+        "attackerStateBefore": {},
+        "combatDepth": {},
+        "combatRequestId": {},
+        "combatSchemaVersion": {},
+        "damage": {},
+        "damageBonus": {},
+        "damageMultiplier": {},
+        "engineActionCost": {},
+        "engineDistance": {},
+        "engineHit": {},
+        "engineRanged": {},
+        "engineResult": {},
+        "projectileHeaps": {},
+        "projectileMutation": {},
+        "projectileOutcome": {},
+        "projectileResultItemId": {},
+        "secondaryMobDeltas": {},
+        "spiritArrow": {},
+        "targetBuffs": {},
+        "targetBuffsBefore": {},
+        "targetEntityId": {},
+        "targetHeroStateBefore": {},
+        "targetHeroStateJson": {},
+        "targetHp": {},
+        "targetHpBefore": {},
+        "targetHt": {},
+        "targetHtBefore": {},
+        "targetId": {},
+        "targetMobBundleAfter": {},
+        "targetPos": {},
+        "targetPosAfter": {},
+        "targetShieldAfter": {},
+        "targetShieldBefore": {},
+        "targetType": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_PICKUP": {
+      "type": "object",
+      "title": "PICKUP native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "expectedQuantity": {},
+        "from": {},
+        "heapId": {},
+        "itemBundle": {},
+        "itemClass": {},
+        "itemId": {},
+        "itemPos": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_DROP": {
+      "type": "object",
+      "title": "DROP native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "expectedQuantity": {},
+        "from": {},
+        "heapId": {},
+        "itemClass": {},
+        "itemId": {},
+        "resultItemId": {},
+        "sourceQuantityBefore": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_THROW": {
+      "type": "object",
+      "title": "THROW native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "expectedQuantity": {},
+        "from": {},
+        "heapId": {},
+        "itemClass": {},
+        "itemId": {},
+        "projectileImpact": {},
+        "projectileItemId": {},
+        "resultItemId": {},
+        "sourceQuantityBefore": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_EQUIP": {
+      "type": "object",
+      "title": "EQUIP native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "expectedEquipped": {},
+        "from": {},
+        "itemClass": {},
+        "itemId": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_UNEQUIP": {
+      "type": "object",
+      "title": "UNEQUIP native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "expectedEquipped": {},
+        "from": {},
+        "itemClass": {},
+        "itemId": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_OPEN_CHEST": {
+      "type": "object",
+      "title": "OPEN_CHEST native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "heapId": {},
+        "heapType": {},
+        "targetPos": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_BUY": {
+      "type": "object",
+      "title": "BUY native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "acquiredByInventory": {},
+        "branch": {},
+        "cursed": {},
+        "cursedKnown": {},
+        "depth": {},
+        "engineActionCost": {},
+        "expectedQuantity": {},
+        "from": {},
+        "heapId": {},
+        "itemBundle": {},
+        "itemClass": {},
+        "itemId": {},
+        "itemLevel": {},
+        "price": {},
+        "resultHeapId": {},
+        "resultItemId": {},
+        "sourceQuantityBefore": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_BUYBACK": {
+      "type": "object",
+      "title": "BUYBACK native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "buybackItemClass": {},
+        "buybackItemId": {},
+        "buybackQuantity": {},
+        "cursed": {},
+        "cursedKnown": {},
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "itemClass": {},
+        "itemLevel": {},
+        "nativeUnitValue": {},
+        "nativeValue": {},
+        "price": {},
+        "resultItemBundle": {},
+        "resultItemId": {},
+        "shopEntityId": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_SELL": {
+      "type": "object",
+      "title": "SELL native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "itemClass": {},
+        "price": {},
+        "resultCursed": {},
+        "resultCursedKnown": {},
+        "resultItemBundle": {},
+        "resultItemId": {},
+        "resultItemLevel": {},
+        "resultNativeUnitValue": {},
+        "resultNativeValue": {},
+        "shopEntityId": {},
+        "soldQuantity": {},
+        "sourceCursed": {},
+        "sourceCursedKnown": {},
+        "sourceItemId": {},
+        "sourceItemLevel": {},
+        "sourceNativeUnitValue": {},
+        "sourceNativeValue": {},
+        "sourceQuantityBefore": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_INTERACT": {
+      "type": "object",
+      "title": "INTERACT native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "targetPos": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_UNLOCK": {
+      "type": "object",
+      "title": "UNLOCK native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "targetPos": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_LVL_TRANSITION": {
+      "type": "object",
+      "title": "LVL_TRANSITION native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "from": {},
+        "pitPos": {},
+        "stairsPos": {},
+        "to": {},
+        "transitionKind": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_MINE": {
+      "type": "object",
+      "title": "MINE native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "sourceTerrain": {},
+        "targetPos": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_ALCHEMY": {
+      "type": "object",
+      "title": "ALCHEMY native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "alchemyEnergyAfter": {},
+        "alchemyEnergyBefore": {},
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "ingredients": {},
+        "resultHeapId": {},
+        "resultItemClass": {},
+        "resultItemId": {},
+        "resultLocation": {},
+        "resultNativeUnitValue": {},
+        "resultNativeValue": {},
+        "resultQuantity": {},
+        "resultStackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_USE_ITEM": {
+      "type": "object",
+      "title": "USE_ITEM native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "expectedQuantity": {},
+        "from": {},
+        "itemAction": {},
+        "itemClass": {},
+        "itemId": {},
+        "sourceQuantityBefore": {},
+        "stackable": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_USE_ABILITY": {
+      "type": "object",
+      "title": "USE_ABILITY native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "abilityClass": {},
+        "armorChargeAfter": {},
+        "armorChargeBefore": {},
+        "armorChargeUse": {},
+        "armorClass": {},
+        "armorItemId": {},
+        "branch": {},
+        "depth": {},
+        "engineActionCost": {},
+        "from": {},
+        "targetPos": {},
+        "to": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_WAIT": {
+      "type": "object",
+      "title": "WAIT native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {},
+      "additionalProperties": true
+    },
+    "NativeActionData_REVIVE": {
+      "type": "object",
+      "title": "REVIVE native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "ankhCountAfter": {},
+        "ankhCountBefore": {},
+        "blessedAnkhCountAfter": {},
+        "blessedAnkhCountBefore": {},
+        "combatDepth": {},
+        "heaps": {},
+        "heroStateJson": {},
+        "levelWasLocked": {},
+        "revivalKind": {},
+        "targetBuffs": {},
+        "targetBuffsBefore": {},
+        "targetHp": {},
+        "targetHpBefore": {},
+        "targetHt": {},
+        "targetHtBefore": {},
+        "targetPosAfter": {},
+        "targetPosBefore": {},
+        "targetShieldAfter": {},
+        "targetShieldBefore": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_SYNC_HERO_STATE": {
+      "type": "object",
+      "title": "SYNC_HERO_STATE native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "actorClockBefore": {},
+        "ankhCountAfter": {},
+        "ankhCountBefore": {},
+        "blessedAnkhCountAfter": {},
+        "blessedAnkhCountBefore": {},
+        "buffClass": {},
+        "buffId": {},
+        "combatDepth": {},
+        "damage": {},
+        "effectiveDamage": {},
+        "engineHit": {},
+        "heaps": {},
+        "heroStateBeforeJson": {},
+        "secondaryMobDeltas": {},
+        "sequenceBefore": {},
+        "sourceActionCost": {},
+        "sourceAttackKind": {},
+        "sourceClass": {},
+        "sourceEntityId": {},
+        "sourceMobBuffs": {},
+        "sourceMobBuffsBefore": {},
+        "sourceMobBundleAfter": {},
+        "sourceMobDamage": {},
+        "sourceMobShieldAfter": {},
+        "sourceMobShieldBefore": {},
+        "sourceType": {},
+        "targetBuffs": {},
+        "targetBuffsBefore": {},
+        "targetHpBefore": {},
+        "targetHtBefore": {},
+        "targetPlayerId": {},
+        "targetPosBefore": {},
+        "targetShieldBefore": {},
+        "targetState": {},
+        "wandItemId": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_SYNC_MOB_STATE": {
+      "type": "object",
+      "title": "SYNC_MOB_STATE native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "attackKind": {},
+        "attackerId": {},
+        "attackerPos": {},
+        "buffsAfter": {},
+        "buffsBefore": {},
+        "combatDepth": {},
+        "combatRequestId": {},
+        "combatSchemaVersion": {},
+        "damage": {},
+        "engineActionCost": {},
+        "engineDamageResult": {},
+        "engineDistance": {},
+        "engineHit": {},
+        "engineRanged": {},
+        "engineResult": {},
+        "entityId": {},
+        "heaps": {},
+        "hpAfter": {},
+        "hpBefore": {},
+        "htAfter": {},
+        "htBefore": {},
+        "posAfter": {},
+        "posBefore": {},
+        "projectileHeaps": {},
+        "projectileMutation": {},
+        "projectileOutcome": {},
+        "secondaryMobDeltas": {},
+        "serializedBundleAfter": {},
+        "shieldAfter": {},
+        "shieldBefore": {},
+        "sourceClass": {},
+        "sourceType": {},
+        "targetBuffs": {},
+        "targetBuffsBefore": {},
+        "targetEntityId": {},
+        "targetHp": {},
+        "targetHpBefore": {},
+        "targetHt": {},
+        "targetHtBefore": {},
+        "targetMobBundleAfter": {},
+        "targetPos": {},
+        "targetPosAfter": {},
+        "targetShieldAfter": {},
+        "targetShieldBefore": {},
+        "targetState": {}
+      },
+      "additionalProperties": true
+    },
+    "NativeActionData_SYNC_PLAYER_COMBAT": {
+      "type": "object",
+      "title": "SYNC_PLAYER_COMBAT native action data",
+      "description": "Field-name union consumed by this action's Worker handler and validators. The validators define field types, requiredness, state preconditions, and variant-specific constraints.",
+      "properties": {
+        "attackKind": {},
+        "attackerId": {},
+        "attackerPos": {},
+        "combatRequestId": {},
+        "damage": {},
+        "engineActionCost": {},
+        "engineDistance": {},
+        "engineHit": {},
+        "engineRanged": {},
+        "engineResult": {},
+        "heaps": {},
+        "projectileHeaps": {},
+        "projectileMutation": {},
+        "projectileOutcome": {},
+        "secondaryMobDeltas": {},
+        "targetBuffs": {},
+        "targetBuffsBefore": {},
+        "targetHeroStateBefore": {},
+        "targetHeroStateJson": {},
+        "targetHp": {},
+        "targetHpBefore": {},
+        "targetHt": {},
+        "targetHtBefore": {},
+        "targetId": {},
+        "targetPos": {},
+        "targetPosAfter": {},
+        "targetShieldAfter": {},
+        "targetShieldBefore": {},
+        "targetType": {}
+      },
+      "additionalProperties": true
     }
   }
 }
