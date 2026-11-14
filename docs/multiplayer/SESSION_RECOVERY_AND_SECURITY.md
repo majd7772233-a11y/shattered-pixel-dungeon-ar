@@ -266,9 +266,9 @@ The current unit suite tests many validators and replay/ownership cases but does
 Large-source decomposition is intentionally separate. This document maps current security/session responsibilities in the monolithic index.ts; it does not split it. Batch 3 must decide whether to preserve one Worker entry while extracting cohesive pure validator modules, persistence/claim services, room lifecycle, action domains and event broadcasting into separate files. The proposed design must be reviewed before code moves.
 
 
-## 16. Phase 11-A characterization baseline — 2026-11-14 (test-only; no runtime fix)
+## 16. Phase 11-A characterization baseline — 2026-11-14 (verified test-only gate; no runtime fix)
 
-The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice adds tests that pin current behavior before replay/sequence implementation changes. Starting audited branch HEAD was `3a1924c7e482757543b2500dda86b1d3e94960af`; its exact-head CI [43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456) passed Backend, Android JVM/Debug APK and three Durable Object SQLite tests. Exact new test SHA and matching CI remain pending.
+The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice adds tests that pin current behavior before replay/sequence implementation changes. Starting audited branch HEAD was `3a1924c7e482757543b2500dda86b1d3e94960af`; final code/test SHA is `1aa62a881dfef122256be253e2c96fd94eddcdea`, with exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063) passing all three jobs: Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3. The parent Phase 11 remains OPEN; this is a verified characterization gate, not a replay/sequence fix.
 
 ### Worker behavior characterized
 
@@ -287,4 +287,4 @@ The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice
 
 These are characterization tests, not approval of current behavior. Phase 11-B must design/fix contiguous EVENT_BATCH application, validate before advancing the applied watermark, bind request IDs to the original action/payload, and define the gap replay versus full-snapshot policy. Keep these tests as regression constraints; do not weaken them to make a later implementation pass.
 
-No Worker route/validator/SQL, event persistence, Android router/manager/snapshot implementation, protocol schema, SPD gameplay formula, production deployment or physical-device test changed or is claimed in Phase 11-A. The parent Phase 11 remains OPEN; Phase 12 is out of scope.
+No Worker route/validator/SQL, event persistence, Android router/manager/snapshot implementation, protocol schema or SPD gameplay formula changed in Phase 11-A. No production Worker deployment or physical-device test is claimed. The parent Phase 11 remains OPEN; Phase 11-B and Phase 12 remain out of scope until separately requested.

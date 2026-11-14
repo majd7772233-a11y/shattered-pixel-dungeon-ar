@@ -87,16 +87,16 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Phase 11-A characterization slice — 2026-11-14 (tests added; exact-head CI pending)
+### Phase 11-A characterization slice — 2026-11-14 (verified; parent Phase 11 remains open)
 
 - **Repository / only working branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`, the documentation-only Phase 10 closeout checkpoint. Its exact-head CI [run 43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456) passed Backend typecheck/tests, Android JVM/Debug APK, and all three Durable Object SQLite tests.
+- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`. Final Phase 11-A code/test SHA: `1aa62a881dfef122256be253e2c96fd94eddcdea`; exact-head CI [run 43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063) passed all three jobs: Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3.
 - **Phase boundary:** Phase 10 is closed. This Phase 11-A pass adds behavior-characterization tests only. It does not alter event ordering, sequence watermarks, request replay policy, reconnect/resync behavior, Worker persistence, or native gameplay.
 - **Worker cases added:** the inclusive 50-event replay boundary; full snapshot fallback above 50; fallback when retained rows do not fill the gap; RESYNC's full-SNAPSHOT response; and same-player requestId reuse with a different action/payload returning the original stored result under current behavior.
 - **Android cases added:** an out-of-order/gapped batch currently advances to the highest observed sequence without gap RESYNC; a malformed new event currently advances the watermark before RESYNC; and a structurally valid snapshot older than the applied sequence is rejected without changing the live world.
 - **Existing evidence retained:** stale/duplicate combat-event suppression, snapshot validation-before-mutation, restore rollback and Worker transaction rollback tests remain enabled.
 - **Known gaps deliberately not fixed in 11-A:** EVENT_BATCH is not contiguous and advances before validating/applying; same-player request replay is not bound to action/payload identity. These are observations, not desired behavior.
-- **Status:** parent Phase 11 remains OPEN. Exact-head CI for the new test commit is required before this characterization slice is called verified. Phase 11-B and Phase 12 are out of scope.
+- **Status:** Phase 11-A characterization is verified on exact-head CI `43641719063`; the parent Phase 11 remains OPEN because the sequence-contiguity, watermark-ordering and request-payload binding defects are deliberately not fixed here. Phase 11-B and Phase 12 are out of scope.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 

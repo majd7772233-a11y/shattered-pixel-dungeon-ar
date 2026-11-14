@@ -37,12 +37,12 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 ## Active project checkpoint — 2026-11-14 — Phase 11-A characterization
 
 - **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
-- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`; exact starting CI [43623254456 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456).
+- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`; final Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea`; exact-head CI [43641719063 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063).
 - **Phase 10:** closed for implementation and automated acceptance.
-- **Phase 11-A:** five Worker and three Android behavior-characterization tests have been added; exact new-commit CI is pending.
+- **Phase 11-A:** five Worker and three Android behavior-characterization tests are verified; backend 10 Vitest files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3.
 - **Worker cases:** replay at 50, snapshot fallback at 51, fallback on incomplete retention, RESYNC full SNAPSHOT, and same-player requestId reuse with a different action/payload returning the stored original result under current code.
 - **Android cases:** out-of-order/gapped events, malformed-event watermark timing (with no malformed-row Hero mutation), and stale full-snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 methods; NetworkProtocolParityTest remains at 15.
-- **Important:** runtime Worker/SQL, Android router/manager/snapshot code, protocol and native SPD gameplay are unchanged. The tests document gaps for Phase 11-B; the parent Phase 11 remains OPEN.
+- **Important:** runtime Worker/SQL, Android router/manager/snapshot code, protocol and native SPD gameplay are unchanged. The tests document gaps for Phase 11-B; the parent Phase 11 remains OPEN. No production deployment or physical-device match is claimed.
 - **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
 
 ## Source-of-truth hierarchy

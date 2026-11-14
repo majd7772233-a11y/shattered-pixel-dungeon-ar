@@ -72,7 +72,7 @@ The source tree contains client classes for Internet, LAN, and Bluetooth transpo
 
 That presence does not mean all features have passed end-to-end acceptance.
 
-### Current verified checkpoint — 2026-11-14 — Phase 10 closed
+### Current verified checkpoint — 2026-11-14 — Phase 11-A characterization verified; parent Phase 11 open
 
 - Latest implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74; exact code/test CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). The later docs-only branch HEAD before this audit was 9899ec8d315e4199d262e26f618188524857ab0b; its exact-head CI [43619273512](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43619273512) also passed all three jobs.
 - Phase 9 remains complete within its explicit fail-closed support boundary.
@@ -80,9 +80,9 @@ That presence does not mean all features have passed end-to-end acceptance.
 - The join path checks senderId/playerId identity, finite integral position and level bounds; duplicate joins reuse the same RemoteHero. READY updates RemotePlayer.isReady, and successful SNAPSHOT restore reapplies stored readiness metadata.
 - The ACTION contract covers all 23 action names with action-specific schema field inventories. protocol/action-data-contracts.json tracks 361 Worker-consumed field names: 346 are source-referenced in the listed Java producer files and 15 are Worker-only. The name inventory does not prove runtime serialization on every branch; Worker validators remain authoritative for value types, requiredness, preconditions and supported variants. The 18 required NativeLevelSnapshot fields are checked against Java wire declarations and Worker completeness validation.
 - WAIT and USE_ABILITY remain declared Worker/schema actions but have no Android native producer or bridge mapping and remain fail-closed. CHAT remains non-routed on Android.
-- At Phase 10 closeout, NativeCombatRuntimeIntegrationTest contained 67 @Test methods and NetworkProtocolParityTest 15. Phase 11-A adds three Android characterization tests (70 methods total) and five Worker MatchRoom scenarios; exact new-commit CI is pending.
+- Phase 11-A adds three Android characterization tests (NativeCombatRuntimeIntegrationTest: 67 → 70 methods) and five Worker MatchRoom scenarios. Exact code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3. NetworkProtocolParityTest remains at 15 methods.
 - No production Worker deployment smoke test or physical two-device multiplayer session is claimed. Those remain Phases 22–23.
-- Phase 11-A characterization tests have been added after a fresh exact-HEAD/CI audit. They expose sequence-gap/watermark and same-player requestId-binding gaps without changing runtime behavior. Parent Phase 11 remains OPEN; exact new-commit CI is pending.
+- Phase 11-A characterization is verified, not an event-reliability fix: it records the EVENT_BATCH contiguity/watermark-ordering gaps, same-player requestId action/payload binding gap, reconnect 50/51 and incomplete-retention boundaries, RESYNC full-snapshot path, and stale-snapshot protection. No runtime code changed. Parent Phase 11 remains OPEN; Phase 11-B and Phase 12 have not started.
 
 
 

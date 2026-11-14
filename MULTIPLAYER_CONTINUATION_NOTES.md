@@ -3,8 +3,8 @@
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** multiplayer-framework-core-14118577486727081892  
 **Starting audited HEAD:** 3a1924c7e482757543b2500dda86b1d3e94960af  
-**Exact starting CI:** [43623254456 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456)  
-**Phase 11-A test commit and exact-head CI:** pending verification
+**Final Phase 11-A code/test SHA:** `1aa62a881dfef122256be253e2c96fd94eddcdea`  
+**Exact-head CI:** [43641719063 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063)
 
 ## 2026-11-14 — Phase 11-A characterization slice
 
@@ -13,7 +13,7 @@
 - Added three Android JVM cases: gap/out-of-order batch behavior, malformed-event watermark behavior, and stale full snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 @Test methods; NetworkProtocolParityTest remains at 15.
 - Existing stale/duplicate combat-event, snapshot rollback, and Worker transaction rollback coverage remains unchanged.
 - No Worker handler/validator/SQL, Android runtime router/manager/snapshot implementation, protocol, event/sequence/replay/resync algorithm, or native SPD gameplay changed.
-- Exact new test SHA and CI are pending verification. No production Worker deployment or physical-device session is claimed.
+- Exact Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed CI `43641719063`: Backend 10 files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3. The earlier intermediate commit `528c863405a812e70693a1aca9de74ef2d5acc25` failed Android Java compilation because of incorrectly escaped JSON literals; `1aa62a88` fixed them and added explicit unchanged-Hero assertions. No runtime implementation was changed. No production Worker deployment or physical-device session is claimed.
 
 ## Historical Phase 10-E final closure
 
@@ -28,7 +28,7 @@
 
 ## Next handoff — verify Phase 11-A exact-head CI
 
-Inspect the matching workflow for the new test commit and require all three jobs (Backend, Android JVM/Debug APK, Durable Object SQLite) to pass. Update this note with the final test SHA, run ID and actual execution counts. The known gaps intentionally captured by the tests—non-contiguous EVENT_BATCH acceptance/watermark timing and same-player requestId reuse without payload binding—remain for a separately requested Phase 11-B. Do not begin Phase 11-B or Phase 12 automatically.
+Phase 11-A characterization is verified at `1aa62a881dfef122256be253e2c96fd94eddcdea` / CI `43641719063`. The known gaps intentionally captured by the tests—non-contiguous EVENT_BATCH acceptance/watermark timing and same-player requestId reuse without payload binding—remain for Phase 11-B. Continue only after a separate explicit user request; do not begin Phase 11-B or Phase 12 automatically.
 
 ## Historical records
 

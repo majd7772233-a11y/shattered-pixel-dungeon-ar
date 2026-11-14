@@ -394,9 +394,9 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. No Worker output, route/validator, SQL persistence, sequence handling, replay/resync algorithm or native SPD gameplay rule changed; Phase 11 remains unstarted.
 
 
-## Phase 11-A — event ordering and replay characterization (test-only)
+## Phase 11-A — event ordering and replay characterization (test-only; exact-head CI verified)
 
-Starting audited HEAD `3a1924c7e482757543b2500dda86b1d3e94960af` passed exact-head CI [43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456). Exact SHA and matching CI for the Phase 11-A test commit are pending.
+Starting audited HEAD `3a1924c7e482757543b2500dda86b1d3e94960af`; final code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3.
 
 ### Worker MatchRoom coverage
 
@@ -420,7 +420,7 @@ Existing stale/duplicate combat-event suppression, snapshot validation-before-mu
 
 ### Known limitations retained for Phase 11-B
 
-This slice is intentionally characterization-only. It does not fix non-contiguous EVENT_BATCH acceptance, watermark advancement before validation/application, same-player requestId reuse with a changed action/payload, or the current bounded reconnect replay policy. The parent Phase 11 remains OPEN. Passing these tests is not event-reliability acceptance.
+This slice is intentionally characterization-only and is verified at exact-head CI `43641719063`. It does not fix non-contiguous EVENT_BATCH acceptance, watermark advancement before validation/application, same-player requestId reuse with a changed action/payload, or the current bounded reconnect replay policy. The parent Phase 11 remains OPEN. Passing these tests is not event-reliability acceptance.
 
 ## 9. Phase 10-E exact-head closure evidence
 

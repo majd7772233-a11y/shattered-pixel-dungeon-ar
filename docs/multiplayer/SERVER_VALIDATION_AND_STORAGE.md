@@ -515,3 +515,5 @@ The current `processed_actions` replay key is `request_id`. `classifyRequestRepl
 `MatchRoomActions.handleReconnect` replays at most 50 events only for a non-current level publisher. It requires the ordered query's row count to equal the sequence gap; otherwise it falls back to a full snapshot. Phase 11-A adds exact 50/51 boundary and incomplete-retention tests. The threshold is current source policy, not a protocol constant.
 
 RESYNC remains a full-SNAPSHOT response. Its payload includes stored event rows in addition to authoritative player/Mob/level state; it is not an EVENT_BATCH replay path. The new test pins that distinction. No Worker action validator, event insert, SQL schema or request-replay algorithm changed in Phase 11-A.
+
+Phase 11-A test evidence: code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 10 files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3. This test-only slice did not change request replay classification, event insertion, SQL schema or recovery behavior.

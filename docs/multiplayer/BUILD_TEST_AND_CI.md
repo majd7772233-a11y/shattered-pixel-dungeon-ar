@@ -240,8 +240,11 @@ Exact implementation/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed [A
 The 708 backend executions include mirrored/generated TypeScript/JavaScript and are not 708 unique source scenarios. CI does not deploy the production Worker and does not count as a physical two-device test. Phase 10 is closed for implementation/automated acceptance; Phase 11-A has not started. WAIT/USE_ABILITY are declared but non-emitted by Android and remain fail-closed; Android CHAT remains explicitly non-routed.
 
 
-## Phase 11-A characterization test gate — 2026-11-14 (exact-head CI pending)
+## Phase 11-A characterization test gate — 2026-11-14 (exact-head CI verified)
 
-Starting audited branch HEAD `3a1924c7e482757543b2500dda86b1d3e94960af` passed [CI 43623254456](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43623254456): Backend typecheck/tests, Android JVM/Debug APK and Durable Object SQLite 3/3 all succeeded.
+Starting audited branch HEAD `3a1924c7e482757543b2500dda86b1d3e94960af`; final Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed exact-head [CI 43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063), all three jobs green:
+- Backend TypeScript build + six static guards + 10 Vitest files / 718 executions passed.
+- Android JVM suite and Debug APK compilation passed (`BUILD SUCCESSFUL`).
+- Durable Object Workers runtime: 3 SQLite integration tests passed.
 
-The Phase 11-A test-only change adds five Worker MatchRoom scenarios in `server/src/match-room/lifelink-death.integration.test.ts` and three Android JVM tests in `NativeCombatRuntimeIntegrationTest.java`. No Worker handler/validator/SQL, Android runtime class, protocol or native game source changes. Record exact new commit SHA, actual test totals and matching Actions run only after all three jobs pass.
+The test-only change adds five Worker MatchRoom scenarios in `server/src/match-room/lifelink-death.integration.test.ts` and three Android JVM tests in `NativeCombatRuntimeIntegrationTest.java` (67 → 70 methods); `NetworkProtocolParityTest` remains at 15 methods. CI run 43641470951 on the earlier intermediate test commit exposed malformed Java JSON escaping; commit `1aa62a88` fixed the literals and added explicit Hero HP/position non-mutation assertions. No Worker handler/validator/SQL, Android runtime class, protocol or native game source changed. This closes only the Phase 11-A characterization gate; parent Phase 11 remains OPEN.
