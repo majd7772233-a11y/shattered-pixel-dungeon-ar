@@ -184,7 +184,7 @@ Exact-HEAD Stage 3 CI [run 42486485451](https://github.com/majd7772233-a11y/shat
 - Android: `./gradlew test assembleDebug --no-daemon`; JVM tests passed and `assembleDebug` completed with `BUILD SUCCESSFUL`.
 - Workers runtime: one integration file, 3 tests passed against real Durable Object SQLite, covering rollback/replay across eviction, publisher handoff after persisted snapshot and pending-combat closure, and reconstruction after eviction.
 - Phase 9: complete for implementation and automated acceptance. XP level-up/item callbacks, advanced Monk callbacks, RemoteHero/player LifeLink and unsupported item/Buff effects remain fail-closed.
-- Phase 10: closed at exact-head SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. See the current Phase 10-E closeout below. Phase 11 is eligible next but not started.
+- Phase 10: closed at exact-head SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089. At that historical Phase 10 checkpoint, Phase 11 was eligible but had not started.
 - CI does not deploy this branch. The deploy workflow is scoped to master/main changes or manual dispatch. A green branch run is not a production Worker smoke test, rendered projectile evidence or physical two-device gameplay; Phases 22–23 own those checks.
 
 
@@ -237,7 +237,7 @@ Exact implementation/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed [A
 - Android JVM suite and ./gradlew test assembleDebug --no-daemon passed; build log ends with BUILD SUCCESSFUL. NetworkProtocolParityTest contains 15 tests; NativeCombatRuntimeIntegrationTest contains 67 @Test methods.
 - Durable Object Workers runtime passed all three SQLite rollback/eviction integration tests.
 
-The 708 backend executions include mirrored/generated TypeScript/JavaScript and are not 708 unique source scenarios. CI does not deploy the production Worker and does not count as a physical two-device test. Phase 10 is closed for implementation/automated acceptance; Phase 11-A has not started. WAIT/USE_ABILITY are declared but non-emitted by Android and remain fail-closed; Android CHAT remains explicitly non-routed.
+The 708 backend executions include mirrored/generated TypeScript/JavaScript and are not 708 unique source scenarios. CI does not deploy the production Worker and does not count as a physical two-device test. Phase 10 is closed for implementation/automated acceptance; at this historical CI checkpoint, Phase 11-A had not started. WAIT/USE_ABILITY are declared but non-emitted by Android and remain fail-closed; Android CHAT remains explicitly non-routed.
 
 
 ## Phase 11-A characterization test gate — 2026-11-14 (exact-head CI verified)
@@ -248,3 +248,13 @@ Starting audited branch HEAD `3a1924c7e482757543b2500dda86b1d3e94960af`; final P
 - Durable Object Workers runtime: 3 SQLite integration tests passed.
 
 The test-only change adds five Worker MatchRoom scenarios in `server/src/match-room/lifelink-death.integration.test.ts` and three Android JVM tests in `NativeCombatRuntimeIntegrationTest.java` (67 → 70 methods); `NetworkProtocolParityTest` remains at 15 methods. CI run 43641470951 on the earlier intermediate test commit exposed malformed Java JSON escaping; commit `1aa62a88` fixed the literals and added explicit Hero HP/position non-mutation assertions. No Worker handler/validator/SQL, Android runtime class, protocol or native game source changed. This closes only the Phase 11-A characterization gate; parent Phase 11 remains OPEN.
+
+## Phase 11-B — event reliability and idempotent ACTION closeout (2026-11-15)
+
+Code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed exact-head [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036); all three jobs succeeded.
+
+- **Backend:** TypeScript build and 10 Vitest files / 740 reported executions passed.
+- **Android:** JVM tests and Debug APK compilation passed. The current NativeCombatRuntimeIntegrationTest.java contains 74 @Test methods; NetworkProtocolParityTest.java remains at 15.
+- **Durable Object Workers runtime:** four real SQLite integration tests passed.
+- **Coverage added/updated:** contiguous replay ordering, gap/malformed-row rejection without watermark advance, stale/incomplete snapshot safety, exact-request fingerprint replay, changed/cross-player request conflict, migration compatibility, delegated authority completion identity, concurrent exact retry and atomic rollback/after-commit broadcast behavior.
+- The 740 backend executions include mirrored/generated TypeScript/JavaScript outputs and are not 740 unique source scenarios. CI does not deploy the production Worker or prove physical two-device gameplay. Phase 11 accepted scope is closed; Phase 12 has not started.

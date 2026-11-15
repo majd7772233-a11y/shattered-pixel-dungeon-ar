@@ -87,16 +87,19 @@ The historical documentation batches established the technical references now in
 
 ## Current Verified Status
 
-### Phase 11-A characterization slice — 2026-11-14 (verified; parent Phase 11 remains open)
+### Phase 11-B closeout — 2026-11-15 (implementation and exact-head CI verified)
 
 - **Repository / only working branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
-- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`. Final Phase 11-A code/test SHA: `1aa62a881dfef122256be253e2c96fd94eddcdea`; exact-head CI [run 43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063) passed all three jobs: Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3.
-- **Phase boundary:** Phase 10 is closed. This Phase 11-A pass adds behavior-characterization tests only. It does not alter event ordering, sequence watermarks, request replay policy, reconnect/resync behavior, Worker persistence, or native gameplay.
-- **Worker cases added:** the inclusive 50-event replay boundary; full snapshot fallback above 50; fallback when retained rows do not fill the gap; RESYNC's full-SNAPSHOT response; and same-player requestId reuse with a different action/payload returning the original stored result under current behavior.
-- **Android cases added:** an out-of-order/gapped batch currently advances to the highest observed sequence without gap RESYNC; a malformed new event currently advances the watermark before RESYNC; and a structurally valid snapshot older than the applied sequence is rejected without changing the live world.
-- **Existing evidence retained:** stale/duplicate combat-event suppression, snapshot validation-before-mutation, restore rollback and Worker transaction rollback tests remain enabled.
-- **Known gaps deliberately not fixed in 11-A:** EVENT_BATCH is not contiguous and advances before validating/applying; same-player request replay is not bound to action/payload identity. These are observations, not desired behavior.
-- **Status:** Phase 11-A characterization is verified on exact-head CI `43641719063`; the parent Phase 11 remains OPEN because the sequence-contiguity, watermark-ordering and request-payload binding defects are deliberately not fixed here. Phase 11-B and Phase 12 are out of scope.
+- **Phase 11-A role:** historical characterization tests remain as regression guards; their old "gap accepted" assertions are superseded by Phase 11-B tests and current source behavior.
+- **Code/test HEAD:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact-head CI [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
+- **Phase 11-B code/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact-head CI [run 43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
+- **Android event application:** EVENT_BATCH rows are validated and normalized before application; exact duplicate sequences are applied once, conflicting duplicates reject, rows are sorted into ascending order and must form the complete contiguous range beginning at the last applied sequence + 1. The envelope sequence must match the batch tail. Gaps, malformed rows or invalid application request full recovery without advancing the applied watermark. Per-event rollback baselines protect the live native world; applied sequence commits only after successful application. EVENT_SKIPPED consumes its valid sequence without changing the world. Stale snapshots are rejected before live restore.
+- **Worker request identity:** processed_actions stores canonical request fingerprints and delegated-completion identity. Exact retries from the same player with equivalent payloads replay the recorded result; reuse by another player or with different action/payload is rejected as REQUEST_ID_CONFLICT. Object-key ordering does not change a canonical fingerprint. Legacy processed-action rows are retained through idempotent column migration.
+- **Atomic ACTION boundary:** the covered Durable Object ACTION path uses transactionSync. Persistent state/claims, processed-action receipt, event, sequence and world-time changes roll back together on failure. Success ACKs and broadcasts are held until commit; the transaction path fails closed when synchronous transactions are unavailable.
+- **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
+- **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
+- **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
+- **Phase status:** the accepted Phase 11 scope is CLOSED for implementation and automated acceptance. Phase 12 is next by dependency, but it is not started by this closeout. No production deployment or real-device session is claimed.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -605,16 +608,18 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 **Priority:** P0 · **Dependencies:** Phase 10.
 
 ### Work items
-- [ ] Apply accepted events in sequence order; ignore already-applied duplicates and detect skipped/out-of-order sequence numbers.
-- [ ] Deduplicate request IDs across retries and prevent one ID from being reused for a different action/player/payload.
-- [ ] Ensure action pre-state, current depth, actor ownership, stable target identity, action cost and result delta are validated before any persistent mutation.
-- [ ] Define when an event gap can be repaired from the retained event log and when the client must request a full authoritative snapshot.
-- [ ] Add replay, out-of-order, stale-state, duplicate action, sequence-gap and bad-resync regression tests across the Worker and Java router.
+- [x] Apply accepted events in sequence order; ignore already-applied duplicates and detect skipped/out-of-order sequence numbers.
+- [x] Deduplicate request IDs across retries and prevent one ID from being reused for a different action/player/payload.
+- [x] Preserve action-specific pre-state, current-depth, ownership, stable target, action-cost and result-delta validation before persistent mutation; do not weaken Worker validators.
+- [x] Use contiguous retained event replay only when the complete bounded range is available; otherwise recover from a full authoritative snapshot. RESYNC remains full SNAPSHOT.
+- [x] Add replay, out-of-order, stale-state, duplicate-action, sequence-gap, invalid-payload and rollback regressions across Worker, Android router and Durable Object SQLite runtime.
 
 ### Acceptance criteria
-- Replayed, delayed or out-of-order messages cannot apply an action twice or move the match backward.
-- A client converges by contiguous event replay or a full snapshot; it never guesses the missing state.
-- Invalid events do not partially persist data before rejection.
+- [x] Replayed, delayed or out-of-order messages cannot apply an action twice or move the match backward.
+- [x] A client converges by contiguous event replay or a full snapshot; it never guesses the missing state.
+- [x] Invalid events do not partially persist data before rejection.
+
+**Phase status: CLOSED** for the accepted Phase 11-A/11-B scope at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / exact-head CI [43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). The closeout changes no 25-message/23-action protocol vocabulary and does not claim production deployment or physical-device testing. Phase 12 remains unstarted and requires a separate user request.
 
 ## Phase 12 — Durable Recovery, Reconnect and Authority Handoff
 

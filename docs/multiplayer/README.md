@@ -34,16 +34,17 @@ Stage 3 moved the original default Worker router unchanged into `server/src/work
 
 The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol/schema.json`, `server/wrangler.jsonc` binding/class identity and migration, and protected Java files `Hero.java`, `Mob.java`, and `WorldSnapshot.java` remain unchanged. The refactor does not alter gameplay phases 1–23. No live Worker deployment or physical two-device session is claimed.
 
-## Active project checkpoint — 2026-11-14 — Phase 11-A characterization
+## Active project checkpoint — 2026-11-15 — Phase 11-B closed
 
 - **Repo/branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
-- **Starting audited HEAD:** `3a1924c7e482757543b2500dda86b1d3e94960af`; final Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea`; exact-head CI [43641719063 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063).
+- **Code/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact-head CI [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
 - **Phase 10:** closed for implementation and automated acceptance.
-- **Phase 11-A:** five Worker and three Android behavior-characterization tests are verified; backend 10 Vitest files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3.
-- **Worker cases:** replay at 50, snapshot fallback at 51, fallback on incomplete retention, RESYNC full SNAPSHOT, and same-player requestId reuse with a different action/payload returning the stored original result under current code.
-- **Android cases:** out-of-order/gapped events, malformed-event watermark timing (with no malformed-row Hero mutation), and stale full-snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 methods; NetworkProtocolParityTest remains at 15.
-- **Important:** runtime Worker/SQL, Android router/manager/snapshot code, protocol and native SPD gameplay are unchanged. The tests document gaps for Phase 11-B; the parent Phase 11 remains OPEN. No production deployment or physical-device match is claimed.
-- **Not claimed:** production Worker deployment or physical two-device gameplay. These remain Phases 22 and 23.
+- **Phase 11-A:** historical characterization baseline retained as regression evidence; it is no longer the current behavior description.
+- **Phase 11-B:** event ordering, contiguous sequence acceptance, requestId/action/payload binding, fail-closed conflict handling, atomic ACTION transaction behavior and regression coverage are complete for the accepted scope.
+- **Android:** EVENT_BATCH rejects gaps/conflicting duplicate sequences, sorts out-of-order contiguous rows, applies behind rollback baselines and commits the watermark only after success. Current NativeCombatRuntimeIntegrationTest inventory is 74 @Test methods; NetworkProtocolParityTest remains at 15.
+- **Worker:** canonical request fingerprints allow exact retry replay and reject changed payload/action or cross-player requestId reuse. Transactional ACTION writes roll back together; success messages are emitted only after commit.
+- **CI:** Backend 10 files / 740 reported executions, Android JVM tests + Debug APK, Durable Object SQLite 4/4. Mirrored TS/JS executions are not unique source scenario counts.
+- **Boundaries:** protocol remains 25 messages / 23 actions; no production Worker deploy or physical two-device session is claimed. Phase 12 is next but not started and requires a separate user request.
 
 ## Source-of-truth hierarchy
 
@@ -84,7 +85,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–10 complete; Phase 11-A characterization tests added (exact-head CI pending); parent Phase 11 and Phases 12–23 remain open |
+| Phase state | Phases 1–10 closed; accepted Phase 11-A/11-B scope closed at code/test SHA `2574489`; Phase 12–23 remain open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 

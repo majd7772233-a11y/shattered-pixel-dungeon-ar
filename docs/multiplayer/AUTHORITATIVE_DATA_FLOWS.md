@@ -230,7 +230,7 @@ Required behavior for all event paths:
 
 Phase 10-E closeout: MessageRouter now has one explicit route decision for all 25 canonical outer message values, with no catch-all forwarding to RemotePlayerActionReceiver. PLAYER_JOINED is a typed render-thread path with senderId/payload identity and position validation; PLAYER_LEFT retains its tested cleanup; READY updates server-authored RemotePlayer readiness metadata and snapshots restore it; PING is transport-only. CHAT is explicitly non-routed on Android because there is no chat UI. Client-to-Worker and declared placeholder enum values are explicit non-inbound decisions. The receiver remains in the source tree for explicit Hero setup/legacy helper duties, including render-thread actor creation and scene-conditional HeroSprite attachment. EVENT_BATCH sequence/application semantics were not changed by Phase 10. Exact closeout SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 43618725089.
 
-### Phase 11-A current behavior characterization (2026-11-14)
+### Historical Phase 11-A behavior characterization (2026-11-14; superseded by Phase 11-B)
 
 Tests now pin the current reliability boundaries without changing runtime behavior:
 - Worker reconnect replays only a complete retained sequence range for a non-current publisher when the gap is at most 50; a gap above 50 or an incomplete row range falls back to a full SNAPSHOT.
@@ -309,3 +309,15 @@ These are modules on one MatchRoom instance, not independent Durable Objects or 
 ### Phase 10 ACTION payload field reconciliation
 
 The ACTION inner envelope is defined in protocol/schema.json with action, data and heroStateJson; its oneOf contains a separate data-field inventory for every one of the 23 canonical action names. protocol/action-data-contracts.json names the Worker handler and validators, Java producer source paths, and the partition between Java-source-referenced and Worker-only field names. The static guard verifies 361 Worker-consumed field names (346 in the listed Java producer source; 15 Worker-only) and the 18 required NativeLevelSnapshot fields. This is a source/name parity inventory, not a replacement for runtime Worker validators: actual field types, per-subcase requiredness, values, preconditions and feature support remain validator-owned. WAIT and USE_ABILITY are declared but non-emitted by Android and remain fail-closed.
+
+## Phase 11-B — authoritative sequence, replay and commit flow (2026-11-15)
+
+The current cross-layer data flow at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed exact-head [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
+
+1. **Worker request admission:** ACTION requests pass action-specific source validators and request fingerprint checks. A requestId is bound to the authenticated player and canonical action/payload; exact retry reuses the recorded result, while changed or cross-player reuse rejects.
+2. **Durable commit:** the covered ACTION mutation writes authoritative state/claims, processed receipt, event, sequence and world time in the same transaction. Response/broadcast messages are buffered until commit. On failure, persisted and in-memory checkpoints roll back and no accepted event escapes.
+3. **Client batch normalization:** Android parses batch rows, rejects invalid/conflicting sequence rows, deduplicates exact repeats and sorts remaining rows. It requires a contiguous run from lastApplied + 1 and checks the envelope tail.
+4. **Client state mutation:** each event is applied with a rollback baseline. Only a successful world application commits the event watermark; malformed rows or gaps request RESYNC without consuming the missing sequence. EVENT_SKIPPED consumes sequence but leaves game state unchanged.
+5. **Recovery:** reconnect may replay only a complete contiguous retained range of at most 50 events for an eligible non-current publisher. Otherwise the authoritative response is a full SNAPSHOT; RESYNC itself remains full SNAPSHOT. Stale/incomplete snapshots are rejected before live-world mutation.
+
+The 25-message / 23-action protocol vocabulary is unchanged. No production deployment or physical-device proof is implied.

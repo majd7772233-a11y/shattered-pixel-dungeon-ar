@@ -197,7 +197,7 @@ The Worker integration tests live in `server/src/entrypoint.test.ts`; they verif
 
 ## Historical Phase 11-A preflight: sequence/replay ownership (2026-11-14; dependency now satisfied)
 
-This was an audit checkpoint, not a behavior change. The preflight parent `cf3714c82a210eace79614ab7c575acb04b8aebb` passed exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982). Phase 10 subsequently closed at implementation/test SHA `f2d79038d1e420461be7a1956471324de5c1ef74` / CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). Phase 11 has not started; the observations below remain test targets, not fixes.
+This was an audit checkpoint, not a behavior change. The preflight parent `cf3714c82a210eace79614ab7c575acb04b8aebb` passed exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982). Phase 10 subsequently closed at implementation/test SHA `f2d79038d1e420461be7a1956471324de5c1ef74` / CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089). At that historical preflight timestamp, Phase 11 had not started; the observations below were test targets, not fixes.
 
 Current authority boundaries observed:
 - Worker/Durable Object owns authoritative request admission, action validation, durable request-result records, event sequence allocation, retained event rows, bounded reconnect replay and full snapshot responses.
@@ -209,7 +209,7 @@ Current authority boundaries observed:
 The live gaps and safe future test targets are documented in ROADMAP.md and SESSION_RECOVERY_AND_SECURITY.md. No Worker validator, Java router, event persistence, native gameplay semantics or recovery algorithm changed in this gate review.
 
 
-## Phase 11-A current reliability findings (2026-11-14)
+## Historical Phase 11-A reliability findings (2026-11-14; superseded by Phase 11-B)
 
 The test-only Phase 11-A pass records the current responsibilities and limits:
 - MatchRoom owns the persisted event sequence, processed request IDs, retained rows, reconnect replay-window decision and full snapshot generation.
@@ -217,3 +217,15 @@ The test-only Phase 11-A pass records the current responsibilities and limits:
 - MessageRouter applies EVENT_BATCH rows on the render thread and WorldSnapshot validates/restores full world state. The current event path skips lower/equal sequences, accepts a higher sequence without checking contiguity, and updates the watermark before validating/applying the event body.
 
 The added tests characterize this behavior, the 50-row reconnect replay threshold/fallbacks, same-player requestId collisions, and stale snapshot protection. Exact Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 718 executions, Android JVM/Debug APK, and Durable Object SQLite 3/3. No runtime implementation is changed in Phase 11-A; corrected contiguous ordering and request binding remain Phase 11-B work.
+
+## Phase 11-B verified architecture state (2026-11-15)
+
+At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, exact-head [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036) passed all three automation jobs.
+
+- Durable Object MatchRoom remains the authoritative owner of request identity, action validation, persistent state, processed receipts, event allocation and snapshot/replay decisions. Request fingerprints bind IDs to player and canonical action payload; delegated completion has a distinct authority identity.
+- The covered ACTION lifecycle uses one transactionSync boundary across durable state/claims, request receipt, event, sequence and world-time accounting. Network success delivery is buffered until commit; rollback and fail-closed transaction availability protect atomicity.
+- Android MultiplayerManager owns the applied-sequence watermark/recovery gate; MessageRouter performs contiguous EVENT_BATCH ordering/application on the render thread and only commits the watermark after successful application. Per-event rollback prevents partial native state.
+- WorldSnapshot remains the authoritative full-world restore path with pre-mutation stale/incomplete validation. RESYNC continues to request a full snapshot.
+- The bounded reconnect replay window remains unchanged: replay only the complete contiguous retained range up to 50 events for eligible non-current publishers; otherwise send SNAPSHOT.
+
+Phase 11 accepted scope is closed for implementation and automated acceptance. Phase 12 is not started. No production Worker deployment or physical two-device run is claimed.

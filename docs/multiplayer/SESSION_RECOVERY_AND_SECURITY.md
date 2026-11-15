@@ -266,7 +266,7 @@ The current unit suite tests many validators and replay/ownership cases but does
 Large-source decomposition is intentionally separate. This document maps current security/session responsibilities in the monolithic index.ts; it does not split it. Batch 3 must decide whether to preserve one Worker entry while extracting cohesive pure validator modules, persistence/claim services, room lifecycle, action domains and event broadcasting into separate files. The proposed design must be reviewed before code moves.
 
 
-## 16. Phase 11-A characterization baseline — 2026-11-14 (verified test-only gate; no runtime fix)
+## 16. Historical Phase 11-A characterization baseline — 2026-11-14 (test-only gate; superseded by Phase 11-B)
 
 The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice adds tests that pin current behavior before replay/sequence implementation changes. Starting audited branch HEAD was `3a1924c7e482757543b2500dda86b1d3e94960af`; final code/test SHA is `1aa62a881dfef122256be253e2c96fd94eddcdea`, with exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063) passing all three jobs: Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3. The parent Phase 11 remains OPEN; this is a verified characterization gate, not a replay/sequence fix.
 
@@ -288,3 +288,21 @@ The Phase 10 dependency is satisfied. This separately requested Phase 11-A slice
 These are characterization tests, not approval of current behavior. Phase 11-B must design/fix contiguous EVENT_BATCH application, validate before advancing the applied watermark, bind request IDs to the original action/payload, and define the gap replay versus full-snapshot policy. Keep these tests as regression constraints; do not weaken them to make a later implementation pass.
 
 No Worker route/validator/SQL, event persistence, Android router/manager/snapshot implementation, protocol schema or SPD gameplay formula changed in Phase 11-A. No production Worker deployment or physical-device test is claimed. The parent Phase 11 remains OPEN; Phase 11-B and Phase 12 remain out of scope until separately requested.
+
+## 17. Phase 11-B verified event and request recovery behavior (2026-11-15)
+
+At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, exact-head [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036) passed Backend, Android and Durable Object SQLite jobs.
+
+### Client sequence and event application
+- MessageRouter.handleEventBatchMessage parses valid positive safe-integer sequence values, collapses exact duplicate rows, rejects conflicting duplicates, sorts rows ascending and verifies the exact contiguous range from the current applied sequence + 1 through the envelope sequence.
+- A missing sequence, invalid row or conflicting duplicate requests recovery before any new applied watermark is committed. Each accepted event is applied with a rollback baseline; the world-applied marker and MultiplayerManager.commitAppliedSequence advance only after successful application.
+- EVENT_SKIPPED consumes the sequence without changing native world state. Stale/duplicate rows cannot roll the world backward.
+- ACTION_ACCEPTED also requires the next contiguous sequence and validates/applies its event before committing the applied sequence. A full snapshot older than the client's applied sequence is rejected before live-world mutation.
+
+### Server request replay and recovery policy
+- processed_actions stores a canonical request fingerprint. Same-player retries with equivalent action/payload replay the recorded result; a different player or changed action/payload with the same requestId is a conflict.
+- Fingerprints are stable across JSON object-key ordering. The schema migration adds request fingerprint and delegated-authority completion identity columns idempotently while preserving older receipt rows.
+- The reconnect replay policy remains unchanged: a non-current publisher can receive EVENT_BATCH only for a complete contiguous retained range of 1–50 events; gaps outside that range, incomplete rows or ineligible publisher/visibility states use full SNAPSHOT. RESYNC remains a full SNAPSHOT.
+- The ACTION transaction boundary rolls back persisted state, claims, processed receipt, event, sequence and world time together. Success broadcasts are delayed until commit; transactionSync unavailability fails closed.
+
+No protocol vocabulary change, production Worker deployment or physical two-device test is claimed.

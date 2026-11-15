@@ -441,3 +441,14 @@ The Android producer serializes ACTION as a JSON string body with action, data a
 
 WAIT and USE_ABILITY remain declared names but have no Android native action producer/bridge. They stay fail-closed and no action is fabricated. Worker validators continue to decide actual field types, requiredness, allowed values and feature-specific subcases; field-name inventory alone is not proof of runtime support.
 
+## Phase 11-B — ordered event application and native-state safety (2026-11-15)
+
+Current code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed exact-head [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036), including Android JVM tests and Debug APK compilation.
+
+MessageRouter.handleEventBatchMessage now normalizes a batch before live application: it requires safe positive sequence values, removes exact duplicate rows, rejects conflicting duplicates, sorts by sequence, and verifies a contiguous range that begins immediately after the client's applied watermark and ends at the envelope sequence. An ahead-of-watermark row or malformed event requests recovery without advancing the applied sequence.
+
+Each valid event is applied behind a native-world rollback baseline. The world-applied marker and manager watermark commit only after application succeeds; failures roll back and request RESYNC. EVENT_SKIPPED advances the sequence while leaving Hero/Mob/world state untouched. Stale events do not undo newer Mob positions. ACTION_ACCEPTED shares contiguous sequence discipline and duplicate delivery is guarded.
+
+The full snapshot path still rejects stale or structurally incomplete snapshots before changing live world state. The implementation does not change native SPD combat formulas or add a new action/message type.
+
+Current test inventory: NativeCombatRuntimeIntegrationTest.java has 74 @Test methods; NetworkProtocolParityTest.java remains at 15. No physical two-device test is claimed.

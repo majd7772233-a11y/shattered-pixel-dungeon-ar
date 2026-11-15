@@ -391,10 +391,10 @@ The first typed-path attempt exposed a missing retained TestTransport local in t
 
 ### Scope and phase boundary
 
-That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. No Worker output, route/validator, SQL persistence, sequence handling, replay/resync algorithm or native SPD gameplay rule changed; Phase 11 remains unstarted.
+That sentence described the bounded Phase 10-D state. Phase 10-E subsequently added typed PLAYER_JOINED/READY handling, an exhaustive 25-value client route switch and source-backed per-action payload inventory. At that Phase 10-D checkpoint, Phase 11 had not started; the subsequent Phase 11-A/11-B work is recorded below.
 
 
-## Phase 11-A — event ordering and replay characterization (test-only; exact-head CI verified)
+## Historical Phase 11-A — event ordering and replay characterization (test-only; superseded by Phase 11-B)
 
 Starting audited HEAD `3a1924c7e482757543b2500dda86b1d3e94960af`; final code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 10 Vitest files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3.
 
@@ -433,3 +433,25 @@ Implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74. Exact-head [C
 New Android behavior regressions cover PLAYER_JOINED, duplicate joins, sender/payload identity mismatch, READY true/false, PING/CHAT/non-inbound no-phantom-player handling and readiness restore after SNAPSHOT. Existing PLAYER_LEFT cleanup and EVENT_BATCH single-application tests remain enabled.
 
 These tests validate source and local/CI runtimes only. They do not prove production Worker deployment, live WebSocket operation in production or a physical two-device session. WAIT and USE_ABILITY remain non-emitted Android action declarations; CHAT remains non-routed without a client chat surface. Phase 10 is closed for its agreed implementation/automated-acceptance scope; Phase 11 is the next eligible phase but has not started.
+
+## Phase 11-B — event ordering, replay identity and atomicity (2026-11-15)
+
+**Exact source/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036) passed all three jobs.
+
+### Android JVM regressions
+The current NativeCombatRuntimeIntegrationTest.java has 74 @Test methods (the Phase 11-A snapshot recorded 70). The Phase 11-B event cases include:
+- staleEventCannotRollBackNewerNativeMobPosition: a stale event cannot move a Mob backward.
+- eventBatchSortsOutOfOrderRowsBeforeContiguousApplication: out-of-order rows are sorted before ordered application.
+- eventArrivingAheadOfMissingSequenceRequestsSnapshotWithoutAdvancingWatermark: a sequence gap requests RESYNC without watermark advance.
+- opaqueSkippedEventConsumesSequenceWithoutChangingWorld: an intentionally skipped event consumes only its sequence.
+- malformedNewEventDoesNotAdvanceAppliedSequenceBeforeRequestingResync: malformed state is rejected without committing sequence or changing the Hero.
+- staleFullSnapshotIsRejectedWithoutChangingLiveWorldOrAppliedSequence and incompleteFullSnapshotIsRejectedWithoutChangingLiveWorldOrSequence: invalid/stale full-state recovery preserves live state.
+- actionAcceptedAndEventBatchDuplicateSequenceApplyOnlyOnce: overlapping acceptance/event delivery cannot apply one sequence twice.
+
+NetworkProtocolParityTest.java remains at 15 tests.
+
+### Worker and Durable Object regressions
+The MatchRoom suite verifies changed same-player request payload/action and cross-player requestId reuse conflict; exact retry replay with canonical key-order equivalence; idempotent processed-action fingerprint migration preserving legacy receipts; separate delegated authority completion identity; concurrent exact retry committing one event/sequence/world-time charge; and atomic rollback with no success broadcast on failure. Existing reconnect 50/51/incomplete-retention and RESYNC full-SNAPSHOT behavior remain regression constraints.
+
+### Exact-head CI
+Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. No deployment or physical-device acceptance is implied.

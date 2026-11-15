@@ -165,3 +165,15 @@ Do not make a large refactor of these files merely to improve documentation. Pla
 At SHA f2d79038d1e420461be7a1956471324de5c1ef74 / CI 43618725089, MessageRouter has 25 explicit route decisions and no catch-all forwarding to RemotePlayerActionReceiver. PLAYER_JOINED, PLAYER_LEFT, READY and PING are typed; CHAT is explicitly not routed to game state. RemotePlayer adds server-backed isReady metadata. The receiver remains available for explicit native Hero setup and legacy helper duties, including the render-thread-only setup helper that defers HeroSprite creation until GameScene exists.
 
 The ACTION schema now has 23 action-specific field definitions. The source inventory tracks 361 Worker-consumed field names (346 source-referenced in the listed Java producer files, 15 Worker-only; static name presence is not proof of runtime serialization on every branch) and checks 18 required NativeLevelSnapshot fields. The ordinary npm test path runs the new validate-phase10-action-contracts.mjs guard. WAIT and USE_ABILITY remain declared but non-emitted by Android and fail-closed.
+
+## Phase 11-B current responsibility map (2026-11-15)
+
+- core/.../multiplayer/MessageRouter.java: render-thread EVENT_BATCH ordering, duplicate/conflict detection, contiguous watermark checks, per-event rollback and sequenced ACTION_ACCEPTED handling.
+- core/.../multiplayer/MultiplayerManager.java: owns the last-applied sequence and contiguous commit API; RESYNC gates further incremental application until recovery.
+- core/.../multiplayer/WorldSnapshot.java: validates/restores full world state and rejects stale snapshots before live mutation.
+- server/src/match-room/actions.ts: canonical request fingerprinting, replay classification and ACTION transaction orchestration.
+- server/src/match-room/persistence.ts: idempotent processed-action schema migration and request/authority receipt persistence.
+- server/src/match-room/messages.ts and snapshots.ts: reconnect/RESYNC recovery paths and authoritative snapshot generation.
+- server/src/match-room/lifelink-death.integration.test.ts: deterministic MatchRoom request replay/conflict/rollback tests, including regression constraints for reconnect behavior.
+
+Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed CI [43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036): Backend 740 reported executions, Android JVM/Debug APK, and Durable Object SQLite 4/4. Current native integration suite is 74 @Test methods. These files implement the accepted Phase 11-B scope; Phase 12 remains unstarted.

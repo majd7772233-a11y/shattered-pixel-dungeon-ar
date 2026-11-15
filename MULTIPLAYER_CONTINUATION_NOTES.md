@@ -1,19 +1,36 @@
-# Multiplayer Continuation Notes — Phase 11-A characterization tests added; parent Phase 11 remains open
+# Multiplayer Continuation Notes — Phase 11-B completed; Phase 12 not started
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
-**Only working branch:** multiplayer-framework-core-14118577486727081892  
-**Starting audited HEAD:** 3a1924c7e482757543b2500dda86b1d3e94960af  
-**Final Phase 11-A code/test SHA:** `1aa62a881dfef122256be253e2c96fd94eddcdea`  
-**Exact-head CI:** [43641719063 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063)
+**Only working branch:** `multiplayer-framework-core-14118577486727081892`  
+**Latest code/test HEAD:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`  
+**Exact-head CI:** [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036)
 
-## 2026-11-14 — Phase 11-A characterization slice
+## 2026-11-15 — Phase 11-B implementation and acceptance
 
-- Phase 10-A through 10-E remain complete. Phase 11-A now has a separate user-requested characterization scope; the parent phase remains OPEN.
-- Added five Worker MatchRoom scenarios: replay at the 50-event boundary; full snapshot above 50; incomplete-retention fallback; RESYNC full snapshot; and same-player requestId reuse with a changed action/payload returning the previously stored result under current behavior.
-- Added three Android JVM cases: gap/out-of-order batch behavior, malformed-event watermark behavior, and stale full snapshot rejection without live-world mutation. NativeCombatRuntimeIntegrationTest now has 70 @Test methods; NetworkProtocolParityTest remains at 15.
-- Existing stale/duplicate combat-event, snapshot rollback, and Worker transaction rollback coverage remains unchanged.
-- No Worker handler/validator/SQL, Android runtime router/manager/snapshot implementation, protocol, event/sequence/replay/resync algorithm, or native SPD gameplay changed.
-- Exact Phase 11-A code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed CI `43641719063`: Backend 10 files / 718 executions, Android JVM + Debug APK, and Durable Object SQLite 3/3. The earlier intermediate commit `528c863405a812e70693a1aca9de74ef2d5acc25` failed Android Java compilation because of incorrectly escaped JSON literals; `1aa62a88` fixed them and added explicit unchanged-Hero assertions. No runtime implementation was changed. No production Worker deployment or physical-device session is claimed.
+- **Phase 11-B code/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact-head CI [run 43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
+- **Android event application:** EVENT_BATCH rows are validated and normalized before application; exact duplicate sequences are applied once, conflicting duplicates reject, rows are sorted into ascending order and must form the complete contiguous range beginning at the last applied sequence + 1. The envelope sequence must match the batch tail. Gaps, malformed rows or invalid application request full recovery without advancing the applied watermark. Per-event rollback baselines protect the live native world; applied sequence commits only after successful application. EVENT_SKIPPED consumes its valid sequence without changing the world. Stale snapshots are rejected before live restore.
+- **Worker request identity:** processed_actions stores canonical request fingerprints and delegated-completion identity. Exact retries from the same player with equivalent payloads replay the recorded result; reuse by another player or with different action/payload is rejected as REQUEST_ID_CONFLICT. Object-key ordering does not change a canonical fingerprint. Legacy processed-action rows are retained through idempotent column migration.
+- **Atomic ACTION boundary:** the covered Durable Object ACTION path uses transactionSync. Persistent state/claims, processed-action receipt, event, sequence and world-time changes roll back together on failure. Success ACKs and broadcasts are held until commit; the transaction path fails closed when synchronous transactions are unavailable.
+- **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
+- **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
+- **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
+
+- The current NativeCombatRuntimeIntegrationTest.java contains **74 @Test methods**. NetworkProtocolParityTest.java remains at 15.
+- Android regressions cover out-of-order sorting, missing-sequence recovery, stale-event suppression, opaque skipped events, no watermark advance for malformed events, stale/incomplete snapshot rejection, and duplicate ACTION_ACCEPTED/EVENT_BATCH application.
+- Worker regressions cover request fingerprint migration/replay/conflict, stable fingerprints despite object-key ordering, cross-player reuse, delegated completion identity, concurrent exact retry (one event/sequence/world-time charge), and rollback/no success broadcast on transaction failure.
+- The Durable Object SQLite workflow has four passing integration tests. Backend has 740 reported executions across 10 Vitest files; mirrored TS/JS results are not unique source scenario counts.
+
+## Phase state and next checkpoint
+
+- Phase 10: closed.
+- Phase 11-A: characterization gate complete and retained as historical regression coverage.
+- Phase 11-B: implementation, regression tests and source-HEAD CI complete; accepted Phase 11 scope is closed.
+- Phase 12: next eligible roadmap phase, **not started**. Do not begin without a separate explicit user request.
+- No production Worker deployment or physical two-device gameplay is claimed. Phases 22–23 own those release checks.
+
+## Exact next-chat guard
+
+On the next request, re-fetch the live branch head and CI first. Read GPT.md, ROADMAP.md, this file, and PROJECT_EXECUTION_PROTOCOL_AR.md, then all current Markdown and the relevant live source/tests. Work only on the named branch. Do not create branches, touch master/main, open a PR, or start Phase 12 automatically. Begin Phase 12 only if the user explicitly asks; otherwise answer Phase 11-B questions without modifying code.
 
 ## Historical Phase 10-E final closure
 

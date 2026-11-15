@@ -130,7 +130,7 @@ For line/method responsibilities, use COMPONENT_AND_FILE_MAP.md and the Phase 10
 | Test path | Current source evidence |
 |---|---|
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NetworkProtocolParityTest.java | 15 JVM tests for canonical envelope parser/serializer, strict required and optional fields, version/sequence, malformed JSON, unknown types, scoped LAN/Bluetooth legacy compatibility, HeroAction Optional mapping and transport framing/action parsing. |
-| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 67 @Test methods at the Phase 10-E closeout HEAD. Includes PLAYER_LEFT native cleanup, legacy RemoteHero position/HP compatibility and EVENT_BATCH no-double-application coverage. |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 74 @Test methods at Phase 11-B code/test SHA `2574489`. Includes the typed player/control paths, native combat/snapshot coverage, contiguous EVENT_BATCH ordering and recovery, watermark safety, stale/incomplete snapshots and duplicate ACTION_ACCEPTED/EVENT_BATCH handling. |
 
 These are automated JVM tests. They do not prove a production Worker deployment or a physical two-device session.
 
@@ -295,3 +295,17 @@ Exact implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed 
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/NativeCombatRuntimeIntegrationTest.java | 67 @Test methods at SHA f2d79038d1e420461be7a1956471324de5c1ef74; join identity, duplicate join, READY, CHAT/PING/non-inbound rejection and snapshot readiness regression coverage. |
 
 Exact source/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 43618725089 across Backend (six guards + 708 executions), Android JVM/Debug APK and three Durable Object SQLite tests. WAIT and USE_ABILITY remain explicitly non-emitted by Android; CHAT remains non-routed without a client UI. This closeout does not claim production deployment or physical-device validation.
+
+## Phase 11-B source references — current verified inventory
+
+| File | Phase 11-B responsibility |
+|---|---|
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java | EVENT_BATCH sequence validation, duplicate/order normalization, render-thread application, rollback and commit-after-success; ACTION_ACCEPTED contiguous handling. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java | Last-applied sequence commit and pending recovery gate. |
+| core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/WorldSnapshot.java | Full snapshot validation/restore and stale sequence rejection. |
+| server/src/match-room/actions.ts | Canonical request fingerprint, NEW/REPLAY/CONFLICT classification and ACTION transaction boundary. |
+| server/src/match-room/persistence.ts | Idempotent processed_actions migration with request and delegated-completion identity fields. |
+| server/src/match-room/messages.ts | Reconnect and RESYNC routing. |
+| server/src/match-room/lifelink-death.integration.test.ts | Request replay identity, concurrent retries, migration and transaction rollback regressions. |
+
+Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). Current integration test inventory is 74 Android @Test methods; the separate parity suite remains at 15.

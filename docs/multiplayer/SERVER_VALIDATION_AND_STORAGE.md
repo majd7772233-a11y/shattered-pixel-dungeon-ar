@@ -508,7 +508,7 @@ This is an envelope-level gate only. It does not replace domain validators, chan
 No replay or resync algorithm was modified by the admission gate or Phase 10-E. The Android envelope parser and fail-closed HeroAction producer mapping remain complete. Phase 10-E closed the client route migration and field-name inventory: MessageRouter now has 25 explicit decisions (PLAYER_JOINED/PLAYER_LEFT/READY/PING typed; CHAT explicitly non-routed without an Android chat surface), with no generic default forwarding to RemotePlayerActionReceiver. The schema includes the ACTION inner envelope and 23 action-specific field inventories; a static guard reconciles 361 Worker field names with 346 source-referenced in Java producer files and 15 Worker-only fields plus the 18 required native snapshot fields. This did not change any Worker message producer/handler, inbound route, validator rule, SQL persistence path, sequence behavior, event ordering or EVENT_BATCH replay/resync semantics. Phase 10 closeout SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed exact-head CI 43618725089.
 
 
-## Phase 11-A — request replay and reconnect characterization (2026-11-14)
+## Historical Phase 11-A — request replay and reconnect characterization (2026-11-14; superseded by Phase 11-B)
 
 The current `processed_actions` replay key is `request_id`. `classifyRequestReplay(existing, playerId)` compares only the stored player ID. The same player receives the original `ACTION_ACCEPTED` sequence/result even when the incoming action and payload differ; a different player gets `REQUEST_ID_CONFLICT`. Phase 11-A adds a MatchRoom handler test for the changed-action/payload collision without changing the classifier or SQL schema.
 
@@ -517,3 +517,14 @@ The current `processed_actions` replay key is `request_id`. `classifyRequestRepl
 RESYNC remains a full-SNAPSHOT response. Its payload includes stored event rows in addition to authoritative player/Mob/level state; it is not an EVENT_BATCH replay path. The new test pins that distinction. No Worker action validator, event insert, SQL schema or request-replay algorithm changed in Phase 11-A.
 
 Phase 11-A test evidence: code/test SHA `1aa62a881dfef122256be253e2c96fd94eddcdea` passed exact-head CI [43641719063](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43641719063): Backend 10 files / 718 executions, Android JVM + Debug APK, Durable Object SQLite 3/3. This test-only slice did not change request replay classification, event insertion, SQL schema or recovery behavior.
+
+## Phase 11-B — request fingerprinting and atomic ACTION transaction (2026-11-15)
+
+At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, [exact-head CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036) passed all three jobs.
+
+- The processed_actions migration now idempotently adds request_fingerprint, authority_id and completion_fingerprint without discarding legacy receipts.
+- requestPayloadFingerprint canonicalizes the accepted request payload before fingerprinting. The replay classifier distinguishes NEW, exact REPLAY and CONFLICT. Exact retry requires the same player and same action/payload identity; changed payload/action or cross-player requestId reuse returns REQUEST_ID_CONFLICT.
+- Delegated combat completion is separately bound to the authority and completion fingerprint; it does not permit another player to reuse the original request identity.
+- The ACTION entry point runs the covered mutation path inside state.storage.transactionSync. Persistent action state, related claims, the processed receipt, event row, sequence and world-time accounting participate in the same transaction. The in-memory checkpoint is restored on failure.
+- WebSocket ACKs and room broadcasts are queued until the transaction commits; an exception before commit cannot leak an accepted response or event. If the runtime lacks transactionSync, the operation fails closed.
+- Existing action-specific validators remain authoritative for pre-state, depth, ownership, stable target identity, native result and action cost. This closeout does not loosen validator rules or add support for a previously unsupported native action.
