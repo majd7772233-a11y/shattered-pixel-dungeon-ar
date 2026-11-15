@@ -27,7 +27,7 @@ public final class MessageRouter {
 
         switch (message.messageType) {
             case SESSION:
-                manager.updateLastSequence(message.sequence);
+                // The session baseline is installed by MultiplayerManager before routing.
                 break;
             case SNAPSHOT:
                 handleSnapshotMessage(message);
@@ -44,17 +44,13 @@ public final class MessageRouter {
                 handleCombatRequest(message);
                 break;
             case ACTION_ACCEPTED:
-                Game.runOnRenderThread(() -> {
-                    manager.updateLastSequence(message.sequence);
-                    applyAcceptedAction(message);
-                });
+                Game.runOnRenderThread(() -> handleAcceptedActionMessage(message));
                 break;
             case ACK:
-                manager.updateLastSequence(message.sequence);
-                manager.handleServerEntityAck(message);
+                Game.runOnRenderThread(() -> handleServerAckMessage(message));
                 break;
             case MATCH_END:
-                manager.updateLastSequence(message.sequence);
+                Game.runOnRenderThread(() -> handleSequencedMatchEnd(message));
                 break;
             case ERROR:
                 handleErrorMessage(message);
@@ -467,6 +463,162 @@ public final class MessageRouter {
         }
     }
 
+    private static boolean isSupportedSequencedEvent(String eventType) {
+        return "PLAYER_ATTACKED".equals(eventType) || "MOB_MOVED".equals(eventType)
+                || "MOB_ATTACKED".equals(eventType) || "CHAR_DAMAGED".equals(eventType)
+                || "PLAYER_MOVED".equals(eventType) || "PLAYER_DAMAGED".equals(eventType)
+                || "CHAR_DIED".equals(eventType) || "PLAYER_REVIVED".equals(eventType)
+                || "HERO_BUFF_TICKED".equals(eventType) || "NATIVE_WORLD_MUTATION".equals(eventType)
+                || "ITEM_PICKED_UP".equals(eventType) || "CHEST_OPENED".equals(eventType)
+                || "LEVEL_TRANSITION".equals(eventType) || "LEVEL_TRANSITION_ABORTED".equals(eventType)
+                || "MATCH_END".equals(eventType);
+    }
+
+    private static boolean isValidSequencedEventAction(String eventType, JsonValue action) {
+        if (action == null || !action.isObject()) return false;
+        if ("PLAYER_MOVED".equals(eventType)) {
+            return hasNonEmptyString(action.get("playerId")) && isNonNegativeInteger(action.get("pos"));
+        }
+        if ("MOB_MOVED".equals(eventType)) {
+            boolean hasMobId = isNonNegativeInteger(action.get("mobId"));
+            boolean hasStableTarget = hasNonEmptyString(action.get("targetId"));
+            JsonValue destination = action.get("toPos") == null ? action.get("targetPosAfter") : action.get("toPos");
+            return (hasMobId || hasStableTarget) && isNonNegativeInteger(destination);
+        }
+        if ("PLAYER_ATTACKED".equals(eventType) || "PLAYER_DAMAGED".equals(eventType)) {
+            return hasNonEmptyString(action.get("targetId"))
+                    && isNonNegativeInteger(action.get("targetHp"))
+                    && isPositiveInteger(action.get("targetHt"));
+        }
+        if ("CHAR_DIED".equals(eventType)) {
+            return hasNonEmptyString(action.get("playerId")) || hasNonEmptyString(action.get("targetPlayerId"));
+        }
+        if ("PLAYER_REVIVED".equals(eventType)) {
+            return hasNonEmptyString(action.get("playerId"))
+                    && (isNonNegativeInteger(action.get("hp")) || hasNonEmptyString(action.get("heroStateJson")));
+        }
+        if ("CHEST_OPENED".equals(eventType)) return isNonNegativeInteger(action.get("itemPos"));
+        if ("LEVEL_TRANSITION".equals(eventType)) {
+            return hasNonEmptyString(action.get("playerId"))
+                    && isPositiveInteger(action.get("fromDepth")) && isPositiveInteger(action.get("depth"))
+                    && isNonNegativeInteger(action.get("transitionPos"))
+                    && hasNonEmptyString(action.get("transitionType"))
+                    && hasNonEmptyString(action.get("targetType"))
+                    && isNonNegativeInteger(action.get("targetBranch"));
+        }
+        if ("LEVEL_TRANSITION_ABORTED".equals(eventType)) {
+            return isPositiveInteger(action.get("fromDepth")) && isPositiveInteger(action.get("depth"))
+                    && isNonNegativeInteger(action.get("transitionPos"))
+                    && isNonNegativeInteger(action.get("targetBranch"));
+        }
+        // These types deliberately fall back to a full snapshot rather than scalar application.
+        return isSupportedSequencedEvent(eventType);
+    }
+
+    private static boolean hasNonEmptyString(JsonValue value) {
+        return value != null && value.isString() && !value.asString().isEmpty();
+    }
+
+    private static boolean isNonNegativeInteger(JsonValue value) {
+        return value != null && value.isNumber() && Double.isFinite(value.asDouble())
+                && value.asDouble() >= 0d && value.asDouble() <= 9007199254740991d
+                && value.asDouble() == Math.floor(value.asDouble());
+    }
+
+    private static boolean isPositiveInteger(JsonValue value) {
+        return isNonNegativeInteger(value) && value.asDouble() >= 1d;
+    }
+
+    private static void handleAcceptedActionMessage(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.sequence <= manager.getLastSequence() || manager.hasPendingResync()) return;
+        if (message.sequence != manager.getLastSequence() + 1L) {
+            manager.requestResync(message.sequence);
+            return;
+        }
+        WorldSnapshot rollback = null;
+        try {
+            JsonValue accepted = message.payloadJson == null ? null : new JsonReader().parse(message.payloadJson);
+            JsonValue action = accepted == null ? null : accepted.get("action");
+            String eventType = stringValue(accepted == null ? null : accepted.get("eventType"), "");
+            String status = stringValue(accepted == null ? null : accepted.get("status"), "");
+            if (accepted == null || !accepted.isObject() || !"ACCEPTED".equals(status)
+                    || action == null || !isValidSequencedEventAction(eventType, action)) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+            rollback = WorldSnapshot.captureLocalRollbackBaseline();
+            if (rollback == null) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+            applyAcceptedAction(message);
+            if (manager.hasPendingResync()) {
+                WorldSnapshot.rollbackToLocalBaseline(rollback);
+                manager.requestResync(message.sequence);
+                return;
+            }
+            if (!WorldSnapshot.markCurrentWorldApplied(message.sequence)) {
+                WorldSnapshot.rollbackToLocalBaseline(rollback);
+                manager.requestResync(message.sequence);
+                return;
+            }
+            if (!manager.commitAppliedSequence(message.sequence)) {
+                WorldSnapshot.rollbackToLocalBaseline(rollback);
+                manager.requestResync(message.sequence);
+            }
+        } catch (RuntimeException invalidAcceptedResult) {
+            if (rollback != null) WorldSnapshot.rollbackToLocalBaseline(rollback);
+            manager.requestResync(message.sequence);
+        }
+    }
+
+    private static void handleServerAckMessage(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.handleServerEntityAck(message);
+        if (message == null || message.payloadJson == null) return;
+        try {
+            JsonValue payload = new JsonReader().parse(message.payloadJson);
+            boolean accepted = payload != null && payload.isObject()
+                    && payload.get("accepted") != null && payload.get("accepted").asBoolean();
+            String source = stringValue(payload == null ? null : payload.get("source"), "");
+            // LEVEL_DATA is a complete publisher checkpoint. Its ACK can safely establish a
+            // sequence even when that publication persisted more than one server event.
+            if (!accepted || !"SPD_JAVA_GENERATOR".equals(source)
+                    || message.sequence < manager.getLastSequence()) return;
+            if (WorldSnapshot.markCurrentWorldApplied(message.sequence)) {
+                manager.markSnapshotApplied(message.sequence);
+            } else {
+                manager.requestResync(message.sequence);
+            }
+        } catch (RuntimeException invalidAck) {
+            // Identity acknowledgements do not carry world authority unless fully validated above.
+        }
+    }
+
+    private static void handleSequencedMatchEnd(NetworkMessage message) {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || message.sequence <= manager.getLastSequence() || manager.hasPendingResync()) return;
+        if (message.sequence != manager.getLastSequence() + 1L) {
+            manager.requestResync(message.sequence);
+            return;
+        }
+        try {
+            JsonValue payload = message.payloadJson == null ? null : new JsonReader().parse(message.payloadJson);
+            if (payload == null || !payload.isObject()) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+            if (!WorldSnapshot.markCurrentWorldApplied(message.sequence)) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+            if (!manager.commitAppliedSequence(message.sequence)) manager.requestResync(message.sequence);
+        } catch (RuntimeException invalidMatchEnd) {
+            manager.requestResync(message.sequence);
+        }
+    }
+
     private static void applyAcceptedAction(NetworkMessage message) {
         if (message.payloadJson == null) return;
         try {
@@ -857,25 +1009,75 @@ public final class MessageRouter {
         }
     }
     private static void handleEventBatchMessage(NetworkMessage message) {
-        if (message.payloadJson == null) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        if (message == null || manager.hasPendingResync()) return;
+        if (message.payloadJson == null || message.sequence < 1L) {
+            manager.requestResync(message == null ? manager.getLastSequence() : message.sequence);
+            return;
+        }
         try {
-            JsonValue events = new JsonReader().parse(message.payloadJson);
-            if (events == null || !events.isArray()) {
-                // Combat/world events have one typed, sequence-aware path. Substring parsing
-                // can apply damage or death effects twice and can resolve the wrong target.
-                MultiplayerManager.getInstance().requestResync(message.sequence);
+            JsonValue parsedEvents = new JsonReader().parse(message.payloadJson);
+            if (parsedEvents == null || !parsedEvents.isArray() || parsedEvents.size > 128) {
+                manager.requestResync(message.sequence);
                 return;
             }
 
-            for (JsonValue event = events.child; event != null; event = event.next) {
-                long seq = longValue(event.get("sequence"), message.sequence);
-                MultiplayerManager manager = MultiplayerManager.getInstance();
-                // ACTION_ACCEPTED and event delivery may report the same sequence, and delayed
-                // batches can arrive after a newer combat snapshot. Never apply either twice or
-                // let an older HP/death/loot result roll back the newer world state.
-                if (seq <= manager.getLastSequence()) continue;
-                manager.updateLastSequence(seq);
+            java.util.TreeMap<Long, JsonValue> ordered = new java.util.TreeMap<>();
+            for (JsonValue event = parsedEvents.child; event != null; event = event.next) {
+                if (!event.isObject()) throw new IllegalArgumentException("EVENT_BATCH row must be an object");
+                JsonValue sequenceValue = event.get("sequence");
+                if (sequenceValue == null || !sequenceValue.isNumber()) {
+                    throw new IllegalArgumentException("EVENT_BATCH sequence missing");
+                }
+                double rawSequence = sequenceValue.asDouble();
+                if (!Double.isFinite(rawSequence) || rawSequence < 1d
+                        || rawSequence > 9007199254740991d || rawSequence != Math.floor(rawSequence)) {
+                    throw new IllegalArgumentException("EVENT_BATCH sequence is not a safe positive integer");
+                }
+                long sequence = (long) rawSequence;
+                JsonValue previous = ordered.putIfAbsent(sequence, event);
+                if (previous != null && !previous.toString().equals(event.toString())) {
+                    throw new IllegalArgumentException("Conflicting duplicate EVENT_BATCH sequence");
+                }
+            }
+
+            long current = manager.getLastSequence();
+            long expected = current + 1L;
+            for (Long sequence : ordered.keySet()) {
+                if (sequence <= current) continue; // Identical delayed/duplicate rows are harmless.
+                if (sequence.longValue() != expected) {
+                    manager.requestResync(message.sequence);
+                    return;
+                }
+                expected++;
+            }
+            long highestNewSequence = expected - 1L;
+            if (message.sequence > current && highestNewSequence != message.sequence) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+            if (highestNewSequence > current && ordered.lastKey() != message.sequence) {
+                manager.requestResync(message.sequence);
+                return;
+            }
+
+            for (java.util.Map.Entry<Long, JsonValue> entry : ordered.entrySet()) {
+                long sequence = entry.getKey();
+                if (sequence <= manager.getLastSequence()) continue;
+                JsonValue event = entry.getValue();
                 String type = stringValue(event.get("eventType"), stringValue(event.get("event_type"), ""));
+                if ("EVENT_SKIPPED".equals(type)) {
+                    // Server-side visibility filtering sends no action/body, only a sequence receipt.
+                    if (!manager.commitAppliedSequence(sequence)) {
+                        manager.requestResync(message.sequence);
+                        return;
+                    }
+                    continue;
+                }
+                if (!isSupportedSequencedEvent(type)) {
+                    manager.requestResync(sequence);
+                    return;
+                }
                 JsonValue action = event.get("action");
                 if (action == null) {
                     JsonValue storedPayload = event.get("payload");
@@ -885,240 +1087,302 @@ public final class MessageRouter {
                         action = storedPayload;
                     }
                 }
-                if (action == null || !action.isObject()) {
-                    MultiplayerManager.getInstance().requestResync(MultiplayerManager.getInstance().getLastSequence());
-                    continue;
+                if (!isValidSequencedEventAction(type, action)) {
+                    manager.requestResync(sequence);
+                    return;
+                }
+                WorldSnapshot rollback = WorldSnapshot.captureLocalRollbackBaseline();
+                if (rollback == null) {
+                    manager.requestResync(sequence);
+                    return;
                 }
 
-                if ("PLAYER_ATTACKED".equals(type)) {
-                    String attackerId = stringValue(action.get("attackerId"), null);
-                    String attackerState = stringValue(action.get("attackerStateJson"), null);
-                    if (attackerId != null && attackerState != null && !attackerState.isEmpty()) {
-                        if (attackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
-                            if (Dungeon.hero != null) WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerState);
-                        } else {
-                            applyRemoteHeroState(attackerId, attackerState);
-                        }
-                    }
-                }
+                NetworkMessage singleEvent = new NetworkMessage();
+                singleEvent.messageType = MessageType.EVENT_BATCH;
+                singleEvent.sequence = sequence;
+                singleEvent.senderId = message.senderId;
+                singleEvent.payloadJson = "[" + event.toString() + "]";
+                applySingleEventBatchMessage(singleEvent);
 
-                if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
-                    applyMobEvent(type, action);
-                    if ("CHAR_DAMAGED".equals(type)
-                            && "MOB".equals(stringValue(action.get("targetType"), ""))
-                            && action.get("targetMobBundleAfter") != null
-                            && action.get("targetMobBundleAfter").isString()
-                            && !action.get("targetMobBundleAfter").asString().isEmpty()) {
-                        // Periodic effects may change native AI/alert/cooldown state in addition
-                        // to the scalar combat fields; restore the publisher's complete snapshot.
-                        MultiplayerManager.getInstance().requestResync(seq);
-                    }
-                } else if ("PLAYER_MOVED".equals(type)) {
-                    String playerId = stringValue(action.get("playerId"), message.senderId);
-                    int pos = intValue(action.get("pos"), -1);
-                    if (playerId != null && pos >= 0) {
-                        WorldSnapshot delta = new WorldSnapshot(seq, intValue(event.get("depth"), Dungeon.depth), 0L);
-                        delta.playerPositions.put(playerId, pos);
-                        WorldSnapshot.restoreWorld(delta);
-                    }
-                } else if ("PLAYER_ATTACKED".equals(type) || "PLAYER_DAMAGED".equals(type)) {
-                    String targetType = stringValue(action.get("targetType"), "MOB");
-                    String targetId = stringValue(action.get("targetId"), null);
-                    int hp = intValue(action.get("targetHp"), -1);
-                    if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
-                        String targetHeroState = stringValue(action.get("targetHeroStateJson"), null);
-                        if (targetHeroState != null && !targetHeroState.isEmpty()) {
-                            if (targetId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
-                                int oldPos = Dungeon.hero == null ? -1 : Dungeon.hero.pos;
-                                WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, targetHeroState);
-                                if (Dungeon.hero != null && Dungeon.hero.sprite != null && oldPos >= 0 && oldPos != Dungeon.hero.pos) {
-                                    Dungeon.hero.sprite.move(oldPos, Dungeon.hero.pos);
-                                }
-                            } else {
-                                applyRemoteHeroState(targetId, targetHeroState);
-                            }
-                        } else {
-                            applyPlayerHp(targetId, hp);
-                            int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
-                            if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
-                            String targetBuffs = stringValue(action.get("targetBuffs"), null);
-                            if (targetBuffs != null) applyPlayerCombatBuffs(targetId, targetBuffs);
-                        }
-                        String state = stringValue(action.get("targetState"), "ALIVE");
-                        if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
-                    } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
-                        applyMobEvent(type, action);
-                    }
-                    JsonValue secondary = action.get("secondaryMobDeltas");
-                    if (secondary != null && secondary.isString()) {
-                        try { secondary = new JsonReader().parse(secondary.asString()); }
-                        catch (RuntimeException malformedDelta) { secondary = null; }
-                    }
-                    JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
-                    JsonValue nativeMobBundle = action.get("targetMobBundleAfter");
-                    JsonValue secondaryResync = action.get("secondaryMobResyncRequired");
-                    boolean secondaryResyncRequired = secondaryResync != null && secondaryResync.asBoolean();
-                    boolean hasSecondaryMobChanges = secondaryDeltas != null
-                            && secondaryDeltas.isArray() && secondaryDeltas.size > 0;
-                    if (secondaryResyncRequired || hasSecondaryMobChanges
-                            || ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)
-                                && nativeMobBundle != null && nativeMobBundle.isString()
-                                && !nativeMobBundle.asString().isEmpty())) {
-                        // Apply direct mob changes only from the shared-level owner. Secondary
-                        // effects from another player's PvP simulation are not shared authority;
-                        // refresh the exact server-committed state instead of partially replaying.
-                        MultiplayerManager.getInstance().requestResync(seq);
-                    }
-                    if ("PLAYER_DAMAGED".equals(type)
-                            && "MOB".equals(stringValue(action.get("sourceType"), ""))
-                            && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
-                        JsonValue sourceBundle = action.get("sourceMobBundleAfter");
-                        JsonValue sourceResync = action.get("sourceMobResyncRequired");
-                        boolean sourceResyncRequired = sourceResync != null && sourceResync.asBoolean();
-                        boolean fullMobBundlePresent = sourceBundle != null && sourceBundle.isString()
-                                && !sourceBundle.asString().isEmpty();
-                        if (sourceResyncRequired || fullMobBundlePresent) {
-                            // Do not optimistically apply scalar HP/position/buff values when the
-                            // server discarded those reactive changes or a full native Mob bundle
-                            // proves scalar reconciliation incomplete. Wait for the publisher snapshot.
-                            MultiplayerManager.getInstance().requestResync(seq);
-                        } else {
-                            applyMobEvent(type, action);
-                        }
-                    }
-                } else if ("CHAR_DIED".equals(type)) {
-                    String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
-                    if (playerId != null) applyPlayerDeath(playerId);
-                } else if ("PLAYER_REVIVED".equals(type)) {
-                    String playerId = stringValue(action.get("playerId"), null);
-                    int hp = intValue(action.get("hp"), -1);
-                    String heroStateJson = stringValue(action.get("heroStateJson"), null);
-                    if (playerId != null && heroStateJson != null && !heroStateJson.isEmpty()) {
-                        if (playerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
-                            WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, heroStateJson);
-                        } else {
-                            applyRemoteHeroState(playerId, heroStateJson);
-                        }
-                    } else if (playerId != null && hp >= 0) {
-                        applyPlayerHp(playerId, hp);
-                    }
-                } else if ("HERO_BUFF_TICKED".equals(type)) {
-                    // Timed effects can update HP, shielding, and native Buff bundles together.
-                    // Reconcile the full accepted Hero state instead of applying scalar deltas.
-                    MultiplayerManager.getInstance().requestResync(seq);
-                } else if ("NATIVE_WORLD_MUTATION".equals(type)) {
-                    // Inventory, quickslots, and native heap stacks must converge from one committed snapshot.
-                    MultiplayerManager.getInstance().requestResync(seq);
-                } else if ("ITEM_PICKED_UP".equals(type)) {
-                    // Legacy event payloads do not identify one exact stack. The committed native
-                    // world snapshot is the single authority for item ownership and heap contents.
-                    MultiplayerManager.getInstance().requestResync(seq);
-                } else if ("CHEST_OPENED".equals(type)) {
-                    int itemPos = intValue(action.get("itemPos"), -1);
-                    if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
-                } else if ("LEVEL_TRANSITION".equals(type)) {
-                    MultiplayerManager transitionManager = MultiplayerManager.getInstance();
-                    transitionManager.markFloorTransitionPending();
-                    String initiatorId = stringValue(action.get("playerId"), "");
-                    int sourceDepth = intValue(action.get("fromDepth"), -1);
-                    int destinationDepth = intValue(action.get("depth"), -1);
-                    int stairsPos = intValue(action.get("transitionPos"), -1);
-                    String transitionType = stringValue(action.get("transitionType"), "");
-                    String targetType = stringValue(action.get("targetType"), "");
-                    int targetBranch = intValue(action.get("targetBranch"), -1);
-                    if (initiatorId.equals(transitionManager.getLocalPlayerId())
-                            || (Dungeon.branch == 0 && Dungeon.depth == destinationDepth)) {
-                        transitionManager.updateLastSequence(seq);
-                    } else if (Dungeon.hero == null || Dungeon.level == null || Dungeon.branch != 0
-                            || Dungeon.depth != sourceDepth || Dungeon.level.locked || targetBranch != 0
-                            || (destinationDepth != sourceDepth + 1 && destinationDepth != sourceDepth - 1)) {
-                        transitionManager.requestResync(seq);
-                    } else {
-                        if ("FALL".equals(transitionType)) {
-                            int pitPos = intValue(action.get("pitPos"), -1);
-                            boolean validNativePitFall = stairsPos >= 0 && stairsPos < Dungeon.level.length()
-                                    && pitPos >= 0 && pitPos < Dungeon.level.length()
-                                    && Dungeon.level.passable[stairsPos] && !Dungeon.level.pit[stairsPos]
-                                    && Dungeon.level.adjacent(stairsPos, pitPos)
-                                    && Dungeon.level.pit[pitPos] && !Dungeon.level.solid[pitPos]
-                                    && destinationDepth == sourceDepth + 1
-                                    && "FALL".equals(targetType);
-                            if (validNativePitFall) {
-                                int oldPos = Dungeon.hero.pos;
-                                Dungeon.hero.pos = stairsPos;
-                                if (Dungeon.hero.sprite != null && oldPos != stairsPos) {
-                                    Dungeon.hero.sprite.place(stairsPos);
-                                }
-                                com.shatteredpixel.shatteredpixeldungeon.levels.features.Chasm
-                                        .heroFallFromNetwork(pitPos);
-                                transitionManager.updateLastSequence(seq);
-                            } else {
-                                transitionManager.requestResync(seq);
-                            }
-                        } else {
-                        com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition transition =
-                                Dungeon.level.getTransition(stairsPos);
-                        boolean matchesNativeSource = transition != null && transition.cell() == stairsPos
-                                && transition.inside(stairsPos)
-                                && transition.type.name().equals(transitionType)
-                                && transition.destDepth == destinationDepth && transition.destBranch == 0
-                                && transition.destType != null && transition.destType.name().equals(targetType)
-                                && (transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
-                                    || transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE)
-                                && (transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
-                                    || transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE);
-                        if (matchesNativeSource) {
-                            // The remote peer follows the exact native transition selected by
-                            // the initiator, then lets SPD perform its own save/load operation.
-                            int oldPos = Dungeon.hero.pos;
-                            Dungeon.hero.pos = stairsPos;
-                            if (Dungeon.hero.sprite != null && oldPos != stairsPos) Dungeon.hero.sprite.place(stairsPos);
-                            if (Dungeon.level.activateTransition(Dungeon.hero, transition)) {
-                                transitionManager.updateLastSequence(seq);
-                            } else {
-                                Dungeon.hero.pos = oldPos;
-                                if (Dungeon.hero.sprite != null) Dungeon.hero.sprite.place(oldPos);
-                                transitionManager.requestResync(seq);
-                            }
-                        } else {
-                            transitionManager.requestResync(seq);
-                        }
-                        }
-                    }
-                } else if ("LEVEL_TRANSITION_ABORTED".equals(type)) {
-                    MultiplayerManager transitionManager = MultiplayerManager.getInstance();
-                    int sourceDepth = intValue(action.get("fromDepth"), -1);
-                    int destinationDepth = intValue(action.get("depth"), -1);
-                    int stairsPos = intValue(action.get("transitionPos"), -1);
-                    int targetBranch = intValue(action.get("targetBranch"), -1);
-                    if (sourceDepth < 1 || destinationDepth < 1
-                            || Math.abs(destinationDepth - sourceDepth) != 1
-                            || targetBranch != 0 || stairsPos < 0) {
-                        transitionManager.requestResync(seq);
-                    } else {
-                        transitionManager.markFloorTransitionComplete();
-                        transitionManager.invalidateCurrentLevelPublication();
-                        if (Dungeon.branch == 0 && Dungeon.depth == destinationDepth && Dungeon.hero != null) {
-                            // The source floor was saved by SPD's original InterlevelScene transition.
-                            // Return through that same native loader so seed, inventory and quest state survive.
-                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnDepth = sourceDepth;
-                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnBranch = 0;
-                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnPos = stairsPos;
-                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.curTransition = null;
-                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.mode =
-                                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.Mode.RETURN;
-                            Game.switchScene(com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.class);
-                        } else if (Dungeon.branch != 0 || Dungeon.depth != sourceDepth) {
-                            transitionManager.requestResync(seq);
-                        }
-                    }
-                } else if ("MATCH_END".equals(type)) {
-                    MultiplayerManager.getInstance().updateLastSequence(seq);
+                if (manager.hasPendingResync()) {
+                    WorldSnapshot.rollbackToLocalBaseline(rollback);
+                    manager.requestResync(sequence);
+                    return;
+                }
+                if (!WorldSnapshot.markCurrentWorldApplied(sequence)) {
+                    WorldSnapshot.rollbackToLocalBaseline(rollback);
+                    manager.requestResync(sequence);
+                    return;
+                }
+                if (!manager.commitAppliedSequence(sequence)) {
+                    WorldSnapshot.rollbackToLocalBaseline(rollback);
+                    manager.requestResync(sequence);
+                    return;
                 }
             }
-        } catch (RuntimeException ignored) {
-            // Do not keep using a partially reconciled combat state.
+        } catch (RuntimeException invalidBatch) {
+            manager.requestResync(message.sequence);
+        }
+    }
+
+    private static void applySingleEventBatchMessage(NetworkMessage message) {
+        if (message.payloadJson == null) return;
+        try {
+            JsonValue events = new JsonReader().parse(message.payloadJson);
+            if (events == null || !events.isArray() || events.size != 1) {
+                MultiplayerManager.getInstance().requestResync(message.sequence);
+                return;
+            }
+
+            JsonValue event = events.child;
+            long seq = longValue(event.get("sequence"), message.sequence);
+            MultiplayerManager manager = MultiplayerManager.getInstance();
+            if (seq <= manager.getLastSequence()) return;
+            String type = stringValue(event.get("eventType"), stringValue(event.get("event_type"), ""));
+            JsonValue action = event.get("action");
+            if (action == null) {
+                JsonValue storedPayload = event.get("payload");
+                if (storedPayload != null && storedPayload.isString()) {
+                    action = new JsonReader().parse(storedPayload.asString());
+                } else if (storedPayload != null && storedPayload.isObject()) {
+                    action = storedPayload;
+                }
+            }
+            if (action == null || !action.isObject() || !isSupportedSequencedEvent(type)) {
+                manager.requestResync(seq);
+                return;
+            }
+
+            // The legacy body below performs typed native reconciliation. The enclosing
+            // transaction owns the sequence/event metadata and passes the validated row through.
+            applySingleSequencedEventBody(message, event, type, action, seq);
+        } catch (RuntimeException invalidEvent) {
             MultiplayerManager.getInstance().requestResync(message.sequence);
+        }
+    }
+
+    private static void applySingleSequencedEventBody(
+            NetworkMessage message, JsonValue event, String type, JsonValue action, long seq) {
+        if ("PLAYER_ATTACKED".equals(type)) {
+            String attackerId = stringValue(action.get("attackerId"), null);
+            String attackerState = stringValue(action.get("attackerStateJson"), null);
+            if (attackerId != null && attackerState != null && !attackerState.isEmpty()) {
+                if (attackerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                    if (Dungeon.hero != null) WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, attackerState);
+                } else {
+                    applyRemoteHeroState(attackerId, attackerState);
+                }
+            }
+        }
+
+        if ("MOB_MOVED".equals(type) || "MOB_ATTACKED".equals(type) || "CHAR_DAMAGED".equals(type)) {
+            applyMobEvent(type, action);
+            if ("CHAR_DAMAGED".equals(type)
+                    && "MOB".equals(stringValue(action.get("targetType"), ""))
+                    && action.get("targetMobBundleAfter") != null
+                    && action.get("targetMobBundleAfter").isString()
+                    && !action.get("targetMobBundleAfter").asString().isEmpty()) {
+                // Periodic effects may change native AI/alert/cooldown state in addition
+                // to the scalar combat fields; restore the publisher's complete snapshot.
+                MultiplayerManager.getInstance().requestResync(seq);
+            }
+        } else if ("PLAYER_MOVED".equals(type)) {
+            String playerId = stringValue(action.get("playerId"), message.senderId);
+            int pos = intValue(action.get("pos"), -1);
+            if (playerId != null && pos >= 0 && Dungeon.level != null && pos < Dungeon.level.length()) {
+                applyPlayerPosition(playerId, pos);
+            } else {
+                MultiplayerManager.getInstance().requestResync(seq);
+            }
+        } else if ("PLAYER_ATTACKED".equals(type) || "PLAYER_DAMAGED".equals(type)) {
+            String targetType = stringValue(action.get("targetType"), "MOB");
+            String targetId = stringValue(action.get("targetId"), null);
+            int hp = intValue(action.get("targetHp"), -1);
+            if ("PLAYER".equals(targetType) && targetId != null && hp >= 0) {
+                String targetHeroState = stringValue(action.get("targetHeroStateJson"), null);
+                if (targetHeroState != null && !targetHeroState.isEmpty()) {
+                    if (targetId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                        int oldPos = Dungeon.hero == null ? -1 : Dungeon.hero.pos;
+                        WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, targetHeroState);
+                        if (Dungeon.hero != null && Dungeon.hero.sprite != null && oldPos >= 0 && oldPos != Dungeon.hero.pos) {
+                            Dungeon.hero.sprite.move(oldPos, Dungeon.hero.pos);
+                        }
+                    } else {
+                        applyRemoteHeroState(targetId, targetHeroState);
+                    }
+                } else {
+                    applyPlayerHp(targetId, hp);
+                    int targetPosAfter = intValue(action.get("targetPosAfter"), -1);
+                    if (targetPosAfter >= 0) applyPlayerPosition(targetId, targetPosAfter);
+                    String targetBuffs = stringValue(action.get("targetBuffs"), null);
+                    if (targetBuffs != null) applyPlayerCombatBuffs(targetId, targetBuffs);
+                }
+                String state = stringValue(action.get("targetState"), "ALIVE");
+                if ("SPECTATOR".equals(state) || "DEAD".equals(state)) applyPlayerDeath(targetId);
+            } else if ("MOB".equals(targetType) && targetId != null && hp >= 0) {
+                applyMobEvent(type, action);
+            }
+            JsonValue secondary = action.get("secondaryMobDeltas");
+            if (secondary != null && secondary.isString()) {
+                try { secondary = new JsonReader().parse(secondary.asString()); }
+                catch (RuntimeException malformedDelta) { secondary = null; }
+            }
+            JsonValue secondaryDeltas = secondary == null ? null : secondary.get("deltas");
+            JsonValue nativeMobBundle = action.get("targetMobBundleAfter");
+            JsonValue secondaryResync = action.get("secondaryMobResyncRequired");
+            boolean secondaryResyncRequired = secondaryResync != null && secondaryResync.asBoolean();
+            boolean hasSecondaryMobChanges = secondaryDeltas != null
+                    && secondaryDeltas.isArray() && secondaryDeltas.size > 0;
+            if (secondaryResyncRequired || hasSecondaryMobChanges
+                    || ("PLAYER_ATTACKED".equals(type) && "MOB".equals(targetType)
+                        && nativeMobBundle != null && nativeMobBundle.isString()
+                        && !nativeMobBundle.asString().isEmpty())) {
+                // Apply direct mob changes only from the shared-level owner. Secondary
+                // effects from another player's PvP simulation are not shared authority;
+                // refresh the exact server-committed state instead of partially replaying.
+                MultiplayerManager.getInstance().requestResync(seq);
+            }
+            if ("PLAYER_DAMAGED".equals(type)
+                    && "MOB".equals(stringValue(action.get("sourceType"), ""))
+                    && intValue(action.get("sourceMobHpAfter"), -1) >= 0) {
+                JsonValue sourceBundle = action.get("sourceMobBundleAfter");
+                JsonValue sourceResync = action.get("sourceMobResyncRequired");
+                boolean sourceResyncRequired = sourceResync != null && sourceResync.asBoolean();
+                boolean fullMobBundlePresent = sourceBundle != null && sourceBundle.isString()
+                        && !sourceBundle.asString().isEmpty();
+                if (sourceResyncRequired || fullMobBundlePresent) {
+                    // Do not optimistically apply scalar HP/position/buff values when the
+                    // server discarded those reactive changes or a full native Mob bundle
+                    // proves scalar reconciliation incomplete. Wait for the publisher snapshot.
+                    MultiplayerManager.getInstance().requestResync(seq);
+                } else {
+                    applyMobEvent(type, action);
+                }
+            }
+        } else if ("CHAR_DIED".equals(type)) {
+            String playerId = stringValue(action.get("playerId"), stringValue(action.get("targetPlayerId"), null));
+            if (playerId != null) applyPlayerDeath(playerId);
+        } else if ("PLAYER_REVIVED".equals(type)) {
+            String playerId = stringValue(action.get("playerId"), null);
+            int hp = intValue(action.get("hp"), -1);
+            String heroStateJson = stringValue(action.get("heroStateJson"), null);
+            if (playerId != null && heroStateJson != null && !heroStateJson.isEmpty()) {
+                if (playerId.equals(MultiplayerManager.getInstance().getLocalPlayerId())) {
+                    WorldSnapshot.restoreRemoteHeroState(Dungeon.hero, heroStateJson);
+                } else {
+                    applyRemoteHeroState(playerId, heroStateJson);
+                }
+            } else if (playerId != null && hp >= 0) {
+                applyPlayerHp(playerId, hp);
+            }
+        } else if ("HERO_BUFF_TICKED".equals(type)) {
+            // Timed effects can update HP, shielding, and native Buff bundles together.
+            // Reconcile the full accepted Hero state instead of applying scalar deltas.
+            MultiplayerManager.getInstance().requestResync(seq);
+        } else if ("NATIVE_WORLD_MUTATION".equals(type)) {
+            // Inventory, quickslots, and native heap stacks must converge from one committed snapshot.
+            MultiplayerManager.getInstance().requestResync(seq);
+        } else if ("ITEM_PICKED_UP".equals(type)) {
+            // Legacy event payloads do not identify one exact stack. The committed native
+            // world snapshot is the single authority for item ownership and heap contents.
+            MultiplayerManager.getInstance().requestResync(seq);
+        } else if ("CHEST_OPENED".equals(type)) {
+            int itemPos = intValue(action.get("itemPos"), -1);
+            if (itemPos >= 0 && Dungeon.level != null) GameScene.updateMap(itemPos);
+        } else if ("LEVEL_TRANSITION".equals(type)) {
+            MultiplayerManager transitionManager = MultiplayerManager.getInstance();
+            transitionManager.markFloorTransitionPending();
+            String initiatorId = stringValue(action.get("playerId"), "");
+            int sourceDepth = intValue(action.get("fromDepth"), -1);
+            int destinationDepth = intValue(action.get("depth"), -1);
+            int stairsPos = intValue(action.get("transitionPos"), -1);
+            String transitionType = stringValue(action.get("transitionType"), "");
+            String targetType = stringValue(action.get("targetType"), "");
+            int targetBranch = intValue(action.get("targetBranch"), -1);
+            if (initiatorId.equals(transitionManager.getLocalPlayerId())
+                    || (Dungeon.branch == 0 && Dungeon.depth == destinationDepth)) {
+            } else if (Dungeon.hero == null || Dungeon.level == null || Dungeon.branch != 0
+                    || Dungeon.depth != sourceDepth || Dungeon.level.locked || targetBranch != 0
+                    || (destinationDepth != sourceDepth + 1 && destinationDepth != sourceDepth - 1)) {
+                transitionManager.requestResync(seq);
+            } else {
+                if ("FALL".equals(transitionType)) {
+                    int pitPos = intValue(action.get("pitPos"), -1);
+                    boolean validNativePitFall = stairsPos >= 0 && stairsPos < Dungeon.level.length()
+                            && pitPos >= 0 && pitPos < Dungeon.level.length()
+                            && Dungeon.level.passable[stairsPos] && !Dungeon.level.pit[stairsPos]
+                            && Dungeon.level.adjacent(stairsPos, pitPos)
+                            && Dungeon.level.pit[pitPos] && !Dungeon.level.solid[pitPos]
+                            && destinationDepth == sourceDepth + 1
+                            && "FALL".equals(targetType);
+                    if (validNativePitFall) {
+                        int oldPos = Dungeon.hero.pos;
+                        Dungeon.hero.pos = stairsPos;
+                        if (Dungeon.hero.sprite != null && oldPos != stairsPos) {
+                            Dungeon.hero.sprite.place(stairsPos);
+                        }
+                        com.shatteredpixel.shatteredpixeldungeon.levels.features.Chasm
+                                .heroFallFromNetwork(pitPos);
+                    } else {
+                        transitionManager.requestResync(seq);
+                    }
+                } else {
+                com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition transition =
+                        Dungeon.level.getTransition(stairsPos);
+                boolean matchesNativeSource = transition != null && transition.cell() == stairsPos
+                        && transition.inside(stairsPos)
+                        && transition.type.name().equals(transitionType)
+                        && transition.destDepth == destinationDepth && transition.destBranch == 0
+                        && transition.destType != null && transition.destType.name().equals(targetType)
+                        && (transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
+                            || transition.type == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE)
+                        && (transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_EXIT
+                            || transition.destType == com.shatteredpixel.shatteredpixeldungeon.levels.features.LevelTransition.Type.REGULAR_ENTRANCE);
+                if (matchesNativeSource) {
+                    // The remote peer follows the exact native transition selected by
+                    // the initiator, then lets SPD perform its own save/load operation.
+                    int oldPos = Dungeon.hero.pos;
+                    Dungeon.hero.pos = stairsPos;
+                    if (Dungeon.hero.sprite != null && oldPos != stairsPos) Dungeon.hero.sprite.place(stairsPos);
+                    if (Dungeon.level.activateTransition(Dungeon.hero, transition)) {
+                    } else {
+                        Dungeon.hero.pos = oldPos;
+                        if (Dungeon.hero.sprite != null) Dungeon.hero.sprite.place(oldPos);
+                        transitionManager.requestResync(seq);
+                    }
+                } else {
+                    transitionManager.requestResync(seq);
+                }
+                }
+            }
+        } else if ("LEVEL_TRANSITION_ABORTED".equals(type)) {
+            MultiplayerManager transitionManager = MultiplayerManager.getInstance();
+            int sourceDepth = intValue(action.get("fromDepth"), -1);
+            int destinationDepth = intValue(action.get("depth"), -1);
+            int stairsPos = intValue(action.get("transitionPos"), -1);
+            int targetBranch = intValue(action.get("targetBranch"), -1);
+            if (sourceDepth < 1 || destinationDepth < 1
+                    || Math.abs(destinationDepth - sourceDepth) != 1
+                    || targetBranch != 0 || stairsPos < 0) {
+                transitionManager.requestResync(seq);
+            } else {
+                transitionManager.markFloorTransitionComplete();
+                transitionManager.invalidateCurrentLevelPublication();
+                if (Dungeon.branch == 0 && Dungeon.depth == destinationDepth && Dungeon.hero != null) {
+                    // The source floor was saved by SPD's original InterlevelScene transition.
+                    // Return through that same native loader so seed, inventory and quest state survive.
+                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnDepth = sourceDepth;
+                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnBranch = 0;
+                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.returnPos = stairsPos;
+                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.curTransition = null;
+                    com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.mode =
+                            com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.Mode.RETURN;
+                    Game.switchScene(com.shatteredpixel.shatteredpixeldungeon.scenes.InterlevelScene.class);
+                } else if (Dungeon.branch != 0 || Dungeon.depth != sourceDepth) {
+                    transitionManager.requestResync(seq);
+                }
+            }
+        } else if ("MATCH_END".equals(type)) {
         }
     }
 

@@ -890,6 +890,31 @@ public class WorldSnapshot {
         }
     }
 
+    /**
+     * Refreshes the last-known-good checkpoint after a sequence-bearing event was applied.
+     * Capture occurs after native mutations but before the caller commits the watermark.
+     */
+    public static boolean markCurrentWorldApplied(long sequence) {
+        WorldSnapshot applied = captureLocalRollbackBaseline();
+        if (applied == null) return false;
+        applied.sequence = sequence;
+        lastAppliedSnapshot = applied;
+        return true;
+    }
+
+    /** Restore the precise world captured immediately before a failed incremental event. */
+    public static boolean rollbackToLocalBaseline(WorldSnapshot baseline) {
+        if (baseline == null || !baseline.localRollbackBaseline) return false;
+        try {
+            boolean restored = restoreWorld(baseline, true);
+            if (restored) lastAppliedSnapshot = baseline;
+            return restored;
+        } catch (RuntimeException rollbackError) {
+            GLog.w("Multiplayer event rollback failed: " + rollbackError.getMessage());
+            return false;
+        }
+    }
+
     public static String lastRollbackCaptureDiagnostic() {
         return lastRollbackCaptureDiagnostic;
     }

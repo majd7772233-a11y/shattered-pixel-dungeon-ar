@@ -267,18 +267,21 @@ export class MatchRoomCombat extends MatchRoomPersistence {
         }
       }
 
-      if (sendToClient) {
-        try {
-          const eventMsg: NetworkMessage = {
-            protocolVersion: "1.0.0",
-            messageType: "EVENT_BATCH",
-            senderId,
-            sequence: this.currentSequence,
-            payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType, depth: this.currentDepth, action: actionPayload }])
-          };
-          ws.send(JSON.stringify(eventMsg));
-        } catch (_) {}
-      }
+      // A hidden PvP event still consumes its authoritative sequence, but its type and payload
+      // must remain undisclosed. An opaque marker keeps every connected recipient contiguous.
+      try {
+        const sequencedEvent = sendToClient
+          ? { sequence: this.currentSequence, eventType, depth: this.currentDepth, action: actionPayload }
+          : { sequence: this.currentSequence, eventType: "EVENT_SKIPPED" };
+        const eventMsg: NetworkMessage = {
+          protocolVersion: "1.0.0",
+          messageType: "EVENT_BATCH",
+          senderId: sendToClient ? senderId : "SERVER",
+          sequence: this.currentSequence,
+          payloadJson: JSON.stringify([sequencedEvent])
+        };
+        ws.send(JSON.stringify(eventMsg));
+      } catch (_) {}
     }
   }
 }

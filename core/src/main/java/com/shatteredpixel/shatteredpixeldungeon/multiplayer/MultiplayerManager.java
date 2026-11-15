@@ -27,8 +27,8 @@ public class MultiplayerManager implements TransportCallback {
     private String roomCode;
     private String localPlayerId;
     private String sessionToken;
-    private long lastSequence = 0;
-    private long lastResyncRequestedSequence = -1L;
+    private volatile long lastSequence = 0;
+    private volatile long lastResyncRequestedSequence = -1L;
     private String lastPublishedLevelKey;
     private long nativeWorldTurnCounter;
     private Long authoritativeSeed;
@@ -298,6 +298,25 @@ public class MultiplayerManager implements TransportCallback {
         return lastSequence;
     }
 
+    /** True while incremental events are blocked awaiting a full authoritative snapshot. */
+    public boolean hasPendingResync() {
+        return lastResyncRequestedSequence >= 0L;
+    }
+
+    /** Commit only the next event sequence, after the render thread has applied it successfully. */
+    public boolean commitAppliedSequence(long sequence) {
+        if (sequence <= lastSequence || sequence != lastSequence + 1L) return false;
+        lastSequence = sequence;
+        return true;
+    }
+
+    /** Undo an immediately preceding sequence commit when capturing the applied checkpoint fails. */
+    public boolean rollbackAppliedSequence(long sequence, long previousSequence) {
+        if (lastSequence != sequence || previousSequence != sequence - 1L) return false;
+        lastSequence = previousSequence;
+        return true;
+    }
+
     public void updateLastSequence(long seq) {
         if (seq > this.lastSequence) this.lastSequence = seq;
     }
@@ -309,15 +328,16 @@ public class MultiplayerManager implements TransportCallback {
 
     /** Requests a full authoritative snapshot after a failed restore, once per bad sequence. */
     public void requestResync(long rejectedSnapshotSequence) {
-        if (!isMultiplayerActive || activeTransport == null
-                || lastResyncRequestedSequence == rejectedSnapshotSequence) return;
-        lastResyncRequestedSequence = rejectedSnapshotSequence;
+        if (!isMultiplayerActive || activeTransport == null) return;
+        long rejectedSequence = rejectedSnapshotSequence < 0L ? lastSequence : rejectedSnapshotSequence;
+        if (lastResyncRequestedSequence == rejectedSequence) return;
+        lastResyncRequestedSequence = rejectedSequence;
         NetworkMessage msg = new NetworkMessage();
         msg.messageType = MessageType.RESYNC;
         msg.senderId = localPlayerId;
         msg.requestId = UUID.randomUUID().toString();
         msg.payloadJson = "{\"lastSequence\":" + lastSequence
-                + ",\"rejectedSnapshotSequence\":" + rejectedSnapshotSequence + "}";
+                + ",\"rejectedSnapshotSequence\":" + rejectedSequence + "}";
         activeTransport.send(msg);
     }
 
@@ -673,10 +693,8 @@ public class MultiplayerManager implements TransportCallback {
                             && publisherValue.asBoolean();
                     this.levelPublisherId = levelPublisher ? localPlayerId : null;
                 }
-                JsonValue seqValue = payload.get("sequence");
-                if (seqValue != null && !seqValue.isNull()) {
-                    updateLastSequence(seqValue.asLong());
-                }
+                // SESSION's sequence is a trusted initial handshake baseline, distinct from
+                // incremental events which commit only after native application.
                 JsonValue seedValue = payload.get("seed");
                 if (seedValue != null && !seedValue.isNull()) {
                     // SESSION arrives before HeroSelectScene starts the run, so all clients
@@ -689,14 +707,9 @@ public class MultiplayerManager implements TransportCallback {
             }
         }
 
-        // A snapshot sequence is acknowledged only after its full native world is restored.
-        // EVENT_BATCH is consumed per event by MessageRouter. Advancing to the envelope
-        // sequence first would make every contained event at that sequence look stale.
-        if (message.messageType != MessageType.SNAPSHOT && message.messageType != MessageType.EVENT_BATCH
-                && message.sequence > this.lastSequence) {
-            this.lastSequence = message.sequence;
-        }
-
+        // Never advance the world sequence from an arbitrary transport envelope. SESSION
+        // establishes the initial handshake baseline; ACTION_ACCEPTED/EVENT_BATCH and full
+        // snapshots have explicit validation/application commit paths in MessageRouter.
         MessageRouter.routeMessage(message);
     }
 

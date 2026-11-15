@@ -3275,7 +3275,7 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
-    public void authoritativeMobDeathRemovesReplicaWithoutCallingDeathOrLootPipeline() throws Exception {
+    public void authoritativeMobDeathDoesNotLeavePartialStateBeforeFullSnapshot() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-death", "client-a", transport);
@@ -3284,20 +3284,21 @@ public class NativeCombatRuntimeIntegrationTest {
         String stableId = "stable-native-death-0001";
         manager.registerServerEntityId(target.id(), stableId);
         int heapsBefore = level.heaps.valueList().size();
+        String event = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
+                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
+                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":0,\\"targetHt\\":100,"
+                + "\\"targetPosAfter\\":" + target.pos + ",\\"targetBuffs\\":\\"[]\\","
+                + "\\"damage\\":100,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        routeEventBatch(event, 1L);
 
-        String event = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
-                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
-                + "\"targetType\":\"MOB\",\"targetHp\":0,\"targetHt\":100,"
-                + "\"targetPosAfter\":" + target.pos + ",\"targetBuffs\":\"[]\","
-                + "\"damage\":100,\"hit\":true,\"engineResolved\":true}}]";
-        routeEventBatch(event, 2L);
-
-        Assert.assertFalse("Authoritative death must remove the local mob replica", level.mobs.contains(target));
-        Assert.assertEquals("A remote death must not invoke the local native death/reward pipeline", 0, target.deathCalls);
-        Assert.assertEquals("Loot is restored from the authority snapshot, not rolled again here", heapsBefore, level.heaps.valueList().size());
-        Assert.assertNull("The stale Actor-to-server identity mapping must be removed", manager.getServerEntityId(target.id()));
-        Assert.assertTrue("A death tombstone must request a full loot/world resync",
-                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertTrue("A scalar Mob death result rolls back until a complete loot snapshot arrives",
+                level.mobs.contains(target));
+        Assert.assertEquals("Failed incremental state cannot leave partial HP mutation", 100, target.HP);
+        Assert.assertEquals("A remote death must not run the local native death/reward pipeline", 0, target.deathCalls);
+        Assert.assertEquals(heapsBefore, level.heaps.valueList().size());
+        Assert.assertEquals("The sequence remains uncommitted", 0L, manager.getLastSequence());
+        Assert.assertEquals(stableId, manager.getServerEntityId(target.id()));
+        Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
     @Test
@@ -3310,85 +3311,106 @@ public class NativeCombatRuntimeIntegrationTest {
         source.HP = 8;
         manager.registerServerEntityId(source.id(), "stable-reactive-source-0001");
         int hpBeforeEvent = source.HP;
+        manager.updateLastSequence(2L);
 
-        String event = "[{\"sequence\":3,\"depth\":1,\"eventType\":\"PLAYER_DAMAGED\",\"action\":{"
-                + "\"targetId\":\"client-victim\",\"targetPlayerId\":\"client-victim\",\"targetType\":\"PLAYER\","
-                + "\"targetHp\":18,\"targetHt\":20,\"targetState\":\"ALIVE\","
-                + "\"sourceType\":\"MOB\",\"sourceEntityId\":\"stable-reactive-source-0001\","
-                + "\"sourceMobHpBefore\":8,\"sourceMobHtBefore\":8,\"sourceMobHpAfter\":2,"
-                + "\"sourceMobHtAfter\":8,\"sourceMobShieldBefore\":0,\"sourceMobShieldAfter\":0,"
-                + "\"sourceMobPosBefore\":" + source.pos + ",\"sourceMobPosAfter\":" + source.pos + ","
-                + "\"sourceMobDamage\":6,\"sourceMobBuffsBefore\":\"[]\",\"sourceMobBuffs\":\"[]\","
-                + "\"sourceMobResyncRequired\":true,\"sourceMobBundleAfter\":null}}]";
+        String event = "[{\\"sequence\\":3,\\"depth\\":1,\\"eventType\\":\\"PLAYER_DAMAGED\\",\\"action\\":{"
+                + "\\"targetId\\":\\"client-victim\\",\\"targetPlayerId\\":\\"client-victim\\",\\"targetType\\":\\"PLAYER\\","
+                + "\\"targetHp\\":18,\\"targetHt\\":20,\\"targetState\\":\\"ALIVE\\","
+                + "\\"sourceType\\":\\"MOB\\",\\"sourceEntityId\\":\\"stable-reactive-source-0001\\","
+                + "\\"sourceMobHpBefore\\":8,\\"sourceMobHtBefore\\":8,\\"sourceMobHpAfter\\":2,"
+                + "\\"sourceMobHtAfter\\":8,\\"sourceMobShieldBefore\\":0,\\"sourceMobShieldAfter\\":0,"
+                + "\\"sourceMobPosBefore\\":" + source.pos + ",\\"sourceMobPosAfter\\":" + source.pos + ","
+                + "\\"sourceMobDamage\\":6,\\"sourceMobBuffsBefore\\":\\"[]\\",\\"sourceMobBuffs\\":\\"[]\\","
+                + "\\"sourceMobResyncRequired\\":true,\\"sourceMobBundleAfter\\":null}}]";
         routeEventBatch(event, 3L);
 
-        Assert.assertEquals("Untrusted non-publisher source Mob deltas must not be optimistically applied", hpBeforeEvent, source.HP);
-        Assert.assertTrue("A discarded reactive state must request publisher snapshot reconciliation",
-                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertEquals("Untrusted source Mob deltas are not applied", hpBeforeEvent, source.HP);
+        Assert.assertEquals("A rejected incremental result cannot move the watermark", 2L, manager.getLastSequence());
+        Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
     @Test
-    public void staleCombatEventCannotRollBackNewerMobState() throws Exception {
+    public void staleEventCannotRollBackNewerNativeMobPosition() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-stale-event", "client-a", transport);
-
         Rat target = addRat(hero.pos + 1, 100);
-        String stableId = "stable-sequence-mob-0001";
-        manager.registerServerEntityId(target.id(), stableId);
+        manager.updateLastSequence(1L);
+        int newerPosition = target.pos + 1;
+        int stalePosition = target.pos + 2;
 
-        String newerEvent = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
-                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
-                + "\"targetType\":\"MOB\",\"targetHp\":60,\"targetHt\":100,"
-                + "\"targetPosAfter\":" + target.pos + ",\"damage\":40,\"hit\":true,\"engineResolved\":true}}]";
+        String newerEvent = "[{\\"sequence\\":2,\\"depth\\":1,\\"eventType\\":\\"MOB_MOVED\\",\\"action\\":{"
+                + "\\"mobId\\":" + target.id() + ",\\"toPos\\":" + newerPosition + "}}]";
         routeEventBatch(newerEvent, 2L);
-        Assert.assertEquals(60, target.HP);
+        Assert.assertEquals(newerPosition, target.pos);
         Assert.assertEquals(2L, manager.getLastSequence());
 
-        String staleEvent = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
-                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
-                + "\"targetType\":\"MOB\",\"targetHp\":90,\"targetHt\":100,"
-                + "\"targetPosAfter\":" + target.pos + ",\"damage\":10,\"hit\":true,\"engineResolved\":true}}]";
+        String staleEvent = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"MOB_MOVED\\",\\"action\\":{"
+                + "\\"mobId\\":" + target.id() + ",\\"toPos\\":" + stalePosition + "}}]";
         routeEventBatch(staleEvent, 1L);
-
-        Assert.assertEquals("An older combat event must not restore stale HP", 60, target.HP);
-        Assert.assertEquals("Sequence tracking must remain monotonic", 2L, manager.getLastSequence());
+        Assert.assertEquals("A delayed older event cannot overwrite the accepted position", newerPosition, target.pos);
+        Assert.assertEquals(2L, manager.getLastSequence());
+        Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
-
     @Test
-    public void eventBatchCurrentlyAcceptsSequenceGapsAndSkipsLowerOutOfOrderEvents() throws Exception {
+    public void eventBatchSortsOutOfOrderRowsBeforeContiguousApplication() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
-        manager.startSession("runtime-sequence-gap-characterization", "client-a", transport);
+        manager.startSession("runtime-sequence-sort-regression", "client-a", transport);
 
-        String batch = "[{\"sequence\":2,\"eventType\":\"MATCH_END\",\"action\":{}},"
-                + "{\"sequence\":1,\"eventType\":\"MATCH_END\",\"action\":{}}]";
+        String batch = "[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}},"
+                + "{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]";
         routeEventBatch(batch, 2L);
 
-        Assert.assertEquals("The current client watermark advances to the highest observed event", 2L,
-                manager.getLastSequence());
-        Assert.assertFalse("The current router does not request resync for the missing sequence 1",
-                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertEquals(2L, manager.getLastSequence());
+        Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
     @Test
-    public void malformedNewEventCurrentlyAdvancesSequenceBeforeRequestingResync() throws Exception {
+    public void eventArrivingAheadOfMissingSequenceRequestsSnapshotWithoutAdvancingWatermark() throws Exception {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         TestTransport transport = new TestTransport();
-        manager.startSession("runtime-malformed-event-characterization", "client-a", transport);
+        manager.startSession("runtime-sequence-gap-regression", "client-a", transport);
+
+        routeEventBatch("[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]", 2L);
+        Assert.assertEquals("The missing sequence cannot be skipped", 0L, manager.getLastSequence());
+        Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+
+        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]", 1L);
+        Assert.assertEquals("Pending recovery blocks further event delivery", 0L, manager.getLastSequence());
+    }
+
+    @Test
+    public void opaqueSkippedEventConsumesSequenceWithoutChangingWorld() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-skipped-event-regression", "client-a", transport);
+        int hpBefore = hero.HP;
+        int positionBefore = hero.pos;
+
+        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"EVENT_SKIPPED\\"}]", 1L);
+
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertEquals(hpBefore, hero.HP);
+        Assert.assertEquals(positionBefore, hero.pos);
+        Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void malformedNewEventDoesNotAdvanceAppliedSequenceBeforeRequestingResync() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-malformed-event-regression", "client-a", transport);
         int oldHeroHp = hero.HP;
         int oldHeroPos = hero.pos;
 
+        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\"}]", 1L);
 
-        routeEventBatch("[{\"sequence\":4,\"eventType\":\"PLAYER_ATTACKED\"}]", 4L);
-
-        Assert.assertEquals("The current router records the event watermark before validating its action body",
-                4L, manager.getLastSequence());
-        Assert.assertEquals("The malformed row itself does not mutate native Hero HP", oldHeroHp, hero.HP);
-        Assert.assertEquals("The malformed row itself does not mutate native Hero position", oldHeroPos, hero.pos);
-        Assert.assertTrue("The malformed event still requests a full authoritative snapshot",
-                transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertEquals("A malformed event cannot advance the applied watermark", 0L, manager.getLastSequence());
+        Assert.assertEquals(oldHeroHp, hero.HP);
+        Assert.assertEquals(oldHeroPos, hero.pos);
+        Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
     @Test
@@ -3410,6 +3432,28 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(oldHeroPos, hero.pos);
         Assert.assertEquals(oldWidth, level.width());
         Assert.assertTrue(WorldSnapshot.lastRestoreDiagnostic().contains("stale sequence"));
+    }
+
+    @Test
+    public void incompleteFullSnapshotIsRejectedWithoutChangingLiveWorldOrSequence() {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.startSession("runtime-incomplete-snapshot", "client-a", new TestTransport());
+        manager.updateLastSequence(2L);
+        int oldHp = hero.HP;
+        int oldPos = hero.pos;
+        int oldWidth = level.width();
+
+        WorldSnapshot incomplete = makeSnapshotWithMob(3L, null, "");
+        incomplete.tiles.clear();
+        incomplete.completeWorldSnapshot = false;
+
+        Assert.assertFalse(WorldSnapshot.validateForRestore(incomplete));
+        Assert.assertFalse(WorldSnapshot.restoreWorld(incomplete));
+        Assert.assertEquals(2L, manager.getLastSequence());
+        Assert.assertEquals(oldHp, hero.HP);
+        Assert.assertEquals(oldPos, hero.pos);
+        Assert.assertEquals(oldWidth, level.width());
+        Assert.assertTrue(WorldSnapshot.lastRestoreDiagnostic().contains("rejected"));
     }
 
     @Test
@@ -3451,9 +3495,12 @@ public class NativeCombatRuntimeIntegrationTest {
                 + ",\"targetBuffs\":" + new Json().toJson(resolvedBuffs)
                 + ",\"damage\":" + resolvedDamage + ",\"hit\":" + resolvedHit
                 + ",\"engineResolved\":true}}]";
+        manager.updateLastSequence(1L);
         routeEventBatch(event, 2L);
         Assert.assertEquals(resolvedHp, targetA.HP);
         Assert.assertEquals(resolvedHt, targetA.HT);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertTrue(transportA.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
 
         manager.endSession();
         Actor.clear();
@@ -3484,12 +3531,13 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transportB = new TestTransport();
         manager.startSession("runtime-convergence", "client-b", transportB);
         manager.registerServerEntityId(localActorIdB, stableMobId);
+        manager.updateLastSequence(1L);
+        int clientBHpBeforeEvent = targetB.HP;
         routeEventBatch(event, 2L);
 
-        Assert.assertEquals("Client B must resolve by stable server ID, not Actor.id()", resolvedHp, targetB.HP);
-        Assert.assertEquals(resolvedHt, targetB.HT);
-        Assert.assertEquals(resolvedPos, targetB.pos);
-        Assert.assertEquals(2L, manager.getLastSequence());
+        Assert.assertEquals("Client B waits for full native Mob state", clientBHpBeforeEvent, targetB.HP);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertTrue(transportB.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
 
@@ -3524,11 +3572,12 @@ public class NativeCombatRuntimeIntegrationTest {
                 + "\"markBonus\":0.5,\"targetEntityId\":\"" + stableMobId + "\","
                 + "\"bowItemId\":\"" + bowItemId + "\"}}}]";
 
+        int clientAHpBeforeEvent = targetA.HP;
         routeEventBatch(event, 1L);
 
-        Assert.assertEquals("Client A resolves the accepted SpiritArrow Mob by stable identity",
-                15, targetA.HP);
-        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertEquals("Scalar Mob combat is rolled back until full native state arrives",
+                clientAHpBeforeEvent, targetA.HP);
+        Assert.assertEquals(0L, manager.getLastSequence());
         Assert.assertTrue("Mob combat scalar reconciliation must request the authoritative full snapshot",
                 transportA.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
 
@@ -3560,14 +3609,41 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transportB = new TestTransport();
         manager.startSession("spirit-arrow-event-reconcile", "client-b", transportB);
         manager.registerServerEntityId(actorIdB, stableMobId);
+        int clientBHpBefore = targetB.HP;
         routeEventBatch(event, 1L);
 
-        Assert.assertEquals("Client B applies the same accepted outcome through stable Mob identity",
-                15, targetB.HP);
-        Assert.assertEquals(targetA.pos, targetB.pos);
-        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertEquals("Client B waits for full native Mob state", clientBHpBefore, targetB.HP);
+        Assert.assertEquals(0L, manager.getLastSequence());
         Assert.assertTrue("Client B also requests a full authoritative snapshot after scalar Mob combat",
                 transportB.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+    }
+
+    @Test
+    public void actionAcceptedAndEventBatchDuplicateSequenceApplyOnlyOnce() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-accepted-event-duplicate", "client-a", transport);
+        int initialPosition = hero.pos;
+        int acceptedPosition = initialPosition + 1;
+        NetworkMessage accepted = new NetworkMessage(MessageType.ACTION_ACCEPTED,
+                String.raw`{"status":"ACCEPTED","eventType":"PLAYER_MOVED","action":{"playerId":"client-a","pos":${acceptedPosition}}}`);
+        accepted.sequence = 1L;
+        accepted.requestId = "phase11b-action-accepted-duplicate-001";
+
+        MessageRouter.routeMessage(accepted);
+        CountDownLatch acceptedApplied = new CountDownLatch(1);
+        Game.runOnRenderThread(acceptedApplied::countDown);
+        Assert.assertTrue(acceptedApplied.await(10, TimeUnit.SECONDS));
+        Assert.assertEquals(acceptedPosition, hero.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+
+        routeEventBatch(String.raw`[{"sequence":1,"eventType":"PLAYER_MOVED","action":{"playerId":"client-a","pos":${initialPosition}}}]`, 1L);
+        CountDownLatch duplicateProcessed = new CountDownLatch(1);
+        Game.runOnRenderThread(duplicateProcessed::countDown);
+        Assert.assertTrue(duplicateProcessed.await(10, TimeUnit.SECONDS));
+        Assert.assertEquals(acceptedPosition, hero.pos);
+        Assert.assertEquals(1L, manager.getLastSequence());
+        Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
     private static void routeEventBatch(String payload, long sequence) throws Exception {

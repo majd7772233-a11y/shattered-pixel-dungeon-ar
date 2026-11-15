@@ -329,6 +329,34 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
+  it("persists request replay identity fields in Durable Object SQLite", async () => {
+    const roomId = env.MATCH_ROOM.idFromName("phase11b-request-fingerprint-migration");
+    const stub = env.MATCH_ROOM.get(roomId);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const columns = state.storage.sql.exec("PRAGMA table_info(processed_actions)").toArray()
+        .map(column => String(column.name));
+      expect(columns).toContain("request_fingerprint");
+      expect(columns).toContain("authority_id");
+      expect(columns).toContain("completion_fingerprint");
+      const fingerprint = JSON.stringify({ action: "MOVE", data: { to: 17 } });
+      state.storage.sql.exec(
+        `INSERT INTO processed_actions
+         (request_id,player_id,sequence,result_json,request_fingerprint,authority_id,completion_fingerprint)
+         VALUES (?,?,?,?,?,?,?)`,
+        "phase11b-sqlite-request-001", "phase11b-owner", 3, JSON.stringify({ status: "ACCEPTED" }),
+        fingerprint, "phase11b-authority", JSON.stringify({ action: "SYNC_MOB_STATE" })
+      );
+      const row = state.storage.sql.exec(
+        "SELECT player_id,request_fingerprint,authority_id,completion_fingerprint FROM processed_actions WHERE request_id = ?",
+        "phase11b-sqlite-request-001"
+      ).toArray()[0];
+      expect(row.player_id).toBe("phase11b-owner");
+      expect(row.request_fingerprint).toBe(fingerprint);
+      expect(row.authority_id).toBe("phase11b-authority");
+      expect(row.completion_fingerprint).toContain("SYNC_MOB_STATE");
+    });
+  });
+
   it("rolls back the complete native batch and reloads committed room state after eviction", async () => {
     const playerId = "phase9-sqlite-player-001";
     const roomId = env.MATCH_ROOM.idFromName("phase9-real-sqlite-rollback-eviction");

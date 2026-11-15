@@ -126,9 +126,46 @@ export function isValidNativeCombatRequestId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9._:-]{8,80}$/.test(value);
 }
 
-export function classifyRequestReplay(existing: any, playerId: string): "NEW" | "REPLAY" | "CONFLICT" {
+function canonicalizeRequestValue(value: any, depth: number = 0): any {
+  if (depth > 64) throw new Error("Request payload nesting limit exceeded");
+  if (Array.isArray(value)) return value.map(item => canonicalizeRequestValue(item, depth + 1));
+  if (value !== null && typeof value === "object") {
+    const canonical: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) {
+      canonical[key] = canonicalizeRequestValue(value[key], depth + 1);
+    }
+    return canonical;
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new Error("Request payload contains a non-finite number");
+  }
+  return value;
+}
+
+/** Exact key-order-independent ACTION identity, without a lossy hash collision domain. */
+export function requestPayloadFingerprint(value: unknown): string | null {
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const fingerprint = JSON.stringify(canonicalizeRequestValue(parsed));
+    return typeof fingerprint === "string" ? fingerprint : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+export function classifyRequestReplay(
+  existing: any, playerId: string, requestFingerprint: string
+): "NEW" | "REPLAY" | "CONFLICT" {
   if (!existing) return "NEW";
-  return String(existing.player_id) === playerId ? "REPLAY" : "CONFLICT";
+  const sameOriginalRequest = String(existing.player_id) === playerId
+    && typeof existing.request_fingerprint === "string"
+    && existing.request_fingerprint === requestFingerprint;
+  // Delegated combat reuses the requester's ID for the publisher's completion message.
+  const sameAuthorityCompletion = String(existing.authority_id || "") === playerId
+    && typeof existing.completion_fingerprint === "string"
+    && existing.completion_fingerprint === requestFingerprint;
+  return sameOriginalRequest || sameAuthorityCompletion ? "REPLAY" : "CONFLICT";
 }
 
 const NATIVE_SPIRIT_BOW = "com.shatteredpixel.shatteredpixeldungeon.items.weapon.SpiritBow";

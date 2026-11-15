@@ -1,6 +1,6 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { NATIVE_ENDURE_ABILITY, isValidNativeAbilityIntent } from "../validators/abilities";
-import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, parseAndValidateNativeLifeLinkMobDeltas, buildNativeLifeLinkMobDamageEvents, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent, isValidNativeSpiritArrowAttackIntent } from "../validators/combat-state";
+import { isValidNativeWorldTurnSnapshot, isValidNativeHpTransition, isValidNativeDamageAccounting, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeCombatRequestId, classifyRequestReplay, requestPayloadFingerprint, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeSourceMobState, isValidNativeEnvironmentDamage, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, hasStrictNativeDamageFields, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatBuffs, comparableBuffs, isValidNativeMissTransition, hasMatchingNativeMobShieldSnapshot, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeBuffSnapshot, hasOnlyNativeLostBackpackAdded, isValidNativeLootSnapshot, isValidNativeMobBundle, isAuthorizedNativeMobOwner, parseAndValidateNativeSecondaryMobDeltas, parseAndValidateNativeLifeLinkMobDeltas, buildNativeLifeLinkMobDamageEvents, removeDeadNativeMobsFromSnapshot, isValidNativeCombatEvent, isValidNativeSpiritArrowAttackIntent } from "../validators/combat-state";
 import { assignStableEntityIds, resolveServerMobIdByEntityId } from "../validators/entity-identity";
 import { parseNativeQuickslotIndex, isValidNativeEquipmentIntent } from "../validators/equipment";
 import { isValidNativeMoveIntent, resolveNativeTransitionIntent, isValidNativeFallDestinationSnapshot, isPendingNativeFloorDestinationSnapshot, canStartNativeFloorTransition, classifyNativeTransitionRejection } from "../validators/floor-transitions";
@@ -20,8 +20,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   private nativeActionTransactionPeerMessages: Array<() => void> | null = null;
 
   /**
-   * Native Hero Buff ticks and lethal Poison LifeLink batches use one Durable Object SQL transaction.
-   * This keeps Hero state, player HP, event/deduplication/sequence updates and any linked Mob rows atomic.
+   * Every accepted ACTION shares one Durable Object SQL transaction. Hero/world changes,
+   * claim/reward receipts, processed request IDs, event rows and sequence changes commit together.
+   * Socket messages and broadcasts are released only after the transaction succeeds.
    */
   protected async handleAction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
     let payload: any = null;
@@ -31,29 +32,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       payload = null;
     }
     const data = payload?.data;
-    const poisonClass = "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
-    const isNativeHeroBuffTick = payload?.action === "SYNC_HERO_STATE"
-      && data?.sourceType === "BUFF_TICK"
-      && typeof data?.buffClass === "string"
-      && Number.isSafeInteger(Number(data?.buffId))
-      && typeof data?.heroStateBeforeJson === "string";
-    const isLethalPoisonLifeLinkBatch = payload?.action === "SYNC_HERO_STATE"
-      && data?.secondaryMobDeltas !== undefined
-      && data?.sourceType === "ENVIRONMENT" && data?.sourceClass === poisonClass
-      && data?.targetState === "DEAD" && typeof data?.heroStateBeforeJson === "string";
     const isNativeCombatAuthorityResult = ["SYNC_MOB_STATE", "SYNC_PLAYER_COMBAT"].includes(String(payload?.action || ""))
       && typeof data?.combatRequestId === "string";
-    const requiresAtomicNativeAction = isNativeHeroBuffTick
-      || isLethalPoisonLifeLinkBatch || isNativeCombatAuthorityResult;
 
-    // Native Hero Buff ticks, delegated Mob combat outcomes and lethal Poison LifeLink batches
-    // update authoritative state and append sequenced events. Keep their SQL writes atomic and
-    // defer every ACK, owner error, and event broadcast until transactionSync has returned.
-    if (!requiresAtomicNativeAction) {
-      this.handleActionInTransaction(ws, msg, session);
-      return;
-    }
-
+    // All ACTIONs share one transaction: accepted world mutations, claim/reward receipts,
+    // processed request identity, event row, sequence and world time either all commit or roll back.
     const storage: any = this.state?.storage;
     if (!storage || typeof storage.transactionSync !== "function") {
       ws.send(JSON.stringify({
@@ -196,14 +179,26 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           const playerRow = this.sql.exec(`SELECT player_id FROM players WHERE session_token = ?`, token).toArray();
           if (playerRow.length > 0) {
             this.sql.exec(`UPDATE players SET connected = 1 WHERE player_id = ?`, session.playerId);
-            const gap = this.currentSequence - lastSeq;
-
+            const replayCursorValid = Number.isSafeInteger(lastSeq)
+              && lastSeq >= 0 && lastSeq <= this.currentSequence;
+            const gap = replayCursorValid ? this.currentSequence - lastSeq : -1;
             const publisherRow = this.sql.exec(
               "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
             const isCurrentPublisherReconnect = String(publisherRow?.value || "") === session.playerId;
-            if (!isCurrentPublisherReconnect && gap > 0 && gap <= 50) {
-              const missingEvents = this.sql.exec(`SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? ORDER BY sequence ASC`, lastSeq).toArray();
-              if (missingEvents.length === gap) {
+            // Historical per-recipient visibility is not stored. Do not replay unfiltered event
+            // history into PvP/Deathmatch: use the full authoritative snapshot for those modes.
+            const usesFilteredEventVisibility = this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH";
+            if (replayCursorValid && !isCurrentPublisherReconnect && !usesFilteredEventVisibility
+                && gap > 0 && gap <= 50) {
+              const missingEvents = this.sql.exec(
+                `SELECT sequence, sender_id, event_type, payload FROM events
+                 WHERE sequence > ? AND sequence <= ? ORDER BY sequence ASC`,
+                lastSeq, this.currentSequence
+              ).toArray();
+              const contiguous = missingEvents.length === gap
+                && missingEvents.every((event: any, index: number) =>
+                  Number(event.sequence) === lastSeq + index + 1);
+              if (contiguous) {
                 ws.send(JSON.stringify({
                   protocolVersion: "1.0.0",
                   messageType: "EVENT_BATCH",
@@ -954,6 +949,64 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   }
 
   protected handleActionInTransaction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
+        // A completed retry must replay before publisher, transition or match-end gates. The
+        // Durable Object transaction serializes concurrent callers around this lookup and commit.
+        const requestFingerprint = msg.requestId ? requestPayloadFingerprint(msg.payloadJson) : null;
+        if (msg.requestId) {
+          if (requestFingerprint == null) {
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+              requestId: msg.requestId, sequence: this.currentSequence,
+              payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" }) }));
+            return;
+          }
+          const duplicate = this.sql.exec(
+            `SELECT player_id, sequence, result_json, request_fingerprint, authority_id, completion_fingerprint
+             FROM processed_actions WHERE request_id = ?`, msg.requestId
+          ).toArray();
+          if (duplicate.length > 0) {
+            if (classifyRequestReplay(duplicate[0], session.playerId, requestFingerprint) === "CONFLICT") {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                requestId: msg.requestId, sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" }) }));
+              return;
+            }
+            ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACTION_ACCEPTED",
+              requestId: msg.requestId, sequence: Number(duplicate[0].sequence),
+              payloadJson: String(duplicate[0].result_json) }));
+            return;
+          }
+
+          const pendingRow = this.sql.exec(
+            "SELECT value FROM room_meta WHERE key = ?", "pendingCombat:" + msg.requestId
+          ).toArray()[0];
+          if (pendingRow && typeof pendingRow.value === "string") {
+            let pending: any = null;
+            try { pending = JSON.parse(String(pendingRow.value)); } catch (_) {}
+            let pendingPayload: any = null;
+            try { pendingPayload = JSON.parse(String(msg.payloadJson)); } catch (_) {}
+            const action = String(pendingPayload?.action || "");
+            const completion = (action === "SYNC_MOB_STATE" || action === "SYNC_PLAYER_COMBAT")
+              && String(payload?.data?.combatRequestId || "") === String(msg.requestId);
+            if (!completion) {
+              const matchesPendingRequest = String(pending?.attackerId || "") === session.playerId
+                && typeof pending?.requestFingerprint === "string"
+                && pending.requestFingerprint === requestFingerprint;
+              const error = matchesPendingRequest ? "NATIVE_COMBAT_ALREADY_PENDING" : "REQUEST_ID_CONFLICT";
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                requestId: msg.requestId, sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error }) }));
+              return;
+            }
+            if (String(pending?.authorityId || "") !== session.playerId
+                || typeof pending?.requestFingerprint !== "string") {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                requestId: msg.requestId, sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" }) }));
+              return;
+            }
+          }
+        }
+
         if (!this.isLevelPublisherReady()) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PUBLISHER_REBASE_REQUIRED" }) }));
@@ -973,30 +1026,6 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             payloadJson: JSON.stringify({ error: "MATCH_ALREADY_ENDED" })
           }));
           return;
-        }
-
-        // Persistent Deduplication Check
-        if (msg.requestId) {
-          const dupRow = this.sql.exec(`SELECT player_id, sequence, result_json FROM processed_actions WHERE request_id = ?`, msg.requestId).toArray();
-          if (dupRow.length > 0) {
-            if (classifyRequestReplay(dupRow[0], session.playerId) === "CONFLICT") {
-              ws.send(JSON.stringify({
-                protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
-                sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "REQUEST_ID_CONFLICT" })
-              }));
-              return;
-            }
-            const origSeq = Number(dupRow[0].sequence);
-            const origResult = String(dupRow[0].result_json);
-            ws.send(JSON.stringify({
-              protocolVersion: "1.0.0",
-              messageType: "ACTION_ACCEPTED",
-              requestId: msg.requestId,
-              sequence: origSeq,
-              payloadJson: origResult
-            }));
-            return;
-          }
         }
 
         let eventType = "PLAYER_MOVED";
@@ -2534,6 +2563,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   targetType: "MOB", targetEntityId, targetId: resolvedMobId,
                   targetPos: Number(mobRow[0].pos), attackerPos: Number(attackerRow.pos),
                   targetLockKey: "MOB:" + targetEntityId, depth: this.currentDepth,
+                  requestFingerprint,
                   attackWeaponMode: payload.data.attackWeaponMode,
                   attackWeaponBundle: payload.data.attackWeaponBundle,
                   damageMultiplier: payload.data.damageMultiplier,
@@ -2554,7 +2584,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                   const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
                   if (!authoritySession || authoritySession.playerId !== publisherId) continue;
                   authorityFound = true;
-                  authorityWs.send(JSON.stringify({
+                  this.sendNativeActionPeerMessage(authorityWs, JSON.stringify({
                     protocolVersion: "1.0.0", messageType: "COMBAT_REQUEST",
                     senderId: "SERVER", requestId: msg.requestId, sequence: this.currentSequence,
                     payloadJson: JSON.stringify({
@@ -2617,6 +2647,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const pending = { requestId: msg.requestId, attackerId: session.playerId, authorityId: defenderId,
                 targetType: "PLAYER", targetId: defenderId, attackerPos, targetPos: defenderPos,
                 targetLockKey: "PLAYER:" + defenderId, depth: this.currentDepth,
+                requestFingerprint,
                 attackWeaponMode: payload.data.attackWeaponMode,
                 attackWeaponBundle: payload.data.attackWeaponBundle,
                 damageMultiplier: payload.data.damageMultiplier,
@@ -2636,7 +2667,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 const authoritySession = authorityWs.deserializeAttachment() as SessionData | null;
                 if (!authoritySession || authoritySession.playerId !== defenderId) continue;
                 authorityFound = true;
-                authorityWs.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "COMBAT_REQUEST",
+                this.sendNativeActionPeerMessage(authorityWs, JSON.stringify({ protocolVersion: "1.0.0", messageType: "COMBAT_REQUEST",
                   senderId: "SERVER", requestId: msg.requestId, sequence: this.currentSequence,
                   payloadJson: JSON.stringify({ requestId: msg.requestId, attackerId: session.playerId,
                     targetType: "PLAYER", targetPlayerId: defenderId, attackerPos, targetPos: defenderPos,
@@ -3360,9 +3391,21 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           });
 
           if (msg.requestId) {
+            const delegatedCompletion = pendingCombatForCleanup
+              && String(pendingCombatForCleanup.requestId || "") === String(msg.requestId);
+            const originalRequestFingerprint = delegatedCompletion
+              ? String(pendingCombatForCleanup.requestFingerprint || "") : String(requestFingerprint || "");
+            const authorityId = delegatedCompletion ? session.playerId : null;
+            const completionFingerprint = delegatedCompletion ? requestFingerprint : null;
+            if (!originalRequestFingerprint || (delegatedCompletion && completionFingerprint == null)) {
+              throw new Error("REQUEST_ID_FINGERPRINT_MISSING");
+            }
             this.sql.exec(
-              `INSERT INTO processed_actions (request_id, player_id, sequence, result_json) VALUES (?, ?, ?, ?)`,
-              msg.requestId, actionOwnerId, this.currentSequence, resultJson
+              `INSERT INTO processed_actions
+               (request_id, player_id, sequence, result_json, request_fingerprint, authority_id, completion_fingerprint)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              msg.requestId, actionOwnerId, this.currentSequence, resultJson,
+              originalRequestFingerprint, authorityId, completionFingerprint
             );
           }
 

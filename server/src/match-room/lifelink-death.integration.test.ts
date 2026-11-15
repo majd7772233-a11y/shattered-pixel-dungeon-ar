@@ -3,7 +3,8 @@ import { isValidNativePublisherRebase } from "../validators/publisher-rebase";
 import { MatchRoom } from "./index";
 import { isValidNativeHeroBuffTick, nativeHeroBuffLifeLinkMobEntityIds,
   validateNativeLifeLinkDeathRewardTransition } from "../validators/hero-buffs";
-import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas, isValidNativeHeroStateJson } from "../validators/combat-state";
+import { buildNativeLifeLinkMobDamageEvents, parseAndValidateNativeLifeLinkMobDeltas,
+  isValidNativeHeroStateJson, requestPayloadFingerprint, classifyRequestReplay } from "../validators/combat-state";
 import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 
 const PLAYER_ID = "publisher-player-001";
@@ -19,6 +20,9 @@ class MemoryMatchRoomSql {
   players = new Map<string, Row>();
   mobs = new Map<number, Row>();
   processedActions = new Map<string, Row>();
+  processedActionColumns = new Set<string>([
+    "request_id", "player_id", "sequence", "result_json", "created_at"
+  ]);
   events: Row[] = [];
   rewardClaims = new Set<string>();
   mobUpdates = 0;
@@ -35,6 +39,7 @@ class MemoryMatchRoomSql {
       players: new Map(Array.from(this.players, ([key, value]) => [key, { ...value }])),
       mobs: new Map(Array.from(this.mobs, ([key, value]) => [key, { ...value }])),
       processedActions: new Map(Array.from(this.processedActions, ([key, value]) => [key, { ...value }])),
+      processedActionColumns: new Set(this.processedActionColumns),
       events: this.events.map(event => ({ ...event })),
       rewardClaims: new Set(this.rewardClaims),
       mobUpdates: this.mobUpdates,
@@ -48,6 +53,7 @@ class MemoryMatchRoomSql {
       this.players = snapshot.players;
       this.mobs = snapshot.mobs;
       this.processedActions = snapshot.processedActions;
+      this.processedActionColumns = snapshot.processedActionColumns;
       this.events = snapshot.events;
       this.rewardClaims = snapshot.rewardClaims;
       this.mobUpdates = snapshot.mobUpdates;
@@ -64,6 +70,14 @@ class MemoryMatchRoomSql {
   exec(queryValue: string, ...args: any[]) {
     const query = String(queryValue).replace(/\s+/g, " ").trim();
 
+    if (query === "PRAGMA table_info(processed_actions)") {
+      return this.cursor(Array.from(this.processedActionColumns).map(name => ({ name })));
+    }
+    if (query.startsWith("ALTER TABLE processed_actions ADD COLUMN ")) {
+      const name = query.slice("ALTER TABLE processed_actions ADD COLUMN ".length).split(" ")[0];
+      this.processedActionColumns.add(name);
+      return this.cursor();
+    }
     if (query === "SELECT value FROM room_meta WHERE key = 'transitionPending'") {
       const value = this.roomMeta.get("transitionPending");
       return this.cursor(value === undefined ? [] : [{ value }]);
@@ -105,7 +119,7 @@ class MemoryMatchRoomSql {
       const value = this.roomMeta.get(String(args[0]));
       return this.cursor(value === undefined ? [] : [{ value }]);
     }
-    if (query.startsWith("SELECT player_id, sequence, result_json FROM processed_actions WHERE request_id = ?")) {
+    if (query.startsWith("SELECT player_id, sequence, result_json, request_fingerprint, authority_id, completion_fingerprint FROM processed_actions WHERE request_id = ?")) {
       const row = this.processedActions.get(String(args[0]));
       return this.cursor(row ? [row] : []);
     }
@@ -144,8 +158,9 @@ class MemoryMatchRoomSql {
     if (query === "SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC") {
       return this.cursor(this.events.slice().sort((a,b) => Number(a.sequence) - Number(b.sequence)));
     }
-    if (query === "SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? ORDER BY sequence ASC") {
-      const rows = this.events.filter(event => Number(event.sequence) > Number(args[0]))
+    if (query.startsWith("SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? AND sequence <= ? ORDER BY sequence ASC")) {
+      const rows = this.events.filter(event => Number(event.sequence) > Number(args[0])
+          && Number(event.sequence) <= Number(args[1]))
         .sort((a,b) => Number(a.sequence) - Number(b.sequence));
       return this.cursor(rows);
     }
@@ -231,7 +246,10 @@ class MemoryMatchRoomSql {
     if (query.startsWith("INSERT INTO processed_actions")) {
       this.processedActions.set(String(args[0]), {
         request_id: String(args[0]), player_id: String(args[1]),
-        sequence: Number(args[2]), result_json: String(args[3])
+        sequence: Number(args[2]), result_json: String(args[3]),
+        request_fingerprint: String(args[4]),
+        authority_id: args[5] == null ? null : String(args[5]),
+        completion_fingerprint: args[6] == null ? null : String(args[6])
       });
       return this.cursor();
     }
@@ -1107,6 +1125,28 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.room.worldTime).toBe(beforeWorldTime);
   });
 
+  it("sends only an opaque sequence marker when a PvP event is hidden by FOV", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.room.gameMode = "PVP_ARENA";
+    fixture.room.currentSequence = 9;
+    delete fixture.room.broadcastWithFOV;
+    vi.spyOn(fixture.room, "hasLineOfSight").mockReturnValue(false);
+
+    fixture.room.broadcastWithFOV(ATTACKER_ID, "PLAYER_ATTACKED", {
+      targetId: ENTITY_ID, targetType: "MOB", targetPos: 17, damage: 5
+    }, fixture.authorityWs);
+
+    expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
+    const message = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
+    expect(message.sequence).toBe(9);
+    expect(message.senderId).toBe("SERVER");
+    expect(JSON.parse(String(message.payloadJson))).toEqual([
+      { sequence: 9, eventType: "EVENT_SKIPPED" }
+    ]);
+    expect(message.payloadJson).not.toContain("PLAYER_ATTACKED");
+    expect(message.payloadJson).not.toContain(ENTITY_ID);
+  });
+
   it("resolves a stable Mob entity ID before applying the PvP target FOV gate", () => {
     const fixture = makeSpiritArrowForwardFixture();
     fixture.room.gameMode = "PVP_ARENA";
@@ -1121,6 +1161,67 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(fixture.senderWs.send).toHaveBeenCalledTimes(1);
     const event = JSON.parse(String(fixture.senderWs.send.mock.calls[0][0]));
     expect(event.messageType).toBe("EVENT_BATCH");
+  });
+
+  it("rejects a changed requestId payload while native combat is pending", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "phase11b-pending-request-id-001";
+    const originalPayload = {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    };
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, originalPayload)));
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+
+    const changedPayload = {
+      action: "ATTACK",
+      data: { ...fixture.attackData, damageBonus: Number(fixture.attackData.damageBonus || 0) + 1 },
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    };
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, changedPayload)));
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.events).toHaveLength(0);
+    const pending = JSON.parse(String(fixture.sql.roomMeta.get("pendingCombat:" + requestId)));
+    expect(pending.requestFingerprint).toBe(requestPayloadFingerprint(JSON.stringify(originalPayload)));
+  });
+
+  it("does not forward the same native combat request twice while its authority result is pending", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "phase11b-exact-pending-request-001";
+    const originalPayload = {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    };
+    const frame = JSON.stringify(actionMessage(requestId, originalPayload));
+    await fixture.room.webSocketMessage(fixture.senderWs, frame);
+    await fixture.room.webSocketMessage(fixture.senderWs, frame);
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("NATIVE_COMBAT_ALREADY_PENDING");
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects pending requestId reuse from another player before forwarding a second combat request", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const requestId = "phase11b-cross-player-pending-001";
+    const originalPayload = {
+      action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
+    };
+    await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, originalPayload)));
+    const foreignWs = {
+      send: fixture.senderWs.send,
+      deserializeAttachment: () => ({ playerId: "foreign-player-002", sessionToken: "foreign-token" })
+    };
+    await fixture.room.webSocketMessage(foreignWs as any, JSON.stringify(actionMessage(requestId, originalPayload)));
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
+    expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.events).toHaveLength(0);
   });
 
   it("rolls back a publisher SpiritArrow result when the event insert fails and correlates ERROR to both clients", async () => {
@@ -2136,6 +2237,33 @@ describe("Phase 11-A event ordering and replay characterization", () => {
       .toBe("LEVEL_PUBLISHER_CHANGED");
   });
 
+  it("falls back to a full snapshot when the replay cursor is ahead of the room sequence", async () => {
+    const fixture = makeReconnectFixture(3, [
+      { sequence: 1, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" },
+      { sequence: 2, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" },
+      { sequence: 3, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" }
+    ]);
+    fixture.reconnectMessage.payloadJson = JSON.stringify({
+      sessionToken: fixture.session.sessionToken, lastSequence: 4
+    });
+
+    await (fixture.room as any).handleReconnect(fixture.ws, fixture.reconnectMessage, fixture.session);
+
+    expect(JSON.parse(String(fixture.ws.send.mock.calls[0][0])).messageType).toBe("SNAPSHOT");
+  });
+
+  it("falls back to a full snapshot for PvP reconnects with recipient-filtered event history", async () => {
+    const fixture = makeReconnectFixture(2, [
+      { sequence: 1, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" },
+      { sequence: 2, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" }
+    ]);
+    fixture.room.gameMode = "PVP_ARENA";
+
+    await (fixture.room as any).handleReconnect(fixture.ws, fixture.reconnectMessage, fixture.session);
+
+    expect(JSON.parse(String(fixture.ws.send.mock.calls[0][0])).messageType).toBe("SNAPSHOT");
+  });
+
   it("characterizes full-snapshot fallback when reconnect gap exceeds 50 events", async () => {
     const rows = Array.from({ length: 51 }, (_, index) => ({
       sequence: index + 1,
@@ -2193,32 +2321,130 @@ describe("Phase 11-A event ordering and replay characterization", () => {
     expect(payload.events.map((event: Row) => event.sequence)).toEqual([1, 2]);
   });
 
-  it("characterizes same-player requestId reuse with a different action and payload as the original replay", () => {
+  it("rejects same-player requestId reuse with a different action or payload", () => {
     const fixture = makeNonlethalPoisonFixture();
     const requestId = "phase11a-reused-request-001";
-    const originalResult = JSON.stringify({ accepted: true, action: "MOVE", originalTarget: 17 });
+    const original = actionMessage(requestId, {
+      action: "MOVE", data: { to: 17 }, heroStateJson: JSON.stringify({ hp: 20, pos: 9 })
+    });
     fixture.sql.processedActions.set(requestId, {
-      request_id: requestId,
-      player_id: PLAYER_ID,
-      sequence: 7,
-      result_json: originalResult
+      request_id: requestId, player_id: PLAYER_ID, sequence: 7, result_json: JSON.stringify({ accepted: true }),
+      request_fingerprint: requestPayloadFingerprint(original.payloadJson)
     });
     fixture.room.currentSequence = 12;
-    const changedRequest = actionMessage(requestId, {
-      action: "ATTACK",
-      data: { targetType: "MOB", targetId: "different-target", damage: 999 },
+    const changed = actionMessage(requestId, {
+      action: "ATTACK", data: { targetType: "MOB", targetId: "different-target", damage: 999 },
       heroStateJson: JSON.stringify({ hp: 1, pos: 31 })
     });
+    (fixture.room as any).handleActionInTransaction(fixture.ws, changed, fixture.session);
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(12);
+  });
 
-    (fixture.room as any).handleActionInTransaction(fixture.ws, changedRequest, fixture.session);
+  it("migrates processed action fingerprints idempotently without dropping legacy receipts", () => {
+    const fixture = makeNonlethalPoisonFixture();
+    fixture.sql.processedActions.set("legacy-request-001", {
+      request_id: "legacy-request-001", player_id: PLAYER_ID, sequence: 4, result_json: "{}"
+    });
 
-    expect(fixture.ws.send).toHaveBeenCalledTimes(1);
+    (fixture.room as any).migrateProcessedActions();
+    (fixture.room as any).migrateProcessedActions();
+
+    expect(fixture.sql.processedActionColumns).toContain("request_fingerprint");
+    expect(fixture.sql.processedActionColumns).toContain("authority_id");
+    expect(fixture.sql.processedActionColumns).toContain("completion_fingerprint");
+    expect(fixture.sql.processedActions.get("legacy-request-001")).toMatchObject({
+      request_id: "legacy-request-001", player_id: PLAYER_ID, sequence: 4, result_json: "{}"
+    });
+  });
+
+  it("classifies exact delegated combat completion separately from the original request", () => {
+    const originalFingerprint = requestPayloadFingerprint({
+      action: "ATTACK", data: { targetType: "MOB", targetId: "mob-0001" }
+    })!;
+    const completionFingerprint = requestPayloadFingerprint({
+      action: "SYNC_MOB_STATE", data: { combatRequestId: "delegated-request-001", hpAfter: 9 }
+    })!;
+    const existing = {
+      player_id: "attacker-player", request_fingerprint: originalFingerprint,
+      authority_id: "publisher-player", completion_fingerprint: completionFingerprint
+    };
+
+    expect(classifyRequestReplay(existing, "attacker-player", originalFingerprint)).toBe("REPLAY");
+    expect(classifyRequestReplay(existing, "publisher-player", completionFingerprint)).toBe("REPLAY");
+    expect(classifyRequestReplay(existing, "publisher-player", originalFingerprint)).toBe("CONFLICT");
+    expect(classifyRequestReplay(existing, "attacker-player", completionFingerprint)).toBe("CONFLICT");
+    expect(classifyRequestReplay(existing, "different-player", originalFingerprint)).toBe("CONFLICT");
+  });
+
+  it("replays the exact original request when object key order differs", () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const requestId = "phase11b-exact-replay-request-001";
+    const original = actionMessage(requestId, {
+      action: "MOVE", data: { to: 17, from: 9 }, heroStateJson: "{}"
+    });
+    const result = JSON.stringify({ status: "ACCEPTED", sequence: 7, eventType: "PLAYER_MOVED" });
+    fixture.sql.processedActions.set(requestId, {
+      request_id: requestId, player_id: PLAYER_ID, sequence: 7, result_json: result,
+      request_fingerprint: requestPayloadFingerprint(original.payloadJson)
+    });
+    const payload = JSON.parse(original.payloadJson);
+    const reordered = { ...original, payloadJson: JSON.stringify({
+      heroStateJson: payload.heroStateJson, data: payload.data, action: payload.action
+    }) };
+    (fixture.room as any).handleActionInTransaction(fixture.ws, reordered, fixture.session);
     const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
     expect(response.messageType).toBe("ACTION_ACCEPTED");
     expect(response.sequence).toBe(7);
-    expect(response.requestId).toBe(requestId);
-    expect(response.payloadJson).toBe(originalResult);
+    expect(response.payloadJson).toBe(result);
     expect(fixture.sql.events).toHaveLength(0);
-    expect(fixture.room.currentSequence).toBe(12);
+  });
+
+  it("rejects requestId reuse from another authenticated player", () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const requestId = "phase11b-cross-player-request-001";
+    const original = actionMessage(requestId, { action: "MOVE", data: { to: 17 }, heroStateJson: "{}" });
+    fixture.sql.processedActions.set(requestId, {
+      request_id: requestId, player_id: PLAYER_ID, sequence: 7, result_json: "{}",
+      request_fingerprint: requestPayloadFingerprint(original.payloadJson)
+    });
+    const other = { ...fixture.session, playerId: "different-player-002" };
+    (fixture.room as any).handleActionInTransaction(fixture.ws, original, other);
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
+    expect(fixture.sql.events).toHaveLength(0);
+  });
+
+  it("concurrent first-time exact requests commit one sequence, event and world-time charge", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const requestId = "phase11b-concurrent-retry-001";
+    const payload = {
+      action: "MOVE",
+      data: { from: 9, to: 10, depth: 1, engineActionCost: 1 },
+      heroStateJson: JSON.stringify(fixture.beforeHero)
+    };
+    const original = actionMessage(requestId, payload);
+
+    await Promise.all([
+      (fixture.room as any).handleAction(fixture.ws, original, fixture.session),
+      (fixture.room as any).handleAction(fixture.ws, original, fixture.session)
+    ]);
+
+    expect(fixture.room.currentSequence).toBe(1);
+    expect(fixture.room.worldTime).toBe(1);
+    expect(fixture.sql.events).toHaveLength(1);
+    expect(fixture.sql.events[0].sequence).toBe(1);
+    expect(fixture.sql.processedActions.size).toBe(1);
+    expect(fixture.sql.processedActions.get(requestId)?.request_fingerprint)
+      .toBe(requestPayloadFingerprint(original.payloadJson));
+    expect(fixture.ws.send).toHaveBeenCalledTimes(2);
+    expect(fixture.ws.send.mock.calls.every((call: any[]) =>
+      JSON.parse(String(call[0])).messageType === "ACTION_ACCEPTED")).toBe(true);
+    expect(fixture.room.broadcastWithFOV).toHaveBeenCalledTimes(1);
+    expect(fixture.sql.rewardClaimInsertAttempts).toBe(0);
   });
 });

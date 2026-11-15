@@ -2,6 +2,25 @@ import { isNativeLootClaimSchemaCurrent } from "../validators/inventory-claims";
 import { MatchRoomBase } from "./base";
 
 export class MatchRoomPersistence extends MatchRoomBase {
+  protected migrateProcessedActions(): void {
+    const inspect = () => this.sql.exec("PRAGMA table_info(processed_actions)").toArray();
+    const requiredColumns = [
+      ["request_fingerprint", "TEXT"],
+      ["authority_id", "TEXT"],
+      ["completion_fingerprint", "TEXT"]
+    ] as const;
+    const missing = () => {
+      const names = new Set(inspect().map((column: any) => String(column.name)));
+      return requiredColumns.filter(([name]) => !names.has(name));
+    };
+    if (missing().length === 0) return;
+    this.state.storage.transactionSync(() => {
+      for (const [name, type] of missing()) {
+        this.sql.exec(`ALTER TABLE processed_actions ADD COLUMN ${name} ${type}`);
+      }
+    });
+  }
+
   protected migrateClaimedItemInstances(): void {
     const inspect = () => this.sql.exec("PRAGMA table_info(claimed_item_instances)").toArray();
     if (isNativeLootClaimSchemaCurrent(inspect())) return;
@@ -113,6 +132,9 @@ export class MatchRoomPersistence extends MatchRoomBase {
         player_id TEXT,
         sequence INTEGER,
         result_json TEXT,
+        request_fingerprint TEXT,
+        authority_id TEXT,
+        completion_fingerprint TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE TABLE IF NOT EXISTS native_mob_reward_claims (
@@ -131,6 +153,7 @@ export class MatchRoomPersistence extends MatchRoomBase {
       );
     `);
 
+    this.migrateProcessedActions();
     this.migrateClaimedItemInstances();
 
     const timeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'worldTime'`).toArray();
