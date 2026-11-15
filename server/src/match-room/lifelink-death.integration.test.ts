@@ -137,6 +137,16 @@ class MemoryMatchRoomSql {
       const row = this.players.get(String(args[0]));
       return this.cursor(row ? [{ pos: row.pos }] : []);
     }
+    if (query === "SELECT pos FROM players WHERE player_id <> ? AND state = 'ALIVE'") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => String(player.player_id) !== String(args[0]) && String(player.state) === "ALIVE")
+        .map(player => ({ pos: player.pos })));
+    }
+    if (query === "SELECT pos FROM mobs WHERE depth = ? AND hp > 0") {
+      return this.cursor(Array.from(this.mobs.values())
+        .filter(mob => Number(mob.depth) === Number(args[0]) && Number(mob.hp) > 0)
+        .map(mob => ({ pos: mob.pos })));
+    }
     if (query.startsWith("SELECT solid, los_blocking FROM level_tiles WHERE depth = ? AND pos = ?")) {
       return this.cursor([]);
     }
@@ -552,8 +562,19 @@ function makePlayerCombatRollbackFixture() {
   const buffsJson = JSON.stringify(buffRows);
   const requestId = "delegated-player-combat-rollback-001";
   const now = Date.now();
+  const originalAttackPayload = {
+    action: "ATTACK",
+    data: {
+      targetType: "PLAYER", targetId: PVP_DEFENDER_ID, attackerPos: 9,
+      attackerStateBefore: attackerBefore, attackWeaponMode: "EQUIPPED",
+      attackWeaponBundle: fixture.bowBundle, damageMultiplier: 1,
+      damageBonus: 0, accuracyMultiplier: 1
+    },
+    heroStateJson: attackerBefore
+  };
   const pending = {
-    requestId, attackerId: ATTACKER_ID, authorityId: PVP_DEFENDER_ID,
+    requestId, requestFingerprint: requestPayloadFingerprint(originalAttackPayload),
+    attackerId: ATTACKER_ID, authorityId: PVP_DEFENDER_ID,
     targetType: "PLAYER", targetId: PVP_DEFENDER_ID,
     attackerPos: 9, targetPos: 10, targetLockKey: "PLAYER:" + PVP_DEFENDER_ID,
     depth: 1, createdAt: now,

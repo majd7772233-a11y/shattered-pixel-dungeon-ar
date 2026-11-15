@@ -693,8 +693,15 @@ public class MultiplayerManager implements TransportCallback {
                             && publisherValue.asBoolean();
                     this.levelPublisherId = levelPublisher ? localPlayerId : null;
                 }
-                // SESSION's sequence is a trusted initial handshake baseline, distinct from
-                // incremental events which commit only after native application.
+                // SESSION's sequence is the trusted initial room baseline for a new handshake.
+                // Subsequent EVENT_BATCH/ACTION_ACCEPTED envelopes never advance it on receipt:
+                // they commit individually only after contiguous native application.
+                JsonValue sequenceValue = payload.get("sequence");
+                if (sequenceValue != null && !sequenceValue.isNull()
+                        && sequenceValue.isNumber() && sequenceValue.asDouble() >= 0d
+                        && sequenceValue.asDouble() == Math.floor(sequenceValue.asDouble())) {
+                    updateLastSequence(sequenceValue.asLong());
+                }
                 JsonValue seedValue = payload.get("seed");
                 if (seedValue != null && !seedValue.isNull()) {
                     // SESSION arrives before HeroSelectScene starts the run, so all clients

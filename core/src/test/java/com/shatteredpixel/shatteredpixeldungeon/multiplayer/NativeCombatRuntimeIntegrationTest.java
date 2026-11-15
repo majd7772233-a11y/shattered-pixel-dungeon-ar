@@ -3542,9 +3542,13 @@ public class NativeCombatRuntimeIntegrationTest {
         int clientBHpBeforeEvent = targetB.HP;
         routeEventBatch(event, 2L);
 
-        Assert.assertEquals("Client B waits for full native Mob state", clientBHpBeforeEvent, targetB.HP);
-        Assert.assertEquals(1L, manager.getLastSequence());
-        Assert.assertTrue(transportB.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
+        Assert.assertEquals("Client B applies the complete scalar result of a normal non-lethal native hit",
+                resolvedHp, targetB.HP);
+        Assert.assertEquals(resolvedHt, targetB.HT);
+        Assert.assertEquals(resolvedPos, targetB.pos);
+        Assert.assertEquals(2L, manager.getLastSequence());
+        Assert.assertFalse("A fully described non-lethal hit does not require full snapshot fallback",
+                transportB.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
 
 
