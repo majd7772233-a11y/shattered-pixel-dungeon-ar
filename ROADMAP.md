@@ -584,7 +584,7 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 
 
 
-### 2026-11-14 — Phase 11-A dependency preflight: UNBLOCKED BY PHASE 10 (no Phase 11 work started)
+### Historical 2026-11-14 — Phase 11-A dependency preflight (at that checkpoint, Phase 11 had not started)
 
 **Historical preflight baseline:** branch multiplayer-framework-core-14118577486727081892, parent HEAD cf3714c82a210eace79614ab7c575acb04b8aebb. Its exact-head CI [43523497982](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43523497982) passed all three jobs. The findings below record the open items at that time; Phase 10 later closed at SHA f2d79038d1e420461be7a1956471324de5c1ef74 with exact-head CI [43618725089](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
 
@@ -601,7 +601,7 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 - `processed_actions.request_id` is the durable primary key. The current replay classifier `classifyRequestReplay(existing, playerId)` returns REPLAY for the same player and CONFLICT for a different player; the duplicate branch returns the prior ACTION_ACCEPTED result without comparing the new request's action or payload to the original one. This does not prove protection against same-player request-ID reuse for a different action/payload.
 - `WorldSnapshot.restoreWorld` rejects a snapshot whose sequence is older than the client's current sequence, validates before live mutation, and retains rollback behavior; the router marks a snapshot applied after restoration succeeds. These safeguards do not replace contiguous EVENT_BATCH validation.
 
-**Gate decision after Phase 10 closeout:** the dependency is now satisfied. Phase 11-A may begin in a separate user-requested work slice after re-reading the live branch and current source. This closeout itself did not implement Phase 11, add Phase 11 tests, or change Worker validators, event persistence, event ordering, sequence, replay or recovery algorithms. Start Phase 11 with behavior-characterization tests against the then-current code.
+**Historical gate decision at this checkpoint:** Phase 10's dependency had been satisfied, so Phase 11-A was then eligible only as a separately requested slice. The subsequent Phase 11-A characterization and Phase 11-B implementation/acceptance are recorded in the current Phase 11 closeout above; this paragraph is not the present next-step instruction.
 
 ## Phase 11 — Event Ordering, Replay Protection and Resynchronization
 

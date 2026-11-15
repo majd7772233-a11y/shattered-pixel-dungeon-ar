@@ -215,32 +215,30 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ### Exact branch and verified code/test baseline
 
-- Repository: https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar
-- Only working branch: `multiplayer-framework-core-14118577486727081892`. Never create a branch, merge, open a PR, or write to main/master without an explicit request.
-- Latest implementation/test SHA: `f2d79038d1e420461be7a1956471324de5c1ef74`; exact code/test CI [43618725089 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43618725089).
-- Documentation-only closeout checkpoint `dcf409f35a6c9b4800379a6bb180c87f56c6d529) passed exact-head CI [43622919886 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43622919886). This commit changed Markdown only; the gameplay/test tree remains the SHA above.
-- Exact CI evidence: Backend build + six static guards + 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK compilation passed; three Durable Object SQLite integration tests passed. The 708 executions include mirrored/generated TS/JS files, not 708 unique source scenarios.
-- Phase 9 is complete for implementation and automated acceptance within its explicit, regression-tested fail-closed support boundary.
-- Phase 10-A through 10-E are complete for implementation and automated acceptance. The client has 25 explicit outer-message route decisions; PLAYER_JOINED, PLAYER_LEFT and READY are typed; PING is transport-only; CHAT is explicitly non-routed without an Android chat surface; no generic default route forwards messages into RemotePlayerActionReceiver.
-- The ACTION payload contract inventories 23 action names and 361 Worker-consumed field names (346 source-referenced in listed Java producer files, 15 Worker-only). This is a static name-presence inventory, not proof of serialization on each runtime branch. The 18 required NativeLevelSnapshot fields are cross-checked against Java and Worker source; Worker validators remain authoritative for types, requiredness and supported variants.
-- WAIT and USE_ABILITY remain declared but non-emitted Android actions and fail-closed. Do not infer feature support from an enum or Worker branch.
-- NativeCombatRuntimeIntegrationTest contains 67 @Test methods; NetworkProtocolParityTest contains 15.
-- **Phase status:** Phases 1–10 are complete for implementation and automated acceptance; Phases 11–21 remain open and dependency-ordered; Phase 22 is deployment/cross-layer preflight; Phase 23 is the user's final physical-device playtest.
-- Phase 11-A characterization tests were added after a fresh exact-HEAD/CI audit: five Worker scenarios and three Android cases. Exact new-commit CI is pending; no runtime behavior was changed.
-- CI does not prove a production Worker deployment, live production WebSocket lifecycle or physical multi-device gameplay. Those remain explicit Phases 22–23 gates.
+- Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`.
+- Only working branch: `multiplayer-framework-core-14118577486727081892`. Never create another branch, merge, open a PR, or write to main/master.
+- Latest implementation/test SHA: `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact code/test CI [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
+- Latest documentation closeout SHA: `884674ea6b7653e0f70804fc21a6f9afe4eeb732`; exact-head docs CI [43754359292 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43754359292).
+- Backend evidence on the code/test SHA: 10 Vitest files / 740 reported executions; generated/mirrored TS/JS execution counts are not unique source scenarios.
+- Android evidence: JVM tests and Debug APK compilation passed; NativeCombatRuntimeIntegrationTest has 74 @Test methods and NetworkProtocolParityTest has 15.
+- Durable Object evidence: four SQLite integration tests passed.
+- Phases 1–10 are complete within their documented acceptance boundaries. Phase 11-A characterization is retained as historical regression coverage; Phase 11-B implementation and automated acceptance are complete. Phase 12 is the next roadmap phase and is not started.
+- Android applies validated contiguous EVENT_BATCH rows with rollback-before-commit sequencing. The Worker binds requestId to authenticated player and canonical action/payload fingerprints, replays exact requests, rejects conflicting reuse, and commits the covered ACTION state/claims/receipt/event/sequence/world-time atomically with after-commit network delivery.
+- Reconnect remains limited to complete contiguous retained replay ranges of up to 50 events for eligible non-current publishers; otherwise full SNAPSHOT. RESYNC remains full SNAPSHOT.
+- Protocol remains 25 message values and 23 action values. No production Worker deployment or physical two-device match is claimed.
 
 ### Phase status
 
 - **Phases 1–9:** complete for implementation and automated acceptance under the limits recorded in ROADMAP.md.
-- **Phase 10:** complete for implementation and automated acceptance at code/test SHA `f2d79038d1e420461be7a1956471324de5c1ef74`; typed outer-message routing, ACTION field-name inventory and required native snapshot field checks are integrated and green.
-- **Phase 11:** OPEN — Phase 11-A characterization tests added; behavior fixes and parent-phase acceptance remain outstanding.
-- **Phase 12:** durable recovery, reconnect and authority handoff.
+- **Phase 10:** complete for implementation and automated acceptance; see the Phase 10-E closeout and historical records below.
+- **Phase 11:** CLOSED for the accepted event ordering, request identity/replay, sequence safety, rollback and resynchronization scope at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / CI `43731016036`.
+- **Phase 12:** next eligible roadmap phase — durable recovery, reconnect and authority handoff; not started.
 - **Phase 13:** transport-independent room/session lifecycle.
 - **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).
-- **Phases 17–19:** Co-op lifecycle, PvP/Deathmatch and Survival.
+- **Phases 17–19:** Co-op lifecycle, PvP/Deathmatch, Survival.
 - **Phases 20–21:** truthful host/join UX; localization, RTL/layout, accessibility and cleanup.
 - **Phase 22:** automated cross-layer/multi-client scenarios, exact-SHA CI and deployed-service smoke checks.
-- **Phase 23:** user-led physical-device gameplay test, deliberately last. Record actual results and add coherent Phase 24+ follow-up phases if needed.
+- **Phase 23:** user-led physical-device gameplay test, deliberately last.
 
 ### Verified Phase 1 facts
 - SPDLevelSnapshot exports schema/depth/branch/seed/dimensions/entrance/exit, tile and collision flags, transitions/exploration state, native metadata, stable Mob identities/bundles/state/buffs/cooldowns, heaps/items/heap flags, traps, plants, timed blobs and hero/inventory/combat/buff state. The Worker preflight now rejects repeated/out-of-range tile and exploration cells, duplicate Mob IDs/positions/stable identities, duplicate heap/trap/plant positions, duplicate blob classes, malformed item/trap/plant/blob fields, incomplete native Mob runtime state, invalid entrance/exit coordinates, missing/invalid seed and coerced string dimensions before persistence.
@@ -258,12 +256,11 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Client-sent engineResult=true is not proof of an honest engine. The implemented trust model uses one elected Java SPD publisher as the shared Mob/Actor execution authority, with Worker validation/sequencing and resync on rejected native turns. This is not cheat-proof; stronger integrity would require a server-side engine that independently executes the Java SPD rules.
 - Do not call native Mob.die() on a replica just to set its state; that can duplicate loot/reward. Use the authoritative tombstone/removal path.
 
-## 5. Open Risks and Work After Phase 10
+## 5. Open Risks and Work After Phase 11
 
-The current authoritative scope is the 23-phase plan in `ROADMAP.md`. Phases 1–10 are complete for implementation and automated acceptance under their explicitly documented support boundaries. Work remaining begins at Phase 11 and is dependency ordered:
+The current authoritative scope is the 23-phase plan in `ROADMAP.md`. Phases 1–11 are complete for implementation and automated acceptance under their explicitly documented support boundaries. Remaining work begins at Phase 12 and remains dependency ordered:
 
-- **Phase 11 — event reliability:** sequence ordering, replay protection, duplicate requests and resynchronization.
-- **Phase 12 — durable recovery:** reconnect and authority handoff lifecycle beyond the Phase 9 timed-effect/SpiritArrow acceptance scope.
+- **Phase 12 — durable recovery:** reconnect/session recovery and authority handoff beyond the bounded event-replay/full-snapshot contract closed in Phase 11.
 - **Phase 13 — session lifecycle:** common room/readiness state and failure-safe start/leave behavior.
 - **Phases 14–16 — transports:** Internet/WebSocket, LAN, Bluetooth with an honest unavailable state if necessary.
 - **Phases 17–19 — modes:** Co-op lifecycle, PvP/Deathmatch, Survival.
@@ -271,6 +268,7 @@ The current authoritative scope is the 23-phase plan in `ROADMAP.md`. Phases 1�
 - **Phase 22 — automated/service preflight:** real room/action lifecycle tests, multi-client scenarios, exact-SHA CI, deployment configuration and fresh-room Worker smoke test.
 - **Phase 23 — user-led physical-device playtest:** final only. The user reports actual results; append coherent Phase 24+ fixes afterward and preserve symptoms/reproduction steps.
 
+Phase 12 and later phases must not start automatically; wait for the user's explicit scope.
 
 Never assume a later phase is complete because a class or enum exists. Check current source and tests. Keep automated tests inside the phase that implements the behavior; only physical-device gameplay is reserved for Phase 23.
 

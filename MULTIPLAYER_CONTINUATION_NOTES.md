@@ -43,9 +43,9 @@ On the next request, re-fetch the live branch head and CI first. Read GPT.md, RO
 - CI 43618725089: Backend build + six static guards + 10 Vitest files / 708 executions passed; Android JVM tests and Debug APK passed; Durable Object SQLite integration 3/3 passed. No deployed Worker smoke test or physical multi-device session is claimed.
 - No Worker producer/validator/SQL, sequence/replay/resync, event ordering or native SPD gameplay semantics changed.
 
-## Next handoff — verify Phase 11-A exact-head CI
+## Historical next handoff — verify Phase 11-A exact-head CI (superseded by the Phase 11-B closeout above)
 
-Phase 11-A characterization is verified at `1aa62a881dfef122256be253e2c96fd94eddcdea` / CI `43641719063`. The known gaps intentionally captured by the tests—non-contiguous EVENT_BATCH acceptance/watermark timing and same-player requestId reuse without payload binding—remain for Phase 11-B. Continue only after a separate explicit user request; do not begin Phase 11-B or Phase 12 automatically.
+This paragraph preserves the continuation instruction that applied immediately after Phase 11-A. It is superseded by the current Phase 11-B completion and next-chat guard at the top of this file; Phase 11-B and Phase 12 are not pending work.
 
 ## Historical records
 

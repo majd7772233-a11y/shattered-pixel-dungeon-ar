@@ -432,7 +432,7 @@ Implementation/test SHA: f2d79038d1e420461be7a1956471324de5c1ef74. Exact-head [C
 
 New Android behavior regressions cover PLAYER_JOINED, duplicate joins, sender/payload identity mismatch, READY true/false, PING/CHAT/non-inbound no-phantom-player handling and readiness restore after SNAPSHOT. Existing PLAYER_LEFT cleanup and EVENT_BATCH single-application tests remain enabled.
 
-These tests validate source and local/CI runtimes only. They do not prove production Worker deployment, live WebSocket operation in production or a physical two-device session. WAIT and USE_ABILITY remain non-emitted Android action declarations; CHAT remains non-routed without a client chat surface. Phase 10 is closed for its agreed implementation/automated-acceptance scope; Phase 11 is the next eligible phase but has not started.
+At this historical Phase 10-E closeout checkpoint, these tests validated source and local/CI runtimes only; they did not prove production Worker deployment, live production WebSocket operation or a physical two-device session. WAIT and USE_ABILITY remained non-emitted Android action declarations; CHAT remained non-routed without a client chat surface. Phase 10 was closed at that checkpoint; Phase 11 had not yet started. The later Phase 11-A/11-B evidence is recorded above.
 
 ## Phase 11-B — event ordering, replay identity and atomicity (2026-11-15)
 
