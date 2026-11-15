@@ -150,6 +150,10 @@ class MemoryMatchRoomSql {
     if (query.startsWith("SELECT solid, los_blocking FROM level_tiles WHERE depth = ? AND pos = ?")) {
       return this.cursor([]);
     }
+    if (query === "SELECT pos, state FROM players WHERE player_id = ?") {
+      const row = this.players.get(String(args[0]));
+      return this.cursor(row ? [{ pos: row.pos, state: row.state }] : []);
+    }
     if (query.startsWith("SELECT pos, hp, ht, state FROM players WHERE player_id = ?")
         || query.startsWith("SELECT pos,hp,ht,state FROM players WHERE player_id = ?")) {
       const row = this.players.get(String(args[0]));
