@@ -3284,11 +3284,11 @@ public class NativeCombatRuntimeIntegrationTest {
         String stableId = "stable-native-death-0001";
         manager.registerServerEntityId(target.id(), stableId);
         int heapsBefore = level.heaps.valueList().size();
-        String event = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\",\\"action\\":{"
-                + "\\"attackerId\\":\\"client-a\\",\\"targetId\\":\\"" + stableId + "\\","
-                + "\\"targetType\\":\\"MOB\\",\\"targetHp\\":0,\\"targetHt\\":100,"
-                + "\\"targetPosAfter\\":" + target.pos + ",\\"targetBuffs\\":\\"[]\\","
-                + "\\"damage\\":100,\\"hit\\":true,\\"engineResolved\\":true}}]";
+        String event = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"PLAYER_ATTACKED\",\"action\":{"
+                + "\"attackerId\":\"client-a\",\"targetId\":\"" + stableId + "\","
+                + "\"targetType\":\"MOB\",\"targetHp\":0,\"targetHt\":100,"
+                + "\"targetPosAfter\":" + target.pos + ",\"targetBuffs\":\"[]\","
+                + "\"damage\":100,\"hit\":true,\"engineResolved\":true}}]";
         routeEventBatch(event, 1L);
 
         Assert.assertTrue("A scalar Mob death result rolls back until a complete loot snapshot arrives",
@@ -3300,6 +3300,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(stableId, manager.getServerEntityId(target.id()));
         Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void discardedReactiveMobDamageRequestsResyncWithoutApplyingUntrustedScalarState() throws Exception {
@@ -3313,21 +3314,22 @@ public class NativeCombatRuntimeIntegrationTest {
         int hpBeforeEvent = source.HP;
         manager.updateLastSequence(2L);
 
-        String event = "[{\\"sequence\\":3,\\"depth\\":1,\\"eventType\\":\\"PLAYER_DAMAGED\\",\\"action\\":{"
-                + "\\"targetId\\":\\"client-victim\\",\\"targetPlayerId\\":\\"client-victim\\",\\"targetType\\":\\"PLAYER\\","
-                + "\\"targetHp\\":18,\\"targetHt\\":20,\\"targetState\\":\\"ALIVE\\","
-                + "\\"sourceType\\":\\"MOB\\",\\"sourceEntityId\\":\\"stable-reactive-source-0001\\","
-                + "\\"sourceMobHpBefore\\":8,\\"sourceMobHtBefore\\":8,\\"sourceMobHpAfter\\":2,"
-                + "\\"sourceMobHtAfter\\":8,\\"sourceMobShieldBefore\\":0,\\"sourceMobShieldAfter\\":0,"
-                + "\\"sourceMobPosBefore\\":" + source.pos + ",\\"sourceMobPosAfter\\":" + source.pos + ","
-                + "\\"sourceMobDamage\\":6,\\"sourceMobBuffsBefore\\":\\"[]\\",\\"sourceMobBuffs\\":\\"[]\\","
-                + "\\"sourceMobResyncRequired\\":true,\\"sourceMobBundleAfter\\":null}}]";
+        String event = "[{\"sequence\":3,\"depth\":1,\"eventType\":\"PLAYER_DAMAGED\",\"action\":{"
+                + "\"targetId\":\"client-victim\",\"targetPlayerId\":\"client-victim\",\"targetType\":\"PLAYER\","
+                + "\"targetHp\":18,\"targetHt\":20,\"targetState\":\"ALIVE\","
+                + "\"sourceType\":\"MOB\",\"sourceEntityId\":\"stable-reactive-source-0001\","
+                + "\"sourceMobHpBefore\":8,\"sourceMobHtBefore\":8,\"sourceMobHpAfter\":2,"
+                + "\"sourceMobHtAfter\":8,\"sourceMobShieldBefore\":0,\"sourceMobShieldAfter\":0,"
+                + "\"sourceMobPosBefore\":" + source.pos + ",\"sourceMobPosAfter\":" + source.pos + ","
+                + "\"sourceMobDamage\":6,\"sourceMobBuffsBefore\":\"[]\",\"sourceMobBuffs\":\"[]\","
+                + "\"sourceMobResyncRequired\":true,\"sourceMobBundleAfter\":null}}]";
         routeEventBatch(event, 3L);
 
         Assert.assertEquals("Untrusted source Mob deltas are not applied", hpBeforeEvent, source.HP);
         Assert.assertEquals("A rejected incremental result cannot move the watermark", 2L, manager.getLastSequence());
         Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void staleEventCannotRollBackNewerNativeMobPosition() throws Exception {
@@ -3339,19 +3341,20 @@ public class NativeCombatRuntimeIntegrationTest {
         int newerPosition = target.pos + 1;
         int stalePosition = target.pos + 2;
 
-        String newerEvent = "[{\\"sequence\\":2,\\"depth\\":1,\\"eventType\\":\\"MOB_MOVED\\",\\"action\\":{"
-                + "\\"mobId\\":" + target.id() + ",\\"toPos\\":" + newerPosition + "}}]";
+        String newerEvent = "[{\"sequence\":2,\"depth\":1,\"eventType\":\"MOB_MOVED\",\"action\":{"
+                + "\"mobId\":" + target.id() + ",\"toPos\":" + newerPosition + "}}]";
         routeEventBatch(newerEvent, 2L);
         Assert.assertEquals(newerPosition, target.pos);
         Assert.assertEquals(2L, manager.getLastSequence());
 
-        String staleEvent = "[{\\"sequence\\":1,\\"depth\\":1,\\"eventType\\":\\"MOB_MOVED\\",\\"action\\":{"
-                + "\\"mobId\\":" + target.id() + ",\\"toPos\\":" + stalePosition + "}}]";
+        String staleEvent = "[{\"sequence\":1,\"depth\":1,\"eventType\":\"MOB_MOVED\",\"action\":{"
+                + "\"mobId\":" + target.id() + ",\"toPos\":" + stalePosition + "}}]";
         routeEventBatch(staleEvent, 1L);
         Assert.assertEquals("A delayed older event cannot overwrite the accepted position", newerPosition, target.pos);
         Assert.assertEquals(2L, manager.getLastSequence());
         Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void eventBatchSortsOutOfOrderRowsBeforeContiguousApplication() throws Exception {
@@ -3359,13 +3362,14 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-sequence-sort-regression", "client-a", transport);
 
-        String batch = "[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}},"
-                + "{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]";
+        String batch = "[{\"sequence\":2,\"eventType\":\"MATCH_END\",\"action\":{}},"
+                + "{\"sequence\":1,\"eventType\":\"MATCH_END\",\"action\":{}}]";
         routeEventBatch(batch, 2L);
 
         Assert.assertEquals(2L, manager.getLastSequence());
         Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void eventArrivingAheadOfMissingSequenceRequestsSnapshotWithoutAdvancingWatermark() throws Exception {
@@ -3373,13 +3377,14 @@ public class NativeCombatRuntimeIntegrationTest {
         TestTransport transport = new TestTransport();
         manager.startSession("runtime-sequence-gap-regression", "client-a", transport);
 
-        routeEventBatch("[{\\"sequence\\":2,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]", 2L);
+        routeEventBatch("[{\"sequence\":2,\"eventType\":\"MATCH_END\",\"action\":{}}]", 2L);
         Assert.assertEquals("The missing sequence cannot be skipped", 0L, manager.getLastSequence());
         Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
 
-        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"MATCH_END\\",\\"action\\":{}}]", 1L);
+        routeEventBatch("[{\"sequence\":1,\"eventType\":\"MATCH_END\",\"action\":{}}]", 1L);
         Assert.assertEquals("Pending recovery blocks further event delivery", 0L, manager.getLastSequence());
     }
+
 
     @Test
     public void opaqueSkippedEventConsumesSequenceWithoutChangingWorld() throws Exception {
@@ -3389,13 +3394,14 @@ public class NativeCombatRuntimeIntegrationTest {
         int hpBefore = hero.HP;
         int positionBefore = hero.pos;
 
-        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"EVENT_SKIPPED\\"}]", 1L);
+        routeEventBatch("[{\"sequence\":1,\"eventType\":\"EVENT_SKIPPED\"}]", 1L);
 
         Assert.assertEquals(1L, manager.getLastSequence());
         Assert.assertEquals(hpBefore, hero.HP);
         Assert.assertEquals(positionBefore, hero.pos);
         Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void malformedNewEventDoesNotAdvanceAppliedSequenceBeforeRequestingResync() throws Exception {
@@ -3405,13 +3411,14 @@ public class NativeCombatRuntimeIntegrationTest {
         int oldHeroHp = hero.HP;
         int oldHeroPos = hero.pos;
 
-        routeEventBatch("[{\\"sequence\\":1,\\"eventType\\":\\"PLAYER_ATTACKED\\"}]", 1L);
+        routeEventBatch("[{\"sequence\":1,\"eventType\":\"PLAYER_ATTACKED\"}]", 1L);
 
         Assert.assertEquals("A malformed event cannot advance the applied watermark", 0L, manager.getLastSequence());
         Assert.assertEquals(oldHeroHp, hero.HP);
         Assert.assertEquals(oldHeroPos, hero.pos);
         Assert.assertTrue(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     @Test
     public void staleFullSnapshotIsRejectedWithoutChangingLiveWorldOrAppliedSequence() {
@@ -3625,8 +3632,9 @@ public class NativeCombatRuntimeIntegrationTest {
         manager.startSession("runtime-accepted-event-duplicate", "client-a", transport);
         int initialPosition = hero.pos;
         int acceptedPosition = initialPosition + 1;
-        NetworkMessage accepted = new NetworkMessage(MessageType.ACTION_ACCEPTED,
-                String.raw`{"status":"ACCEPTED","eventType":"PLAYER_MOVED","action":{"playerId":"client-a","pos":${acceptedPosition}}}`);
+        String acceptedJson = "{\"status\":\"ACCEPTED\",\"eventType\":\"PLAYER_MOVED\","
+                + "\"action\":{\"playerId\":\"client-a\",\"pos\":" + acceptedPosition + "}}";
+        NetworkMessage accepted = new NetworkMessage(MessageType.ACTION_ACCEPTED, acceptedJson);
         accepted.sequence = 1L;
         accepted.requestId = "phase11b-action-accepted-duplicate-001";
 
@@ -3637,7 +3645,9 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(acceptedPosition, hero.pos);
         Assert.assertEquals(1L, manager.getLastSequence());
 
-        routeEventBatch(String.raw`[{"sequence":1,"eventType":"PLAYER_MOVED","action":{"playerId":"client-a","pos":${initialPosition}}}]`, 1L);
+        String duplicate = "[{\"sequence\":1,\"eventType\":\"PLAYER_MOVED\","
+                + "\"action\":{\"playerId\":\"client-a\",\"pos\":" + initialPosition + "}}]";
+        routeEventBatch(duplicate, 1L);
         CountDownLatch duplicateProcessed = new CountDownLatch(1);
         Game.runOnRenderThread(duplicateProcessed::countDown);
         Assert.assertTrue(duplicateProcessed.await(10, TimeUnit.SECONDS));
@@ -3645,6 +3655,7 @@ public class NativeCombatRuntimeIntegrationTest {
         Assert.assertEquals(1L, manager.getLastSequence());
         Assert.assertFalse(transport.sent.stream().anyMatch(message -> message.messageType == MessageType.RESYNC));
     }
+
 
     private static void routeEventBatch(String payload, long sequence) throws Exception {
         NetworkMessage message = new NetworkMessage(MessageType.EVENT_BATCH, payload);

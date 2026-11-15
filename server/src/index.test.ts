@@ -6,7 +6,7 @@ import { removeDeadNativeMobsFromSnapshot, hasMatchingNativeMobShieldSnapshot, p
   parseAndValidateNativeLifeLinkMobDeltas, parseAndValidateNativeLifeLinkMobDamageEvidence,
   isValidNativeAbilityIntent, isValidNativeAbilityMutation,
   isValidNativeAlchemyIntent, isValidNativeAlchemyInventoryMutation, isValidNativeAlchemyHeapMutation,
-  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeMobBuffExpiryTurn, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeSpiritArrowAttackIntent } from './index';
+  isValidNativeUseItemIntent, isValidNativeUseItemMutation, parseNativeItemStatusBundle, isValidNativeItemStatusMutation, mergeNativeItemStatusState, isValidNativeEquipmentBelongingsMutation, isValidNativeEquipmentCombatBundleMutation, nativeEquipmentPayloadMatchesRow, nativeEquipmentRowBundleTransitionMatches, nativeEquipmentQuickslotPositionMatches, isValidNativeBuyIntent, isValidNativeBuyInventoryMutation, isValidNativeBuyHeapMutation, isValidNativeEquipmentIntent, isValidNativeEquipmentMutation, isValidNativeChestHeapMutation, parseNativeItemEconomyIndex, isValidNativeItemEconomyIndexMutation, classifyNativeMutationLock, requiresNativeMutationSnapshot, isNativeMutationLockForRequest, isValidNativeMineInventoryMutation, isValidNativeMineHeapMutation, isValidNativeSellIntent, isValidNativeSellInventoryMutation, isValidNativeSellShopkeeperMutation, isValidNativeBuybackIntent, isValidNativeBuybackInventoryMutation, isValidNativeBuybackShopkeeperMutation, parseNativeQuickslotIndex, hasCompleteNativeLevelSnapshot, isValidNativeWorldTurnSnapshot, isValidNativeMobBuffExpiryTurn, isValidNativeHpTransition, isValidNativeDamageAccounting, hasMatchingNativeBuffSnapshot, hasMatchingNativeHeroBuffSnapshot, hasMatchingNativeHeroStateSnapshot, nativeBuffSnapshotFromHeroState, hasValidBlessedAnkhConsumption, hasValidUnblessedAnkhConsumption, hasOnlyNativeLostBackpackAdded, isValidNativeEnvironmentDamage, isValidNativeCombatEvent, isValidNativeAttackIntent, hasMatchingNativeAttackIntent, hasStrictNativeCombatFields, hasStrictNativeDamageFields, hasStrictNativeSourceMobState, isValidNativeHeroStateJson, mergeNativeHeroState, mergeNativeCombatAttackerState, isValidNativeCombatRequestId, classifyRequestReplay, requestPayloadFingerprint, isValidNativeCombatBuffs, isValidNativeLootSnapshot, resolveAuthorizedNativeMobDamageTarget, isValidNativeMobNoEffectOutcome, resolveServerMobIdByEntityId, nativeMobKillRewardIds, areNativeMobRewardClaimsAvailable, isValidNativeSpiritArrowAttackIntent } from './index';
 
 describe('Server Network Message Parsing and Validation', () => {
   it('serializes and deserializes message correctly', () => {
@@ -1158,9 +1158,11 @@ describe('Combat request idempotency contract', () => {
     expect(isValidNativeCombatRequestId('123e4567-e89b-12d3-a456-426614174000')).toBe(true);
     expect(isValidNativeCombatRequestId('short')).toBe(false);
     expect(isValidNativeCombatRequestId('bad id value')).toBe(false);
-    expect(classifyRequestReplay(null, 'player-a')).toBe('NEW');
-    expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-a')).toBe('REPLAY');
-    expect(classifyRequestReplay({ player_id: 'player-a' }, 'player-b')).toBe('CONFLICT');
+    expect(classifyRequestReplay(null, 'player-a', "request-fingerprint-a")).toBe('NEW');
+    const receipt = { player_id: 'player-a', request_fingerprint: "request-fingerprint-a" };
+    expect(classifyRequestReplay(receipt, 'player-a', "request-fingerprint-a")).toBe('REPLAY');
+    expect(classifyRequestReplay(receipt, 'player-b', "request-fingerprint-a")).toBe('CONFLICT');
+    expect(classifyRequestReplay(receipt, 'player-a', "different-payload")).toBe('CONFLICT');
   });
 });
 
@@ -3075,11 +3077,12 @@ describe("Native Hero Buff tick reconciliation", () => {
       JSON.stringify(after),tick(wellFed,22))).toBe(false);
 
     expect(classifyRequestReplay({
-      player_id:"buff-player",sequence:41,result_json:JSON.stringify({status:"ACCEPTED",eventType:"HERO_BUFF_TICKED"})
-    },"buff-player")).toBe("REPLAY");
+      player_id:"buff-player",sequence:41,result_json:JSON.stringify({status:"ACCEPTED",eventType:"HERO_BUFF_TICKED"}),
+      request_fingerprint:"buff-request-fingerprint"
+    },"buff-player","buff-request-fingerprint")).toBe("REPLAY");
     expect(classifyRequestReplay({
-      player_id:"buff-player",sequence:41,result_json:"{}"
-    },"another-player")).toBe("CONFLICT");
+      player_id:"buff-player",sequence:41,result_json:"{}",request_fingerprint:"buff-request-fingerprint"
+    },"another-player","buff-request-fingerprint")).toBe("CONFLICT");
   });
 
   it("serializes two distinct native Hero Buff ticks without allowing the first effect to be replayed",()=>{

@@ -986,7 +986,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             try { pendingPayload = JSON.parse(String(msg.payloadJson)); } catch (_) {}
             const action = String(pendingPayload?.action || "");
             const completion = (action === "SYNC_MOB_STATE" || action === "SYNC_PLAYER_COMBAT")
-              && String(payload?.data?.combatRequestId || "") === String(msg.requestId);
+              && String(pendingPayload?.data?.combatRequestId || "") === String(msg.requestId);
             if (!completion) {
               const matchesPendingRequest = String(pending?.attackerId || "") === session.playerId
                 && typeof pending?.requestFingerprint === "string"
