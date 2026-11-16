@@ -116,6 +116,12 @@ class MemoryMatchRoomSql {
         .filter(([key]) => key.startsWith("pendingCombat:"))
         .map(([key,value]) => ({ key, value })));
     }
+    if (query === "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => String(player.state) === "ALIVE" && Number(player.connected) === 1)
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({ player_id: player.player_id, pos: player.pos, hp: player.hp, ht: player.ht, session_token: player.session_token })));
+    }
     if (query === "SELECT player_id,pos,hp,ht FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
       return this.cursor(Array.from(this.players.values())
         .filter(player => String(player.state) === "ALIVE" && Number(player.connected) === 1)
@@ -221,6 +227,11 @@ class MemoryMatchRoomSql {
       }
       return this.cursor();
     }
+    if (query.startsWith("UPDATE players SET connected = 0 WHERE player_id = ? AND session_token = ?")) {
+      const row = this.players.get(String(args[0]));
+      if (row && String(row.session_token || "") === String(args[1])) row.connected = 0;
+      return this.cursor();
+    }
     if (query.startsWith("UPDATE players SET connected = 0 WHERE player_id = ?")) {
       const row = this.players.get(String(args[0]));
       if (row) row.connected = 0;
@@ -252,7 +263,11 @@ class MemoryMatchRoomSql {
       this.roomMeta.delete(String(args[0]));
       return this.cursor();
     }
-    if (query.startsWith("INSERT INTO room_meta (key,value) VALUES (?,?)")
+    if (query.startsWith("INSERT INTO room_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")) {
+      this.roomMeta.set(String(args[0]), String(args[1]));
+      return this.cursor();
+    }
+    if (query.startsWith('INSERT INTO room_meta (key,value) VALUES (?,?)')
         || query.startsWith("INSERT INTO room_meta (key, value) VALUES (?,?)")) {
       this.roomMeta.set(String(args[0]), String(args[1]));
       return this.cursor();
@@ -274,6 +289,39 @@ class MemoryMatchRoomSql {
         authority_id: args[5] == null ? null : String(args[5]),
         completion_fingerprint: args[6] == null ? null : String(args[6])
       });
+      return this.cursor();
+    }
+    if (query.startsWith("WITH ranked_lifelink_damage AS")) {
+      const maxEvidence = Number(args[0]);
+      const maxRecent = Number(args[1]);
+      const sorted = this.events.slice().sort((a,b) => Number(b.sequence) - Number(a.sequence));
+      const keep = new Set(sorted.slice(0, maxRecent).map(event => Number(event.sequence)));
+      const latestBySender = (eventType: string) => {
+        const latest = new Map<string, number>();
+        for (const event of this.events) {
+          if (event.event_type !== eventType) continue;
+          const sender = String(event.sender_id || "");
+          latest.set(sender, Math.max(latest.get(sender) || 0, Number(event.sequence)));
+        }
+        return latest;
+      };
+      const latestBuff = latestBySender("HERO_BUFF_TICKED");
+      for (const eventType of ["HERO_BUFF_TICKED", "PLAYER_DAMAGED"]) {
+        for (const sequence of latestBySender(eventType).values()) keep.add(sequence);
+      }
+      const evidenceBySender = new Map<string, Row[]>();
+      for (const event of sorted) {
+        const sender = String(event.sender_id || "");
+        if (event.event_type !== "CHAR_DAMAGED"
+            || Number(event.sequence) <= (latestBuff.get(sender) || 0)) continue;
+        const rows = evidenceBySender.get(sender) || [];
+        if (rows.length < maxEvidence) rows.push(event);
+        evidenceBySender.set(sender, rows);
+      }
+      for (const rows of evidenceBySender.values()) {
+        for (const event of rows) keep.add(Number(event.sequence));
+      }
+      this.events = this.events.filter(event => keep.has(Number(event.sequence)));
       return this.cursor();
     }
     if (query.startsWith("INSERT INTO events")) {
@@ -1007,7 +1055,9 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     for (const playerId of [oldPublisher, nextPublisher, attackerId]) {
       sql.roomMeta.set("heroState:" + playerId, heroJson);
       sql.players.set(playerId, {
-        player_id: playerId, pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1
+        player_id: playerId, session_token: playerId === oldPublisher ? "old-publisher-token"
+          : playerId === nextPublisher ? "next-publisher-token" : "attacker-token",
+        pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1
       });
     }
     sql.roomMeta.set("pendingCombat:" + requestId, JSON.stringify({
@@ -1061,6 +1111,29 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(JSON.parse(String(publisherChange.payloadJson))).toMatchObject({
       publisherId: nextPublisher, term: 5, reason: "PUBLISHER_DISCONNECTED"
     });
+  });
+
+  it("does not elect a live socket whose token is no longer authoritative", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const oldPublisher = "token-fenced-old-publisher";
+    const staleCandidate = "token-fenced-stale-candidate";
+    sql.roomMeta.set("levelPublisher", oldPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "8");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    sql.roomMeta.set("heroState:" + staleCandidate, JSON.stringify(heroBefore));
+    sql.players.set(oldPublisher, { player_id: oldPublisher, session_token: "closing-token", pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1 });
+    sql.players.set(staleCandidate, { player_id: staleCandidate, session_token: "current-token", pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1 });
+    const closingSocket = { deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "closing-token" }), send: vi.fn() };
+    const staleSocket = { deserializeAttachment: () => ({ playerId: staleCandidate, sessionToken: "stale-token" }), send: vi.fn() };
+    room.state.getWebSockets = () => [staleSocket];
+    room.broadcastCurrentSnapshot = vi.fn();
+    await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("9");
+    const change = staleSocket.send.mock.calls.map(call => JSON.parse(String(call[0])))
+      .find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+    expect(JSON.parse(String(change.payloadJson))).toMatchObject({ publisherId: null, term: 9 });
   });
 
   it("ignores an old WebSocket close after the same player has reconnected", async () => {
@@ -1123,6 +1196,31 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(publisherChange).toBeTruthy();
     expect(JSON.parse(String(publisherChange.payloadJson))).toMatchObject({
       publisherId: null, term: 3, reason: "PUBLISHER_DISCONNECTED"
+    });
+  });
+
+  it("revokes a disconnected publisher without electing from a missing native snapshot", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room } = fixture;
+    const oldPublisher = "snapshot-missing-publisher";
+    sql.roomMeta.set("levelPublisher", oldPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "12");
+    sql.roomMeta.delete("levelSnapshot:1");
+    sql.players.set(oldPublisher, { player_id: oldPublisher, session_token: "closing-token", pos: 9, hp: 20, ht: 20, state: "ALIVE", connected: 1 });
+    const closingSocket = { deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "closing-token" }), send: vi.fn() };
+    const spectatorSocket = { deserializeAttachment: () => ({ playerId: "snapshot-spectator", sessionToken: "spectator-token" }), send: vi.fn() };
+    room.state.getWebSockets = () => [spectatorSocket];
+    room.broadcastCurrentSnapshot = vi.fn();
+    await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("13");
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    // Do not broadcast a replacement world when its authoritative native snapshot is missing.
+    expect(room.broadcastCurrentSnapshot).not.toHaveBeenCalled();
+    const change = spectatorSocket.send.mock.calls.map(call => JSON.parse(String(call[0])))
+      .find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+    expect(JSON.parse(String(change.payloadJson))).toMatchObject({
+      publisherId: null, term: 13, reason: "PUBLISHER_DISCONNECTED_SNAPSHOT_UNAVAILABLE"
     });
   });
 

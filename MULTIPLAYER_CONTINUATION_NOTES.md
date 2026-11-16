@@ -1,44 +1,35 @@
-# Multiplayer Continuation Notes — Phase 12-A in progress (Phase 11-B remains closed)
+# Multiplayer Continuation Notes — Phase 12 implementation complete locally (exact-head CI/review pending; Phase 11 remains closed)
 
-**Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
-**Only working branch:** `multiplayer-framework-core-14118577486727081892`  
-**Phase 12-A base HEAD:** 417dc7082f37db02b658112e33f3a51b69f72fbb (local worktree changes are uncommitted)
-**Phase 12-A base CI:** run 43754713148 passed at committed baseline 417dc7082f37db02b658112e33f3a51b69f72fbb. Phase 12-A changes are uncommitted; no CI result for them yet.
+**Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
+**Only working branch:** `multiplayer-framework-core-14118577486727081892`
+**Committed starting HEAD:** `836d4e4739bba3877a1ce04df75b8a30ab0655ee` (the remote branch matched at the start of this work; recheck before commit/push).
+**Current worktree:** uncommitted Phase 12 implementation and documentation changes. No commit, push, PR, merge or deployment has been performed.
+**WebGPT task:** keep token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open; never call submit_result or terminate it unless the user explicitly asks.
 
-## 2026-11-15 — Phase 11-B implementation and acceptance
+## 2026-11-16 — Phase 12 implementation checkpoint
 
-- **Phase 11-B code/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact-head CI [run 43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
-- **Android event application:** EVENT_BATCH rows are validated and normalized before application; exact duplicate sequences are applied once, conflicting duplicates reject, rows are sorted into ascending order and must form the complete contiguous range beginning at the last applied sequence + 1. The envelope sequence must match the batch tail. Gaps, malformed rows or invalid application request full recovery without advancing the applied watermark. Per-event rollback baselines protect the live native world; applied sequence commits only after successful application. EVENT_SKIPPED consumes its valid sequence without changing the world. Stale snapshots are rejected before live restore.
-- **Worker request identity:** processed_actions stores canonical request fingerprints and delegated-completion identity. Exact retries from the same player with equivalent payloads replay the recorded result; reuse by another player or with different action/payload is rejected as REQUEST_ID_CONFLICT. Object-key ordering does not change a canonical fingerprint. Legacy processed-action rows are retained through idempotent column migration.
-- **Atomic ACTION boundary:** the covered Durable Object ACTION path uses transactionSync. Persistent state/claims, processed-action receipt, event, sequence and world-time changes roll back together on failure. Success ACKs and broadcasts are held until commit; the transaction path fails closed when synchronous transactions are unavailable.
-- **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
-- **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
-- **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
+- **Phase 12-A:** Bearer-header session authentication, persisted token-owner binding, safe credential rotation, stale-socket fencing and Android automatic reconnect lifecycle are implemented locally.
+- **Phase 12-B recovery:** SQLite persists/restores `currentSequence` and `gameStatus`; constructor validates/restores `worldTime`, mode, seed and depth; legacy `MATCH_END` backfills `ENDED`; complete native current-depth snapshots recover `PLAYING`; otherwise the legacy room remains `LOBBY`. Replay keeps the newest 200 ordinary events plus protected per-sender LifeLink/player-damage evidence; damaged persisted worlds fail closed.
+- **Schema migrations:** `room_meta.schemaVersion` tracks versions 1 and 2. Each migration and its version checkpoint share one SQLite transaction. The steps add processed-action fingerprint/authority columns and convert legacy item claims to branch-aware composite keys without losing existing claims.
+- **LEVEL_DATA atomicity:** every cross-table write for level replacement (tiles, transitions, mobs, levels, claims, native snapshot/metadata and event/cursor state) executes inside one `transactionSync`. On failure, SQLite rolls back, the in-memory cursor/world time are restored, and the publisher receives a correlated ERROR; no ACK or new world snapshot escapes before commit.
+- **Level Publisher recovery:** disconnect and election are fenced by the persisted session token. A replacement must have a live socket with the exact persisted token and a complete native snapshot; generation/term gates require rebase before the replacement can publish. When the old publisher disconnects and no valid snapshot exists, its term is advanced and authority/ready state are revoked; no replacement or fabricated snapshot is broadcast.
+- **Backend verification:** `npx tsc --noEmit --pretty false` PASS; `npm test -- --run` 5 Vitest files / **372 tests PASS**. Static protocol guards remain 25 outer messages / 23 ACTION types.
+- **Real Workers runtime:** Durable Object SQLite 1 file / **14 tests PASS**. Added real SQLite checks for failed/successful LEVEL_DATA rollback/retry, schema upgrade/preservation of old claims, and lost-publisher revocation when native snapshot is missing. Existing eviction/replay/valid handoff tests also pass.
+- **Android:** forced `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks` previously completed `BUILD SUCCESSFUL`: 10 XML reports / 132 core JVM tests / 0 failures / 0 errors / 0 skipped. Debug APK SHA-256 `03A65424787FB0375FCD13E08B2A6CF407B4E6C33E8A18C0AAAC3ADD76E9F80C`. This Phase 12 continuation changed server-side code only; no Android source changed after that run.
+- **Remaining release gates only:** final diff/docs review, clean `git diff --check`, remote branch comparison, commit/push of this branch after review, and GitHub Actions CI on the exact pushed SHA. No production Worker deployment or physical two-device gameplay test is claimed.
 
-- Phase 11-B closeout baseline: NativeCombatRuntimeIntegrationTest.java had 74 @Test methods and NetworkProtocolParityTest.java had 15. Current Phase 12-A source counts: NativeCombatRuntimeIntegrationTest.java 78, NetworkProtocolParityTest.java 20, MultiplayerReconnectLifecycleTest.java 3.
-- Android regressions cover out-of-order sorting, missing-sequence recovery, stale-event suppression, opaque skipped events, no watermark advance for malformed events, stale/incomplete snapshot rejection, and duplicate ACTION_ACCEPTED/EVENT_BATCH application.
-- Worker regressions cover request fingerprint migration/replay/conflict, stable fingerprints despite object-key ordering, cross-player reuse, delegated completion identity, concurrent exact retry (one event/sequence/world-time charge), and rollback/no success broadcast on transaction failure.
-- The Durable Object SQLite workflow has four passing integration tests. Backend has 740 reported executions across 10 Vitest files; mirrored TS/JS results are not unique source scenario counts.
+## Phase 12 status and boundaries
 
-## 2026-11-16 — Phase 12-A active work checkpoint
+Phase 12 implementation scope is complete in the local worktree across session identity/reconnect, durable recovery/replay retention, versioned schema migration, cross-table `LEVEL_DATA` atomicity, and token-fenced publisher loss/election/handoff. Keep Phase 12-A, Phase 12-B and the parent Phase 12 **ACTIVE / OPEN** until exact-head CI and user review pass. Phase 13 room/readiness/start lifecycle remains explicitly out of scope. No protocol expansion: 25 outer messages / 23 ACTION types remain unchanged.
 
-- Scope: authenticate Internet reconnect from the stored session credential, bind the socket to the token owner, prevent player-ID takeover, rotate the credential, reject superseded sockets, and carry the credential only in the secure WebSocket Authorization header.
-- Implemented locally: Bearer-header validation and query-token rejection; playerId is only a consistency assertion during resume; unauthenticated sessions cannot claim an existing player row; the accepted socket attachment binds {playerId, sessionToken}; each inbound socket message checks that its attachment token is still current; RECONNECT body carries lastSequence only.
-- Android: InternetTransport sends the Bearer credential in the upgrade header over TLS, rejects credentials on non-TLS endpoints, and preserves the raw encoded path/query. MultiplayerManager automatically attempts reconnect on Internet disconnect/error, binds callbacks to transport generations, preserves the applied sequence, requires the same player identity and a fresh token in SESSION, and sends no secret in the RECONNECT body.
-- Local verification: TypeScript noEmit PASS; backend source-only suite 5 files / 370 tests PASS; Cloudflare Workers Durable Object SQLite runtime 1 file / 5 tests PASS; Android core JVM 132 tests PASS (0 failures/errors/skips) and assembleDebug PASS; protocol guards confirm 25 message / 23 action vocabulary.
-- Exact-head CI, commit/push, production deployment and physical-device testing remain pending. This worktree is based on 417dc7082f37db02b658112e33f3a51b69f72fbb; do not close Phase 12-A or move to Phase 12-B.
+## Exact next actions
 
-## Phase state and next checkpoint
-
-- Phase 10: closed.
-- Phase 11-A: characterization gate complete and retained as historical regression coverage.
-- Phase 11-B: implementation, regression tests and source-HEAD CI complete; accepted Phase 11 scope is closed.
-- Phase 12-A: IN PROGRESS / OPEN by explicit user request. Phase 12-B and later scopes have not started.
-- No production Worker deployment or physical two-device gameplay is claimed. Phases 22–23 own those release checks.
-
-## Exact next-chat guard
-
-Continue Phase 12-A from the active worktree on the named branch. Re-check branch/HEAD/status before edits. Do not recreate Phase 11, create branches, touch master/main, open a PR, or start Phase 12-B. Keep this task/token open. Finish full exact-HEAD CI and final source review; do not claim deployment or real-device testing.
+1. Finish reviewing all source and active Phase 12 documentation; verify backend 372/372 and real Durable Object SQLite 14/14 counts.
+2. Run `git diff --check`, inspect `git status` and `git diff --stat`, and re-run TypeScript/backend/DO gates after any edit.
+3. Fetch and compare remote `multiplayer-framework-core-14118577486727081892` with local HEAD; preserve/reconcile upstream movement before committing.
+4. Commit and push only `multiplayer-framework-core-14118577486727081892` after final review, then verify GitHub Actions against the exact final pushed SHA. Never substitute historical baseline CI.
+5. Keep Phase 12-A, Phase 12-B and parent Phase 12 open pending exact-head CI and user review. Do not start Phase 13.
+6. Keep the WebGPT task token RUNNING/open; do not call submit_result or shutdown.
 
 ## Historical Phase 10-E final closure
 

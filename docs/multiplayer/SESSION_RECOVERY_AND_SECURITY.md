@@ -63,14 +63,14 @@ The client must only mark a SNAPSHOT sequence applied after WorldSnapshot.restor
 
 The 50-event threshold is a source constant in the current implementation, not a universal protocol guarantee. Any threshold change affects reconnect behavior and needs tests/documentation updates.
 
-### Phase 12-A verification boundary (2026-11-16)
+### Historical Phase 12-A-only verification boundary (before Phase 12-B; 2026-11-16)
 
 - Backend TypeScript noEmit check: PASS.
 - Source-only backend test suite: 5 files / 370 tests PASS.
 - Cloudflare Workers Durable Object SQLite integration: 1 file / 5 tests PASS.
 - Android core JVM suite: 132 tests PASS (0 failures/errors/skips); Debug APK build PASS.
 - Protocol vocabulary remains 25 messages / 23 actions.
-- These are local checks on an uncommitted worktree based on 417dc7082f37db02b658112e33f3a51b69f72fbb. Exact-head CI, live Worker deployment and physical-device testing are not claimed. Phase 12-A remains OPEN.
+These were local Phase 12-A-only checks on the then-current worktree based on 417dc7082f37db02b658112e33f3a51b69f72fbb; the later combined Phase 12-A/12-B evidence is recorded at the end of this document. Exact-head CI, live Worker deployment and physical-device testing are not claimed.
 
 
 
@@ -137,15 +137,15 @@ The alarm is a Durable Object recovery mechanism; it is not a client-side timer.
 
 ## 8. Event sequencing and recovery
 
-- currentSequence is initialized from MAX(events.sequence).
-- A successful state transition receives the next sequence.
-- The event row is stored in events.
-- A request result is stored in processed_actions when applicable.
-- ACTION_ACCEPTED and EVENT_BATCH communicate the accepted request and result to clients.
-- SNAPSHOT carries a full room state and sequence.
-- RESYNC asks the Worker to send a full SNAPSHOT.
+- For a legacy room without `room_meta.currentSequence`, `MAX(events.sequence)` supplies the cursor backfill before compaction.
+- Once retention runs, the persisted `room_meta.currentSequence` checkpoint is authoritative and must not be replaced with `MAX(events.sequence)`, because older rows may have been compacted.
+- Each accepted state transition receives the next monotonic sequence; its event row is stored in `events`.
+- A request result is stored in `processed_actions` when applicable.
+- `ACTION_ACCEPTED` and `EVENT_BATCH` communicate accepted requests/results; `SNAPSHOT` carries the full room state and sequence.
+- `RESYNC` asks the Worker to send a full `SNAPSHOT`.
 
-Review whether database mutation, sequence increment, events insert, processed_actions insert, claim creation/release and broadcast are safely ordered for each specific action. The code has explicit transactionSync use in some claim/migration helpers; do not assume every action's multiple SQL statements are wrapped in one common transaction.
+
+Continue reviewing database mutation, sequence increment, event writes, processed_actions receipts, claim creation/release and broadcasts against each action-specific contract. The accepted ACTION and native LifeLink transaction boundaries are documented in this file. Phase 12 now also places the complete multi-statement LEVEL_DATA replacement, native snapshot/metadata, Hero/player persistence, claim release, event/cursor updates and transition-ready marker inside one synchronous SQLite transaction. A failed commit restores the in-memory cursor/time and returns a correlated ERROR without ACK or world broadcast; the real Durable Object rollback/retry regression is recorded below.
 
 
 ### 8.1 Poison LifeLink batch rollback and replay
@@ -233,6 +233,7 @@ Do not log bearer/session tokens or full secret-bearing payloads. For diagnostic
 Empty catch blocks around socket send, parsing, SQL or native restore can hide lost messages and inconsistent state. A future hardening pass should classify expected disconnects versus unexpected failures, retain safe diagnostics, and request resync/cleanup when state application is uncertain.
 
 Known server error codes include:
+- Room startup/recovery: `ROOM_RECOVERY_INVALID_WORLD_TIME`, `ROOM_RECOVERY_INVALID_EVENT_SEQUENCE`, `ROOM_RECOVERY_INVALID_SEQUENCE_CHECKPOINT`, `ROOM_RECOVERY_INVALID_GAME_MODE`, `ROOM_RECOVERY_MISSING_GAME_MODE`, `ROOM_RECOVERY_INVALID_SEED`, `ROOM_RECOVERY_MISSING_SEED`, `ROOM_RECOVERY_INVALID_DEPTH`, `ROOM_RECOVERY_MISSING_DEPTH`, `ROOM_RECOVERY_INVALID_GAME_STATUS`, and `ROOM_RECOVERY_INCOMPLETE`.
 - LEVEL_PUBLISHER_ONLY;
 - INVALID_SPD_LEVEL_SNAPSHOT / INVALID_SPD_EXPLORATION / INVALID_SPD_LEVEL_TILES / INVALID_SPD_TRANSITIONS / INVALID_SPD_MOBS / INVALID_SPD_ENTITY_IDS;
 - INVALID_NATIVE_WORLD_MUTATION / INVALID_NATIVE_HERO_MUTATION;
@@ -316,3 +317,12 @@ At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, exact-head [CI 4373
 - The ACTION transaction boundary rolls back persisted state, claims, processed receipt, event, sequence and world time together. Success broadcasts are delayed until commit; transactionSync unavailability fails closed.
 
 No protocol vocabulary change, production Worker deployment or physical two-device test is claimed.
+## Phase 12-B — eviction recovery and event evidence retention (2026-11-16)
+
+The authenticated socket/session contract from Phase 12-A remains unchanged. A legacy room without `worldTime` retains the old zero-clock default because earlier versions wrote that key lazily on the first accepted ACTION; any persisted value is parsed and validated as finite and nonnegative. After an ACTION advances time, the value is stored transactionally. After a Durable Object is evicted, construction restores the persisted sequence checkpoint, room status, world time, mode, seed and depth from SQLite; legacy rooms backfill the cursor from their still-uncompacted event table and infer `ENDED` from MATCH_END, infer `PLAYING` only from a complete native snapshot at the current depth, or retain `LOBBY` when no complete run snapshot exists. Malformed critical metadata or a missing current level with durable related state is rejected rather than replaced with a generated room.
+
+The event table keeps the newest 200 ordinary events for replay, alongside per-sender LifeLink proof retention (up to 513 CHAR_DAMAGED events after the newest HERO_BUFF_TICKED, plus latest HERO_BUFF_TICKED/PLAYER_DAMAGED boundaries). The evidence window is intentionally distinct from the replay window and can make the table exceed 200 rows. The existing reconnect policy still emits EVENT_BATCH only when the full missing sequence range is contiguous and no larger than 50; incomplete/older gaps use an authoritative SNAPSHOT.
+
+The actual Cloudflare Workers Durable Object SQLite suite now contains 14 passing tests. It proves eviction/reconstruction, a 20-event contiguous replay at sequence 1000, snapshot fallback, restored Hero/player/level/worldTime, retention boundaries, legacy MATCH_END/active `PLAYING` status restoration and fail-closed missing-level detection. The additional Phase 12 regressions prove schema upgrades through versions 1 and 2 while preserving old receipts/claims, complete LEVEL_DATA rollback followed by successful retry, valid-snapshot publisher handoff, and term revocation without replacement election or fabricated broadcast when the snapshot is unavailable. No session-token location, protocol message, action or authority rule changed in the Phase 12-B recovery slice.
+
+Local checks (uncommitted worktree): backend 372/372; real Durable Object SQLite 14/14; Android core JVM 132/132 with zero failures/errors/skips; Debug APK build PASS. Schema migrations 1–2, full LEVEL_DATA rollback/retry and publisher loss with missing-snapshot revocation are included in the runtime/handler tests. Exact-head CI, production Worker deployment and physical two-device testing are not claimed. Phase 12-A, Phase 12-B and parent Phase 12 remain open pending exact-head CI/user review.

@@ -797,104 +797,125 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         assignStableEntityIds(mobs, Array.isArray(previousSnapshot.mobs) ? previousSnapshot.mobs : []);
         level.mobs = mobs;
 
-        this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
-        this.sql.exec(`DELETE FROM level_transitions WHERE depth = ?`, depth);
-        this.sql.exec(`DELETE FROM mobs WHERE depth = ?`, depth);
-        this.sql.exec(`INSERT INTO levels (depth,width,height,entrance_pos,exit_pos,seed) VALUES (?,?,?,?,?,?)
-          ON CONFLICT(depth) DO UPDATE SET width=excluded.width,height=excluded.height,
-          entrance_pos=excluded.entrance_pos,exit_pos=excluded.exit_pos,seed=excluded.seed`,
-          depth,width,height,Number(level.entrancePos),Number(level.exitPos),Number(level.seed)||this.matchSeed);
-        if (isPublisherRebase) {
-          delete level.publisherRebase;
-          delete level.publisherRebaseTerm;
+        const storage: any = this.state.storage;
+        if (!storage || typeof storage.transactionSync !== "function") {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "STORAGE_TRANSACTION_UNAVAILABLE" }) }));
+          return;
         }
-        this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-          ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-          `levelSnapshot:${depth}`, JSON.stringify(level));
-        if (isPublisherRebase) {
-          this.sql.exec(
-            "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            "levelPublisherReadyTerm", String(publisherTerm)
-          );
-        }
-        const heroStateToStore = verifiedMutationHeroStateJson || level.heroStateJson;
-        if (typeof heroStateToStore === "string" && heroStateToStore.length <= 200000) {
-          this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
-            ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
-            `heroState:${session.playerId}`, heroStateToStore);
-          let storedHero: any = null;
-          try { storedHero = JSON.parse(heroStateToStore); } catch (_) {}
-          if (storedHero && Number.isInteger(storedHero.hp) && Number.isInteger(storedHero.ht)
-              && Number.isInteger(storedHero.pos)) {
-            this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ? WHERE player_id = ?",
-              storedHero.hp, storedHero.ht, storedHero.pos, session.playerId);
-          }
-        }
-        for (const t of tiles) {
-          this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
-            depth,Number(t.pos),String(Number(t.terrain)),t.passable?1:0,t.solid?1:0,t.pit?1:0,t.losBlocking?1:0);
-        }
-        for (const t of transitions) {
-          const type = String(t.type).endsWith("EXIT") ? "EXIT" : "ENTRANCE";
-          this.sql.exec(`INSERT INTO level_transitions (transition_id,depth,pos,type,target_depth) VALUES (?,?,?,?,?)`,
-            `spd_${depth}_${Number(t.pos)}_${String(t.type)}`,depth,Number(t.pos),type,Number(t.targetDepth));
-        }
-        for (const m of mobs) {
-          const initialCooldown = Math.max(0, Math.min(100000, Number(m.cooldown) || 0));
-          const nativeState = String(m.state || "WANDERING").slice(0, 40);
-          this.sql.exec(`INSERT OR REPLACE INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state)
-            VALUES (?,?,?,?,?,?,8,6,?,?)`,
-            Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),
-            this.worldTime + initialCooldown, nativeState);
-        }
-        if (isNativeWorldMutation) {
-          const committedMutationLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId).toArray()[0];
-          if (isNativeMutationLockForRequest(committedMutationLock?.value, session.playerId,
-              verifiedMutationRequestId, verifiedMutationAction)) {
-            this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
-          }
-          if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY" || verifiedMutationAction === "BUYBACK") && verifiedMutationDetails) this.sql.exec(
-            "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
-            depth, Number(level.branch),
-            String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.shopEntityId : verifiedMutationDetails.heapId) || ""),
-            String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.buybackItemId : verifiedMutationDetails.itemId) || ""),
-            session.playerId, verifiedMutationRequestId);
-          if (verifiedMutationAction === "OPEN_CHEST" && verifiedMutationDetails) this.sql.exec(
-            "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
-            depth, String(verifiedMutationDetails.heapId || ""), session.playerId, verifiedMutationRequestId);
-          this.currentSequence++;
-          const mutationEvent = { action: verifiedMutationAction || "WORLD",
-            playerId: session.playerId, depth, from: verifiedMutationFrom,
-            targetPos: verifiedMutationTargetPos };
-          this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
-            this.currentSequence, session.playerId, "NATIVE_WORLD_MUTATION", JSON.stringify(mutationEvent));
-        }
-        if (isNativeWorldTurn) {
-          this.currentSequence++;
-          const actorEvent = {
-            turnCounter: Number(level.nativeWorldTurnCounter),
-            actorKind: String(level.nativeWorldActorKind),
-            actorClass: String(level.nativeWorldActorClass),
-            actorEntityId: String(level.nativeWorldActorEntityId || ""),
-            mobEntityId: String(level.nativeMobEntityId || ""),
-            actorClock: Number(level.nativeActorClock),
-            depth
-          };
-          this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            "nativeWorldTurnCounter", String(level.nativeWorldTurnCounter));
-          this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
-            this.currentSequence, session.playerId, "NATIVE_WORLD_TURN", JSON.stringify(actorEvent));
-        }
-        const transitionPendingNow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
-        if (transitionPendingNow && !isNativeWorldTurn) {
-          let pending: any = null;
-          try { pending = JSON.parse(String(transitionPendingNow.value)); } catch (_) {}
-          if (pending && pending.depth === depth && pending.snapshotReady !== true) {
-            pending.snapshotReady = true;
-            this.sql.exec("UPDATE room_meta SET value = ? WHERE key = 'transitionPending'", JSON.stringify(pending));
-          }
-        }
+        const sequenceBeforeCommit = this.currentSequence;
+        const worldTimeBeforeCommit = this.worldTime;
+        let transitionPendingNow: any = null;
+        try {
+          storage.transactionSync(() => {
+            this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
+            this.sql.exec(`DELETE FROM level_transitions WHERE depth = ?`, depth);
+            this.sql.exec(`DELETE FROM mobs WHERE depth = ?`, depth);
+            this.sql.exec(`INSERT INTO levels (depth,width,height,entrance_pos,exit_pos,seed) VALUES (?,?,?,?,?,?)
+              ON CONFLICT(depth) DO UPDATE SET width=excluded.width,height=excluded.height,
+              entrance_pos=excluded.entrance_pos,exit_pos=excluded.exit_pos,seed=excluded.seed`,
+              depth,width,height,Number(level.entrancePos),Number(level.exitPos),Number(level.seed)||this.matchSeed);
+            if (isPublisherRebase) {
+              delete level.publisherRebase;
+              delete level.publisherRebaseTerm;
+            }
+            this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+              ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+              `levelSnapshot:${depth}`, JSON.stringify(level));
+            if (isPublisherRebase) {
+              this.sql.exec(
+                "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "levelPublisherReadyTerm", String(publisherTerm)
+              );
+            }
+            const heroStateToStore = verifiedMutationHeroStateJson || level.heroStateJson;
+            if (typeof heroStateToStore === "string" && heroStateToStore.length <= 200000) {
+              this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+                `heroState:${session.playerId}`, heroStateToStore);
+              let storedHero: any = null;
+              try { storedHero = JSON.parse(heroStateToStore); } catch (_) {}
+              if (storedHero && Number.isInteger(storedHero.hp) && Number.isInteger(storedHero.ht)
+                  && Number.isInteger(storedHero.pos)) {
+                this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ? WHERE player_id = ?",
+                  storedHero.hp, storedHero.ht, storedHero.pos, session.playerId);
+              }
+            }
+            for (const t of tiles) {
+              this.sql.exec(`INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)`,
+                depth,Number(t.pos),String(Number(t.terrain)),t.passable?1:0,t.solid?1:0,t.pit?1:0,t.losBlocking?1:0);
+            }
+            for (const t of transitions) {
+              const type = String(t.type).endsWith("EXIT") ? "EXIT" : "ENTRANCE";
+              this.sql.exec(`INSERT INTO level_transitions (transition_id,depth,pos,type,target_depth) VALUES (?,?,?,?,?)`,
+                `spd_${depth}_${Number(t.pos)}_${String(t.type)}`,depth,Number(t.pos),type,Number(t.targetDepth));
+            }
+            for (const m of mobs) {
+              const initialCooldown = Math.max(0, Math.min(100000, Number(m.cooldown) || 0));
+              const nativeState = String(m.state || "WANDERING").slice(0, 40);
+              this.sql.exec(`INSERT OR REPLACE INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state)
+                VALUES (?,?,?,?,?,?,8,6,?,?)`,
+                Number(m.mobId),depth,String(m.name).slice(0,80),Number(m.pos),Number(m.hp),Math.max(1,Number(m.ht)),
+                this.worldTime + initialCooldown, nativeState);
+            }
+            if (isNativeWorldMutation) {
+              const committedMutationLock = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId).toArray()[0];
+              if (isNativeMutationLockForRequest(committedMutationLock?.value, session.playerId,
+                  verifiedMutationRequestId, verifiedMutationAction)) {
+                this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
+              }
+              if ((verifiedMutationAction === "PICKUP" || verifiedMutationAction === "BUY" || verifiedMutationAction === "BUYBACK") && verifiedMutationDetails) this.sql.exec(
+                "DELETE FROM claimed_item_instances WHERE depth = ? AND branch = ? AND heap_id = ? AND item_id = ? AND claimed_by = ? AND request_id = ?",
+                depth, Number(level.branch),
+                String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.shopEntityId : verifiedMutationDetails.heapId) || ""),
+                String((verifiedMutationAction === "BUYBACK" ? verifiedMutationDetails.buybackItemId : verifiedMutationDetails.itemId) || ""),
+                session.playerId, verifiedMutationRequestId);
+              if (verifiedMutationAction === "OPEN_CHEST" && verifiedMutationDetails) this.sql.exec(
+                "DELETE FROM claimed_chest_instances WHERE depth = ? AND heap_id = ? AND claimed_by = ? AND request_id = ?",
+                depth, String(verifiedMutationDetails.heapId || ""), session.playerId, verifiedMutationRequestId);
+              this.currentSequence++;
+              const mutationEvent = { action: verifiedMutationAction || "WORLD",
+                playerId: session.playerId, depth, from: verifiedMutationFrom,
+                targetPos: verifiedMutationTargetPos };
+              this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+                this.currentSequence, session.playerId, "NATIVE_WORLD_MUTATION", JSON.stringify(mutationEvent));
+            }
+            if (isNativeWorldTurn) {
+              this.currentSequence++;
+              const actorEvent = {
+                turnCounter: Number(level.nativeWorldTurnCounter),
+                actorKind: String(level.nativeWorldActorKind),
+                actorClass: String(level.nativeWorldActorClass),
+                actorEntityId: String(level.nativeWorldActorEntityId || ""),
+                mobEntityId: String(level.nativeMobEntityId || ""),
+                actorClock: Number(level.nativeActorClock),
+                depth
+              };
+              this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "nativeWorldTurnCounter", String(level.nativeWorldTurnCounter));
+              this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+                this.currentSequence, session.playerId, "NATIVE_WORLD_TURN", JSON.stringify(actorEvent));
+            }
+            if (isNativeWorldTurn || isNativeWorldMutation) this.persistEventLogState();
+            transitionPendingNow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
+            if (transitionPendingNow && !isNativeWorldTurn) {
+              let pending: any = null;
+              try { pending = JSON.parse(String(transitionPendingNow.value)); } catch (_) {}
+              if (pending && pending.depth === depth && pending.snapshotReady !== true) {
+                pending.snapshotReady = true;
+                this.sql.exec("UPDATE room_meta SET value = ? WHERE key = 'transitionPending'", JSON.stringify(pending));
+              }
+            }
 
+          });
+        } catch (_) {
+          // Roll back all cross-table state and keep in-memory sequencing aligned with SQLite.
+          this.currentSequence = sequenceBeforeCommit;
+          this.worldTime = worldTimeBeforeCommit;
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "LEVEL_DATA_COMMIT_FAILED" }) }));
+          return;
+        }
         const ackTurnRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeWorldTurnCounter").toArray()[0];
         const ackTurnCounter = Math.max(0, Number(ackTurnRow?.value) || Number(level.nativeWorldTurnCounter) || 0);
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ACK", requestId: msg.requestId,
@@ -3426,6 +3447,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             this.currentSequence, session.playerId, eventType, JSON.stringify(actionResultPayload)
           );
 
+          this.persistEventLogState();
           ws.send(JSON.stringify({
             protocolVersion: "1.0.0",
             messageType: "ACTION_ACCEPTED",

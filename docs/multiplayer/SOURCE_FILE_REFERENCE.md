@@ -311,3 +311,17 @@ Exact source/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 4361872
 Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). Current integration test inventory is 74 Android @Test methods; the separate parity suite remains at 15.
 
 | core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java | Phase 12-A: transport-generation callback isolation, single in-flight reconnect guard, HTTP 409 credential invalidation, and reconnect retry body/header regression coverage (3 @Test methods). |
+
+## Phase 12-B source additions/ownership — 2026-11-16
+
+| File | Phase 12-B responsibility |
+|---|---|
+| `server/src/match-room/base.ts` | Defines replay/evidence retention limits and `persistEventLogState()` for durable sequence/status checkpoints plus protected LifeLink/player-damage event evidence. |
+| `server/src/match-room/persistence.ts` | Restores/validates persisted room metadata, derives legacy terminal status, performs bounded event compaction on initialization and rejects a missing current level when related durable state remains. |
+| `server/src/match-room/actions.ts` | Persists cursor/status and runs event retention after accepted ACTION and native world turn/mutation event inserts. ACTION path remains within the existing `transactionSync` boundary. |
+| `server/src/match-room/combat.ts` | Persists sequence/status after the level-transition-abort event. |
+| `server/src/match-room/snapshots.ts` | Persists the terminal `ENDED` status and MATCH_END sequence for both supported match-end paths. |
+| `server/src/match-room/lifelink-death.integration.test.ts` | Keeps the in-memory MatchRoom SQL adapter behavior aligned with UPSERT and evidence-aware retention SQL. |
+| `server/src/match-room/durable-object-sqlite.integration.do.mjs` | Real Workers SQLite eviction/restart, replay, snapshot, retention, legacy terminal status and missing-level regression tests. |
+
+No Android or protocol-schema source changed for Phase 12-B. `protocol/schema.json` remains at 25 messages / 23 actions. The multi-statement LEVEL_DATA write path is not yet a comprehensive transaction; do not infer cross-table crash atomicity from successful room reconstruction. That is a separate open Phase 12 item.

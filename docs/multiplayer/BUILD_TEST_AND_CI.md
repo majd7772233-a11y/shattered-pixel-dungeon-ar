@@ -257,4 +257,16 @@ Code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed exact-head [CI 4
 - **Android:** latest local full-suite run: 132 core JVM tests, 0 failures/errors/skips; Debug APK assembleDebug passed. Current test inventories: NativeCombatRuntimeIntegrationTest.java 78 @Test methods, NetworkProtocolParityTest.java 20, MultiplayerReconnectLifecycleTest.java 3.
 - **Durable Object Workers runtime:** four real SQLite integration tests passed.
 - **Coverage added/updated:** contiguous replay ordering, gap/malformed-row rejection without watermark advance, stale/incomplete snapshot safety, exact-request fingerprint replay, changed/cross-player request conflict, migration compatibility, delegated authority completion identity, concurrent exact retry and atomic rollback/after-commit broadcast behavior.
-- Phase 11 accepted scope remains closed. Active Phase 12-A local verification (2026-11-16): TypeScript noEmit PASS; backend source-only Vitest 5 files / 370 tests PASS; Cloudflare Workers Durable Object SQLite runtime 1 file / 5 tests PASS; protocol guards confirm 25 message types / 23 action types; Gradle core JVM tests and assembleDebug PASS. Exact-head CI, deployment and physical-device testing are not yet verified. Phase 12-A remains OPEN.
+- Historical Phase 12-A-only checkpoint before Phase 12-B: Phase 11 remains closed; TypeScript noEmit PASS; backend source-only Vitest 5 files / 370 tests PASS; Cloudflare Workers Durable Object SQLite runtime 1 file / 5 tests PASS; protocol guards 25 messages / 23 actions; Gradle core JVM tests and assembleDebug PASS. The Phase 12 local evidence is recorded immediately below, including the forced 132-test Android rerun and the additional migration/atomicity/publisher-loss runtime regressions.
+
+## 12. Phase 12-A / Phase 12-B local verification checkpoint — 2026-11-16 (worktree, not CI)
+
+Current committed starting baseline for the worktree: `836d4e4739bba3877a1ce04df75b8a30ab0655ee` on `multiplayer-framework-core-14118577486727081892`, matching `origin` at start. Changes remain uncommitted; exact-head branch CI has not run for them.
+
+- Backend TypeScript noEmit: PASS.
+- Backend npm test: 5 Vitest files / 372 tests PASS; all six protocol/routing/payload guards pass, including 25 outer message types and 23 ACTION types.
+- Real Cloudflare Workers Durable Object SQLite runtime: 1 file / 14 tests PASS. Includes eviction/reconstruction, cursor/status/worldTime restore, contiguous replay, snapshot fallback, retention, legacy schema upgrade, atomic LEVEL_DATA rollback/retry and publisher revocation when the native snapshot is missing.
+- Android forced rerun: `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks` completed BUILD SUCCESSFUL. XML reports: 10 files / 132 core JVM tests / 0 failures / 0 errors / 0 skipped. `android/build/outputs/apk/debug/android-debug.apk` was generated.
+- Gradle reported pre-existing deprecated API/unchecked-operation notices and that it will not be compatible with Gradle 10; there were no build/test failures.
+
+Neither a green local run nor this worktree documentation means exact-head CI, deployed Worker readiness or physical-device multiplayer acceptance. Phase 12 implementation is complete locally, including versioned migrations, full LEVEL_DATA transactionality and token-fenced publisher loss/handoff. Phase 12-A, Phase 12-B and parent Phase 12 remain OPEN pending exact-head CI and user review.

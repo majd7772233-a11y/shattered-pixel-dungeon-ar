@@ -464,13 +464,39 @@ The MatchRoom suite verifies changed same-player request payload/action and cros
 - Confirm permanent 401/403/409 resume rejection and SESSION_REPLACED clear the stale client session; failed handshakes release their sockets.
 - Confirm a reconnect already in flight suppresses another attempt; malformed replacement credentials fail closed.
 
-### Phase 12-A local verification (2026-11-16)
+### Historical Phase 12-A-only local verification before Phase 12-B (2026-11-16)
 - TypeScript noEmit: PASS.
-- Backend source-only Vitest: 5 files / 370 tests PASS.
+- Backend source-only Vitest: 5 files / 372 tests PASS.
 - Cloudflare Workers Durable Object SQLite runtime: 1 file / 5 tests PASS.
 - Android core JVM: 132 tests PASS, 0 failures/errors/skips; Debug APK assembleDebug PASS.
 - Protocol schema guards: 25 messages / 23 actions unchanged.
 - Exact-head CI for Phase 12-A changes is still pending; no deployment or physical-device acceptance is implied.
 
 ### Exact-head CI — historical Phase 11-B baseline
-Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. This evidence applies to the Phase 11-B baseline SHA, not the current uncommitted Phase 12-A worktree.
+Historical Phase 11-B baseline evidence: Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. This evidence applies to the Phase 11-B baseline SHA, not the current uncommitted Phase 12-A/12-B worktree.
+
+## Phase 12-B — Durable Object eviction, replay retention and snapshot recovery (2026-11-16)
+
+### Real Workers Durable Object SQLite integration
+
+The real-runtime file `server/src/match-room/durable-object-sqlite.integration.do.mjs` now contains 14 tests total (five pre-existing tests plus nine Phase 12 regressions). The nine new regression scenarios verify:
+
+1. Room cursor/status/worldTime survive `evictDurableObject` and constructor rehydration; retained history contains the latest 200 ordinary events plus protected LifeLink/last-damage proof rows.
+2. A client at sequence 980 receives the exact contiguous 981–1000 EVENT_BATCH after eviction; a cursor at 0 falls back to SNAPSHOT and restores player position/HP/Hero JSON, depth, game mode, world time and the 1024-tile level.
+3. A room with player/item/reward claim state but no current-level row rejects reconstruction with `ROOM_RECOVERY_INCOMPLETE`.
+4. Legacy rooms without `gameStatus` derive `ENDED` from MATCH_END; a complete current-depth native snapshot derives `PLAYING`, while absent/incomplete run evidence remains `LOBBY`.
+5. Orphaned level-table rows with missing gameMode/seed/depth fail closed before constructor defaults are inserted (`ROOM_RECOVERY_MISSING_GAME_MODE`).
+6. A lone non-default `room_meta` state key (`worldTime`) prevents replacement level generation even when player/event/level tables are empty, while default `currentSequence=0` and `gameStatus=LOBBY` do not falsely mark a new room as corrupt.
+7. A forced late `mobs` insert failure during `LEVEL_DATA` rolls back level metadata, all tiles, mobs, snapshot and in-memory cursor; no ACK is sent. Retrying after removing the trigger commits the complete replacement.
+8. Legacy databases upgrade transactionally through schema versions 1 and 2, adding processed-action fingerprint columns and branch-aware claim keys while preserving both old item claims and a pre-existing processed-action receipt.
+9. A disconnected publisher with no valid native snapshot is revoked and its term advances; no replacement is elected and no fabricated SNAPSHOT is broadcast.
+
+### Current local verification — Phase 12-A / Phase 12-B worktree
+
+- TypeScript `npx tsc --noEmit --pretty false`: PASS.
+- Backend `npm test`: 5 files / 372 tests PASS; static guards still confirm 25 outer message types and 23 actions.
+- Workers runtime `npx vitest run --config vitest.durable-objects.config.mjs src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 14 tests PASS against real SQLite and Durable Object eviction, migration, transactional LEVEL_DATA replacement and publisher-loss recovery.
+- Android `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 10 core JVM XML reports / 132 tests / 0 failures / 0 errors / 0 skipped; Debug APK generated.
+- No exact-head CI has run for the uncommitted Phase 12-A/12-B worktree. No production Worker deploy, live production WebSocket test or physical two-device acceptance is implied.
+
+The compaction count is not a strict global 200-row cap: latest replay rows plus protected per-sender validation evidence are retained. Schema versioning, complete `LEVEL_DATA` atomicity and token-fenced publisher handoff are implemented and locally tested; exact-head CI and user review remain the Phase 12 closure gates.

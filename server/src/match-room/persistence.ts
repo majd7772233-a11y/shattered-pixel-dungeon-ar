@@ -1,53 +1,60 @@
 import { isNativeLootClaimSchemaCurrent } from "../validators/inventory-claims";
+import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 import { MatchRoomBase } from "./base";
 
 export class MatchRoomPersistence extends MatchRoomBase {
   protected migrateProcessedActions(): void {
-    const inspect = () => this.sql.exec("PRAGMA table_info(processed_actions)").toArray();
+    const names = new Set(this.sql.exec("PRAGMA table_info(processed_actions)").toArray()
+      .map((column: any) => String(column.name)));
     const requiredColumns = [
       ["request_fingerprint", "TEXT"],
       ["authority_id", "TEXT"],
       ["completion_fingerprint", "TEXT"]
     ] as const;
-    const missing = () => {
-      const names = new Set(inspect().map((column: any) => String(column.name)));
-      return requiredColumns.filter(([name]) => !names.has(name));
-    };
-    if (missing().length === 0) return;
-    this.state.storage.transactionSync(() => {
-      for (const [name, type] of missing()) {
-        this.sql.exec(`ALTER TABLE processed_actions ADD COLUMN ${name} ${type}`);
-      }
-    });
+    for (const [name, type] of requiredColumns) {
+      if (!names.has(name)) this.sql.exec("ALTER TABLE processed_actions ADD COLUMN " + name + " " + type);
+    }
   }
 
   protected migrateClaimedItemInstances(): void {
-    const inspect = () => this.sql.exec("PRAGMA table_info(claimed_item_instances)").toArray();
-    if (isNativeLootClaimSchemaCurrent(inspect())) return;
-    this.state.storage.transactionSync(() => {
-      const columns: any[] = inspect();
-      if (isNativeLootClaimSchemaCurrent(columns)) return;
-      const hasBranch = columns.some((column: any) => String(column.name) === "branch");
-      this.sql.exec("ALTER TABLE claimed_item_instances RENAME TO claimed_item_instances_legacy");
-      this.sql.exec(`CREATE TABLE claimed_item_instances (
-        depth INTEGER NOT NULL,
-        branch INTEGER NOT NULL DEFAULT 0,
-        heap_id TEXT NOT NULL,
-        item_id TEXT NOT NULL,
-        claimed_by TEXT NOT NULL,
-        request_id TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (depth, branch, heap_id, item_id)
-      )`);
-      const branchExpression = hasBranch ? "branch" : "0";
-      this.sql.exec(`INSERT OR IGNORE INTO claimed_item_instances
-        (depth,branch,heap_id,item_id,claimed_by,request_id,created_at)
-        SELECT depth,${branchExpression},heap_id,item_id,claimed_by,request_id,created_at
-        FROM claimed_item_instances_legacy`);
-      this.sql.exec("DROP TABLE claimed_item_instances_legacy");
-    });
+    const columns: any[] = this.sql.exec("PRAGMA table_info(claimed_item_instances)").toArray();
+    if (isNativeLootClaimSchemaCurrent(columns)) return;
+    const hasBranch = columns.some((column: any) => String(column.name) === "branch");
+    this.sql.exec("ALTER TABLE claimed_item_instances RENAME TO claimed_item_instances_legacy");
+    this.sql.exec("CREATE TABLE claimed_item_instances (depth INTEGER NOT NULL, branch INTEGER NOT NULL DEFAULT 0, heap_id TEXT NOT NULL, item_id TEXT NOT NULL, claimed_by TEXT NOT NULL, request_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (depth, branch, heap_id, item_id))");
+    const branchExpression = hasBranch ? "branch" : "0";
+    this.sql.exec("INSERT OR IGNORE INTO claimed_item_instances (depth,branch,heap_id,item_id,claimed_by,request_id,created_at) SELECT depth," + branchExpression + ",heap_id,item_id,claimed_by,request_id,created_at FROM claimed_item_instances_legacy");
+    this.sql.exec("DROP TABLE claimed_item_instances_legacy");
   }
 
+  /** Versioned storage migrations; each step and its checkpoint are one SQLite transaction. */
+  protected migrateSchema(): void {
+    const readVersion = (): number => {
+      const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "schemaVersion").toArray()[0];
+      if (!row) return 0;
+      const version = Number(row.value);
+      if (!Number.isSafeInteger(version) || version < 0) throw new Error("ROOM_SCHEMA_VERSION_INVALID");
+      return version;
+    };
+    const migrations = [
+      { version: 1, apply: () => this.migrateProcessedActions() },
+      { version: 2, apply: () => this.migrateClaimedItemInstances() }
+    ];
+    const latestVersion = migrations[migrations.length - 1].version;
+    const initialVersion = readVersion();
+    if (initialVersion > latestVersion) throw new Error("ROOM_SCHEMA_VERSION_UNSUPPORTED");
+    for (const migration of migrations) {
+      if (migration.version <= readVersion()) continue;
+      this.state.storage.transactionSync(() => {
+        const currentVersion = readVersion();
+        if (currentVersion >= migration.version) return;
+        if (currentVersion !== migration.version - 1) throw new Error("ROOM_SCHEMA_MIGRATION_GAP");
+        migration.apply();
+        this.sql.exec("INSERT INTO room_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+          "schemaVersion", String(migration.version));
+      });
+    }
+  }
   protected initDatabase() {
     this.sql.exec(`
       CREATE TABLE IF NOT EXISTS room_meta (
@@ -153,28 +160,80 @@ export class MatchRoomPersistence extends MatchRoomBase {
       );
     `);
 
-    this.migrateProcessedActions();
-    this.migrateClaimedItemInstances();
+    this.migrateSchema();
 
+    const storedRoomData = this.sql.exec(`SELECT
+      (SELECT COUNT(*) FROM players) AS players_count,
+      (SELECT COUNT(*) FROM events) AS events_count,
+      (SELECT COUNT(*) FROM levels) AS levels_count,
+      (SELECT COUNT(*) FROM processed_actions) AS processed_count,
+      (SELECT COUNT(*) FROM room_meta WHERE key LIKE 'levelSnapshot:%') AS snapshots_count,
+      (SELECT COUNT(*) FROM room_meta WHERE key = 'levelPublisher') AS publisher_count,
+      (SELECT COUNT(*) FROM room_meta WHERE key NOT IN ('gameMode','seed','depth','schemaVersion') AND NOT (key = 'currentSequence' AND value = '0') AND NOT (key = 'gameStatus' AND value = 'LOBBY')) AS other_meta_count,
+      (SELECT COUNT(*) FROM level_tiles) AS tiles_count,
+      (SELECT COUNT(*) FROM level_transitions) AS transitions_count,
+      (SELECT COUNT(*) FROM mobs) AS mobs_count,
+      (SELECT COUNT(*) FROM claimed_item_instances) AS item_claims_count,
+      (SELECT COUNT(*) FROM claimed_chest_instances) AS chest_claims_count,
+      (SELECT COUNT(*) FROM native_mob_reward_claims) AS reward_claims_count
+    `).toArray()[0];
+    const hasDurableRoomData = [
+      storedRoomData?.players_count, storedRoomData?.events_count, storedRoomData?.levels_count,
+      storedRoomData?.processed_count, storedRoomData?.snapshots_count, storedRoomData?.publisher_count,
+      storedRoomData?.other_meta_count, storedRoomData?.tiles_count, storedRoomData?.transitions_count, storedRoomData?.mobs_count,
+      storedRoomData?.item_claims_count, storedRoomData?.chest_claims_count, storedRoomData?.reward_claims_count
+    ].some(value => Number(value || 0) > 0);
+
+    // Older rooms wrote worldTime lazily on the first accepted ACTION. An absent row
+    // therefore retains the legacy zero-clock default; any stored value must still validate.
     const timeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'worldTime'`).toArray();
-    this.worldTime = timeRow.length > 0 ? Number(timeRow[0].value) || 0 : 0;
-
-    const seqRow = this.sql.exec(`SELECT MAX(sequence) as max_seq FROM events`).toArray();
-    if (seqRow.length > 0 && seqRow[0].max_seq !== null) {
-      this.currentSequence = Number(seqRow[0].max_seq);
+    if (timeRow.length > 0) {
+      this.worldTime = Number(timeRow[0].value);
+      if (!Number.isFinite(this.worldTime) || this.worldTime < 0) {
+        throw new Error("ROOM_RECOVERY_INVALID_WORLD_TIME");
+      }
     }
+
+    // `events` may be compacted, so never derive the durable cursor from MAX(sequence) alone.
+    // The metadata cursor is monotonic; MAX(events.sequence) is only the legacy backfill source.
+    const seqRow = this.sql.exec(`SELECT MAX(sequence) as max_seq FROM events`).toArray();
+    const eventSequence = seqRow.length > 0 && seqRow[0].max_seq !== null
+      ? Number(seqRow[0].max_seq) : 0;
+    if (!Number.isSafeInteger(eventSequence) || eventSequence < 0) {
+      throw new Error("ROOM_RECOVERY_INVALID_EVENT_SEQUENCE");
+    }
+    const storedSequenceRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "currentSequence"
+    ).toArray()[0];
+    let storedSequence = 0;
+    if (storedSequenceRow) {
+      storedSequence = Number(storedSequenceRow.value);
+      if (!Number.isSafeInteger(storedSequence) || storedSequence < 0) {
+        throw new Error("ROOM_RECOVERY_INVALID_SEQUENCE_CHECKPOINT");
+      }
+    }
+    this.currentSequence = Math.max(eventSequence, storedSequence);
 
     const modeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'gameMode'`).toArray();
     if (modeRow.length > 0) {
-      this.gameMode = String(modeRow[0].value) as any;
+      const persistedMode = String(modeRow[0].value);
+      if (!["COOP_DUNGEON", "PVP_ARENA", "DEATHMATCH", "SURVIVAL"].includes(persistedMode)) {
+        throw new Error("ROOM_RECOVERY_INVALID_GAME_MODE");
+      }
+      this.gameMode = persistedMode as any;
     } else {
+      if (hasDurableRoomData) throw new Error("ROOM_RECOVERY_MISSING_GAME_MODE");
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('gameMode', 'COOP_DUNGEON')`);
     }
 
     const metaRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'seed'`).toArray();
     if (metaRow.length > 0) {
       this.matchSeed = Number(metaRow[0].value);
+      if (!Number.isSafeInteger(this.matchSeed) || this.matchSeed < 0) {
+        throw new Error("ROOM_RECOVERY_INVALID_SEED");
+      }
     } else {
+      if (hasDurableRoomData) throw new Error("ROOM_RECOVERY_MISSING_SEED");
       this.matchSeed = Math.floor(Math.random() * 1000000000);
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('seed', ?)`, this.matchSeed.toString());
     }
@@ -182,16 +241,73 @@ export class MatchRoomPersistence extends MatchRoomBase {
     const depthRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'depth'`).toArray();
     if (depthRow.length > 0) {
       this.currentDepth = Number(depthRow[0].value);
+      if (!Number.isSafeInteger(this.currentDepth) || this.currentDepth < 1 || this.currentDepth > 100) {
+        throw new Error("ROOM_RECOVERY_INVALID_DEPTH");
+      }
     } else {
+      if (hasDurableRoomData) throw new Error("ROOM_RECOVERY_MISSING_DEPTH");
+      this.currentDepth = 1;
       this.sql.exec(`INSERT INTO room_meta (key, value) VALUES ('depth', '1')`);
     }
 
+    const gameStatusRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "gameStatus"
+    ).toArray()[0];
+    if (gameStatusRow) {
+      const persistedStatus = String(gameStatusRow.value);
+      if (!["LOBBY", "PLAYING", "ENDED"].includes(persistedStatus)) {
+        throw new Error("ROOM_RECOVERY_INVALID_GAME_STATUS");
+      }
+      this.gameStatus = persistedStatus as any;
+    } else {
+      // Legacy rooms did not persist gameStatus. Preserve terminal rooms from MATCH_END first;
+      // otherwise a complete native snapshot for the current depth proves play had begun.
+      const legacyMatchEnd = this.sql.exec(
+        "SELECT sequence FROM events WHERE event_type = ? ORDER BY sequence DESC LIMIT 1", "MATCH_END"
+      ).toArray()[0];
+      const legacySnapshotRow = this.sql.exec(
+        "SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`
+      ).toArray()[0];
+      let legacySnapshot: any = null;
+      try {
+        legacySnapshot = legacySnapshotRow && typeof legacySnapshotRow.value === "string"
+          ? JSON.parse(String(legacySnapshotRow.value)) : null;
+      } catch (_) {}
+      const legacyRunWasStarted = hasCompleteNativeLevelSnapshot(legacySnapshot)
+        && Number(legacySnapshot.depth) === this.currentDepth && Number(legacySnapshot.branch) === 0;
+      this.gameStatus = legacyMatchEnd ? "ENDED" : legacyRunWasStarted ? "PLAYING" : "LOBBY";
+    }
+
     this.ensureLevelGenerated(this.currentDepth);
+    this.persistEventLogState();
   }
 
   protected ensureLevelGenerated(depth: number) {
     const existingLevel = this.sql.exec(`SELECT depth FROM levels WHERE depth = ?`, depth).toArray();
     if (existingLevel.length === 0) {
+      const recoveryRows = this.sql.exec(`SELECT
+        (SELECT COUNT(*) FROM players) AS players_count,
+        (SELECT COUNT(*) FROM events) AS events_count,
+        (SELECT COUNT(*) FROM processed_actions) AS processed_count,
+        (SELECT COUNT(*) FROM room_meta WHERE key LIKE 'levelSnapshot:%') AS snapshots_count,
+        (SELECT COUNT(*) FROM room_meta WHERE key = 'levelPublisher') AS publisher_count,
+        (SELECT COUNT(*) FROM room_meta WHERE key NOT IN ('gameMode','seed','depth','schemaVersion') AND NOT (key = 'currentSequence' AND value = '0') AND NOT (key = 'gameStatus' AND value = 'LOBBY')) AS other_meta_count,
+        (SELECT COUNT(*) FROM level_tiles WHERE depth = ?) AS tiles_count,
+        (SELECT COUNT(*) FROM level_transitions WHERE depth = ?) AS transitions_count,
+        (SELECT COUNT(*) FROM mobs WHERE depth = ?) AS mobs_count,
+        (SELECT COUNT(*) FROM claimed_item_instances WHERE depth = ?) AS item_claims_count,
+        (SELECT COUNT(*) FROM claimed_chest_instances WHERE depth = ?) AS chest_claims_count,
+        (SELECT COUNT(*) FROM native_mob_reward_claims WHERE depth = ?) AS reward_claims_count
+      `, depth, depth, depth, depth, depth, depth).toArray()[0];
+      const hasOrphanedDurableState = [
+        recoveryRows?.players_count, recoveryRows?.events_count, recoveryRows?.processed_count,
+        recoveryRows?.snapshots_count, recoveryRows?.publisher_count, recoveryRows?.other_meta_count,
+        recoveryRows?.tiles_count, recoveryRows?.transitions_count, recoveryRows?.mobs_count, recoveryRows?.item_claims_count,
+        recoveryRows?.chest_claims_count, recoveryRows?.reward_claims_count
+      ].some(value => Number(value || 0) > 0);
+      if (hasOrphanedDurableState) {
+        throw new Error("ROOM_RECOVERY_INCOMPLETE: persisted room data exists but the current level row is missing");
+      }
       const levelSeed = this.matchSeed + depth * 10007;
       const width = 32;
       const height = 32;

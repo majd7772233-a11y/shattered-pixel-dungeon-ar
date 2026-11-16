@@ -223,15 +223,15 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     const liveSockets = [
       {
         send: (value) => sent.next.push(String(value)),
-        deserializeAttachment: () => ({ playerId: nextPublisher, sessionToken: "next-publisher-token" })
+        deserializeAttachment: () => ({ playerId: nextPublisher, sessionToken: nextPublisher + "-token" })
       },
       {
         send: (value) => sent.attacker.push(String(value)),
-        deserializeAttachment: () => ({ playerId: attackerId, sessionToken: "attacker-token" })
+        deserializeAttachment: () => ({ playerId: attackerId, sessionToken: attackerId + "-token" })
       }
     ];
     const closingSocket = {
-      deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: "old-publisher-token" })
+      deserializeAttachment: () => ({ playerId: oldPublisher, sessionToken: oldPublisher + "-token" })
     };
 
     await runInDurableObject(stub, async (instance, state) => {
@@ -329,10 +329,47 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
+  it("revokes a disconnected publisher without electing or broadcasting from a missing native snapshot", async () => {
+    const playerId = "phase12-missing-snapshot-publisher";
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12-missing-publisher-snapshot"));
+    const received = [];
+    const spectatorSocket = {
+      send: value => received.push(String(value)),
+      deserializeAttachment: () => ({ playerId: "phase12-missing-snapshot-spectator", sessionToken: "spectator-token" })
+    };
+    const closingSocket = {
+      deserializeAttachment: () => ({ playerId, sessionToken: playerId + "-token" })
+    };
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?,?)",
+        playerId, playerId + "-token", "WARRIOR", 9, 20, 20, "ALIVE", 1);
+      for (const [key,value] of [["levelPublisher", playerId], ["levelPublisherTerm", "4"], ["levelPublisherReadyTerm", "4"]]) {
+        sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
+      }
+      instance.state.getWebSockets = () => [spectatorSocket];
+      await instance.webSocketClose(closingSocket, 1006, "publisher socket lost", false);
+      expect(sql.exec("SELECT connected FROM players WHERE player_id=?", playerId).toArray()[0].connected).toBe(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelPublisher").toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelPublisherTerm").toArray()[0].value).toBe("5");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelPublisherReadyTerm").toArray()).toHaveLength(0);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelSnapshot:1").toArray()).toHaveLength(0);
+    });
+    const messages = received.map(value => JSON.parse(value));
+    expect(messages.some(message => message.messageType === "SNAPSHOT")).toBe(false);
+    const publisherChange = messages.find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");
+    expect(publisherChange).toBeTruthy();
+    expect(JSON.parse(publisherChange.payloadJson)).toMatchObject({
+      publisherId: null, term: 5, reason: "PUBLISHER_DISCONNECTED_SNAPSHOT_UNAVAILABLE"
+    });
+  });
+
   it("persists request replay identity fields in Durable Object SQLite", async () => {
     const roomId = env.MATCH_ROOM.idFromName("phase11b-request-fingerprint-migration");
     const stub = env.MATCH_ROOM.get(roomId);
     await runInDurableObject(stub, async (_instance, state) => {
+      const schemaVersion = state.storage.sql.exec("SELECT value FROM room_meta WHERE key = ?", "schemaVersion").toArray()[0];
+      expect(schemaVersion.value).toBe("2");
       const columns = state.storage.sql.exec("PRAGMA table_info(processed_actions)").toArray()
         .map(column => String(column.name));
       expect(columns).toContain("request_fingerprint");
@@ -364,6 +401,8 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
 
     await runInDurableObject(stub, async (instance, state) => {
       const sql = state.storage.sql;
+      // Preserve a real destination level before setting its persisted depth checkpoint.
+      instance.ensureLevelGenerated(3);
       expect(sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'players'").toArray())
         .toHaveLength(1);
 
@@ -558,6 +597,400 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
 
     try { firstSocket.close(); } catch (_) {}
     try { secondSocket.close(); } catch (_) {}
+  });
+
+  it("restores the durable cursor, room status, replay and full snapshot after Durable Object eviction", async () => {
+    const playerId = "phase12b-restore-player-001";
+    const sessionToken = "phase12b-restore-session-token-001";
+    const roomId = env.MATCH_ROOM.idFromName("phase12b-durable-cursor-retention-reconnect");
+    const stub = env.MATCH_ROOM.get(roomId);
+    const heroState = JSON.stringify({ hp: 13, ht: 20, pos: 77, shielding: 2, buffs: [] });
+    const sent = [];
+    const socket = {
+      send: (value) => sent.push(String(value)),
+      deserializeAttachment: () => ({ playerId, sessionToken })
+    };
+
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec(
+        "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?,?)",
+        playerId, sessionToken, "WARRIOR", 77, 13, 20, "ALIVE", 1, 1
+      );
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "heroState:" + playerId, heroState
+      );
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelPublisher", "phase12b-publisher-owner-002"
+      );
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelPublisherTerm", "3"
+      );
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "worldTime", "123.5"
+      );
+      sql.exec("DELETE FROM mobs WHERE depth = ?", 1);
+      sql.exec(
+        "INSERT INTO mobs (mob_id,depth,name,pos,hp,ht,str,dmg_max,next_act_at,state) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        7, 1, "Rat", 25, 18, 20, 8, 6, 0, "HUNTING"
+      );
+      const savedLevel = {
+        schemaVersion: 1, depth: 1, width: 32, height: 32, branch: 0,
+        entrancePos: 33, exitPos: 990, seed: 123456, locked: false, feeling: "NONE",
+        levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+        nativeLevelMetadataBundle: "phase12b-level-metadata",
+        tiles: Array.from({ length: 1024 }, (_, pos) => ({
+          pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+          flammable: false, secret: false, avoid: false, water: false,
+          discoverable: false, openSpace: false
+        })),
+        transitions: [{ transitionId: "phase12b-exit-1", pos: 990, type: "EXIT", targetDepth: 2 }],
+        mobs: [{ mobId: 7, entityId: "phase12b-stable-mob-0007", name: "Rat", pos: 25, hp: 18, ht: 20,
+          state: "HUNTING", serializedBundle: "native-rat-bundle", buffs: [], defenseSkill: 5,
+          baseSpeed: 1, cooldown: 0 }],
+        heaps: [{ heapId: "phase12b-heap-001", pos: 40, type: "HEAP", items: [{ itemId: "phase12b-item-001", bundle: "native-item-bundle" }] }],
+        traps: [{ pos: 41, trapClass: "com.shatteredpixel.shatteredpixeldungeon.levels.traps.PoisonDartTrap", visible: true, active: true }],
+        blobs: [{ blobClass: "com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire", cells: [{ pos: 42, volume: 4 }] }],
+        plants: [{ pos: 43, plantClass: "com.shatteredpixel.shatteredpixeldungeon.plants.Sungrass", seedClass: "com.shatteredpixel.shatteredpixeldungeon.plants.Sungrass$Seed", active: true }]
+      };
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelSnapshot:1", JSON.stringify(savedLevel)
+      );
+      sql.exec("DELETE FROM events");
+      for (let sequence = 1; sequence <= 1000; sequence++) {
+        const eventType = sequence === 1 ? "HERO_BUFF_TICKED"
+          : sequence <= 514 ? "CHAR_DAMAGED"
+          : sequence === 515 ? "PLAYER_DAMAGED" : "ROOM_EVENT";
+        sql.exec(
+          "INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+          sequence, playerId, eventType, JSON.stringify({ sequence })
+        );
+      }
+      instance.currentSequence = 1000;
+      instance.worldTime = 123.5;
+      instance.gameStatus = "ENDED";
+      instance.persistEventLogState();
+
+      const retained = sql.exec("SELECT sequence,sender_id,event_type FROM events ORDER BY sequence ASC").toArray();
+      expect(retained).toHaveLength(715);
+      expect(retained.slice(-200).map(row => Number(row.sequence))).toEqual(
+        Array.from({ length: 200 }, (_, index) => 801 + index)
+      );
+      expect(sql.exec(
+        "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'CHAR_DAMAGED' ORDER BY sequence ASC",
+        playerId
+      ).toArray()).toHaveLength(513);
+      expect(sql.exec(
+        "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'HERO_BUFF_TICKED'",
+        playerId
+      ).toArray().map(row => Number(row.sequence))).toEqual([1]);
+      expect(sql.exec(
+        "SELECT sequence FROM events WHERE sender_id = ? AND event_type = 'PLAYER_DAMAGED'",
+        playerId
+      ).toArray().map(row => Number(row.sequence))).toEqual([515]);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = 'currentSequence'").toArray()[0].value).toBe("1000");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = 'gameStatus'").toArray()[0].value).toBe("ENDED");
+    });
+
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance) => {
+      expect(instance.currentSequence).toBe(1000);
+      expect(instance.gameStatus).toBe("ENDED");
+      expect(instance.gameMode).toBe("COOP_DUNGEON");
+      expect(instance.currentDepth).toBe(1);
+      expect(instance.worldTime).toBe(123.5);
+      // The snapshot intentionally includes currently connected players only.
+      instance.state.getWebSockets = () => [socket];
+
+      await instance.webSocketMessage(socket, JSON.stringify({
+        protocolVersion: "1.0.0", messageType: "RECONNECT", requestId: "phase12b-replay-after-eviction",
+        payloadJson: JSON.stringify({ lastSequence: 980 })
+      }));
+      expect(sent).toHaveLength(2);
+      const replay = JSON.parse(sent[0]);
+      expect(replay).toMatchObject({ messageType: "EVENT_BATCH", sequence: 1000 });
+      const replayRows = JSON.parse(replay.payloadJson);
+      expect(replayRows).toHaveLength(20);
+      expect(replayRows.map(row => Number(row.sequence))).toEqual(
+        Array.from({ length: 20 }, (_, index) => 981 + index)
+      );
+
+      expect(JSON.parse(sent[1])).toMatchObject({ messageType: "LEVEL_PUBLISHER_CHANGED" });
+
+      sent.length = 0;
+      await instance.webSocketMessage(socket, JSON.stringify({
+        protocolVersion: "1.0.0", messageType: "RECONNECT", requestId: "phase12b-snapshot-after-eviction",
+        payloadJson: JSON.stringify({ lastSequence: 0 })
+      }));
+      expect(sent).toHaveLength(2);
+      const snapshot = JSON.parse(sent[0]);
+      expect(snapshot).toMatchObject({ messageType: "SNAPSHOT", sequence: 1000 });
+      const payload = JSON.parse(snapshot.payloadJson);
+      expect(payload).toMatchObject({
+        sequence: 1000, depth: 1, gameMode: "COOP_DUNGEON", worldTime: 123.5
+      });
+      expect(payload.players).toHaveLength(1);
+      expect(payload.players[0]).toMatchObject({
+        player_id: playerId, pos: 77, hp: 13, ht: 20, hero_state_json: heroState
+      });
+      expect(payload.level).toMatchObject({ depth: 1, width: 32, height: 32 });
+      expect(payload.level.tiles).toHaveLength(1024);
+      expect(payload.level).toMatchObject({
+        heaps: [{ heapId: "phase12b-heap-001", pos: 40 }],
+        traps: [{ pos: 41, visible: true, active: true }],
+        blobs: [{ blobClass: "com.shatteredpixel.shatteredpixeldungeon.actors.blobs.Fire" }],
+        plants: [{ pos: 43, active: true }]
+      });
+      expect(payload.level.mobs).toHaveLength(1);
+      expect(payload.level.mobs[0]).toMatchObject({
+        mob_id: 7, pos: 25, hp: 18, ht: 20,
+        entityId: "phase12b-stable-mob-0007", serializedBundle: "native-rat-bundle"
+      });
+      expect(JSON.parse(sent[1])).toMatchObject({ messageType: "LEVEL_PUBLISHER_CHANGED" });
+    });
+  });
+
+  it("rejects missing critical room metadata when only orphaned level tables remain", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12b-orphaned-level-metadata-fail-closed"));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("DELETE FROM level_tiles WHERE depth = ?", 1);
+      sql.exec(
+        "INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)",
+        1, 12, "3", 1, 0, 0, 0
+      );
+      sql.exec("DELETE FROM levels WHERE depth = ?", 1);
+      sql.exec("DELETE FROM room_meta WHERE key IN ('gameMode','seed','depth')");
+    });
+    await evictDurableObject(stub);
+    await expect(runInDurableObject(stub, async () => undefined))
+      .rejects.toThrow("ROOM_RECOVERY_MISSING_GAME_MODE");
+  });
+  it("refuses to regenerate a missing level while non-default room_meta state remains", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12b-orphaned-room-meta-state-fail-closed"));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("DELETE FROM players");
+      sql.exec("DELETE FROM events");
+      sql.exec("DELETE FROM levels");
+      sql.exec("DELETE FROM level_tiles");
+      sql.exec("DELETE FROM level_transitions");
+      sql.exec("DELETE FROM mobs");
+      sql.exec("DELETE FROM processed_actions");
+      sql.exec("DELETE FROM claimed_item_instances");
+      sql.exec("DELETE FROM claimed_chest_instances");
+      sql.exec("DELETE FROM native_mob_reward_claims");
+      sql.exec("DELETE FROM room_meta WHERE key NOT IN ('gameMode','seed','depth')");
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "worldTime", "4.5"
+      );
+    });
+    await evictDurableObject(stub);
+    await expect(runInDurableObject(stub, async () => undefined))
+      .rejects.toThrow("ROOM_RECOVERY_INCOMPLETE");
+  });
+  it("fails closed instead of regenerating a missing level when durable player data remains", async () => {
+    const roomId = env.MATCH_ROOM.idFromName("phase12b-missing-level-fail-closed");
+    const stub = env.MATCH_ROOM.get(roomId);
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        "INSERT INTO players (player_id,session_token,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?)",
+        "phase12b-orphaned-player-001", "phase12b-orphaned-session-001", 17, 12, 20, "ALIVE", 0
+      );
+      state.storage.sql.exec(
+        "INSERT INTO claimed_item_instances (depth,branch,heap_id,item_id,claimed_by,request_id) VALUES (?,?,?,?,?,?)",
+        1, 0, "phase12b-orphaned-heap", "phase12b-orphaned-item", "phase12b-orphaned-player-001", "phase12b-orphaned-request"
+      );
+      state.storage.sql.exec(
+        "INSERT INTO native_mob_reward_claims (reward_id,player_id,request_id,depth) VALUES (?,?,?,?)",
+        "phase12b-orphaned-reward", "phase12b-orphaned-player-001", "phase12b-orphaned-request", 1
+      );
+      state.storage.sql.exec("DELETE FROM levels WHERE depth = ?", 1);
+    });
+    await evictDurableObject(stub);
+    await expect(runInDurableObject(stub, async () => undefined))
+      .rejects.toThrow("ROOM_RECOVERY_INCOMPLETE");
+  });
+
+  it("restores a legacy in-progress room as PLAYING from its complete native snapshot", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12b-legacy-active-room-recovery"));
+    const snapshot = {
+      schemaVersion: 1, depth: 1, width: 8, height: 8, branch: 0,
+      entrancePos: 0, exitPos: 63, seed: 7654321, locked: false, feeling: "NONE",
+      heroStateJson: "{}", nativeLevelMetadataBundle: "legacy-active-level-metadata",
+      tiles: Array.from({ length: 64 }, (_, pos) => ({
+        pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false,
+        flammable: false, secret: false, avoid: false, water: false,
+        discoverable: false, openSpace: false
+      })),
+      transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
+      visitedPositions: [], mappedPositions: []
+    };
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec(
+        "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelSnapshot:1", JSON.stringify(snapshot)
+      );
+      sql.exec(
+        "INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+        90, "phase12b-legacy-active-player", "NATIVE_WORLD_TURN", JSON.stringify({ turnCounter: 1 })
+      );
+      sql.exec("DELETE FROM room_meta WHERE key IN ('currentSequence','gameStatus')");
+    });
+
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance, state) => {
+      expect(instance.currentSequence).toBe(90);
+      expect(instance.worldTime).toBe(0);
+      expect(instance.gameStatus).toBe("PLAYING");
+      expect(state.storage.sql.exec(
+        "SELECT value FROM room_meta WHERE key = 'gameStatus'"
+      ).toArray()[0].value).toBe("PLAYING");
+    });
+  });
+  it("derives legacy ended-room status from MATCH_END before compacting the old event log", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12b-legacy-match-end-recovery"));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec(
+        "INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+        42, "phase12b-legacy-server", "MATCH_END", JSON.stringify({ winnerId: "phase12b-winner" })
+      );
+      sql.exec("DELETE FROM room_meta WHERE key IN ('currentSequence','gameStatus')");
+    });
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance, state) => {
+      expect(instance.currentSequence).toBe(42);
+      expect(instance.gameStatus).toBe("ENDED");
+      expect(state.storage.sql.exec(
+        "SELECT value FROM room_meta WHERE key = 'gameStatus'"
+      ).toArray()[0].value).toBe("ENDED");
+      expect(state.storage.sql.exec(
+        "SELECT sequence FROM events WHERE event_type = 'MATCH_END'"
+      ).toArray()).toEqual([{ sequence: 42 }]);
+    });
+  });
+
+
+
+
+  it("atomically replaces every LEVEL_DATA table and snapshot before acknowledging the publisher", async () => {
+    const playerId = "phase12-level-atomic-publisher";
+    const sessionToken = "phase12-level-atomic-session";
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12-level-data-atomic-rollback"));
+    const sent = [];
+    const socket = {
+      send: value => sent.push(String(value)),
+      deserializeAttachment: () => ({ playerId, sessionToken })
+    };
+    const heroStateJson = JSON.stringify({ hp: 9, ht: 20, pos: 9, shielding: 0 });
+    const makeSnapshot = (seed, mobHp, terrain = 1) => ({
+      schemaVersion: 1, depth: 1, branch: 0, width: 32, height: 32,
+      entrancePos: 0, exitPos: 1023, seed, locked: false, feeling: "NONE",
+      levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+      heroStateJson, nativeLevelMetadataBundle: "phase12-native-level-metadata",
+      tiles: Array.from({ length: 1024 }, (_, pos) => ({
+        pos, terrain, passable: true, solid: false, pit: false, losBlocking: false,
+        flammable: false, secret: false, avoid: false, water: false,
+        discoverable: false, openSpace: false
+      })),
+      transitions: [], heaps: [], traps: [], blobs: [], plants: [],
+      mobs: [{
+        mobId: 71, entityId: "phase12-atomic-mob-0071", name: "Rat", pos: 25,
+        hp: mobHp, ht: 20, shielding: 0, state: "Hunting", defenseSkill: 5,
+        baseSpeed: 1, effectiveSpeed: 1, cooldown: 0, targetCell: -1,
+        targetType: "NONE", targetEntityId: "", enemySeen: false, alerted: false,
+        serializedBundle: JSON.stringify({ mob: { __className: "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat", id: 71, time: 9, HP: mobHp, HT: 20, pos: 25, max_lvl: 29, buffs: [] } }),
+        buffs: []
+      }],
+      visitedPositions: [], mappedPositions: []
+    });
+    const oldSnapshot = makeSnapshot(123456, 20, 1);
+    const nextSnapshot = makeSnapshot(654321, 17, 2);
+    const envelope = JSON.stringify({
+      protocolVersion: "1.0.0", messageType: "LEVEL_DATA", requestId: "phase12-level-data-request-1",
+      payloadJson: JSON.stringify(nextSnapshot)
+    });
+
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("DELETE FROM mobs WHERE depth = ?", 1);
+      sql.exec("INSERT INTO players (player_id,session_token,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?)",
+        playerId, sessionToken, 9, 9, 20, "ALIVE", 1);
+      for (const [key, value] of [
+        ["levelPublisher", playerId], ["levelPublisherTerm", "1"],
+        ["levelPublisherReadyTerm", "1"], ["heroState:" + playerId, heroStateJson],
+        ["levelSnapshot:1", JSON.stringify(oldSnapshot)]
+      ]) sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
+      sql.exec("UPDATE levels SET width=32,height=32,entrance_pos=0,exit_pos=1023,seed=123456 WHERE depth=1");
+      sql.exec("DELETE FROM level_tiles WHERE depth=1");
+      sql.exec("DELETE FROM level_transitions WHERE depth=1");
+      sql.exec("INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (1,0,1,1,0,0,0)");
+      sql.exec("INSERT INTO mobs (mob_id,depth,name,pos,hp,ht,state) VALUES (71,1,'Rat',25,20,20,'HUNTING')");
+      sql.exec("CREATE TRIGGER phase12_fail_level_data BEFORE INSERT ON mobs BEGIN SELECT RAISE(ABORT, 'phase12 forced LEVEL_DATA insert failure'); END");
+
+      await instance.webSocketMessage(socket, envelope);
+      expect(sent).toHaveLength(1);
+      const failed = JSON.parse(sent[0]);
+      expect(failed).toMatchObject({ messageType: "ERROR", requestId: "phase12-level-data-request-1", sequence: 0 });
+      expect(JSON.parse(failed.payloadJson).error).toBe("LEVEL_DATA_COMMIT_FAILED");
+      expect(JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelSnapshot:1").toArray()[0].value).seed).toBe(123456);
+      expect(sql.exec("SELECT seed FROM levels WHERE depth=1").toArray()[0].seed).toBe(123456);
+      expect(sql.exec("SELECT COUNT(*) AS count FROM level_tiles WHERE depth=1").toArray()[0].count).toBe(1);
+      expect(sql.exec("SELECT hp FROM mobs WHERE mob_id=71 AND depth=1").toArray()[0].hp).toBe(20);
+      expect(instance.currentSequence).toBe(0);
+
+      sql.exec("DROP TRIGGER phase12_fail_level_data");
+      sent.length = 0;
+      await instance.webSocketMessage(socket, envelope);
+      expect(sent).toHaveLength(1);
+      const accepted = JSON.parse(sent[0]);
+      expect(accepted).toMatchObject({ messageType: "ACK", requestId: "phase12-level-data-request-1", sequence: 0 });
+      expect(JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelSnapshot:1").toArray()[0].value).seed).toBe(654321);
+      expect(sql.exec("SELECT seed FROM levels WHERE depth=1").toArray()[0].seed).toBe(654321);
+      expect(sql.exec("SELECT COUNT(*) AS count FROM level_tiles WHERE depth=1").toArray()[0].count).toBe(1024);
+      expect(sql.exec("SELECT hp FROM mobs WHERE mob_id=71 AND depth=1").toArray()[0].hp).toBe(17);
+      expect(instance.currentSequence).toBe(0);
+    });
+  });
+
+
+  it("upgrades legacy SQLite tables through atomic schema versions and preserves old claim rows", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase12-versioned-legacy-schema-upgrade"));
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "schemaVersion").toArray()[0].value).toBe("2");
+      sql.exec("DROP TABLE claimed_item_instances");
+      sql.exec("CREATE TABLE claimed_item_instances (depth INTEGER NOT NULL, heap_id TEXT NOT NULL, item_id TEXT NOT NULL, claimed_by TEXT NOT NULL, request_id TEXT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (depth, heap_id, item_id))");
+      sql.exec("INSERT INTO claimed_item_instances (depth,heap_id,item_id,claimed_by,request_id) VALUES (1,?,?,?,?)", "phase12-legacy-heap", "phase12-legacy-item", "phase12-legacy-owner", "phase12-legacy-request");
+      sql.exec("ALTER TABLE processed_actions RENAME TO processed_actions_current");
+      sql.exec("CREATE TABLE processed_actions (request_id TEXT PRIMARY KEY, player_id TEXT, sequence INTEGER, result_json TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+      sql.exec("INSERT INTO processed_actions (request_id,player_id,sequence,result_json) VALUES (?,?,?,?)", "phase12-legacy-receipt", "legacy-player", 41, JSON.stringify({ accepted: true, source: "legacy" }));
+      sql.exec("DROP TABLE processed_actions_current");
+      sql.exec("DELETE FROM room_meta WHERE key=?", "schemaVersion");
+    });
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      expect(sql.exec("SELECT value FROM room_meta WHERE key=?", "schemaVersion").toArray()[0].value).toBe("2");
+      const actionColumns = sql.exec("PRAGMA table_info(processed_actions)").toArray().map(column => String(column.name));
+      expect(actionColumns).toEqual(expect.arrayContaining(["request_fingerprint", "authority_id", "completion_fingerprint"]));
+      const legacyReceipt = sql.exec("SELECT player_id,sequence,result_json FROM processed_actions WHERE request_id=?", "phase12-legacy-receipt").toArray()[0];
+      expect(legacyReceipt).toEqual({ player_id: "legacy-player", sequence: 41, result_json: JSON.stringify({ accepted: true, source: "legacy" }) });
+      const claims = sql.exec("PRAGMA table_info(claimed_item_instances)").toArray();
+      const primaryKey = claims.filter(column => Number(column.pk) > 0).sort((a,b) => Number(a.pk)-Number(b.pk)).map(column => String(column.name));
+      expect(primaryKey).toEqual(["depth", "branch", "heap_id", "item_id"]);
+      const preserved = sql.exec("SELECT depth,branch,heap_id,item_id,claimed_by,request_id FROM claimed_item_instances WHERE item_id=?", "phase12-legacy-item").toArray()[0];
+      expect(preserved).toEqual({ depth: 1, branch: 0, heap_id: "phase12-legacy-heap", item_id: "phase12-legacy-item", claimed_by: "phase12-legacy-owner", request_id: "phase12-legacy-request" });
+    });
   });
 
 });

@@ -12,18 +12,37 @@ export class MatchRoom extends MatchRoomMessages {
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
     const session = ws.deserializeAttachment() as SessionData | null;
     if (session) {
-      // An older socket can close after a replacement has already authenticated. Do not
-      // broadcast PLAYER_LEFT or tear down the live RemoteHero in that race.
-      const replacementSocketExists = this.state.getWebSockets().some(peer => {
-        try {
-          const peerSession = peer.deserializeAttachment() as SessionData | null;
-          return peerSession?.playerId === session.playerId
-            && peerSession?.sessionToken !== session.sessionToken;
-        } catch (_) { return false; }
-      });
-      if (replacementSocketExists) {
-        this.sql.exec("UPDATE players SET connected = 1 WHERE player_id = ?", session.playerId);
+      // The durable session token is the identity fence. A stale socket close must never
+      // disconnect a newer session, even if the replacement socket has already disappeared.
+      const activeSession = this.sql.exec(
+        "SELECT session_token FROM players WHERE player_id = ?", session.playerId
+      ).toArray()[0];
+      const activeToken = String(activeSession?.session_token || "");
+      if (activeToken && activeToken !== session.sessionToken) {
+        const replacementSocketExists = this.state.getWebSockets().some(peer => {
+          try {
+            const peerSession = peer.deserializeAttachment() as SessionData | null;
+            return peerSession?.playerId === session.playerId && peerSession?.sessionToken === activeToken;
+          } catch (_) { return false; }
+        });
+        if (replacementSocketExists) {
+          this.sql.exec("UPDATE players SET connected = 1 WHERE player_id = ?", session.playerId);
+        }
         return;
+      }
+      // Legacy player rows may not yet have a token; retain the old same-player socket guard.
+      if (!activeToken) {
+        const replacementSocketExists = this.state.getWebSockets().some(peer => {
+          try {
+            const peerSession = peer.deserializeAttachment() as SessionData | null;
+            return peerSession?.playerId === session.playerId
+              && peerSession?.sessionToken !== session.sessionToken;
+          } catch (_) { return false; }
+        });
+        if (replacementSocketExists) {
+          this.sql.exec("UPDATE players SET connected = 1 WHERE player_id = ?", session.playerId);
+          return;
+        }
       }
     }
     await super.webSocketClose(ws, code, reason, wasClean);
@@ -52,10 +71,21 @@ export class MatchRoom extends MatchRoomMessages {
       return;
     }
 
-    const livePlayerIds = this.connectedPlayerIds();
+    const liveSessionTokens = new Map<string, Set<string>>();
+    for (const socket of this.state.getWebSockets()) {
+      try {
+        const liveSession = socket.deserializeAttachment() as SessionData | null;
+        if (!liveSession?.playerId || !liveSession.sessionToken) continue;
+        const tokens = liveSessionTokens.get(liveSession.playerId) || new Set<string>();
+        tokens.add(liveSession.sessionToken);
+        liveSessionTokens.set(liveSession.playerId, tokens);
+      } catch (_) {}
+    }
 
     let nextPublisherId: string | null = null;
     let nextTerm = 0;
+    let preservedSnapshotAvailable = false;
+    let handoffCommitted = false;
     const failedCombatRequests: Array<{ attackerId: string; requestId: string }> = [];
     try {
       storage.transactionSync(() => {
@@ -71,18 +101,20 @@ export class MatchRoom extends MatchRoomMessages {
           levelSnapshot = levelRow && typeof levelRow.value === "string"
             ? JSON.parse(String(levelRow.value)) : null;
         } catch (_) {}
-        if (!hasCompleteNativeLevelSnapshot(levelSnapshot)
-            || Number(levelSnapshot.depth) !== this.currentDepth
-            || Number(levelSnapshot.branch) !== 0) {
-          throw new Error("AUTHORITATIVE_LEVEL_SNAPSHOT_UNAVAILABLE");
-        }
+        preservedSnapshotAvailable = hasCompleteNativeLevelSnapshot(levelSnapshot)
+          && Number(levelSnapshot.depth) === this.currentDepth
+          && Number(levelSnapshot.branch) === 0;
 
-        const candidates = this.sql.exec(
-          "SELECT player_id,pos,hp,ht FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC"
-        ).toArray();
+        // Never elect a new publisher from a room whose last authoritative native snapshot
+        // is missing or invalid. Revoke the old term below so its stale socket is fenced.
+        const candidates = preservedSnapshotAvailable ? this.sql.exec(
+          "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC"
+        ).toArray() : [];
         for (const candidate of candidates) {
           const candidateId = String(candidate.player_id || "");
-          if (!candidateId || !livePlayerIds.has(candidateId) || candidateId === session.playerId) continue;
+          const candidateToken = String(candidate.session_token || "");
+          if (!candidateId || candidateId === session.playerId || !candidateToken
+              || !liveSessionTokens.get(candidateId)?.has(candidateToken)) continue;
           const heroRow = this.sql.exec(
             "SELECT value FROM room_meta WHERE key = ?", "heroState:" + candidateId
           ).toArray()[0];
@@ -143,12 +175,15 @@ export class MatchRoom extends MatchRoomMessages {
           this.clearPendingCombat(pending);
         }
         this.sql.exec("DELETE FROM room_meta WHERE key = ?", "nativeMutationPending:" + session.playerId);
+        handoffCommitted = true;
       });
     } catch (_) {
       // Failed SQL transactions leave the former publisher key untouched; every other player
       // remains unable to publish, so the room fails closed instead of splitting authority.
       return;
     }
+
+    if (!handoffCommitted) return;
 
     for (const failed of failedCombatRequests) {
       const errorMessage = JSON.stringify({
@@ -168,8 +203,9 @@ export class MatchRoom extends MatchRoomMessages {
 
     // This full snapshot is generated from committed server rows/bundles. Authority is announced
     // only after snapshot delivery has been attempted.
-    this.broadcastCurrentSnapshot(null);
-    this.broadcast(this.levelPublisherStateMessage("PUBLISHER_DISCONNECTED"));
+    if (preservedSnapshotAvailable) this.broadcastCurrentSnapshot(null);
+    this.broadcast(this.levelPublisherStateMessage(preservedSnapshotAvailable
+      ? "PUBLISHER_DISCONNECTED" : "PUBLISHER_DISCONNECTED_SNAPSHOT_UNAVAILABLE"));
   }
 
   async alarm(): Promise<void> {

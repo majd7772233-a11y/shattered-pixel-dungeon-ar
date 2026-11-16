@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** the accepted Phase 11 scope is CLOSED for implementation and automated acceptance. Phase 12-A is IN PROGRESS by explicit user request; the parent Phase 12 remains OPEN. No production deployment or real-device session is claimed.
+- **Phase status:** Phases 1–11 are CLOSED within their accepted implementation/automated-acceptance boundaries. Phase 12-A/B implementation is complete locally (schema migrations, atomic LEVEL_DATA replacement, publisher loss/election/handoff included); parent Phase 12 remains OPEN for exact-head CI and user review. Production deployment and physical-device testing are not claimed.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -625,7 +625,7 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 
 **Priority:** P0 · **Dependencies:** phases 10–11 and the session model in Phase 13; generic recovery contracts can be tested before individual transports are complete.
 
-### Phase 12-A — authenticated session identity and reconnect credential (ACTIVE / OPEN)
+### Phase 12-A — authenticated session identity and reconnect credential (IMPLEMENTED LOCALLY; ACTIVE / OPEN PENDING CI/REVIEW)
 
 This user-authorized slice secures the existing Internet WebSocket session path without changing the 25-message / 23-action vocabulary or gameplay rules.
 
@@ -641,12 +641,33 @@ This user-authorized slice secures the existing Internet WebSocket session path 
 - [x] Android core JVM suite: 132 tests, 0 failures/errors/skips; Debug APK assembleDebug passes locally with the installed SDK.
 - [ ] Run full exact-HEAD CI, finish final source/docs review, then obtain user review before closing this slice.
 
+### Phase 12-B — bounded Durable Object rehydration and event recovery (IMPLEMENTED LOCALLY; ACTIVE / OPEN PENDING CI/REVIEW)
+
+This user-authorized slice restores the room cursor/status after Durable Object eviction and bounds replay history without discarding evidence that existing native validation still consumes. For legacy rooms, a missing `worldTime` key keeps the pre-ACTION zero-clock default because older code wrote that key lazily on the first accepted ACTION; any present value is validated and malformed values fail closed. It does not close Phase 12-A or the parent Phase 12.
+
+- [x] Persist `currentSequence` and `gameStatus` in `room_meta` on accepted event paths; restore the monotonic cursor on construction using the persisted checkpoint and legacy `MAX(events.sequence)` backfill.
+- [x] Restore and validate persisted `worldTime`, `gameMode`, `seed`, `depth` and `gameStatus`; reject malformed or missing critical metadata for an already-persisted room rather than generating new defaults.
+- [x] Recover legacy rooms without `gameStatus`: derive `ENDED` from `MATCH_END`; derive `PLAYING` only from a complete native snapshot for the current depth; otherwise retain `LOBBY`, before the first retention pass.
+- [x] Keep the newest 200 room events for bounded reconnect replay. Separately preserve each sender's latest `HERO_BUFF_TICKED`, latest `PLAYER_DAMAGED`, and up to 513 `CHAR_DAMAGED` evidence rows after that sender's latest buff tick; the 513th row preserves the existing over-512 fail-closed LifeLink rule. Total `events` rows may therefore exceed 200 while validation evidence is protected.
+- [x] Persist the event cursor/status and apply retention after accepted ACTION events, native world turns/mutations, transition-abort events and MATCH_END records.
+- [x] Refuse to synthesize a replacement current level when its row is missing but durable player/event/snapshot/publisher/level-tile/transition/Mob/item-claim/chest-claim/reward-claim state or non-default room_meta keys remains; return `ROOM_RECOVERY_INCOMPLETE`.
+- [x] Add real Workers Durable Object SQLite eviction tests for cursor/status/world-time rehydration, contiguous replay, full SNAPSHOT fallback, bounded replay/evidence retention, legacy MATCH_END/complete-snapshot PLAYING recovery, orphaned level-table/room_meta rejection and missing-level fail-closed behavior.
+- [x] Local checks on the final implementation worktree: TypeScript noEmit PASS; backend Vitest 5 files / 372 tests PASS; real Workers Durable Object SQLite 1 file / 14 tests PASS; Android forced rerun: 132 core JVM tests, 0 failures/errors/skips; Debug APK assembleDebug PASS.
+- [x] Add versioned room-schema migrations (`room_meta.schemaVersion` 1–2), with each migration and its version checkpoint committed in one SQLite transaction; preserve legacy request receipts and branchless item claims.
+- [x] Wrap the complete multi-table `LEVEL_DATA` replacement and native snapshot/cursor writes in one synchronous SQLite transaction; restore in-memory cursor/time and return a correlated ERROR without ACK or world broadcast on rollback.
+- [x] Fence publisher disconnects and elections by persisted session token; preserve a validated snapshot for handoff/rebase, invalidate stale terms, and revoke authority without electing or broadcasting a fabricated world when the snapshot is unavailable.
+- [x] Add real Workers SQLite regressions for legacy schema upgrade, full LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, plus handler-level stale-token and fail-closed publisher tests.
+- [ ] Complete final remote-branch comparison, commit/push review and exact-HEAD GitHub Actions CI; obtain user review before closing this sub-slice.
+
+**Implementation boundary and current result:** the accepted Phase 12 work adds no protocol field/message/action and leaves the 25-message / 23-action contract unchanged. RECONNECT still replays only a complete contiguous range of at most 50 events and otherwise restores from the authoritative snapshot. Room state is now version-migrated, `LEVEL_DATA` replacement is fully transactional, and publisher loss is token-fenced with fail-closed handling for missing snapshots. Lobby/readiness/start lifecycle transitions remain Phase 13 scope.
 ### Work items
-- [x] Phase 12-A authenticates the reconnect token, binds the accepted socket to its owner, rotates credentials safely and rejects stale sockets (see Phase 12-A checklist above).
-- [ ] Bound event-log retention and snapshot fallback, and make room/player/world persistence recoverable after Durable Object restart.
-- [ ] Add explicit SQL/schema migrations and transactional boundaries for related room, player, event, inventory and item-claim updates.
-- [ ] Transfer native level-publisher authority safely when its player disconnects or leaves: preserve a validated snapshot, elect one replacement and resume one authoritative scheduler.
-- [ ] Add remaining crash/restart recovery, schema migration, transactional rollback and publisher-loss tests; Phase 12-A identity/credential tests are covered above.
+- [x] Phase 12-A authenticates the reconnect token, binds the accepted socket to its owner, rotates credentials safely, rejects stale sockets and reconnects safely on Android.
+- [x] Phase 12-B persists/restores the room cursor/status, bounds replay retention while preserving LifeLink evidence, and fails closed on damaged room/level recovery.
+- [x] Add room schema versioning and atomic migrations (versions 1–2); migrate processed-action fingerprints and branch-aware item claims without losing legacy receipts/claims.
+- [x] Make the complete `LEVEL_DATA` cross-table replacement atomic, including its native snapshot and room cursor writes; rollback emits no success ACK or uncommitted world snapshot.
+- [x] Fence publisher loss/election/handoff by persisted session token and term; require a complete native snapshot before replacement election, rebase the replacement before it can publish, and revoke authority without fabricating state when snapshot recovery is impossible.
+- [x] Add actual Durable Object SQLite coverage for migration, LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, in addition to eviction/replay/valid handoff coverage.
+- [ ] Complete exact-HEAD Actions CI and user review before marking Phase 12 closed.
 
 ### Acceptance criteria
 - A reconnect either replays a complete event range or restores from a valid authoritative snapshot.

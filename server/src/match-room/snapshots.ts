@@ -186,6 +186,7 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
           `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
           this.currentSequence, JSON.stringify(matchEndPayload)
         );
+        this.persistEventLogState();
 
         this.broadcast({
           protocolVersion: "1.0.0",
@@ -212,6 +213,7 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
           `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
           this.currentSequence, JSON.stringify(matchEndPayload)
         );
+        this.persistEventLogState();
 
         this.broadcast({
           protocolVersion: "1.0.0",

@@ -527,3 +527,28 @@ At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, [exact-head CI 4373
 - The ACTION entry point runs the covered mutation path inside state.storage.transactionSync. Persistent action state, related claims, the processed receipt, event row, sequence and world-time accounting participate in the same transaction. The in-memory checkpoint is restored on failure.
 - WebSocket ACKs and room broadcasts are queued until the transaction commits; an exception before commit cannot leak an accepted response or event. If the runtime lacks transactionSync, the operation fails closed.
 - Existing action-specific validators remain authoritative for pre-state, depth, ownership, stable target identity, native result and action cost. This closeout does not loosen validator rules or add support for a previously unsupported native action.
+
+## Phase 12-B — Durable room rehydration and bounded event recovery (2026-11-16)
+
+`MatchRoomBase.persistEventLogState()` now writes the room's monotonic `currentSequence` and `gameStatus` into `room_meta`, then compacts old `events` rows. The persistence constructor validates and restores `worldTime`, `gameMode`, `seed`, `depth`, and `gameStatus`. For legacy rooms whose `worldTime` row was never written because no ACTION had advanced the clock, it preserves the historical zero default; present values must be finite and nonnegative. For legacy databases without `currentSequence`, `MAX(events.sequence)` is a one-time backfill source; after retention begins the durable cursor key, not the retained event maximum, is authoritative. Invalid/missing critical metadata for an existing room fails closed instead of silently inventing seed/depth/mode defaults.
+
+### Event retention is split between replay and proof evidence
+
+- Keep the newest 200 events as the ordinary reconnect replay window.
+- In a separate protected evidence window, keep up to 513 `CHAR_DAMAGED` events per sender after that sender's newest `HERO_BUFF_TICKED`, plus the sender's latest `HERO_BUFF_TICKED` and `PLAYER_DAMAGED` rows.
+- The 513th LifeLink damage row is intentional: existing validation treats more than 512 matching events as too many and must continue to fail closed instead of seeing an artificially truncated proof set.
+- Consequently, the table is bounded per sender but may contain more than 200 rows overall. The protected evidence rows are not all advertised as replay history; RECONNECT still replays only a complete contiguous range of at most 50 events and otherwise uses SNAPSHOT.
+
+Persistence/retention is invoked after accepted ACTION events, committed native world-turn/mutation events, transition-abort events and MATCH_END records. MATCH_END also persists the terminal status. Legacy rooms without `gameStatus` derive `ENDED` from MATCH_END, `PLAYING` only from a complete native snapshot for the current depth, or `LOBBY` when no complete run snapshot exists.
+
+### Missing-level recovery is fail-closed
+
+`ensureLevelGenerated(depth)` may generate the deterministic fallback level only for a genuinely empty/new room. If the current `levels` row is missing while player/event/processed-action/snapshot/publisher/non-default room_meta/level-tile/transition/Mob or depth-scoped item/chest/reward-claim data remains, construction throws `ROOM_RECOVERY_INCOMPLETE`. This prevents replacement generation from erasing or silently bypassing saved player/loot/reward history.
+
+### Verification and boundaries
+
+The real Workers Durable Object SQLite integration file contains 14 passing tests. In addition to eviction/reconstruction, contiguous replay, full snapshot fallback, retention, legacy status recovery and missing-level refusal, the new Phase 12 tests force a late LEVEL_DATA write failure and prove full rollback/no ACK before a successful retry; upgrade a legacy database through schema versions 1–2 while preserving branchless item claims and an existing processed-action receipt; and revoke a disconnected publisher without electing or broadcasting from a missing native snapshot. The existing real SQLite publisher rebase, request receipt and authenticated-session regressions also pass.
+
+Local verification on the current uncommitted worktree: TypeScript noEmit PASS; backend Vitest 5 files / 372 tests PASS; Durable Object SQLite 1 file / 14 tests PASS; Android core JVM 132 tests PASS (0 failures/errors/skips) and `assembleDebug` PASS. Versioned migrations 1–2, transactional LEVEL_DATA replacement and token-fenced publisher loss/handoff are covered by real-runtime/handler regressions. Exact-head GitHub Actions CI remains pending.
+
+Phase 12 now includes versioned migrations 1–2, complete cross-table LEVEL_DATA transactionality and token-fenced native publisher loss/election/rebase. The accepted implementation adds no protocol/schema vocabulary: 25 message types and 23 action types remain unchanged. Exact-head CI, production Worker deployment and physical two-device testing remain separate release gates.

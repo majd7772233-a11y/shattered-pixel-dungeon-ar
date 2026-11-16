@@ -26,6 +26,7 @@ export class MatchRoomCombat extends MatchRoomPersistence {
     this.currentSequence++;
     this.sql.exec("INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
       this.currentSequence, "server", "LEVEL_TRANSITION_ABORTED", JSON.stringify(payload));
+    this.persistEventLogState();
     const eventBatch = [{
       sequence: this.currentSequence,
       sender_id: "server",

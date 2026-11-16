@@ -1,14 +1,14 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-16 (PHASE 12-A LOCAL IMPLEMENTATION; EXACT-HEAD CI PENDING)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-16 (PHASE 12-A + PHASE 12-B LOCAL IMPLEMENTATION; EXACT-HEAD CI PENDING)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892. Do not create another branch, work on master/main, merge, or open a PR.
-- **Latest committed baseline HEAD:** 417dc7082f37db02b658112e33f3a51b69f72fbb; exact-head CI run 43754713148 passed at this baseline. Phase 12-A worktree changes are uncommitted and have not run in CI.
-- **Phase state:** Phases 1–11 remain closed within their accepted automated scope. Phase 12-A (authenticated WebSocket session binding and reconnect credential rotation) is IN PROGRESS by explicit user request; keep the parent Phase 12 OPEN and do not start Phase 12-B without a separate request.
+- **Latest committed baseline HEAD:** 836d4e4739bba3877a1ce04df75b8a30ab0655ee; this start HEAD matched `origin/multiplayer-framework-core-14118577486727081892`. The Phase 12-A/12-B worktree changes are uncommitted and have not run in CI.
+- **Phase state:** Phases 1–11 remain closed within their accepted automated scope. Phase 12-A (authenticated WebSocket session binding and reconnect credential rotation) and user-authorized Phase 12-B (bounded room rehydration and event recovery) are IN PROGRESS; keep parent Phase 12 OPEN.
 - **Android EVENT_BATCH:** deduplicates identical sequence rows, rejects conflicting duplicates, sorts out-of-order rows, requires a contiguous sequence beginning at lastApplied + 1, checks the envelope tail, and requests recovery on gaps or invalid rows without advancing the applied watermark. Each event is applied behind a rollback baseline; sequence commits only after successful application. EVENT_SKIPPED consumes sequence without world mutation. Stale full snapshots reject before live restore.
 - **Worker request replay:** canonical request fingerprints bind requestId to player/action/payload. Exact same-player retries replay the stored result; changed payload/action or cross-player reuse returns REQUEST_ID_CONFLICT. Legacy receipts are preserved by idempotent schema migration; delegated authority completion uses its own identity fingerprint.
 - **Atomic action handling:** ACTION state, claims, processed receipt, event, sequence and world time are committed in the scoped transactionSync boundary. Failure rolls back; outbound success/broadcast is flushed only after commit; missing transactionSync fails closed.
 - **Recovery behavior:** reconnect authenticates with a Bearer header in the secure WebSocket upgrade, binds each socket to its token owner, rotates the token, and keeps RECONNECT limited to lastSequence. Internet disconnect/error callbacks initiate reconnect; callbacks from replaced transports are ignored; invalid/replaced credentials clear the stale client session.
-- **Phase 12-A local test evidence (uncommitted worktree):** TypeScript noEmit PASS; backend source-only 5 files / 370 tests PASS; actual Durable Object SQLite 1 file / 5 tests PASS; Android core JVM suite 132 tests PASS (0 failures/errors/skips) and Debug APK assembleDebug PASS.
-- **Protocol and exclusions:** 25 message types and 23 action types remain unchanged. Backend, Durable Object and Android local checks are passing; exact-head CI remains pending. No production Worker deployment or physical two-device test is claimed. Keep Phase 12-A OPEN for CI and user review; do not start Phase 12-B.
+- **Phase 12-A/12-B local test evidence (uncommitted worktree):** TypeScript noEmit PASS; backend source-only Vitest 5 files / 372 tests PASS; actual Durable Object SQLite 1 file / 14 tests PASS (including DO eviction, bounded retention, contiguous replay, snapshot fallback, legacy MATCH_END/active-room restore, schema migrations 1–2, LEVEL_DATA atomic rollback/retry, token-fenced publisher loss/handoff and missing-snapshot fail-closed); Android `test assembleDebug --no-daemon` PASS. Forced Android rerun completed: 10 XML reports / 132 core JVM tests / 0 failures / 0 errors / 0 skipped; Debug APK assembleDebug PASS.
+- **Protocol and exclusions:** 25 message types and 23 action types remain unchanged. Phase 12-A/B implementation is complete locally (372 backend tests, 14 real Durable Object SQLite tests, 132 Android JVM tests + Debug APK). Exact-head CI and user review remain pending, so parent Phase 12 stays OPEN. No production Worker deployment or physical two-device test is claimed.
 
 **Source-of-truth hierarchy:** PROJECT_EXECUTION_PROTOCOL_AR.md governs workflow; ROADMAP.md governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; docs/multiplayer/ is the maintained architecture/test reference.
 
@@ -221,7 +221,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - Backend evidence on the code/test SHA: 10 Vitest files / 740 reported executions; generated/mirrored TS/JS execution counts are not unique source scenarios.
 - Historical Phase 11-B Android baseline evidence: JVM tests and Debug APK compilation passed; NativeCombatRuntimeIntegrationTest had 74 @Test methods and NetworkProtocolParityTest had 15 at that baseline. Current Phase 12-A sources have 78 and 20 respectively, plus 3 reconnect lifecycle tests.
 - Durable Object evidence: four SQLite integration tests passed.
-- Phases 1–11 are complete within their documented acceptance boundaries. Phase 11-A characterization is retained as historical regression coverage; Phase 11-B implementation and automated acceptance are complete. Phase 12-A is active and remains open pending Android/build/CI verification and user review.
+- Phases 1–11 are complete within their documented acceptance boundaries. Phase 11-A characterization is retained as historical regression coverage; Phase 11-B implementation and automated acceptance are complete. Phase 12-A/B implementation is complete locally; parent Phase 12 remains open pending exact-head CI and user review.
 - Android applies validated contiguous EVENT_BATCH rows with rollback-before-commit sequencing. The Worker binds requestId to authenticated player and canonical action/payload fingerprints, replays exact requests, rejects conflicting reuse, and commits the covered ACTION state/claims/receipt/event/sequence/world-time atomically with after-commit network delivery.
 - Reconnect authentication uses a Bearer credential in the secure WebSocket upgrade header; identity is bound to the token owner, the token rotates, and each socket message checks that its attachment token remains current. The RECONNECT payload contains lastSequence only. Recovery replay policy remains complete contiguous ranges up to 50 events for eligible non-current publishers, otherwise full SNAPSHOT; RESYNC remains full SNAPSHOT.
 - Protocol remains 25 message values and 23 action values. No production Worker deployment or physical two-device match is claimed.
@@ -231,7 +231,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - **Phases 1–9:** complete for implementation and automated acceptance under the limits recorded in ROADMAP.md.
 - **Phase 10:** complete for implementation and automated acceptance; see the Phase 10-E closeout and historical records below.
 - **Phase 11:** CLOSED for the accepted event ordering, request identity/replay, sequence safety, rollback and resynchronization scope at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / CI `43731016036`.
-- **Phase 12-A (active):** server-side token-owner authentication, immutable player binding, token rotation, stale-socket rejection, secure Android handshake and reconnect continuity. Parent Phase 12 remains OPEN; later authority handoff/restart/persistence work is not started.
+- **Phase 12-A / 12-B (implementation complete locally; CI/review pending):** authenticated token-owner sessions, credential rotation and Android reconnect; durable room rehydration and protected replay evidence; room schema migrations v1–2; atomic cross-table `LEVEL_DATA` replacement; persisted-session-token publisher loss/election/rebase with fail-closed missing-snapshot handling. Backend 372/372 and real Durable Object SQLite 14/14 pass locally; Android 132/132 + Debug APK passed. Parent Phase 12 remains OPEN until exact-head CI and user review; production deployment and physical-device validation are not claimed.
 - **Phase 13:** transport-independent room/session lifecycle.
 - **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).
 - **Phases 17–19:** Co-op lifecycle, PvP/Deathmatch, Survival.
@@ -257,9 +257,9 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ## 5. Open Risks and Work After Phase 11
 
-The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–11 are complete for implementation and automated acceptance under their explicitly documented support boundaries. Phase 12-A is the active user-authorized slice of Phase 12; later work remains dependency ordered:
+The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–11 are complete for implementation and automated acceptance under their explicitly documented support boundaries. Phase 12-A and Phase 12-B implementation is complete locally; Phase 12 remains active/open for exact-head CI, remote review and user acceptance:
 
-- **Phase 12 — durable recovery:** reconnect/session recovery and authority handoff beyond the bounded event-replay/full-snapshot contract closed in Phase 11. Phase 12-A secures the session identity/reconnect credential path; room restart recovery and complete authority handoff remain open.
+- **Phase 12 — durable recovery:** Phase 12-A/B implementation is complete locally: session identity/reconnect, bounded event recovery, atomic room-schema migrations, complete transactional `LEVEL_DATA` replacement, and token-fenced publisher loss/election/rebase. Backend 372/372 and real DO SQLite 14/14 pass locally. Exact-head CI and user review remain release gates; keep the phase open until they pass.
 - **Phase 13 — session lifecycle:** common room/readiness state and failure-safe start/leave behavior.
 - **Phases 14–16 — transports:** Internet/WebSocket, LAN, Bluetooth with an honest unavailable state if necessary.
 - **Phases 17–19 — modes:** Co-op lifecycle, PvP/Deathmatch, Survival.
@@ -267,7 +267,7 @@ The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–1
 - **Phase 22 — automated/service preflight:** real room/action lifecycle tests, multi-client scenarios, exact-SHA CI, deployment configuration and fresh-room Worker smoke test.
 - **Phase 23 — user-led physical-device playtest:** final only. The user reports actual results; append coherent Phase 24+ fixes afterward and preserve symptoms/reproduction steps.
 
-Do not start Phase 12-B or any later phase automatically; wait for the user's explicit scope.
+Phase 12-A and Phase 12-B implementation work is complete locally. Do not start Phase 13 automatically; keep Phase 12 open for exact-head CI and user review.
 
 Never assume a later phase is complete because a class or enum exists. Check current source and tests. Keep automated tests inside the phase that implements the behavior; only physical-device gameplay is reserved for Phase 23.
 
