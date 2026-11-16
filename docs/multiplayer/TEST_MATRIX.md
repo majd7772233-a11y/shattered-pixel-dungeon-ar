@@ -470,10 +470,10 @@ The MatchRoom suite verifies changed same-player request payload/action and cros
 - Cloudflare Workers Durable Object SQLite runtime: 1 file / 5 tests PASS.
 - Android core JVM: 132 tests PASS, 0 failures/errors/skips; Debug APK assembleDebug PASS.
 - Protocol schema guards: 25 messages / 23 actions unchanged.
-- Exact-head CI for Phase 12-A changes is still pending; no deployment or physical-device acceptance is implied.
+- At the initial Phase 12-A checkpoint, exact-head CI was still pending; the subsequent exact-head Phase 12-A/B run is recorded below. No deployment or physical-device acceptance is implied.
 
 ### Exact-head CI — historical Phase 11-B baseline
-Historical Phase 11-B baseline evidence: Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. This evidence applies to the Phase 11-B baseline SHA, not the current uncommitted Phase 12-A/12-B worktree.
+Historical Phase 11-B baseline evidence: Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. This evidence applies only to the Phase 11-B baseline SHA and predates the then-uncommitted Phase 12-A/12-B changes.
 
 ## Phase 12-B — Durable Object eviction, replay retention and snapshot recovery (2026-11-16)
 
@@ -491,12 +491,16 @@ The real-runtime file `server/src/match-room/durable-object-sqlite.integration.d
 8. Legacy databases upgrade transactionally through schema versions 1 and 2, adding processed-action fingerprint columns and branch-aware claim keys while preserving both old item claims and a pre-existing processed-action receipt.
 9. A disconnected publisher with no valid native snapshot is revoked and its term advances; no replacement is elected and no fabricated SNAPSHOT is broadcast.
 
-### Current local verification — Phase 12-A / Phase 12-B worktree
+### Initial local verification checkpoint before commit/push — Phase 12-A / Phase 12-B worktree
 
 - TypeScript `npx tsc --noEmit --pretty false`: PASS.
 - Backend `npm test`: 5 files / 372 tests PASS; static guards still confirm 25 outer message types and 23 actions.
 - Workers runtime `npx vitest run --config vitest.durable-objects.config.mjs src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 14 tests PASS against real SQLite and Durable Object eviction, migration, transactional LEVEL_DATA replacement and publisher-loss recovery.
 - Android `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 10 core JVM XML reports / 132 tests / 0 failures / 0 errors / 0 skipped; Debug APK generated.
-- No exact-head CI has run for the uncommitted Phase 12-A/12-B worktree. No production Worker deploy, live production WebSocket test or physical two-device acceptance is implied.
+- At this initial checkpoint, exact-head CI had not yet run for the uncommitted Phase 12-A/12-B worktree; the subsequent verified Actions run is recorded below. No production Worker deploy, live production WebSocket test or physical two-device acceptance is implied.
 
-The compaction count is not a strict global 200-row cap: latest replay rows plus protected per-sender validation evidence are retained. Schema versioning, complete `LEVEL_DATA` atomicity and token-fenced publisher handoff are implemented and locally tested; exact-head CI and user review remain the Phase 12 closure gates.
+The compaction count is not a strict global 200-row cap: latest replay rows plus protected per-sender validation evidence are retained. Schema versioning, complete `LEVEL_DATA` atomicity and token-fenced publisher handoff are implemented and locally tested; exact-head CI 43921670336 passed all three jobs; user review is the remaining Phase 12 closure gate.
+
+## Phase 12 exact-head GitHub Actions confirmation - 2026-11-16
+
+Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336): Backend typecheck/tests PASS; Android Java tests/debug APK compile PASS; actual Durable Object SQLite rollback/eviction PASS. All three jobs concluded `success`. Local final tree also passed TypeScript noEmit, backend 372/372, Durable Object SQLite 14/14, Android core JVM 132/132 (zero failures/errors/skips) and Debug APK build. User review is the only remaining Phase 12 closure gate.

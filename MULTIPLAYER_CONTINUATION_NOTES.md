@@ -1,9 +1,9 @@
-# Multiplayer Continuation Notes — Phase 12 implementation complete locally (exact-head CI/review pending; Phase 11 remains closed)
+# Multiplayer Continuation Notes — Phase 12 implementation + exact-head CI complete (user review pending; Phase 11 remains closed)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`
-**Committed starting HEAD:** `836d4e4739bba3877a1ce04df75b8a30ab0655ee` (the remote branch matched at the start of this work; recheck before commit/push).
-**Current worktree:** uncommitted Phase 12 implementation and documentation changes. No commit, push, PR, merge or deployment has been performed.
+**Implementation commit:** `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` (pushed to the only allowed branch and verified against `origin`).
+**Current worktree:** clean after commit/push; no PR, merge, production deployment or physical two-device test was performed.
 **WebGPT task:** keep token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open; never call submit_result or terminate it unless the user explicitly asks.
 
 ## 2026-11-16 — Phase 12 implementation checkpoint
@@ -16,19 +16,19 @@
 - **Backend verification:** `npx tsc --noEmit --pretty false` PASS; `npm test -- --run` 5 Vitest files / **372 tests PASS**. Static protocol guards remain 25 outer messages / 23 ACTION types.
 - **Real Workers runtime:** Durable Object SQLite 1 file / **14 tests PASS**. Added real SQLite checks for failed/successful LEVEL_DATA rollback/retry, schema upgrade/preservation of old claims, and lost-publisher revocation when native snapshot is missing. Existing eviction/replay/valid handoff tests also pass.
 - **Android:** forced `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks` previously completed `BUILD SUCCESSFUL`: 10 XML reports / 132 core JVM tests / 0 failures / 0 errors / 0 skipped. Debug APK SHA-256 `03A65424787FB0375FCD13E08B2A6CF407B4E6C33E8A18C0AAAC3ADD76E9F80C`. This Phase 12 continuation changed server-side code only; no Android source changed after that run.
-- **Remaining release gates only:** final diff/docs review, clean `git diff --check`, remote branch comparison, commit/push of this branch after review, and GitHub Actions CI on the exact pushed SHA. No production Worker deployment or physical two-device gameplay test is claimed.
+- **Exact-head CI:** GitHub Actions run [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336) for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed Backend, Android and Durable Object SQLite jobs. The only remaining Phase 12 closure gate is user review. No production Worker deployment or physical two-device gameplay test is claimed.
 
 ## Phase 12 status and boundaries
 
-Phase 12 implementation scope is complete in the local worktree across session identity/reconnect, durable recovery/replay retention, versioned schema migration, cross-table `LEVEL_DATA` atomicity, and token-fenced publisher loss/election/handoff. Keep Phase 12-A, Phase 12-B and the parent Phase 12 **ACTIVE / OPEN** until exact-head CI and user review pass. Phase 13 room/readiness/start lifecycle remains explicitly out of scope. No protocol expansion: 25 outer messages / 23 ACTION types remain unchanged.
+Phase 12 implementation scope is complete in the local worktree across session identity/reconnect, durable recovery/replay retention, versioned schema migration, cross-table `LEVEL_DATA` atomicity, and token-fenced publisher loss/election/handoff. Keep Phase 12-A, Phase 12-B and the parent Phase 12 **ACTIVE / OPEN** until the user reviews and accepts the implementation; exact-head CI has passed. Phase 13 room/readiness/start lifecycle remains explicitly out of scope. No protocol expansion: 25 outer messages / 23 ACTION types remain unchanged.
 
 ## Exact next actions
 
-1. Finish reviewing all source and active Phase 12 documentation; verify backend 372/372 and real Durable Object SQLite 14/14 counts.
-2. Run `git diff --check`, inspect `git status` and `git diff --stat`, and re-run TypeScript/backend/DO gates after any edit.
-3. Fetch and compare remote `multiplayer-framework-core-14118577486727081892` with local HEAD; preserve/reconcile upstream movement before committing.
-4. Commit and push only `multiplayer-framework-core-14118577486727081892` after final review, then verify GitHub Actions against the exact final pushed SHA. Never substitute historical baseline CI.
-5. Keep Phase 12-A, Phase 12-B and parent Phase 12 open pending exact-head CI and user review. Do not start Phase 13.
+1. Obtain user review of the implementation at `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; local source and documentation review, 372 backend tests, 14 real Durable Object SQLite tests and 132 Android JVM tests have passed.
+2. Current pushed commit passed `git diff --check`; worktree is clean and local TypeScript/backend/DO/Android gates passed.
+3. Local HEAD and remote origin both equal `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`.
+4. Exact-head GitHub Actions run 43921670336 is green on the pushed implementation SHA. Never substitute historical baseline CI.
+5. Keep Phase 12-A, Phase 12-B and parent Phase 12 open pending user review. Do not start Phase 13.
 6. Keep the WebGPT task token RUNNING/open; do not call submit_result or shutdown.
 
 ## Historical Phase 10-E final closure

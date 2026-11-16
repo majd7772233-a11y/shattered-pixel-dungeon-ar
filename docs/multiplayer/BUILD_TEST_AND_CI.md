@@ -261,7 +261,7 @@ Code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed exact-head [CI 4
 
 ## 12. Phase 12-A / Phase 12-B local verification checkpoint — 2026-11-16 (worktree, not CI)
 
-Current committed starting baseline for the worktree: `836d4e4739bba3877a1ce04df75b8a30ab0655ee` on `multiplayer-framework-core-14118577486727081892`, matching `origin` at start. Changes remain uncommitted; exact-head branch CI has not run for them.
+Initial Phase 12-A/12-B worktree checkpoint before commit/push: baseline `836d4e4739bba3877a1ce04df75b8a30ab0655ee` on `multiplayer-framework-core-14118577486727081892`, matching `origin` at start. At that initial checkpoint the changes were uncommitted and exact-head branch CI had not yet run; the later commit and exact-head CI result are recorded below.
 
 - Backend TypeScript noEmit: PASS.
 - Backend npm test: 5 Vitest files / 372 tests PASS; all six protocol/routing/payload guards pass, including 25 outer message types and 23 ACTION types.
@@ -269,4 +269,14 @@ Current committed starting baseline for the worktree: `836d4e4739bba3877a1ce04df
 - Android forced rerun: `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks` completed BUILD SUCCESSFUL. XML reports: 10 files / 132 core JVM tests / 0 failures / 0 errors / 0 skipped. `android/build/outputs/apk/debug/android-debug.apk` was generated.
 - Gradle reported pre-existing deprecated API/unchecked-operation notices and that it will not be compatible with Gradle 10; there were no build/test failures.
 
-Neither a green local run nor this worktree documentation means exact-head CI, deployed Worker readiness or physical-device multiplayer acceptance. Phase 12 implementation is complete locally, including versioned migrations, full LEVEL_DATA transactionality and token-fenced publisher loss/handoff. Phase 12-A, Phase 12-B and parent Phase 12 remain OPEN pending exact-head CI and user review.
+At that initial worktree checkpoint, local green tests did not yet establish exact-head CI, deployed Worker readiness or physical-device multiplayer acceptance. Phase 12 implementation (versioned migrations, full LEVEL_DATA transactionality and token-fenced publisher loss/handoff) has since been committed, pushed and passed exact-head CI as recorded below. Phase 12-A, Phase 12-B and parent Phase 12 remain OPEN pending user review.
+
+## Phase 12 exact-head CI confirmation - 2026-11-16
+
+Implementation/test commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` on `multiplayer-framework-core-14118577486727081892` passed exact-head GitHub Actions [run 43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336), triggered by push; all three required jobs completed successfully:
+
+- **Backend typecheck and tests:** TypeScript build and backend test job PASS.
+- **Android debug APK compile:** Java unit tests and debug APK compile PASS.
+- **Durable Object SQLite rollback and eviction:** real Workers SQLite rollback/eviction recovery job PASS, including schema migration, atomic LEVEL_DATA and publisher recovery regressions.
+
+The same committed tree passed local TypeScript noEmit, backend 5 files / 372 tests, real Durable Object SQLite 1 file / 14 tests, Android 10 XML reports / 132 core JVM tests (0 failures/errors/skips) and `assembleDebug` (`BUILD SUCCESSFUL`). This is exact-head automated CI, not a production Worker deployment or a physical two-device gameplay test. Phase 12 implementation and CI gates are complete; the parent phase remains OPEN pending user review.

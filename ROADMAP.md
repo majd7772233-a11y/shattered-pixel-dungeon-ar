@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** Phases 1–11 are CLOSED within their accepted implementation/automated-acceptance boundaries. Phase 12-A/B implementation is complete locally (schema migrations, atomic LEVEL_DATA replacement, publisher loss/election/handoff included); parent Phase 12 remains OPEN for exact-head CI and user review. Production deployment and physical-device testing are not claimed.
+- **Phase status:** Phases 1–11 are CLOSED within their accepted implementation/automated-acceptance boundaries. Phase 12-A/B implementation is complete and pushed (schema migrations, atomic LEVEL_DATA replacement, publisher loss/election/handoff included); exact-head CI 43921670336 passed all three jobs, while parent Phase 12 remains OPEN pending user review. Production deployment and physical-device testing are not claimed.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -625,7 +625,7 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 
 **Priority:** P0 · **Dependencies:** phases 10–11 and the session model in Phase 13; generic recovery contracts can be tested before individual transports are complete.
 
-### Phase 12-A — authenticated session identity and reconnect credential (IMPLEMENTED LOCALLY; ACTIVE / OPEN PENDING CI/REVIEW)
+### Phase 12-A — authenticated session identity and reconnect credential (IMPLEMENTED; EXACT-HEAD CI PASS; OPEN PENDING USER REVIEW)
 
 This user-authorized slice secures the existing Internet WebSocket session path without changing the 25-message / 23-action vocabulary or gameplay rules.
 
@@ -639,9 +639,9 @@ This user-authorized slice secures the existing Internet WebSocket session path 
 - [x] Trigger authenticated reconnect from unexpected Internet transport disconnect/error; scope callbacks to transport generation so stale sockets cannot reopen connections or deliver messages.
 - [x] Clear stale client session on SESSION_REPLACED or permanent 401/403/409 resume rejection, and close failed WebSocket handshake resources.
 - [x] Android core JVM suite: 132 tests, 0 failures/errors/skips; Debug APK assembleDebug passes locally with the installed SDK.
-- [ ] Run full exact-HEAD CI, finish final source/docs review, then obtain user review before closing this slice.
+- [x] Exact-head CI 43921670336 passed Backend, Android and Durable Object SQLite jobs; final source/docs review and clean local/remote branch checks completed. [ ] Obtain user review before closing this slice.
 
-### Phase 12-B — bounded Durable Object rehydration and event recovery (IMPLEMENTED LOCALLY; ACTIVE / OPEN PENDING CI/REVIEW)
+### Phase 12-B — bounded Durable Object rehydration and event recovery (IMPLEMENTED; EXACT-HEAD CI PASS; OPEN PENDING USER REVIEW)
 
 This user-authorized slice restores the room cursor/status after Durable Object eviction and bounds replay history without discarding evidence that existing native validation still consumes. For legacy rooms, a missing `worldTime` key keeps the pre-ACTION zero-clock default because older code wrote that key lazily on the first accepted ACTION; any present value is validated and malformed values fail closed. It does not close Phase 12-A or the parent Phase 12.
 
@@ -657,7 +657,7 @@ This user-authorized slice restores the room cursor/status after Durable Object 
 - [x] Wrap the complete multi-table `LEVEL_DATA` replacement and native snapshot/cursor writes in one synchronous SQLite transaction; restore in-memory cursor/time and return a correlated ERROR without ACK or world broadcast on rollback.
 - [x] Fence publisher disconnects and elections by persisted session token; preserve a validated snapshot for handoff/rebase, invalidate stale terms, and revoke authority without electing or broadcasting a fabricated world when the snapshot is unavailable.
 - [x] Add real Workers SQLite regressions for legacy schema upgrade, full LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, plus handler-level stale-token and fail-closed publisher tests.
-- [ ] Complete final remote-branch comparison, commit/push review and exact-HEAD GitHub Actions CI; obtain user review before closing this sub-slice.
+- [x] Remote branch comparison completed; commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` pushed and verified as origin HEAD; exact-head CI 43921670336 passed all three jobs. [ ] Obtain user review before closing this sub-slice.
 
 **Implementation boundary and current result:** the accepted Phase 12 work adds no protocol field/message/action and leaves the 25-message / 23-action contract unchanged. RECONNECT still replays only a complete contiguous range of at most 50 events and otherwise restores from the authoritative snapshot. Room state is now version-migrated, `LEVEL_DATA` replacement is fully transactional, and publisher loss is token-fenced with fail-closed handling for missing snapshots. Lobby/readiness/start lifecycle transitions remain Phase 13 scope.
 ### Work items
@@ -667,7 +667,7 @@ This user-authorized slice restores the room cursor/status after Durable Object 
 - [x] Make the complete `LEVEL_DATA` cross-table replacement atomic, including its native snapshot and room cursor writes; rollback emits no success ACK or uncommitted world snapshot.
 - [x] Fence publisher loss/election/handoff by persisted session token and term; require a complete native snapshot before replacement election, rebase the replacement before it can publish, and revoke authority without fabricating state when snapshot recovery is impossible.
 - [x] Add actual Durable Object SQLite coverage for migration, LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, in addition to eviction/replay/valid handoff coverage.
-- [ ] Complete exact-HEAD Actions CI and user review before marking Phase 12 closed.
+- [x] Exact-head Actions CI 43921670336 passed all three required jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`. [ ] Obtain user review before marking Phase 12 closed.
 
 ### Acceptance criteria
 - A reconnect either replays a complete event range or restores from a valid authoritative snapshot.
