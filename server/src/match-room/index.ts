@@ -195,70 +195,147 @@ export class MatchRoom extends MatchRoomMessages {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname.endsWith("/websocket")) {
-      if (request.headers.get("Upgrade") !== "websocket") {
-        return new Response("Expected WebSocket", { status: 426 });
+    if (!url.pathname.endsWith("/websocket")) {
+      return new Response("MatchRoom Durable Object Active", { status: 200 });
+    }
+    if (request.headers.get("Upgrade") !== "websocket") {
+      return new Response("Expected WebSocket", { status: 426 });
+    }
+
+    const storage: any = this.state.storage;
+    if (!storage || typeof storage.transactionSync !== "function") {
+      return new Response("Session storage is unavailable", { status: 503 });
+    }
+
+    const requestedPlayerId = url.searchParams.get("playerId");
+    const authorization = request.headers.get("Authorization") || "";
+    const bearerMatch = /^Bearer ([A-Za-z0-9._~-]{16,256})$/.exec(authorization);
+    if (url.searchParams.has("sessionToken")) {
+      return new Response("Session tokens must not be sent in URLs", { status: 400 });
+    }
+    if (authorization && !bearerMatch) {
+      return new Response("Invalid or expired session", { status: 401 });
+    }
+    const presentedSessionToken = bearerMatch ? bearerMatch[1] : null;
+    if (requestedPlayerId !== null
+        && (requestedPlayerId.trim().length === 0 || requestedPlayerId.length > 128)) {
+      return new Response("Invalid player identity", { status: 400 });
+    }
+
+    const reconnecting = presentedSessionToken !== null;
+
+    let playerId = "";
+    let sessionToken = crypto.randomUUID();
+    let spawnPos = 100;
+    let promotedOnConnect = false;
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
+    try {
+      // A reconnect token is the credential. A playerId query value is only a consistency
+      // assertion and can never select or take over a different database row.
+      if (reconnecting) {
+        const tokenOwners = this.sql.exec(
+          "SELECT player_id FROM players WHERE session_token = ?", presentedSessionToken!
+        ).toArray();
+        if (tokenOwners.length !== 1) {
+          return new Response("Invalid or expired session", { status: 401 });
+        }
+        playerId = String(tokenOwners[0].player_id || "");
+        if (!playerId || (requestedPlayerId !== null && requestedPlayerId !== playerId)) {
+          return new Response("Session identity mismatch", { status: 403 });
+        }
+      } else {
+        // A caller may create a new identity, but may not claim an existing one without its token.
+        playerId = requestedPlayerId || crypto.randomUUID();
       }
 
-      const publisherBeforeConnect = this.sql.exec(
-        "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
-      const publisherMissing = !publisherBeforeConnect;
-      const storage: any = this.state.storage;
-      if (publisherMissing && (!storage || typeof storage.transactionSync !== "function")) {
-        return new Response("Publisher authority is unavailable", { status: 503 });
-      }
-
-      const pair = new WebSocketPair();
-      const [client, server] = Object.values(pair);
-
-      const playerId = url.searchParams.get("playerId") || crypto.randomUUID();
-      const sessionToken = crypto.randomUUID();
+      // Accept and attach the socket before rotating credentials. If the platform cannot
+      // accept this WebSocket, the caller must retain its current usable session token.
       const sessionData: SessionData = { playerId, sessionToken };
+      try {
+        this.state.acceptWebSocket(server);
+        server.serializeAttachment(sessionData);
+      } catch (_) {
+        try { server.close(1011, "Unable to accept session"); } catch (_) {}
+        return new Response("Unable to accept session", { status: 503 });
+      }
 
-      this.state.acceptWebSocket(server);
-      server.serializeAttachment(sessionData);
+      storage.transactionSync(() => {
+        if (reconnecting) {
+          const current = this.sql.exec(
+            "SELECT player_id, pos FROM players WHERE player_id = ? AND session_token = ?",
+            playerId, presentedSessionToken
+          ).toArray();
+          if (current.length !== 1) throw new Error("SESSION_REPLACED");
+          const savedPos = Number(current[0].pos);
+          spawnPos = Number.isSafeInteger(savedPos) && savedPos >= 0 ? savedPos : 100;
+          this.sql.exec(
+            "UPDATE players SET session_token = ?, connected = 1 WHERE player_id = ? AND session_token = ?",
+            sessionToken, playerId, presentedSessionToken
+          );
+          const rotated = this.sql.exec(
+            "SELECT player_id FROM players WHERE player_id = ? AND session_token = ?",
+            playerId, sessionToken
+          ).toArray();
+          if (rotated.length !== 1) throw new Error("SESSION_REPLACED");
+        } else {
+          const existing = this.sql.exec(
+            "SELECT player_id FROM players WHERE player_id = ?", playerId
+          ).toArray();
+          if (existing.length !== 0) throw new Error("PLAYER_ID_ALREADY_REGISTERED");
+          const entranceRow = this.sql.exec(
+            "SELECT entrance_pos FROM levels WHERE depth = ?", this.currentDepth
+          ).toArray();
+          const entrance = entranceRow.length > 0 ? Number(entranceRow[0].entrance_pos) : 100;
+          spawnPos = Number.isSafeInteger(entrance) && entrance >= 0 ? entrance : 100;
+          this.sql.exec(
+            "INSERT INTO players (player_id, session_token, pos, connected) VALUES (?, ?, ?, 1)",
+            playerId, sessionToken, spawnPos
+          );
+        }
 
-      const entranceRow = this.sql.exec(`SELECT entrance_pos FROM levels WHERE depth = ?`, this.currentDepth).toArray();
-      const spawnPos = entranceRow.length > 0 ? Number(entranceRow[0].entrance_pos) : 100;
-
-      this.sql.exec(
-        `INSERT INTO players (player_id, session_token, pos, connected) VALUES (?, ?, ?, 1)
-         ON CONFLICT(player_id) DO UPDATE SET session_token=excluded.session_token, connected=1`,
-        playerId, sessionToken, spawnPos
-      );
-      let promotedOnConnect = false;
-      if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray().length === 0) {
-        const existingPlayer = this.sql.exec(
-          "SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId).toArray()[0];
-        const heroRow = this.sql.exec(
-          "SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId).toArray()[0];
-        const levelRow = this.sql.exec(
-          "SELECT value FROM room_meta WHERE key = ?", "levelSnapshot:" + this.currentDepth).toArray()[0];
-        let levelSnapshot: any = null;
-        try { levelSnapshot = levelRow && typeof levelRow.value === "string"
-          ? JSON.parse(String(levelRow.value)) : null; } catch (_) {}
-        let savedHero: any = null;
-        try { savedHero = heroRow && typeof heroRow.value === "string"
-          ? JSON.parse(String(heroRow.value)) : null; } catch (_) {}
-        const canRestoreInProgressRun = this.gameStatus !== "PLAYING"
-          || (!!existingPlayer && String(existingPlayer.state) === "ALIVE"
-            && !!savedHero && hasCompleteNativeLevelSnapshot(levelSnapshot)
-            && Number(levelSnapshot.depth) === this.currentDepth
-            && isValidNativeHeroStateJson(String(heroRow?.value || ""), {
-              hp: Number(existingPlayer.hp), ht: Number(existingPlayer.ht),
-              pos: Number(existingPlayer.pos), shielding: Number(savedHero.shielding)
-            }));
-        if (canRestoreInProgressRun) {
-          const termRow = this.sql.exec(
-            "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
-          const currentTerm = termRow === undefined ? 0 : Number(termRow?.value);
-          if (!Number.isSafeInteger(currentTerm) || currentTerm < 0
-              || currentTerm >= Number.MAX_SAFE_INTEGER) {
-            server.close(1011, "Invalid publisher generation");
-            return new Response("Publisher authority is unavailable", { status: 503 });
-          }
-          storage.transactionSync(() => {
-            if (this.sql.exec("SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray().length !== 0) return;
+        // Initial publisher assignment is part of the same identity transaction. Existing
+        // reconnects retain their player row, position, Hero snapshot and authority identity.
+        const publisherRow = this.sql.exec(
+          "SELECT value FROM room_meta WHERE key = 'levelPublisher'"
+        ).toArray()[0];
+        if (!publisherRow) {
+          const existingPlayer = this.sql.exec(
+            "SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId
+          ).toArray()[0];
+          const heroRow = this.sql.exec(
+            "SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId
+          ).toArray()[0];
+          const levelRow = this.sql.exec(
+            "SELECT value FROM room_meta WHERE key = ?", "levelSnapshot:" + this.currentDepth
+          ).toArray()[0];
+          let levelSnapshot: any = null;
+          try {
+            levelSnapshot = levelRow && typeof levelRow.value === "string"
+              ? JSON.parse(String(levelRow.value)) : null;
+          } catch (_) {}
+          let savedHero: any = null;
+          try {
+            savedHero = heroRow && typeof heroRow.value === "string"
+              ? JSON.parse(String(heroRow.value)) : null;
+          } catch (_) {}
+          const canRestoreInProgressRun = this.gameStatus !== "PLAYING"
+            || (!!existingPlayer && String(existingPlayer.state) === "ALIVE"
+              && !!savedHero && hasCompleteNativeLevelSnapshot(levelSnapshot)
+              && Number(levelSnapshot.depth) === this.currentDepth
+              && isValidNativeHeroStateJson(String(heroRow?.value || ""), {
+                hp: Number(existingPlayer.hp), ht: Number(existingPlayer.ht),
+                pos: Number(existingPlayer.pos), shielding: Number(savedHero.shielding)
+              }));
+          if (canRestoreInProgressRun) {
+            const termRow = this.sql.exec(
+              "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm"
+            ).toArray()[0];
+            const currentTerm = termRow === undefined ? 0 : Number(termRow?.value);
+            if (!Number.isSafeInteger(currentTerm) || currentTerm < 0 || currentTerm >= Number.MAX_SAFE_INTEGER) {
+              throw new Error("INVALID_LEVEL_PUBLISHER_TERM");
+            }
             this.sql.exec(
               "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
               "levelPublisher", playerId
@@ -276,55 +353,68 @@ export class MatchRoom extends MatchRoomMessages {
               this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
             }
             promotedOnConnect = true;
-          });
+          }
         }
+      });
+    } catch (error) {
+      try { server.close(1011, "Session establishment failed"); } catch (_) {}
+      const reason = error instanceof Error ? error.message : "";
+      if (reason === "PLAYER_ID_ALREADY_REGISTERED") {
+        return new Response("A session token is required for this player", { status: 401 });
       }
-      const currentPublisherRow = this.sql.exec(
-        "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
-      const currentPublisherId = currentPublisherRow && typeof currentPublisherRow.value === "string"
-        ? String(currentPublisherRow.value) : null;
-      const publisherTermRow = this.sql.exec(
-        "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm").toArray()[0];
-      const publisherTerm = publisherTermRow === undefined ? 0 : Number(publisherTermRow.value);
-      const activateAfterSnapshot = promotedOnConnect && this.gameStatus === "PLAYING";
-
-      const welcome: NetworkMessage = {
-        protocolVersion: "1.0.0",
-        messageType: "SESSION",
-        sequence: this.currentSequence,
-        payloadJson: JSON.stringify({
-          playerId,
-          sessionToken,
-          sequence: this.currentSequence,
-          seed: this.matchSeed,
-          depth: this.currentDepth,
-          gameMode: this.gameMode,
-          isLevelPublisher: currentPublisherId === playerId && !activateAfterSnapshot,
-          levelPublisherId: currentPublisherId,
-          publisherTerm,
-          pos: spawnPos
-        })
-      };
-      server.send(JSON.stringify(welcome));
-
-      this.broadcast({
-        protocolVersion: "1.0.0",
-        messageType: "PLAYER_JOINED",
-        senderId: playerId,
-        payloadJson: JSON.stringify({ playerId, pos: spawnPos })
-      }, server);
-
-      const publisherNeedsRebase = !promotedOnConnect && this.gameStatus === "PLAYING"
-        && currentPublisherId !== null && !this.isLevelPublisherReady();
-      if (promotedOnConnect || publisherNeedsRebase) {
-        if (activateAfterSnapshot || publisherNeedsRebase) this.broadcastCurrentSnapshot(null);
-        this.broadcast(this.levelPublisherStateMessage(
-          publisherNeedsRebase ? "PUBLISHER_REBASE_REQUIRED" : "PUBLISHER_ASSIGNED_ON_CONNECT"));
+      if (reason === "SESSION_REPLACED") {
+        return new Response("Session was already replaced", { status: 409 });
       }
-
-      return new Response(null, { status: 101, webSocket: client });
+      return new Response("Unable to establish session", { status: 503 });
     }
 
-    return new Response("MatchRoom Durable Object Active", { status: 200 });
+    const currentPublisherRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = 'levelPublisher'"
+    ).toArray()[0];
+    const currentPublisherId = currentPublisherRow && typeof currentPublisherRow.value === "string"
+      ? String(currentPublisherRow.value) : null;
+    const publisherTermRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelPublisherTerm"
+    ).toArray()[0];
+    const publisherTerm = publisherTermRow === undefined ? 0 : Number(publisherTermRow.value);
+    const activateAfterSnapshot = promotedOnConnect && this.gameStatus === "PLAYING";
+
+    const welcome: NetworkMessage = {
+      protocolVersion: "1.0.0",
+      messageType: "SESSION",
+      sequence: this.currentSequence,
+      payloadJson: JSON.stringify({
+        playerId,
+        sessionToken,
+        sequence: this.currentSequence,
+        seed: this.matchSeed,
+        depth: this.currentDepth,
+        gameMode: this.gameMode,
+        resumed: reconnecting,
+        isLevelPublisher: currentPublisherId === playerId && !activateAfterSnapshot,
+        levelPublisherId: currentPublisherId,
+        publisherTerm,
+        pos: spawnPos
+      })
+    };
+    server.send(JSON.stringify(welcome));
+
+    this.broadcast({
+      protocolVersion: "1.0.0",
+      messageType: "PLAYER_JOINED",
+      senderId: playerId,
+      payloadJson: JSON.stringify({ playerId, pos: spawnPos, resumed: reconnecting })
+    }, server);
+
+    const publisherNeedsRebase = !promotedOnConnect && this.gameStatus === "PLAYING"
+      && currentPublisherId !== null && !this.isLevelPublisherReady();
+    if (promotedOnConnect || publisherNeedsRebase) {
+      if (activateAfterSnapshot || publisherNeedsRebase) this.broadcastCurrentSnapshot(null);
+      this.broadcast(this.levelPublisherStateMessage(
+        publisherNeedsRebase ? "PUBLISHER_REBASE_REQUIRED" : "PUBLISHER_ASSIGNED_ON_CONNECT"
+      ));
+    }
+
+    return new Response(null, { status: 101, webSocket: client });
   }
 }

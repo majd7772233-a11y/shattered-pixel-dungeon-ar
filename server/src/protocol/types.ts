@@ -13,6 +13,7 @@ export interface NetworkMessage {
 
 export interface SessionData {
   playerId: string;
+  /** Current token persisted for this exact player/socket generation. */
   sessionToken: string;
 }
 

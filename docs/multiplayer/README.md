@@ -41,10 +41,10 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **Phase 10:** closed for implementation and automated acceptance.
 - **Phase 11-A:** historical characterization baseline retained as regression evidence; it is no longer the current behavior description.
 - **Phase 11-B:** event ordering, contiguous sequence acceptance, requestId/action/payload binding, fail-closed conflict handling, atomic ACTION transaction behavior and regression coverage are complete for the accepted scope.
-- **Android:** EVENT_BATCH rejects gaps/conflicting duplicate sequences, sorts out-of-order contiguous rows, applies behind rollback baselines and commits the watermark only after success. Current NativeCombatRuntimeIntegrationTest inventory is 74 @Test methods; NetworkProtocolParityTest remains at 15.
+- **Android:** EVENT_BATCH rejects gaps/conflicting duplicate sequences, sorts out-of-order contiguous rows, applies behind rollback baselines and commits the watermark only after success. Phase 11-B baseline had 74 NativeCombatRuntimeIntegrationTest methods and 15 NetworkProtocolParityTest tests; current Phase 12-A source counts are 78 and 20, with 3 reconnect lifecycle tests.
 - **Worker:** canonical request fingerprints allow exact retry replay and reject changed payload/action or cross-player requestId reuse. Transactional ACTION writes roll back together; success messages are emitted only after commit.
 - **CI:** Backend 10 files / 740 reported executions, Android JVM tests + Debug APK, Durable Object SQLite 4/4. Mirrored TS/JS executions are not unique source scenario counts.
-- **Boundaries:** protocol remains 25 messages / 23 actions; no production Worker deploy or physical two-device session is claimed. Phase 12 is next but not started and requires a separate user request.
+- **Boundaries:** protocol remains 25 messages / 23 actions; Phase 12-A is active/open. Backend source tests 370/370, Durable Object SQLite 5/5 and Android local JVM/Debug APK checks pass. Exact-head CI, production Worker deploy and physical two-device session are not claimed.
 
 ## Source-of-truth hierarchy
 
@@ -85,7 +85,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 32 files |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–10 closed; accepted Phase 11-A/11-B scope closed at code/test SHA `2574489`; Phase 12–23 remain open |
+| Phase state | Phases 1–11 closed; Phase 12-A active/open on the only permitted branch; later Phase 12 work and Phases 13–23 remain open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 

@@ -228,4 +228,4 @@ At code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230`, exact-head [CI 4373
 - WorldSnapshot remains the authoritative full-world restore path with pre-mutation stale/incomplete validation. RESYNC continues to request a full snapshot.
 - The bounded reconnect replay window remains unchanged: replay only the complete contiguous retained range up to 50 events for eligible non-current publishers; otherwise send SNAPSHOT.
 
-Phase 11 accepted scope is closed for implementation and automated acceptance. Phase 12 is not started. No production Worker deployment or physical two-device run is claimed.
+Phase 11 accepted scope is closed for implementation and automated acceptance. Phase 12-A is active/open: secure reconnect identity binding and token rotation are being implemented. No production Worker deployment or physical two-device run is claimed.

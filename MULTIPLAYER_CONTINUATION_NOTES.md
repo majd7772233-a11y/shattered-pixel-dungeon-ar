@@ -1,9 +1,9 @@
-# Multiplayer Continuation Notes — Phase 11-B completed; Phase 12 not started
+# Multiplayer Continuation Notes — Phase 12-A in progress (Phase 11-B remains closed)
 
 **Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`  
-**Latest code/test HEAD:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`  
-**Exact-head CI:** [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036)
+**Phase 12-A base HEAD:** 417dc7082f37db02b658112e33f3a51b69f72fbb (local worktree changes are uncommitted)
+**Phase 12-A base CI:** run 43754713148 passed at committed baseline 417dc7082f37db02b658112e33f3a51b69f72fbb. Phase 12-A changes are uncommitted; no CI result for them yet.
 
 ## 2026-11-15 — Phase 11-B implementation and acceptance
 
@@ -15,22 +15,30 @@
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
 
-- The current NativeCombatRuntimeIntegrationTest.java contains **74 @Test methods**. NetworkProtocolParityTest.java remains at 15.
+- Phase 11-B closeout baseline: NativeCombatRuntimeIntegrationTest.java had 74 @Test methods and NetworkProtocolParityTest.java had 15. Current Phase 12-A source counts: NativeCombatRuntimeIntegrationTest.java 78, NetworkProtocolParityTest.java 20, MultiplayerReconnectLifecycleTest.java 3.
 - Android regressions cover out-of-order sorting, missing-sequence recovery, stale-event suppression, opaque skipped events, no watermark advance for malformed events, stale/incomplete snapshot rejection, and duplicate ACTION_ACCEPTED/EVENT_BATCH application.
 - Worker regressions cover request fingerprint migration/replay/conflict, stable fingerprints despite object-key ordering, cross-player reuse, delegated completion identity, concurrent exact retry (one event/sequence/world-time charge), and rollback/no success broadcast on transaction failure.
 - The Durable Object SQLite workflow has four passing integration tests. Backend has 740 reported executions across 10 Vitest files; mirrored TS/JS results are not unique source scenario counts.
+
+## 2026-11-16 — Phase 12-A active work checkpoint
+
+- Scope: authenticate Internet reconnect from the stored session credential, bind the socket to the token owner, prevent player-ID takeover, rotate the credential, reject superseded sockets, and carry the credential only in the secure WebSocket Authorization header.
+- Implemented locally: Bearer-header validation and query-token rejection; playerId is only a consistency assertion during resume; unauthenticated sessions cannot claim an existing player row; the accepted socket attachment binds {playerId, sessionToken}; each inbound socket message checks that its attachment token is still current; RECONNECT body carries lastSequence only.
+- Android: InternetTransport sends the Bearer credential in the upgrade header over TLS, rejects credentials on non-TLS endpoints, and preserves the raw encoded path/query. MultiplayerManager automatically attempts reconnect on Internet disconnect/error, binds callbacks to transport generations, preserves the applied sequence, requires the same player identity and a fresh token in SESSION, and sends no secret in the RECONNECT body.
+- Local verification: TypeScript noEmit PASS; backend source-only suite 5 files / 370 tests PASS; Cloudflare Workers Durable Object SQLite runtime 1 file / 5 tests PASS; Android core JVM 132 tests PASS (0 failures/errors/skips) and assembleDebug PASS; protocol guards confirm 25 message / 23 action vocabulary.
+- Exact-head CI, commit/push, production deployment and physical-device testing remain pending. This worktree is based on 417dc7082f37db02b658112e33f3a51b69f72fbb; do not close Phase 12-A or move to Phase 12-B.
 
 ## Phase state and next checkpoint
 
 - Phase 10: closed.
 - Phase 11-A: characterization gate complete and retained as historical regression coverage.
 - Phase 11-B: implementation, regression tests and source-HEAD CI complete; accepted Phase 11 scope is closed.
-- Phase 12: next eligible roadmap phase, **not started**. Do not begin without a separate explicit user request.
+- Phase 12-A: IN PROGRESS / OPEN by explicit user request. Phase 12-B and later scopes have not started.
 - No production Worker deployment or physical two-device gameplay is claimed. Phases 22–23 own those release checks.
 
 ## Exact next-chat guard
 
-On the next request, re-fetch the live branch head and CI first. Read GPT.md, ROADMAP.md, this file, and PROJECT_EXECUTION_PROTOCOL_AR.md, then all current Markdown and the relevant live source/tests. Work only on the named branch. Do not create branches, touch master/main, open a PR, or start Phase 12 automatically. Begin Phase 12 only if the user explicitly asks; otherwise answer Phase 11-B questions without modifying code.
+Continue Phase 12-A from the active worktree on the named branch. Re-check branch/HEAD/status before edits. Do not recreate Phase 11, create branches, touch master/main, open a PR, or start Phase 12-B. Keep this task/token open. Finish full exact-HEAD CI and final source review; do not claim deployment or real-device testing.
 
 ## Historical Phase 10-E final closure
 
@@ -45,7 +53,7 @@ On the next request, re-fetch the live branch head and CI first. Read GPT.md, RO
 
 ## Historical next handoff — verify Phase 11-A exact-head CI (superseded by the Phase 11-B closeout above)
 
-This paragraph preserves the continuation instruction that applied immediately after Phase 11-A. It is superseded by the current Phase 11-B completion and next-chat guard at the top of this file; Phase 11-B and Phase 12 are not pending work.
+Historical handoff text retained from the Phase 11-A checkpoint; its Phase 12-not-started instruction is superseded by the active Phase 12-A checkpoint above.
 
 ## Historical records
 

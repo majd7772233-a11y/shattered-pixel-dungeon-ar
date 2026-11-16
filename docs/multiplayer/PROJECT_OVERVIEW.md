@@ -81,9 +81,9 @@ That presence does not mean all features have passed end-to-end acceptance.
 - Worker processed_actions now persists canonical request fingerprints plus delegated completion identity. Exact same-player retries replay stored results; changed action/payload or cross-player reuse returns REQUEST_ID_CONFLICT. The relevant migration is idempotent and preserves legacy receipts.
 - The ACTION transaction boundary couples persistent action state, claims, processed receipt, event, sequence and world time; outbound accepted/broadcast messages flush only after successful commit and rollback prevents a partial success.
 - Reconnect still replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise it falls back to full SNAPSHOT. RESYNC remains full SNAPSHOT.
-- Exact-head CI: Backend TypeScript build + 10 Vitest files / 740 reported executions, Android JVM tests + Debug APK, and Durable Object SQLite 4/4. NativeCombatRuntimeIntegrationTest.java now has 74 @Test methods; NetworkProtocolParityTest.java remains at 15. Mirrored/generated TS/JS executions are not unique source scenario counts.
+- Historical Phase 11-B exact-head CI: Backend TypeScript build + 10 Vitest files / 740 reported executions, Android JVM tests + Debug APK, and Durable Object SQLite 4/4. At that baseline NativeCombatRuntimeIntegrationTest had 74 @Test methods and NetworkProtocolParityTest had 15. Current Phase 12-A local results are tracked in BUILD_TEST_AND_CI.md; mirrored/generated TS/JS executions are not unique source scenario counts.
 - Protocol vocabulary remains 25 message types / 23 actions. No production Worker deployment smoke test or physical two-device multiplayer session is claimed; those remain later release gates.
-- Phase 11 accepted scope is closed. Phase 12 is the next roadmap phase but has not started.
+- Phase 11 accepted scope is closed. Phase 12-A is active/open: reconnect now uses an authenticated Bearer handshake, immutable token-owner binding and credential rotation; broader restart recovery/authority handoff remains open.
 
 ## 6. Modes and transports: do not infer readiness
 

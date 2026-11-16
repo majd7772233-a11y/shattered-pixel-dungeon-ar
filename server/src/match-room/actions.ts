@@ -171,72 +171,84 @@ export class MatchRoomActions extends MatchRoomSnapshots {
   }
 
   protected async handleReconnect(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
-        try {
-          const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
-          const token = payload.sessionToken;
-          const lastSeq = payload.lastSequence !== undefined ? Number(payload.lastSequence) : 0;
+    try {
+      const payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new Error("INVALID_RECONNECT_PAYLOAD");
+      }
+      const playerRow = this.sql.exec(
+        "SELECT player_id FROM players WHERE player_id = ? AND session_token = ?",
+        session.playerId, session.sessionToken
+      ).toArray();
+      if (playerRow.length !== 1) {
+        ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+          requestId: msg.requestId, sequence: this.currentSequence,
+          payloadJson: JSON.stringify({ error: "SESSION_REPLACED" }) }));
+        return;
+      }
+      // Authentication was completed by the WebSocket upgrade. Payload identity/token
+      // fields are never authority; only the validated attachment and current DB row count.
+      const lastSeq = payload.lastSequence !== undefined ? Number(payload.lastSequence) : 0;
+      const replayCursorValid = Number.isSafeInteger(lastSeq)
+        && lastSeq >= 0 && lastSeq <= this.currentSequence;
+      const gap = replayCursorValid ? this.currentSequence - lastSeq : -1;
+      const publisherRow = this.sql.exec(
+        "SELECT value FROM room_meta WHERE key = 'levelPublisher'"
+      ).toArray()[0];
+      const isCurrentPublisherReconnect = String(publisherRow?.value || "") === session.playerId;
+      // Historical per-recipient visibility is not stored. Do not replay unfiltered event
+      // history into PvP/Deathmatch: use the full authoritative snapshot for those modes.
+      const usesFilteredEventVisibility = this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH";
+      if (replayCursorValid && !isCurrentPublisherReconnect && !usesFilteredEventVisibility
+          && gap > 0 && gap <= 50) {
+        const missingEvents = this.sql.exec(
+          "SELECT sequence, sender_id, event_type, payload FROM events WHERE sequence > ? AND sequence <= ? ORDER BY sequence ASC",
+          lastSeq, this.currentSequence
+        ).toArray();
+        const contiguous = missingEvents.length === gap
+          && missingEvents.every((event: any, index: number) =>
+            Number(event.sequence) === lastSeq + index + 1);
+        if (contiguous) {
+          ws.send(JSON.stringify({
+            protocolVersion: "1.0.0",
+            messageType: "EVENT_BATCH",
+            sequence: this.currentSequence,
+            payloadJson: JSON.stringify(missingEvents)
+          }));
+          ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
+          return;
+        }
+      }
 
-          const playerRow = this.sql.exec(`SELECT player_id FROM players WHERE session_token = ?`, token).toArray();
-          if (playerRow.length > 0) {
-            this.sql.exec(`UPDATE players SET connected = 1 WHERE player_id = ?`, session.playerId);
-            const replayCursorValid = Number.isSafeInteger(lastSeq)
-              && lastSeq >= 0 && lastSeq <= this.currentSequence;
-            const gap = replayCursorValid ? this.currentSequence - lastSeq : -1;
-            const publisherRow = this.sql.exec(
-              "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
-            const isCurrentPublisherReconnect = String(publisherRow?.value || "") === session.playerId;
-            // Historical per-recipient visibility is not stored. Do not replay unfiltered event
-            // history into PvP/Deathmatch: use the full authoritative snapshot for those modes.
-            const usesFilteredEventVisibility = this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH";
-            if (replayCursorValid && !isCurrentPublisherReconnect && !usesFilteredEventVisibility
-                && gap > 0 && gap <= 50) {
-              const missingEvents = this.sql.exec(
-                `SELECT sequence, sender_id, event_type, payload FROM events
-                 WHERE sequence > ? AND sequence <= ? ORDER BY sequence ASC`,
-                lastSeq, this.currentSequence
-              ).toArray();
-              const contiguous = missingEvents.length === gap
-                && missingEvents.every((event: any, index: number) =>
-                  Number(event.sequence) === lastSeq + index + 1);
-              if (contiguous) {
-                ws.send(JSON.stringify({
-                  protocolVersion: "1.0.0",
-                  messageType: "EVENT_BATCH",
-                  sequence: this.currentSequence,
-                  payloadJson: JSON.stringify(missingEvents)
-                }));
-                ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
-                return;
-              }
-            }
+      const connectedPlayerIds = this.connectedPlayerIds();
+      const players = this.sql.exec("SELECT player_id, class_name, pos, hp, ht, ready, state FROM players").toArray()
+        .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
+          const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + player.player_id).toArray()[0];
+          return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+        });
+      const mobs = this.sql.exec("SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
 
-            const connectedPlayerIds = this.connectedPlayerIds();
-            const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray()
-              .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-              const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
-              return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
-            });
-            const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
-
-            ws.send(JSON.stringify({
-              protocolVersion: "1.0.0",
-              messageType: "SNAPSHOT",
-              sequence: this.currentSequence,
-              payloadJson: JSON.stringify({
-                sequence: this.currentSequence,
-                seed: this.matchSeed,
-                depth: this.currentDepth,
-                gameMode: this.gameMode,
-                players,
-                mobs,
-                worldTime: this.worldTime,
-                level: this.getCurrentLevelSnapshot()
-              })
-            }));
-            ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
-            return;
-          }
-        } catch (_) {}
+      ws.send(JSON.stringify({
+        protocolVersion: "1.0.0",
+        messageType: "SNAPSHOT",
+        sequence: this.currentSequence,
+        payloadJson: JSON.stringify({
+          sequence: this.currentSequence,
+          seed: this.matchSeed,
+          depth: this.currentDepth,
+          gameMode: this.gameMode,
+          players,
+          mobs,
+          worldTime: this.worldTime,
+          level: this.getCurrentLevelSnapshot()
+        })
+      }));
+      ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
+    } catch (_) {
+      ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+        requestId: msg.requestId, sequence: this.currentSequence,
+        payloadJson: JSON.stringify({ error: "INVALID_RECONNECT_PAYLOAD" }) }));
+    }
   }
 
   protected async handleLevelData(ws: WebSocket, msg: NetworkMessage, session: SessionData) {

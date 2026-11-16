@@ -116,21 +116,20 @@ The received WebSocket attachment supplies the server-side player session. The s
 
 ### 4.1 Initial WebSocket session
 
-Historical MatchRoom.fetch() at approximately line 6,942 (now `server/src/match-room/index.ts`):
-- requires an Upgrade: websocket header;
-- creates a WebSocketPair and accepts the server socket;
-- reads playerId from a query parameter or generates a UUID;
-- generates a sessionToken UUID;
-- serializes {playerId, sessionToken} into the WebSocket attachment;
-- inserts or updates the players row as connected;
-- chooses the level publisher if no publisher key exists;
-- sends SESSION and can broadcast player-join state.
+Current MatchRoom.fetch() session admission (Phase 12-A):
+- requires an Upgrade: websocket request to the match room;
+- rejects sessionToken in the query string; an existing session must present Authorization: Bearer <sessionToken> on the secure WebSocket upgrade;
+- resolves the Bearer token to its single persisted player owner; an optional playerId query is only an equality assertion and cannot choose another player;
+- permits a credential-free connection to create a new player ID only; it rejects an unauthenticated attempt to claim an existing ID instead of upserting over that player;
+- accepts the socket and serializes {playerId, sessionToken} into its attachment before rotating the persisted reconnect token;
+- verifies and rotates the existing player's token transactionally while preserving player state/position, then sends SESSION with the new token;
+- chooses the level publisher if no publisher key exists and can broadcast player-join state.
 
-This is the observed source behavior. It is not an authentication system by itself; see SESSION_RECOVERY_AND_SECURITY.md.
+The token authenticates possession of a room session, not a user account. The token remains stored as plaintext in the players table; see SESSION_RECOVERY_AND_SECURITY.md for security boundaries and deferred controls.
 
 ### 4.2 RECONNECT
 
-The RECONNECT message carries a sessionToken and lastSequence. The server checks for a players row with that token and then:
+The session credential is authenticated in the WebSocket Authorization header before the socket is bound to its token owner. The RECONNECT message carries lastSequence only. The server rechecks the attached player/token against the current players row and then:
 - marks the attachment player connected;
 - calculates currentSequence - lastSequence;
 - when the gap is positive and at most 50, loads the missing event rows;

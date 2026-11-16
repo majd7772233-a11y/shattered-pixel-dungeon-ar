@@ -46,7 +46,7 @@ The Java MessageType enum and schema messageType enum currently contain **25 out
 | SNAPSHOT | Server → client full authoritative room/level state |
 | ACK | Server → client acknowledgement, including stable entity mapping acknowledgements |
 | RESYNC | Client → server request for a full authoritative snapshot |
-| RECONNECT | Client → server session-token and last-sequence recovery request |
+| RECONNECT | Client → server last-applied-sequence recovery request; session credential is authenticated separately in the secure WebSocket Authorization header |
 | MATCH_END | Schema/enum entry; current Worker usually sends match end inside an EVENT_BATCH event record |
 | LEAVE | Schema/enum entry; no explicit top-level Worker inbound route identified |
 | PING | Client/server liveness message |
@@ -84,7 +84,7 @@ The remaining values are used as server outputs, client-handled messages, schema
 Relevant responsibilities:
 - startSession(...), endSession();
 - onConnected(), onMessageReceived(), onDisconnected(), onError();
-- sessionToken and lastSequence management;
+- sessionToken lifecycle in the WebSocket Authorization header and lastSequence recovery-cursor management;
 - sendReconnect();
 - requestResync(...);
 - sendAction(...), sendAuthorityAction(...);
@@ -282,7 +282,7 @@ The Worker ingress is `server/src/match-room/messages.ts::webSocketMessage`. At 
 | SNAPSHOT | Worker → client | Full room/player/Mob/level state from reconnect, RESYNC or a publisher/transition snapshot | `MessageRouter.handleSnapshotMessage` restores native world state; sequence is marked applied only after successful restore. |
 | ACK | Worker → requesting publisher/client | Acknowledges accepted level/entity publication and can include stable entity ID mappings | Manager removes pending requests and `MessageRouter` calls `handleServerEntityAck` to register trusted server entity IDs. |
 | RESYNC | Client → Worker | Reads authoritative event/player/Mob/level state and responds with SNAPSHOT; no new gameplay event is committed by the request | `MultiplayerManager.requestResync` sends lastSequence and rejectedSnapshotSequence; MessageRouter/WorldSnapshot restore path consumes the response. This audit does not redesign replay/resync. |
-| RECONNECT | Client → Worker | Validates the stored session token; if the exact bounded event gap is available, sends EVENT_BATCH plus publisher state; otherwise sends full SNAPSHOT plus publisher state | `MultiplayerManager.sendReconnect` sends sessionToken/lastSequence. The reconnect result follows existing EventBatch/Snapshot paths. |
+| RECONNECT | Client → Worker | The upgrade is authenticated by Authorization: Bearer <sessionToken> and bound to the token owner; the RECONNECT payload contains lastSequence only. The Worker verifies the socket attachment/current DB token, then sends EVENT_BATCH plus publisher state for a complete eligible bounded gap, otherwise full SNAPSHOT plus publisher state | MultiplayerManager.reconnectInternetSession supplies the Bearer header; sendReconnect sends lastSequence only. SESSION returns the rotated token; existing EventBatch/Snapshot paths apply recovery. |
 | MATCH_END | No active top-level server sender observed; current Worker emits it as an EVENT_BATCH event record | Stored as an event with eventType MATCH_END; no dedicated outer MATCH_END response path is used by current code | MessageRouter handles MATCH_END as an event inside EVENT_BATCH; outer MATCH_END is only enum vocabulary in this implementation. |
 | LEAVE | Client disconnect/close is the active leave mechanism, not this outer enum | No `webSocketMessage` branch; `webSocketClose` persists connected=false and emits PLAYER_LEFT | Enum/parser only; default legacy receiver if sent. Do not infer that sending LEAVE is supported. |
 | PING | Client → Worker; Worker → same socket for pong | Explicit inbound branch returns PING with payload `{pong:true}`; no room event sequence/persistence | Network liveness envelope. Router default falls through to legacy receiver; no dedicated typed ping callback identified in MessageRouter. |

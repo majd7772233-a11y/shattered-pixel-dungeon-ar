@@ -439,7 +439,7 @@ At this historical Phase 10-E closeout checkpoint, these tests validated source 
 **Exact source/test SHA:** `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036) passed all three jobs.
 
 ### Android JVM regressions
-The current NativeCombatRuntimeIntegrationTest.java has 74 @Test methods (the Phase 11-A snapshot recorded 70). The Phase 11-B event cases include:
+At the Phase 11-B baseline, NativeCombatRuntimeIntegrationTest.java had 74 @Test methods (the Phase 11-A snapshot recorded 70). Current Phase 12-A source count is 78; NetworkProtocolParityTest has 20 tests and MultiplayerReconnectLifecycleTest has 3.
 - staleEventCannotRollBackNewerNativeMobPosition: a stale event cannot move a Mob backward.
 - eventBatchSortsOutOfOrderRowsBeforeContiguousApplication: out-of-order rows are sorted before ordered application.
 - eventArrivingAheadOfMissingSequenceRequestsSnapshotWithoutAdvancingWatermark: a sequence gap requests RESYNC without watermark advance.
@@ -453,5 +453,24 @@ NetworkProtocolParityTest.java remains at 15 tests.
 ### Worker and Durable Object regressions
 The MatchRoom suite verifies changed same-player request payload/action and cross-player requestId reuse conflict; exact retry replay with canonical key-order equivalence; idempotent processed-action fingerprint migration preserving legacy receipts; separate delegated authority completion identity; concurrent exact retry committing one event/sequence/world-time charge; and atomic rollback with no success broadcast on failure. Existing reconnect 50/51/incomplete-retention and RESYNC full-SNAPSHOT behavior remain regression constraints.
 
-### Exact-head CI
-Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. No deployment or physical-device acceptance is implied.
+### Phase 12-A — session identity and reconnect credential regression gate (2026-11-16)
+
+- Reject sessionToken in the WebSocket URL and malformed/non-Bearer Authorization credentials.
+- Reject unknown credentials and playerId assertions that do not match the token owner; an unauthenticated new session cannot claim an existing player ID.
+- Preserve player state/position during an authenticated reconnect; rotate the token only after the replacement WebSocket has been accepted and its attachment serialized.
+- Reject a previous token on a later upgrade and reject messages arriving on a superseded socket with SESSION_REPLACED.
+- Confirm unexpected Internet disconnect/error starts an authenticated reconnect; stale callbacks from a superseded transport cannot trigger duplicate reconnects or deliver late messages.
+- Confirm resumed SESSION preserves player identity, requires a replacement token, and does not advance the applied event watermark before event/snapshot recovery.
+- Confirm permanent 401/403/409 resume rejection and SESSION_REPLACED clear the stale client session; failed handshakes release their sockets.
+- Confirm a reconnect already in flight suppresses another attempt; malformed replacement credentials fail closed.
+
+### Phase 12-A local verification (2026-11-16)
+- TypeScript noEmit: PASS.
+- Backend source-only Vitest: 5 files / 370 tests PASS.
+- Cloudflare Workers Durable Object SQLite runtime: 1 file / 5 tests PASS.
+- Android core JVM: 132 tests PASS, 0 failures/errors/skips; Debug APK assembleDebug PASS.
+- Protocol schema guards: 25 messages / 23 actions unchanged.
+- Exact-head CI for Phase 12-A changes is still pending; no deployment or physical-device acceptance is implied.
+
+### Exact-head CI — historical Phase 11-B baseline
+Backend TypeScript build + 10 Vitest files / 740 reported executions passed; Android JVM tests + Debug APK passed; Durable Object SQLite integration passed 4/4. The 740 reported executions include mirrored/generated TS/JS outputs, not 740 unique source scenarios. This evidence applies to the Phase 11-B baseline SHA, not the current uncommitted Phase 12-A worktree.

@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** the accepted Phase 11 scope is CLOSED for implementation and automated acceptance. Phase 12 is next by dependency, but it is not started by this closeout. No production deployment or real-device session is claimed.
+- **Phase status:** the accepted Phase 11 scope is CLOSED for implementation and automated acceptance. Phase 12-A is IN PROGRESS by explicit user request; the parent Phase 12 remains OPEN. No production deployment or real-device session is claimed.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -619,18 +619,34 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 - [x] A client converges by contiguous event replay or a full snapshot; it never guesses the missing state.
 - [x] Invalid events do not partially persist data before rejection.
 
-**Phase status: CLOSED** for the accepted Phase 11-A/11-B scope at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / exact-head CI [43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). The closeout changes no 25-message/23-action protocol vocabulary and does not claim production deployment or physical-device testing. Phase 12 remains unstarted and requires a separate user request.
+**Historical closeout (2026-11-15): Phase status CLOSED** for accepted Phase 11-A/11-B scope at SHA 2574489ff25e6f1fedc1e21718161bc5a7a1b230 / CI 43731016036. At that checkpoint Phase 12 had not started; the user subsequently authorized Phase 12-A on 2026-11-16, shown ACTIVE / OPEN below. The Phase 11 closeout changed no 25-message/23-action vocabulary and claimed no production deployment or physical-device testing.
 
 ## Phase 12 — Durable Recovery, Reconnect and Authority Handoff
 
 **Priority:** P0 · **Dependencies:** phases 10–11 and the session model in Phase 13; generic recovery contracts can be tested before individual transports are complete.
 
+### Phase 12-A — authenticated session identity and reconnect credential (ACTIVE / OPEN)
+
+This user-authorized slice secures the existing Internet WebSocket session path without changing the 25-message / 23-action vocabulary or gameplay rules.
+
+- [x] Require a valid Bearer session credential in the WebSocket Authorization header to resume an existing player; reject sessionToken query parameters.
+- [x] Resolve the credential to exactly one persisted player; treat optional playerId only as an equality assertion and reject mismatches.
+- [x] Prevent unauthenticated creation from claiming an existing player ID; preserve existing player state/position on authenticated reconnect.
+- [x] Bind the accepted socket attachment to the authenticated player and current token; reject messages from a superseded socket after token rotation.
+- [x] Rotate the credential on successful reconnect and return it only in SESSION; keep the RECONNECT body limited to lastSequence.
+- [x] Add Worker handler and actual Durable Object SQLite tests for identity mismatch, old-token rejection and stale-socket invalidation.
+- [x] Add Android reconnect handshake/identity/sequence tests and require a fresh replacement token in the reconnect SESSION response.
+- [x] Trigger authenticated reconnect from unexpected Internet transport disconnect/error; scope callbacks to transport generation so stale sockets cannot reopen connections or deliver messages.
+- [x] Clear stale client session on SESSION_REPLACED or permanent 401/403/409 resume rejection, and close failed WebSocket handshake resources.
+- [x] Android core JVM suite: 132 tests, 0 failures/errors/skips; Debug APK assembleDebug passes locally with the installed SDK.
+- [ ] Run full exact-HEAD CI, finish final source/docs review, then obtain user review before closing this slice.
+
 ### Work items
-- [ ] Fix reconnect token/session lookup so a new socket binds to the correct player before being marked connected, while preventing session impersonation.
+- [x] Phase 12-A authenticates the reconnect token, binds the accepted socket to its owner, rotates credentials safely and rejects stale sockets (see Phase 12-A checklist above).
 - [ ] Bound event-log retention and snapshot fallback, and make room/player/world persistence recoverable after Durable Object restart.
 - [ ] Add explicit SQL/schema migrations and transactional boundaries for related room, player, event, inventory and item-claim updates.
 - [ ] Transfer native level-publisher authority safely when its player disconnects or leaves: preserve a validated snapshot, elect one replacement and resume one authoritative scheduler.
-- [ ] Add tests for reconnecting identity, dropped connections, expired tokens, restart/recovery, transaction rollback, migration compatibility and publisher loss during combat or transition.
+- [ ] Add remaining crash/restart recovery, schema migration, transactional rollback and publisher-loss tests; Phase 12-A identity/credential tests are covered above.
 
 ### Acceptance criteria
 - A reconnect either replays a complete event range or restores from a valid authoritative snapshot.

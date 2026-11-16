@@ -8,6 +8,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Optional;
+import java.net.URI;
 
 public class NetworkProtocolParityTest {
 
@@ -22,6 +23,54 @@ public class NetworkProtocolParityTest {
         Assert.assertEquals("Rejected envelopes must never become a gameplay action", MessageType.ERROR, message.messageType);
         JsonValue error = new JsonReader().parse(message.payloadJson);
         Assert.assertEquals(expectedCode, error.getString("error", ""));
+    }
+
+    @Test
+    public void reconnectEndpointEncodesPlayerAssertionWithoutPuttingSessionSecretInUrl() throws Exception {
+        String endpoint = MultiplayerManager.buildReconnectEndpoint(
+                "https://example.test/room/ROOM/websocket?mode=coop#fragment", "player + one");
+        Assert.assertNotNull(endpoint);
+        URI uri = new URI(endpoint);
+        Assert.assertEquals("mode=coop&playerId=player+%2B+one", uri.getRawQuery());
+        Assert.assertFalse("A session token must never be embedded in the request URL",
+                endpoint.contains("sessionToken"));
+        Assert.assertEquals("fragment", uri.getRawFragment());
+    }
+
+    @Test
+    public void websocketHandshakeRequestTargetPreservesEncodedPlayerQueryWithoutSecrets() throws Exception {
+        URI uri = new URI("wss://example.test/room/ROOM%201/websocket?playerId=player%2B1&mode=coop");
+        Assert.assertEquals("/room/ROOM%201/websocket?playerId=player%2B1&mode=coop",
+                InternetTransport.buildRequestTarget(uri));
+    }
+
+    @Test
+    public void websocketAuthorizationHeaderCarriesSessionTokenOnlyAsBearerCredential() {
+        Assert.assertEquals("Bearer session-token-0123456789",
+                InternetTransport.buildAuthorizationHeader("session-token-0123456789"));
+        Assert.assertNull(InternetTransport.buildAuthorizationHeader(null));
+        Assert.assertNull(InternetTransport.buildAuthorizationHeader(""));
+        Assert.assertNull(InternetTransport.buildAuthorizationHeader("short"));
+        Assert.assertNull(InternetTransport.buildAuthorizationHeader("bad\r\nX-Injected: yes"));
+    }
+
+    @Test
+    public void malformedNonNullSessionCredentialIsRejectedBeforeHandshakeStarts() {
+        try {
+            new InternetTransport().connect(
+                    "wss://example.invalid/room/test/websocket", null, "short");
+            Assert.fail("A malformed stored credential must not be silently omitted from the upgrade");
+        } catch (IllegalArgumentException expected) {
+            Assert.assertEquals("Invalid session token.", expected.getMessage());
+        } catch (Exception unexpected) {
+            Assert.fail("Unexpected URI/transport error: " + unexpected.getMessage());
+        }
+    }
+
+    @Test
+    public void rejectsReconnectUrlConstructionWithoutPlayerIdentity() {
+        Assert.assertNull(MultiplayerManager.buildReconnectEndpoint("https://example.test/websocket", null));
+        Assert.assertNotNull(MultiplayerManager.buildReconnectEndpoint("https://example.test/websocket", "player"));
     }
 
     @Test

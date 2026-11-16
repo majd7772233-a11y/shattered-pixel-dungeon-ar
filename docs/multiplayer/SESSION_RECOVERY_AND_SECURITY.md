@@ -20,41 +20,40 @@ A client payload field such as engineResult=true is not proof that the actual en
 
 ## 2. Initial connection and identity
 
-Observed flow in MatchRoom.fetch():
-1. Request must target a path ending in /websocket and carry Upgrade: websocket; otherwise the handler returns 426.
-2. The server creates a WebSocketPair and accepts the server socket.
-3. playerId is read from the URL query string or generated using crypto.randomUUID().
-4. A new sessionToken is generated using crypto.randomUUID().
-5. {playerId, sessionToken} is serialized into the server WebSocket attachment.
-6. The players row is inserted/updated with session_token and connected=1.
-7. If there is no levelPublisher room_meta key, the connecting player becomes the initial publisher.
-8. The server returns SESSION with playerId, sessionToken, current sequence and publisher status.
+Observed Phase 12-A flow in MatchRoom.fetch():
+1. The request must target /websocket and carry Upgrade: websocket; otherwise the handler rejects it.
+2. A sessionToken query parameter is rejected. A resume credential must be Authorization: Bearer <token> with the server's strict token character/length contract.
+3. For resume, the server resolves that token to exactly one players row. An optional playerId query value is only an equality assertion; a mismatch is rejected and it never selects another row.
+4. Without a Bearer credential, the request can create a new player ID only; an existing player ID cannot be claimed without its token.
+5. The server accepts the WebSocket and serializes {playerId, sessionToken} into its attachment before rotating the persisted token, so an accept failure cannot invalidate the client's still-current credential.
+6. A synchronous transaction verifies the same player/token row, preserves the existing player state/position, rotates the token and marks that player connected. New identities are inserted rather than upserted over existing rows.
+7. The server returns SESSION with the authenticated player ID, rotated token, current sequence and publisher status.
 
-Inbound sender identity is then overwritten from the server attachment; the client cannot choose an arbitrary senderId inside each later message.
+Every inbound message derives its sender identity from the socket attachment and checks that the attached token still matches the current persisted token. After a successful rotation, an older socket receives SESSION_REPLACED and is closed.
 
-### Security observations requiring future review
+### Security controls and remaining risks
 
-- The initial playerId can be supplied in the query string. The server creates a new session token, but the code shown does not use a separate account-authentication identity.
-- session_token is stored in the players table as a string. The inspected schema does not hash it.
-- Do not expose session tokens in logs, chat, diagnostic text or public URLs.
-- Review whether reconnect tokens need rotation, expiry, revocation, device/session limits or stronger binding.
-- Review room-code entropy, room discovery, duplicate playerId handling and whether a reconnect/second socket can supersede an older socket safely.
-- These are threat-model review items. Do not claim an exploitable vulnerability without tracing the complete connection and deployment environment.
+- Reconnect credentials are sent only through the Authorization header on HTTPS/WSS; URLs, query strings and RECONNECT payloads carry no session secret.
+- playerId remains a client-visible player identifier, not an account-authentication identity. The token proves possession of the room's current session credential; this is not an account system.
+- session_token remains stored as plaintext in the Durable Object SQLite players table. Hash-at-rest migration, expiry, explicit revocation, room-code entropy/discovery, and broader abuse/rate limits are not included in this slice.
+- A successful reconnect rotates the token. A stale socket's later messages are rejected against the current DB token; the previous token is no longer accepted for another upgrade.
+- Do not expose session tokens in logs, chat, diagnostic text, URLs, or crash reports. Avoid logging full Authorization headers.
+- These controls are code-level protections, not a formal security certification or evidence of a production deployment.
 
 ## 3. Reconnect and event-gap recovery
 
 Client MultiplayerManager:
-- stores sessionToken;
-- tracks lastSequence;
-- sends RECONNECT with sessionToken and lastSequence on reconnect;
-- receives SESSION and installs its token/sequence;
-- tracks pending request IDs;
+- stores the current sessionToken in memory and tracks the last successfully applied sequence;
+- opens a replacement secure WebSocket using Authorization: Bearer <sessionToken> in the upgrade handshake;
+- sends RECONNECT with lastSequence only; player/session identity and secret are not repeated in that message;
+- accepts the resumed SESSION only when the returned playerId is unchanged and a non-empty replacement token is present;
+- installs the rotated token but does not advance the applied sequence from the reconnect SESSION; replayed events/snapshot must apply through the existing native paths;
 - requests RESYNC after invalid or failed state application.
 
 Server RECONNECT:
-- reads sessionToken and lastSequence from payload;
-- looks up a players row by session_token;
-- marks the attached player connected;
+- relies on the authenticated {playerId, sessionToken} socket attachment established at upgrade;
+- confirms that this exact attachment still matches the current persisted player/token row;
+- ignores identity/token values in the message body; only lastSequence controls the recovery cursor;
 - computes gap = currentSequence - lastSequence;
 - if gap > 0 and gap <= 50, queries ordered events above lastSequence;
 - sends EVENT_BATCH only if missingEvents.length exactly equals gap;
@@ -63,6 +62,17 @@ Server RECONNECT:
 The client must only mark a SNAPSHOT sequence applied after WorldSnapshot.restoreWorld succeeds. For EVENT_BATCH, event ordering and state application must remain monotonic. Stale events must not roll back newer native Mob/player state.
 
 The 50-event threshold is a source constant in the current implementation, not a universal protocol guarantee. Any threshold change affects reconnect behavior and needs tests/documentation updates.
+
+### Phase 12-A verification boundary (2026-11-16)
+
+- Backend TypeScript noEmit check: PASS.
+- Source-only backend test suite: 5 files / 370 tests PASS.
+- Cloudflare Workers Durable Object SQLite integration: 1 file / 5 tests PASS.
+- Android core JVM suite: 132 tests PASS (0 failures/errors/skips); Debug APK build PASS.
+- Protocol vocabulary remains 25 messages / 23 actions.
+- These are local checks on an uncommitted worktree based on 417dc7082f37db02b658112e33f3a51b69f72fbb. Exact-head CI, live Worker deployment and physical-device testing are not claimed. Phase 12-A remains OPEN.
+
+
 
 ## 4. Request identity, replay and duplicate prevention
 

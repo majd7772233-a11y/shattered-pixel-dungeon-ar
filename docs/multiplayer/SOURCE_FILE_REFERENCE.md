@@ -309,3 +309,5 @@ Exact source/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 4361872
 | server/src/match-room/lifelink-death.integration.test.ts | Request replay identity, concurrent retries, migration and transaction rollback regressions. |
 
 Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). Current integration test inventory is 74 Android @Test methods; the separate parity suite remains at 15.
+
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java | Phase 12-A: transport-generation callback isolation, single in-flight reconnect guard, HTTP 409 credential invalidation, and reconnect retry body/header regression coverage (3 @Test methods). |

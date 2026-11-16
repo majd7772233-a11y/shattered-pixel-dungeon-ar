@@ -87,9 +87,18 @@ class MemoryMatchRoomSql {
       return this.cursor(value === undefined ? [] : [{ value }]);
     }
     if (query === "SELECT player_id FROM players WHERE session_token = ?") {
-      const row = Array.from(this.players.values())
-        .find(player => String(player.session_token) === String(args[0]));
-      return this.cursor(row ? [{ player_id: row.player_id }] : []);
+      const rows = Array.from(this.players.values())
+        .filter(player => String(player.session_token) === String(args[0]));
+      return this.cursor(rows.map(row => ({ player_id: row.player_id })));
+    }
+    if (query === "SELECT session_token FROM players WHERE player_id = ?") {
+      const row = this.players.get(String(args[0]));
+      return this.cursor(row ? [{ session_token: row.session_token }] : []);
+    }
+    if (query === "SELECT player_id FROM players WHERE player_id = ? AND session_token = ?") {
+      const row = this.players.get(String(args[0]));
+      return this.cursor(row && String(row.session_token) === String(args[1])
+        ? [{ player_id: row.player_id }] : []);
     }
     if (query === "SELECT player_id FROM players ORDER BY player_id ASC") {
       return this.cursor(Array.from(this.players.values())
@@ -371,7 +380,8 @@ function makeNonlethalPoisonFixture() {
   sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(beforeHero));
   sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
   sql.players.set(PLAYER_ID, {
-    player_id: PLAYER_ID, pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0
+    player_id: PLAYER_ID, session_token: "session-token",
+    pos: 9, hp: 9, ht: 20, state: "ALIVE", deaths: 0, connected: 1
   });
   sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 25 });
 
@@ -446,7 +456,8 @@ function makeNonlethalHealingFixture() {
   sql.roomMeta.set("heroState:" + PLAYER_ID, JSON.stringify(previousHero));
   sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
   sql.players.set(PLAYER_ID, {
-    player_id: PLAYER_ID, pos: 9, hp: 8, ht: 20, state: "ALIVE", deaths: 0
+    player_id: PLAYER_ID, session_token: "session-token",
+    pos: 9, hp: 8, ht: 20, state: "ALIVE", deaths: 0, connected: 1
   });
 
   const tickData = {
@@ -527,7 +538,12 @@ function makeSpiritArrowForwardFixture() {
   sql.roomMeta.set("heroState:" + ATTACKER_ID, JSON.stringify(heroBefore));
   sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
   sql.players.set(ATTACKER_ID, {
-    player_id: ATTACKER_ID, pos: 9, hp: 20, ht: 20, state: "ALIVE", deaths: 0
+    player_id: ATTACKER_ID, session_token: "attacker-session",
+    pos: 9, hp: 20, ht: 20, state: "ALIVE", deaths: 0, connected: 1
+  });
+  sql.players.set(PUBLISHER_ID, {
+    player_id: PUBLISHER_ID, session_token: "publisher-session",
+    pos: 9, hp: 20, ht: 20, state: "ALIVE", deaths: 0, connected: 1
   });
   sql.mobs.set(7, { mob_id: 7, depth: 1, hp: 20, ht: 20, pos: 17 });
   const room = makeRoom(sql);
@@ -594,7 +610,8 @@ function makePlayerCombatRollbackFixture() {
   sql.roomMeta.set("pendingCombatAttacker:" + ATTACKER_ID, requestId);
   sql.roomMeta.set("pendingCombatTarget:PLAYER:" + PVP_DEFENDER_ID, requestId);
   sql.players.set(PVP_DEFENDER_ID, {
-    player_id: PVP_DEFENDER_ID, pos: 10, hp: 20, ht: 20, state: "ALIVE", deaths: 0
+    player_id: PVP_DEFENDER_ID, session_token: "pvp-defender-session",
+    pos: 10, hp: 20, ht: 20, state: "ALIVE", deaths: 0, connected: 1
   });
   const attackData = {
     combatRequestId: requestId, attackerId: ATTACKER_ID, attackerPos: 9,
@@ -1204,7 +1221,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     };
     await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, changedPayload)));
 
-    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
     expect(response.messageType).toBe("ERROR");
     expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
     expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
@@ -1223,7 +1240,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     await fixture.room.webSocketMessage(fixture.senderWs, frame);
     await fixture.room.webSocketMessage(fixture.senderWs, frame);
 
-    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
     expect(response.messageType).toBe("ERROR");
     expect(JSON.parse(String(response.payloadJson)).error).toBe("NATIVE_COMBAT_ALREADY_PENDING");
     expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
@@ -1236,13 +1253,17 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       action: "ATTACK", data: fixture.attackData, heroStateJson: JSON.stringify(fixture.heroBefore)
     };
     await fixture.room.webSocketMessage(fixture.senderWs, JSON.stringify(actionMessage(requestId, originalPayload)));
+    fixture.sql.players.set("foreign-player-002", {
+      player_id: "foreign-player-002", session_token: "foreign-token",
+      pos: 11, hp: 20, ht: 20, state: "ALIVE", deaths: 0, connected: 1
+    });
     const foreignWs = {
       send: fixture.senderWs.send,
       deserializeAttachment: () => ({ playerId: "foreign-player-002", sessionToken: "foreign-token" })
     };
     await fixture.room.webSocketMessage(foreignWs as any, JSON.stringify(actionMessage(requestId, originalPayload)));
 
-    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)[0]));
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
     expect(response.messageType).toBe("ERROR");
     expect(JSON.parse(String(response.payloadJson)).error).toBe("REQUEST_ID_CONFLICT");
     expect(fixture.authorityWs.send).toHaveBeenCalledTimes(1);
@@ -1305,7 +1326,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
       action: "SYNC_MOB_STATE", data: result, heroStateJson: JSON.stringify(fixture.heroBefore)
     })));
-    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)[0]));
+    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)?.[0]));
     expect(response.messageType).toBe("ERROR");
     expect(response.requestId).toBe(requestId);
     expect(response.sequence).toBe(0);
@@ -1336,7 +1357,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     await fixture.room.webSocketMessage(fixture.authorityWs, JSON.stringify(actionMessage(requestId, {
       action: "SYNC_MOB_STATE", data: result, heroStateJson: JSON.stringify(fixture.heroBefore)
     })));
-    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)[0]));
+    const response = JSON.parse(String(fixture.authorityWs.send.mock.calls.at(-1)?.[0]));
     expect(response.messageType).toBe("ERROR");
     expect(response.requestId).toBe(requestId);
     expect(response.sequence).toBe(0);
@@ -1528,7 +1549,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
         secondaryMobDeltas: JSON.stringify({ complete: true, deltas: [mobDelta], heaps: [] })
       }
     }), session);
-    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])).messageType).toBe("ERROR");
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)?.[0])).messageType).toBe("ERROR");
     expect(sql.events).toHaveLength(1);
     expect(sql.rewardClaimInsertAttempts).toBe(1);
     expect(sql.players.get(PLAYER_ID)?.deaths).toBe(1);
@@ -1755,7 +1776,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       }
     }), session);
 
-    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])).messageType).toBe("ERROR");
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)?.[0])).messageType).toBe("ERROR");
     expect(sql.events).toHaveLength(1);
     expect(sql.mobs.get(7)).toMatchObject({ hp: 19, ht: 20, pos: 25 });
     expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 8, state: "ALIVE" });
@@ -2158,7 +2179,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
       }
     }), session);
 
-    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])))
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)?.[0])))
       .toMatchObject({ messageType: "ACTION_ACCEPTED" });
     expect(sql.events).toHaveLength(2);
     expect(sql.events.map(event => event.event_type)).toEqual(["CHAR_DAMAGED", "PLAYER_DAMAGED"]);
@@ -2201,7 +2222,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
         targetBuffsBefore: heroDeath.targetBuffsBefore, targetBuffs: heroDeath.targetBuffs
       }
     }), session);
-    expect(JSON.parse(String(ws.send.mock.calls.at(-1)[0])).messageType).toBe("ERROR");
+    expect(JSON.parse(String(ws.send.mock.calls.at(-1)?.[0])).messageType).toBe("ERROR");
     expect(sql.events).toHaveLength(2);
     expect(sql.rewardClaims.size).toBe(1);
     expect(sql.rewardClaimInsertAttempts).toBe(1);
@@ -2234,10 +2255,7 @@ describe("Phase 11-A event ordering and replay characterization", () => {
       reconnectMessage: {
         protocolVersion: "1.0.0",
         messageType: "RECONNECT",
-        payloadJson: JSON.stringify({
-          sessionToken: fixture.session.sessionToken,
-          lastSequence: 0
-        })
+        payloadJson: JSON.stringify({ lastSequence: 0 })
       }
     };
   }
@@ -2268,9 +2286,7 @@ describe("Phase 11-A event ordering and replay characterization", () => {
       { sequence: 2, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" },
       { sequence: 3, sender_id: "publisher-player-002", event_type: "PLAYER_MOVED", payload: "{}" }
     ]);
-    fixture.reconnectMessage.payloadJson = JSON.stringify({
-      sessionToken: fixture.session.sessionToken, lastSequence: 4
-    });
+    fixture.reconnectMessage.payloadJson = JSON.stringify({ lastSequence: 4 });
 
     await (fixture.room as any).handleReconnect(fixture.ws, fixture.reconnectMessage, fixture.session);
 

@@ -451,4 +451,14 @@ Each valid event is applied behind a native-world rollback baseline. The world-a
 
 The full snapshot path still rejects stale or structurally incomplete snapshots before changing live world state. The implementation does not change native SPD combat formulas or add a new action/message type.
 
-Current test inventory: NativeCombatRuntimeIntegrationTest.java has 74 @Test methods; NetworkProtocolParityTest.java remains at 15. No physical two-device test is claimed.
+Phase 11-B baseline inventory: NativeCombatRuntimeIntegrationTest.java had 74 @Test methods and NetworkProtocolParityTest.java had 15. Current Phase 12-A inventory: NativeCombatRuntimeIntegrationTest.java has 78 methods, NetworkProtocolParityTest.java has 20, and MultiplayerReconnectLifecycleTest.java has 3. No physical two-device test is claimed.
+
+
+## 12. Phase 12-A Internet session credential and reconnect handshake
+
+- InternetTransport carries an existing session credential only as Authorization: Bearer in the secure WebSocket upgrade; it never appends the secret to the endpoint URL or query string.
+- Session credentials are rejected for non-TLS ws/http endpoints and validated against the same 16–256 character URL-safe token alphabet as the Worker.
+- MultiplayerManager automatically starts an authenticated reconnect after an unexpected Internet disconnect/error. Callback wrappers ignore late events from superseded transports. A failed upgrade does not spin in an immediate retry loop; a later transport failure can start another attempt.
+- A resumed SESSION must return the same playerId and a replacement token. Missing identity/token or a changed player identity clears the stale client session.
+- The reconnect SESSION does not advance the native applied-sequence watermark; existing EVENT_BATCH/SNAPSHOT application paths remain responsible for committing recovered state.
+- Unit tests cover Bearer-header construction, malformed/short tokens, raw encoded endpoint preservation, identity mismatch, missing replacement token, and watermark preservation.

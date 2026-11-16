@@ -176,6 +176,101 @@ public class NativeCombatRuntimeIntegrationTest {
     }
 
     @Test
+    public void reconnectSessionWelcomeRotatesTokenWithoutSkippingPendingEventRecovery() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-reconnect-session", "client-reconnect", transport);
+
+        NetworkMessage initial = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-reconnect\",\"sessionToken\":\"old-session-token-0001\","
+                        + "\"isLevelPublisher\":false,\"sequence\":4}");
+        initial.sequence = 4L;
+        manager.onMessageReceived(initial);
+        Assert.assertEquals(4L, manager.getLastSequence());
+        manager.updateLastSequence(6L);
+
+        java.lang.reflect.Field reconnectPending = MultiplayerManager.class
+                .getDeclaredField("reconnectHandshakePending");
+        reconnectPending.setAccessible(true);
+        reconnectPending.setBoolean(manager, true);
+
+        NetworkMessage resumed = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-reconnect\",\"sessionToken\":\"rotated-session-token-0002\","
+                        + "\"isLevelPublisher\":false,\"sequence\":20,\"resumed\":true}");
+        resumed.sequence = 20L;
+        manager.onMessageReceived(resumed);
+
+        Assert.assertEquals("SESSION during recovery must not consume events before replay or snapshot applies",
+                6L, manager.getLastSequence());
+        Assert.assertEquals("The rotated credential replaces the predecessor on the client",
+                "rotated-session-token-0002", manager.getSessionToken());
+    }
+
+    @Test
+    public void rejectsReconnectWelcomeThatChangesTheAuthenticatedPlayerIdentity() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-reconnect-identity", "client-owner", transport);
+        NetworkMessage initial = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-owner\",\"sessionToken\":\"owner-session-token-0001\","
+                        + "\"isLevelPublisher\":false,\"sequence\":2}");
+        manager.onMessageReceived(initial);
+
+        java.lang.reflect.Field reconnectPending = MultiplayerManager.class
+                .getDeclaredField("reconnectHandshakePending");
+        reconnectPending.setAccessible(true);
+        reconnectPending.setBoolean(manager, true);
+        NetworkMessage forged = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"different-player\",\"sessionToken\":\"attacker-token-0001\",\"sequence\":9}");
+        manager.onMessageReceived(forged);
+
+        Assert.assertFalse("A reconnect response cannot silently switch the local player identity",
+                manager.isMultiplayerActive());
+        Assert.assertNull(manager.getSessionToken());
+    }
+
+    @Test
+    public void rejectsReconnectWelcomeThatDoesNotRotateTheSessionCredential() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-reconnect-missing-token", "client-owner", transport);
+        NetworkMessage initial = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-owner\",\"sessionToken\":\"owner-session-token-0001\",\"sequence\":2}");
+        manager.onMessageReceived(initial);
+
+        java.lang.reflect.Field reconnectPending = MultiplayerManager.class
+                .getDeclaredField("reconnectHandshakePending");
+        reconnectPending.setAccessible(true);
+        reconnectPending.setBoolean(manager, true);
+        NetworkMessage incomplete = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-owner\",\"sequence\":9}");
+        manager.onMessageReceived(incomplete);
+
+        Assert.assertFalse("A reconnect welcome without a replacement token cannot keep a stale session alive",
+                manager.isMultiplayerActive());
+        Assert.assertNull(manager.getSessionToken());
+    }
+
+    @Test
+    public void rejectsReconnectWelcomeWithMalformedRotatedSessionCredential() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        TestTransport transport = new TestTransport();
+        manager.startSession("runtime-reconnect-invalid-token", "client-owner", transport);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-owner\",\"sessionToken\":\"owner-session-token-0002\",\"sequence\":2}"));
+
+        java.lang.reflect.Field reconnectPending = MultiplayerManager.class
+                .getDeclaredField("reconnectHandshakePending");
+        reconnectPending.setAccessible(true);
+        reconnectPending.setBoolean(manager, true);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"client-owner\",\"sessionToken\":\"short\",\"sequence\":9}"));
+
+        Assert.assertFalse(manager.isMultiplayerActive());
+        Assert.assertNull(manager.getSessionToken());
+    }
+
+    @Test
     public void nativeHeroBuffTickCaptureRemainsAvailableOnASealedBossLevel() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("native-sealed-hero-buff-tick", "client-publisher", new TestTransport());

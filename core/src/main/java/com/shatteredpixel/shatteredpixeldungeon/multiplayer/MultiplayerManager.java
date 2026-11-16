@@ -27,6 +27,7 @@ public class MultiplayerManager implements TransportCallback {
     private String roomCode;
     private String localPlayerId;
     private String sessionToken;
+    private volatile boolean reconnectHandshakePending = false;
     private volatile long lastSequence = 0;
     private volatile long lastResyncRequestedSequence = -1L;
     private String lastPublishedLevelKey;
@@ -37,7 +38,8 @@ public class MultiplayerManager implements TransportCallback {
     private int pendingUnblessedAnkhDepth = -1;
     private int pendingUnblessedAnkhBranch = -1;
     private boolean pendingUnblessedAnkhWasLevelLocked;
-    private NetworkTransport activeTransport;
+    private volatile NetworkTransport activeTransport;
+    private java.util.function.Supplier<InternetTransport> internetTransportFactory = InternetTransport::new;
     private GameMode currentGameMode = new CoopMode();
 
     private final Map<String, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
@@ -65,6 +67,34 @@ public class MultiplayerManager implements TransportCallback {
         return currentGameMode;
     }
 
+    void setInternetTransportFactoryForTests(java.util.function.Supplier<InternetTransport> factory) {
+        internetTransportFactory = factory != null ? factory : InternetTransport::new;
+    }
+
+    private TransportCallback callbackFor(final NetworkTransport transport) {
+        return new TransportCallback() {
+            private boolean isCurrentTransport() {
+                return activeTransport == transport;
+            }
+
+            @Override public void onConnected() {
+                if (isCurrentTransport()) MultiplayerManager.this.onConnected();
+            }
+
+            @Override public void onDisconnected(String reason) {
+                if (isCurrentTransport()) MultiplayerManager.this.onDisconnected(reason);
+            }
+
+            @Override public void onMessageReceived(NetworkMessage message) {
+                if (isCurrentTransport()) MultiplayerManager.this.onMessageReceived(message);
+            }
+
+            @Override public void onError(Throwable error) {
+                if (isCurrentTransport()) MultiplayerManager.this.onError(error);
+            }
+        };
+    }
+
     public void startSession(String roomCode, String initialPlayerId, NetworkTransport transport) throws IllegalArgumentException {
         if ("BLUETOOTH".equalsIgnoreCase(transport.getTransportType()) && remotePlayers.size() >= BluetoothTransport.MAX_BLUETOOTH_PLAYERS) {
             throw new IllegalArgumentException("Bluetooth supports a maximum of 2 players.");
@@ -73,6 +103,7 @@ public class MultiplayerManager implements TransportCallback {
         this.roomCode = roomCode;
         this.localPlayerId = initialPlayerId;
         this.sessionToken = null;
+        this.reconnectHandshakePending = false;
         this.levelPublisher = false;
         this.levelPublisherId = null;
         this.levelPublisherTerm = -1L;
@@ -95,8 +126,52 @@ public class MultiplayerManager implements TransportCallback {
         this.serverEntityIdToActor.clear();
 
         try {
-            this.activeTransport.connect(roomCode, this);
+            this.activeTransport.connect(roomCode, callbackFor(this.activeTransport));
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Opens a new Internet socket for the existing in-memory player session. The server
+     * authenticates the Bearer credential from the upgrade header before rotating it and binding
+     * the accepted socket to that player.
+     * This deliberately does not reset the applied event sequence or native client state.
+     */
+    public synchronized boolean reconnectInternetSession() {
+        if (!isMultiplayerActive || reconnectHandshakePending
+                || localPlayerId == null || localPlayerId.isEmpty()
+                || sessionToken == null || sessionToken.isEmpty()
+                || roomCode == null || !(activeTransport instanceof InternetTransport)) return false;
+        String endpoint = buildReconnectEndpoint(roomCode, localPlayerId);
+        if (endpoint == null) return false;
+
+        NetworkTransport previous = activeTransport;
+        InternetTransport replacement = internetTransportFactory.get();
+        if (replacement == null) return false;
+        activeTransport = replacement;
+        reconnectHandshakePending = true;
+        if (previous != null) previous.disconnect();
+        try {
+            replacement.connect(endpoint, callbackFor(replacement), sessionToken);
+            return true;
+        } catch (Exception failure) {
+            reconnectHandshakePending = false;
+            if (activeTransport == replacement) activeTransport = previous;
+            return false;
+        }
+    }
+
+    static String buildReconnectEndpoint(String endpoint, String playerId) {
+        if (endpoint == null || endpoint.isEmpty() || playerId == null || playerId.isEmpty()) return null;
+        try {
+            String encodedPlayer = java.net.URLEncoder.encode(playerId, "UTF-8");
+            int fragmentAt = endpoint.indexOf('#');
+            String base = fragmentAt >= 0 ? endpoint.substring(0, fragmentAt) : endpoint;
+            String fragment = fragmentAt >= 0 ? endpoint.substring(fragmentAt) : "";
+            String separator = base.contains("?") ? "&" : "?";
+            return base + separator + "playerId=" + encodedPlayer + fragment;
+        } catch (Exception invalidEndpoint) {
+            return null;
+        }
     }
 
     public void endSession() {
@@ -110,6 +185,7 @@ public class MultiplayerManager implements TransportCallback {
         this.actorToServerEntityId.clear();
         this.serverEntityIdToActor.clear();
         this.sessionToken = null;
+        this.reconnectHandshakePending = false;
         this.levelPublisher = false;
         this.levelPublisherId = null;
         this.levelPublisherTerm = -1L;
@@ -566,7 +642,7 @@ public class MultiplayerManager implements TransportCallback {
         msg.messageType = MessageType.RECONNECT;
         msg.senderId = localPlayerId;
         msg.requestId = UUID.randomUUID().toString();
-        msg.payloadJson = "{\"sessionToken\":\"" + sessionToken + "\", \"lastSequence\":" + lastSequence + "}";
+        msg.payloadJson = "{\"lastSequence\":" + lastSequence + "}";
 
         activeTransport.send(msg);
     }
@@ -579,11 +655,21 @@ public class MultiplayerManager implements TransportCallback {
     }
 
     @Override
-    public void onDisconnected(String reason) {}
+    public void onDisconnected(String reason) {
+        // The replacement handshake owns the token while reconnect is in flight. A close
+        // before its SESSION response cannot safely retry the predecessor token.
+        if (!reconnectHandshakePending) reconnectInternetSession();
+    }
 
     @Override
     public void onMessageReceived(NetworkMessage message) {
         if (message == null) return;
+
+        if (message.messageType == MessageType.ERROR && message.payloadJson != null
+                && message.payloadJson.contains("\"SESSION_REPLACED\"")) {
+            endSession();
+            return;
+        }
 
         // Native combat accepted by another player's authority returns to the attacker in
         // EVENT_BATCH. Clear its optimistic request from that sequenced result.
@@ -672,8 +758,17 @@ public class MultiplayerManager implements TransportCallback {
         if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
             try {
                 JsonValue payload = new JsonReader().parse(message.payloadJson);
+                boolean resumingExistingSession = reconnectHandshakePending;
                 JsonValue playerIdValue = payload.get("playerId");
                 JsonValue tokenValue = payload.get("sessionToken");
+                boolean validRotatedToken = tokenValue != null && !tokenValue.isNull()
+                        && tokenValue.isString()
+                        && tokenValue.asString().matches("[A-Za-z0-9._~-]{16,256}");
+                if (resumingExistingSession && (playerIdValue == null || playerIdValue.isNull()
+                        || !localPlayerId.equals(playerIdValue.asString()) || !validRotatedToken)) {
+                    endSession();
+                    return;
+                }
                 if (playerIdValue != null && !playerIdValue.isNull()) {
                     this.localPlayerId = playerIdValue.asString();
                 }
@@ -697,11 +792,12 @@ public class MultiplayerManager implements TransportCallback {
                 // Subsequent EVENT_BATCH/ACTION_ACCEPTED envelopes never advance it on receipt:
                 // they commit individually only after contiguous native application.
                 JsonValue sequenceValue = payload.get("sequence");
-                if (sequenceValue != null && !sequenceValue.isNull()
+                if (!resumingExistingSession && sequenceValue != null && !sequenceValue.isNull()
                         && sequenceValue.isNumber() && sequenceValue.asDouble() >= 0d
                         && sequenceValue.asDouble() == Math.floor(sequenceValue.asDouble())) {
                     updateLastSequence(sequenceValue.asLong());
                 }
+                reconnectHandshakePending = false;
                 JsonValue seedValue = payload.get("seed");
                 if (seedValue != null && !seedValue.isNull()) {
                     // SESSION arrives before HeroSelectScene starts the run, so all clients
@@ -720,6 +816,26 @@ public class MultiplayerManager implements TransportCallback {
         MessageRouter.routeMessage(message);
     }
 
+    private boolean isRejectedSessionCredential(Throwable error) {
+        if (error == null || error.getMessage() == null) return false;
+        String message = error.getMessage();
+        return message.contains("HTTP/1.1 401")
+                || message.contains("HTTP/1.1 403")
+                || message.contains("HTTP/1.1 409");
+    }
+
     @Override
-    public void onError(Throwable error) {}
+    public void onError(Throwable error) {
+        if (reconnectHandshakePending) {
+            if (isRejectedSessionCredential(error)) {
+                endSession();
+                return;
+            }
+            // Do not spin on a failed upgrade. Keep the in-memory session available for a
+            // later transport failure/retry, using the last credential still held by the client.
+            reconnectHandshakePending = false;
+            return;
+        }
+        reconnectInternetSession();
+    }
 }

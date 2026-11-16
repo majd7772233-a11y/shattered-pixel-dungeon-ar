@@ -449,4 +449,115 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(sql.exec("SELECT sequence FROM events").toArray()).toEqual([{ sequence: 1 }]);
     });
   });
+
+  it("binds a reconnect socket to the authenticated token owner and rejects identity takeover", async () => {
+    const roomId = env.MATCH_ROOM.idFromName("phase12a-session-token-owner-binding");
+    const stub = env.MATCH_ROOM.get(roomId);
+    const baseUrl = "https://match.test/room/phase12a-session-token-owner-binding/websocket";
+    const receiveMessage = (socket, expectedType) => new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        socket.removeEventListener("message", listener);
+        reject(new Error("Timed out waiting for " + expectedType));
+      }, 5000);
+      const listener = event => {
+        let message;
+        try { message = JSON.parse(String(event.data)); } catch (_) { return; }
+        if (message.messageType !== expectedType) return;
+        clearTimeout(timeout);
+        socket.removeEventListener("message", listener);
+        resolve(message);
+      };
+      socket.addEventListener("message", listener);
+    });
+
+    const firstResponse = await stub.fetch(new Request(baseUrl, {
+      headers: { Upgrade: "websocket" }
+    }));
+    expect(firstResponse.status).toBe(101);
+    const firstSocket = firstResponse.webSocket;
+    expect(firstSocket).toBeTruthy();
+    firstSocket.accept();
+    const firstWelcome = await receiveMessage(firstSocket, "SESSION");
+    const firstSession = JSON.parse(firstWelcome.payloadJson);
+    expect(firstSession.playerId).toBeTruthy();
+    expect(firstSession.sessionToken).toBeTruthy();
+    const playerId = firstSession.playerId;
+    const firstToken = firstSession.sessionToken;
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec("UPDATE players SET pos = ?, hp = ? WHERE player_id = ?", 77, 13, playerId);
+    });
+
+    // Neither a bare playerId nor another player's token can claim this existing identity.
+    const bareIdentity = await stub.fetch(new Request(baseUrl + "?playerId=" + encodeURIComponent(playerId), {
+      headers: { Upgrade: "websocket" }
+    }));
+    expect(bareIdentity.status).toBe(401);
+    const tokenInUrl = await stub.fetch(new Request(
+      baseUrl + "?playerId=" + encodeURIComponent(playerId) + "&sessionToken=" + encodeURIComponent(firstToken),
+      { headers: { Upgrade: "websocket" } }
+    ));
+    expect(tokenInUrl.status).toBe(400);
+    const mismatchedIdentity = await stub.fetch(new Request(
+      baseUrl + "?playerId=attacker-player-0001",
+      { headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken } }
+    ));
+    expect(mismatchedIdentity.status).toBe(403);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const row = state.storage.sql.exec(
+        "SELECT player_id,session_token,pos,hp,connected FROM players WHERE player_id = ?", playerId
+      ).toArray()[0];
+      expect(row).toMatchObject({ player_id: playerId, session_token: firstToken, pos: 77, hp: 13, connected: 1 });
+      expect(state.storage.sql.exec("SELECT player_id FROM players").toArray()).toHaveLength(1);
+    });
+
+    const reconnectUrl = baseUrl + "?playerId=" + encodeURIComponent(playerId);
+    const secondResponse = await stub.fetch(new Request(reconnectUrl, {
+      headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
+    }));
+    expect(secondResponse.status).toBe(101);
+    const secondSocket = secondResponse.webSocket;
+    expect(secondSocket).toBeTruthy();
+    secondSocket.accept();
+    const secondWelcome = await receiveMessage(secondSocket, "SESSION");
+    const secondSession = JSON.parse(secondWelcome.payloadJson);
+    expect(secondSession).toMatchObject({ playerId, pos: 77, resumed: true });
+    expect(secondSession.sessionToken).toBeTruthy();
+    expect(secondSession.sessionToken).not.toBe(firstToken);
+
+    // The authenticated current socket attachment is sufficient; the message carries no token.
+    const recoveryPromise = receiveMessage(secondSocket, "SNAPSHOT");
+    secondSocket.send(JSON.stringify({
+      protocolVersion: "1.0.0", messageType: "RECONNECT", requestId: "phase12a-reconnect-001",
+      payloadJson: JSON.stringify({ lastSequence: 0 })
+    }));
+    const recovered = await recoveryPromise;
+    expect(recovered.sequence).toBe(0);
+
+    // The old socket cannot keep acting after its token has been replaced.
+    const staleSocketError = receiveMessage(firstSocket, "ERROR");
+    firstSocket.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "PING", payloadJson: "{}" }));
+    const staleError = await staleSocketError;
+    expect(JSON.parse(staleError.payloadJson).error).toBe("SESSION_REPLACED");
+
+    const oldTokenRetry = await stub.fetch(new Request(reconnectUrl, {
+      headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
+    }));
+    expect(oldTokenRetry.status).toBe(401);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const rows = state.storage.sql.exec(
+        "SELECT player_id,session_token,pos,hp,connected FROM players"
+      ).toArray();
+      expect(rows).toEqual([{
+        player_id: playerId, session_token: secondSession.sessionToken,
+        pos: 77, hp: 13, connected: 1
+      }]);
+    });
+
+    try { firstSocket.close(); } catch (_) {}
+    try { secondSocket.close(); } catch (_) {}
+  });
+
 });

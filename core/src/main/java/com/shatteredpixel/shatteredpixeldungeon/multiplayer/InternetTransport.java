@@ -19,12 +19,23 @@ public class InternetTransport implements NetworkTransport {
 
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
+        connect(endpoint, callback, null);
+    }
+
+    void connect(String endpoint, TransportCallback callback, String sessionToken) throws Exception {
         this.callback = callback;
         URI uri = new URI(endpoint != null ? endpoint : "https://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket");
         String host = uri.getHost() != null ? uri.getHost() : "spd-multiplayer.majd7772233.workers.dev";
         boolean isSsl = uri.getScheme() == null || uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("wss");
+        if (sessionToken != null && !isSsl) {
+            throw new IllegalArgumentException("Session credentials require a secure WebSocket endpoint.");
+        }
         int port = uri.getPort() != -1 ? uri.getPort() : (isSsl ? 443 : 80);
-        String path = uri.getPath() != null && !uri.getPath().isEmpty() ? uri.getPath() : "/room/DEFAULT_ROOM/websocket";
+        String requestTarget = buildRequestTarget(uri);
+        String authorization = buildAuthorizationHeader(sessionToken);
+        if (sessionToken != null && authorization == null) {
+            throw new IllegalArgumentException("Invalid session token.");
+        }
 
         new Thread(() -> {
             try {
@@ -42,12 +53,14 @@ public class InternetTransport implements NetworkTransport {
                 String wsKey = Base64.getEncoder().encodeToString(nonce);
 
                 // Perform Strict WebSocket Upgrade Handshake
-                String handshake = "GET " + path + " HTTP/1.1\r\n" +
+                String handshake = "GET " + requestTarget + " HTTP/1.1\r\n" +
                         "Host: " + host + "\r\n" +
                         "Upgrade: websocket\r\n" +
                         "Connection: Upgrade\r\n" +
                         "Sec-WebSocket-Key: " + wsKey + "\r\n" +
-                        "Sec-WebSocket-Version: 13\r\n\r\n";
+                        "Sec-WebSocket-Version: 13\r\n" +
+                        (authorization == null ? "" : "Authorization: " + authorization + "\r\n") +
+                        "\r\n";
 
                 synchronized (this) {
                     out.write(handshake.getBytes("UTF-8"));
@@ -71,11 +84,35 @@ public class InternetTransport implements NetworkTransport {
                     listen();
                 } else {
                     if (callback != null) callback.onError(new Exception("WebSocket Handshake Failed (Requires HTTP 101): " + statusLine));
+                    closeUnconnectedSocket();
                 }
             } catch (Exception e) {
                 if (callback != null) callback.onError(e);
+                closeUnconnectedSocket();
             }
         }).start();
+    }
+
+    private void closeUnconnectedSocket() {
+        isConnected = false;
+        try { if (in != null) in.close(); } catch (Exception ignored) {}
+        try { if (out != null) out.close(); } catch (Exception ignored) {}
+        try { if (socket != null) socket.close(); } catch (Exception ignored) {}
+        in = null;
+        out = null;
+        socket = null;
+    }
+
+    static String buildAuthorizationHeader(String sessionToken) {
+        if (sessionToken == null || !sessionToken.matches("[A-Za-z0-9._~-]{16,256}")) return null;
+        return "Bearer " + sessionToken;
+    }
+
+    static String buildRequestTarget(URI uri) {
+        String path = uri.getRawPath() != null && !uri.getRawPath().isEmpty()
+                ? uri.getRawPath() : "/room/DEFAULT_ROOM/websocket";
+        String query = uri.getRawQuery();
+        return query == null || query.isEmpty() ? path : path + "?" + query;
     }
 
     private String readLine(InputStream is, StringTextBuilder sb) throws Exception {

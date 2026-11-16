@@ -48,6 +48,19 @@ export class MatchRoomMessages extends MatchRoomActions {
 
       const msg: NetworkMessage = admission.message;
       requestId = admission.requestId;
+
+      // A superseded socket may still deliver frames after a newer authenticated reconnect.
+      // The durable row's current token, not the stale attachment alone, decides session ownership.
+      const activeSession = this.sql.exec(
+        "SELECT session_token FROM players WHERE player_id = ?", session.playerId
+      ).toArray();
+      if (activeSession.length !== 1
+          || String(activeSession[0].session_token || "") !== session.sessionToken) {
+        this.sendProtocolError(ws, requestId, "SESSION_REPLACED");
+        try { ws.close(4001, "Session replaced"); } catch (_) {}
+        return;
+      }
+
       // Never trust senderId from the frame; the accepted WebSocket attachment is authoritative.
       msg.senderId = session.playerId;
 
