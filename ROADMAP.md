@@ -32,8 +32,8 @@ The old ten-phase plan contained 88 primary work items, several of which spanned
 | 8 | Inventory persistence, restoration and exactly-once rewards | Complete for implementation and automated acceptance |
 | 9 | Native buffs and timed effects | Complete for implementation and automated acceptance; unsupported branches explicitly fail-closed |
 | 10 | Canonical protocol schema and one typed event path | Complete for implementation and automated acceptance (2026-11-14) |
-| 11 | Event ordering, replay protection and resynchronization | Open |
-| 12 | Durable recovery, reconnect and authority handoff | Open |
+| 11 | Event ordering, replay protection and resynchronization | Complete for implementation and automated acceptance |
+| 12 | Durable recovery, reconnect and authority handoff | Complete for implementation and automated acceptance; deployment/device checks remain later gates |
 | 13 | Common room/session lifecycle and readiness | Open |
 | 14 | Internet/WebSocket transport | Open |
 | 15 | LAN transport | Open |
@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** Phases 1–11 are CLOSED within their accepted implementation/automated-acceptance boundaries. Phase 12-A/B implementation is complete and pushed (schema migrations, atomic LEVEL_DATA replacement, publisher loss/election/handoff included); exact-head CI 43921670336 passed all three jobs, while parent Phase 12 remains OPEN pending user review. Production deployment and physical-device testing are not claimed.
+- **Phase status:** Phases 1–12 are CLOSED for their accepted implementation and automated-acceptance scopes. Phase 12-A/B implementation is complete and pushed at `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; exact-head CI 43921670336 passed all three jobs and the requested source review is complete. Phase 13 is next and has not started. Production Worker deployment remains a Phase 22 gate; physical-device playtesting remains Phase 23.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -619,13 +619,13 @@ PLAYER_JOINED/READY readiness and route decisions are now explicit. This does no
 - [x] A client converges by contiguous event replay or a full snapshot; it never guesses the missing state.
 - [x] Invalid events do not partially persist data before rejection.
 
-**Historical closeout (2026-11-15): Phase status CLOSED** for accepted Phase 11-A/11-B scope at SHA 2574489ff25e6f1fedc1e21718161bc5a7a1b230 / CI 43731016036. At that checkpoint Phase 12 had not started; the user subsequently authorized Phase 12-A on 2026-11-16, shown ACTIVE / OPEN below. The Phase 11 closeout changed no 25-message/23-action vocabulary and claimed no production deployment or physical-device testing.
+**Historical closeout (2026-11-15): Phase status CLOSED** for accepted Phase 11-A/11-B scope at SHA 2574489ff25e6f1fedc1e21718161bc5a7a1b230 / CI 43731016036. At that checkpoint Phase 12 had not started; it was subsequently authorized and is now closed for implementation/automated acceptance in the Phase 12 closeout below. The Phase 11 closeout changed no 25-message/23-action vocabulary and claimed no production deployment or physical-device testing.
 
 ## Phase 12 — Durable Recovery, Reconnect and Authority Handoff
 
 **Priority:** P0 · **Dependencies:** phases 10–11 and the session model in Phase 13; generic recovery contracts can be tested before individual transports are complete.
 
-### Phase 12-A — authenticated session identity and reconnect credential (IMPLEMENTED; EXACT-HEAD CI PASS; OPEN PENDING USER REVIEW)
+### Phase 12-A — authenticated session identity and reconnect credential (IMPLEMENTED; EXACT-HEAD CI PASS; CLOSED FOR IMPLEMENTATION/AUTOMATED ACCEPTANCE)
 
 This user-authorized slice secures the existing Internet WebSocket session path without changing the 25-message / 23-action vocabulary or gameplay rules.
 
@@ -639,11 +639,11 @@ This user-authorized slice secures the existing Internet WebSocket session path 
 - [x] Trigger authenticated reconnect from unexpected Internet transport disconnect/error; scope callbacks to transport generation so stale sockets cannot reopen connections or deliver messages.
 - [x] Clear stale client session on SESSION_REPLACED or permanent 401/403/409 resume rejection, and close failed WebSocket handshake resources.
 - [x] Android core JVM suite: 132 tests, 0 failures/errors/skips; Debug APK assembleDebug passes locally with the installed SDK.
-- [x] Exact-head CI 43921670336 passed Backend, Android and Durable Object SQLite jobs; final source/docs review and clean local/remote branch checks completed. [ ] Obtain user review before closing this slice.
+- [x] Exact-head CI 43921670336 passed Backend, Android and Durable Object SQLite jobs; the requested final source review and clean local/remote branch checks are complete.
 
-### Phase 12-B — bounded Durable Object rehydration and event recovery (IMPLEMENTED; EXACT-HEAD CI PASS; OPEN PENDING USER REVIEW)
+### Phase 12-B — bounded Durable Object rehydration and event recovery (IMPLEMENTED; EXACT-HEAD CI PASS; CLOSED FOR IMPLEMENTATION/AUTOMATED ACCEPTANCE)
 
-This user-authorized slice restores the room cursor/status after Durable Object eviction and bounds replay history without discarding evidence that existing native validation still consumes. For legacy rooms, a missing `worldTime` key keeps the pre-ACTION zero-clock default because older code wrote that key lazily on the first accepted ACTION; any present value is validated and malformed values fail closed. It does not close Phase 12-A or the parent Phase 12.
+This completed slice restores the room cursor/status
 
 - [x] Persist `currentSequence` and `gameStatus` in `room_meta` on accepted event paths; restore the monotonic cursor on construction using the persisted checkpoint and legacy `MAX(events.sequence)` backfill.
 - [x] Restore and validate persisted `worldTime`, `gameMode`, `seed`, `depth` and `gameStatus`; reject malformed or missing critical metadata for an already-persisted room rather than generating new defaults.
@@ -657,7 +657,7 @@ This user-authorized slice restores the room cursor/status after Durable Object 
 - [x] Wrap the complete multi-table `LEVEL_DATA` replacement and native snapshot/cursor writes in one synchronous SQLite transaction; restore in-memory cursor/time and return a correlated ERROR without ACK or world broadcast on rollback.
 - [x] Fence publisher disconnects and elections by persisted session token; preserve a validated snapshot for handoff/rebase, invalidate stale terms, and revoke authority without electing or broadcasting a fabricated world when the snapshot is unavailable.
 - [x] Add real Workers SQLite regressions for legacy schema upgrade, full LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, plus handler-level stale-token and fail-closed publisher tests.
-- [x] Remote branch comparison completed; commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` pushed and verified as origin HEAD; exact-head CI 43921670336 passed all three jobs. [ ] Obtain user review before closing this sub-slice.
+- [x] Remote branch comparison completed; commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` pushed and verified as origin HEAD; exact-head CI 43921670336 passed all three jobs; requested final source review completed.
 
 **Implementation boundary and current result:** the accepted Phase 12 work adds no protocol field/message/action and leaves the 25-message / 23-action contract unchanged. RECONNECT still replays only a complete contiguous range of at most 50 events and otherwise restores from the authoritative snapshot. Room state is now version-migrated, `LEVEL_DATA` replacement is fully transactional, and publisher loss is token-fenced with fail-closed handling for missing snapshots. Lobby/readiness/start lifecycle transitions remain Phase 13 scope.
 ### Work items
@@ -667,12 +667,19 @@ This user-authorized slice restores the room cursor/status after Durable Object 
 - [x] Make the complete `LEVEL_DATA` cross-table replacement atomic, including its native snapshot and room cursor writes; rollback emits no success ACK or uncommitted world snapshot.
 - [x] Fence publisher loss/election/handoff by persisted session token and term; require a complete native snapshot before replacement election, rebase the replacement before it can publish, and revoke authority without fabricating state when snapshot recovery is impossible.
 - [x] Add actual Durable Object SQLite coverage for migration, LEVEL_DATA rollback/retry and missing-snapshot publisher revocation, in addition to eviction/replay/valid handoff coverage.
-- [x] Exact-head Actions CI 43921670336 passed all three required jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`. [ ] Obtain user review before marking Phase 12 closed.
+- [x] Exact-head Actions CI 43921670336 passed all three required jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; the requested final review found no remaining Phase 12 implementation or automated-acceptance item.
 
 ### Acceptance criteria
 - A reconnect either replays a complete event range or restores from a valid authoritative snapshot.
 - Durable Object restart and schema migration do not lose or duplicate accepted gameplay state.
 - At every point there is at most one publisher for shared native turns; handoff cannot duplicate Mob turns, death rewards or loot.
+### Final Phase 12 closeout — 2026-11-16
+
+Phase 12-A and Phase 12-B are CLOSED for implementation and automated acceptance on the authorized branch. The final implementation/test commit is `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; the branch was pushed and verified equal to origin. Exact-head Actions run [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336) passed Backend, Android and real Durable Object SQLite jobs. A final source/transaction/recovery/publisher review was performed in the user-requested continuation.
+
+Final local evidence: TypeScript build/noEmit PASS; Backend 10 Vitest files / 744 reported executions (372 unique source scenarios; mirrored TS/JS outputs are not additional unique scenarios) PASS; real Workers Durable Object SQLite 14/14 PASS; Android core JVM 132/132 with zero failures/errors/skips and Debug APK assembleDebug PASS. The 25-message / 23-action protocol contract is unchanged.
+
+Phase 12 does not claim a production Worker deployment or a physical two-device multiplayer match. Those remain explicit later gates: Phase 22 deployment/service preflight and Phase 23 user-led physical-device playtest. Phase 13 room/readiness/start lifecycle is the next implementation phase and was not started by this closeout.
 
 ## Phase 13 — Common Room/Session Lifecycle and Readiness
 

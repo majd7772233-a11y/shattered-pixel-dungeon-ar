@@ -324,4 +324,4 @@ Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 437310
 | `server/src/match-room/lifelink-death.integration.test.ts` | Keeps the in-memory MatchRoom SQL adapter behavior aligned with UPSERT and evidence-aware retention SQL. |
 | `server/src/match-room/durable-object-sqlite.integration.do.mjs` | Real Workers SQLite eviction/restart, replay, snapshot, retention, legacy terminal status and missing-level regression tests. |
 
-No Android or protocol-schema source changed for Phase 12-B. `protocol/schema.json` remains at 25 messages / 23 actions. The multi-statement LEVEL_DATA write path is not yet a comprehensive transaction; do not infer cross-table crash atomicity from successful room reconstruction. That is a separate open Phase 12 item.
+No Android or protocol-schema source changed for the final Phase 12-B closeout. `protocol/schema.json` remains at 25 messages / 23 actions. The multi-table LEVEL_DATA write path is covered by a single Durable Object `transactionSync` boundary with rollback tests; the 14-test real SQLite suite verifies no partial level state or publisher ACK escapes a failed commit.

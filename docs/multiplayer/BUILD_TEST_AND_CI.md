@@ -269,7 +269,7 @@ Initial Phase 12-A/12-B worktree checkpoint before commit/push: baseline `836d4e
 - Android forced rerun: `.\gradlew.bat test assembleDebug --no-daemon --console=plain --rerun-tasks` completed BUILD SUCCESSFUL. XML reports: 10 files / 132 core JVM tests / 0 failures / 0 errors / 0 skipped. `android/build/outputs/apk/debug/android-debug.apk` was generated.
 - Gradle reported pre-existing deprecated API/unchecked-operation notices and that it will not be compatible with Gradle 10; there were no build/test failures.
 
-At that initial worktree checkpoint, local green tests did not yet establish exact-head CI, deployed Worker readiness or physical-device multiplayer acceptance. Phase 12 implementation (versioned migrations, full LEVEL_DATA transactionality and token-fenced publisher loss/handoff) has since been committed, pushed and passed exact-head CI as recorded below. Phase 12-A, Phase 12-B and parent Phase 12 remain OPEN pending user review.
+At that initial pre-commit worktree checkpoint, local green tests did not yet establish exact-head CI, deployed Worker readiness or physical-device multiplayer acceptance. Phase 12 implementation (versioned migrations, full LEVEL_DATA transactionality and token-fenced publisher loss/handoff) was subsequently committed and pushed; exact-head CI 43921670336 passed all three required jobs, and the final requested source review closed Phase 12 for implementation/automated acceptance.
 
 ## Phase 12 exact-head CI confirmation - 2026-11-16
 
@@ -279,4 +279,4 @@ Implementation/test commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` on `multip
 - **Android debug APK compile:** Java unit tests and debug APK compile PASS.
 - **Durable Object SQLite rollback and eviction:** real Workers SQLite rollback/eviction recovery job PASS, including schema migration, atomic LEVEL_DATA and publisher recovery regressions.
 
-The same committed tree passed local TypeScript noEmit, backend 5 files / 372 tests, real Durable Object SQLite 1 file / 14 tests, Android 10 XML reports / 132 core JVM tests (0 failures/errors/skips) and `assembleDebug` (`BUILD SUCCESSFUL`). This is exact-head automated CI, not a production Worker deployment or a physical two-device gameplay test. Phase 12 implementation and CI gates are complete; the parent phase remains OPEN pending user review.
+The same committed tree passed local TypeScript noEmit, backend 5 files / 372 unique source tests (744 reported executions including mirrored/generated JS), real Durable Object SQLite 1 file / 14 tests, Android 10 XML reports / 132 core JVM tests (0 failures/errors/skips) and `assembleDebug` (`BUILD SUCCESSFUL`). This is exact-head automated CI, not a production Worker deployment or physical two-device gameplay test. The requested final Phase 12 source review is complete; Phase 12 is CLOSED for implementation and automated acceptance.

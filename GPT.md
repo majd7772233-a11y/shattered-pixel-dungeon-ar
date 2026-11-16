@@ -1,14 +1,14 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-16 (PHASE 12-A + PHASE 12-B IMPLEMENTATION + EXACT-HEAD CI PASS; USER REVIEW PENDING)
+## ACTIVE PROJECT CHECKPOINT — 2026-11-16 (PHASE 12 COMPLETE FOR IMPLEMENTATION/AUTOMATED ACCEPTANCE; PHASE 13 NOT STARTED)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892. Do not create another branch, work on master/main, merge, or open a PR.
-- **Latest implementation commit:** `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; pushed and verified equal to `origin/multiplayer-framework-core-14118577486727081892`; worktree clean. Exact-head CI run 43921670336 passed all three required jobs.
-- **Phase state:** Phases 1–11 remain closed within their accepted automated scope. Phase 12-A/12-B implementation and exact-head CI are complete; keep parent Phase 12 OPEN pending user review. Phase 13 remains out of scope.
+- **Phase 12 implementation commit:** `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`, pushed to the permitted branch and covered by exact-head CI 43921670336. The branch subsequently advanced through documentation-only status commit `41f27293214134ce5c9a11ad1ea816b3ae3f2c61`; this continuation adds another docs-only closeout commit. No source code changed after the exact-head implementation run.
+- **Phase state:** Phases 1–12 are closed for their accepted implementation and automated-acceptance scopes. Phase 12-A/B final source review is complete and exact-head CI 43921670336 passed all three jobs. Phase 13 is next but has not started.
 - **Android EVENT_BATCH:** deduplicates identical sequence rows, rejects conflicting duplicates, sorts out-of-order rows, requires a contiguous sequence beginning at lastApplied + 1, checks the envelope tail, and requests recovery on gaps or invalid rows without advancing the applied watermark. Each event is applied behind a rollback baseline; sequence commits only after successful application. EVENT_SKIPPED consumes sequence without world mutation. Stale full snapshots reject before live restore.
 - **Worker request replay:** canonical request fingerprints bind requestId to player/action/payload. Exact same-player retries replay the stored result; changed payload/action or cross-player reuse returns REQUEST_ID_CONFLICT. Legacy receipts are preserved by idempotent schema migration; delegated authority completion uses its own identity fingerprint.
 - **Atomic action handling:** ACTION state, claims, processed receipt, event, sequence and world time are committed in the scoped transactionSync boundary. Failure rolls back; outbound success/broadcast is flushed only after commit; missing transactionSync fails closed.
 - **Recovery behavior:** reconnect authenticates with a Bearer header in the secure WebSocket upgrade, binds each socket to its token owner, rotates the token, and keeps RECONNECT limited to lastSequence. Internet disconnect/error callbacks initiate reconnect; callbacks from replaced transports are ignored; invalid/replaced credentials clear the stale client session.
-- **Phase 12-A/12-B verification evidence (committed and pushed):** TypeScript noEmit PASS; backend source-only Vitest 5 files / 372 tests PASS; actual Durable Object SQLite 1 file / 14 tests PASS (including DO eviction, bounded retention, contiguous replay, snapshot fallback, legacy MATCH_END/active-room restore, schema migrations 1–2, LEVEL_DATA atomic rollback/retry, token-fenced publisher loss/handoff and missing-snapshot fail-closed); Android `test assembleDebug --no-daemon` PASS. Forced Android rerun completed: 10 XML reports / 132 core JVM tests / 0 failures / 0 errors / 0 skipped; Debug APK assembleDebug PASS.
-- **Protocol and exclusions:** 25 message types and 23 action types remain unchanged. Phase 12-A/B implementation is committed and pushed (372 backend tests, 14 real Durable Object SQLite tests, 132 Android JVM tests + Debug APK). Exact-head Actions run 43921670336 passed Backend, Android and Durable Object SQLite jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`. Parent Phase 12 stays OPEN pending user review. No production Worker deployment or physical two-device test is claimed.
+- **Phase 12-A/12-B verification evidence (committed and pushed):** TypeScript build/noEmit PASS; backend 5 TypeScript source test files / 372 unique source cases PASS (the runtime reports 10 files / 744 executions because generated JavaScript mirrors those cases); actual Durable Object SQLite 1 file / 14 tests PASS (including DO eviction, bounded retention, contiguous replay, snapshot fallback, legacy MATCH_END/active-room restore, schema migrations 1–2, LEVEL_DATA atomic rollback/retry, token-fenced publisher loss/handoff and missing-snapshot fail-closed); Android `test assembleDebug --no-daemon` PASS. Forced Android rerun completed: 10 XML reports / 132 core JVM tests / 0 failures / 0 errors / 0 skipped; Debug APK assembleDebug PASS.
+- **Protocol and release boundaries:** 25 message types and 23 action types remain unchanged. Phase 12 is complete for implementation/automated acceptance (372 unique backend tests, 14 real Durable Object SQLite tests, 132 Android JVM tests and Debug APK). Exact-head Actions run 43921670336 passed Backend, Android and Durable Object SQLite jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`. No production Worker deployment or physical two-device test is claimed; those remain Phase 22/23 gates.
 
 **Source-of-truth hierarchy:** PROJECT_EXECUTION_PROTOCOL_AR.md governs workflow; ROADMAP.md governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; docs/multiplayer/ is the maintained architecture/test reference.
 
@@ -212,16 +212,16 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ## 4. Current Verified State and Implemented Architecture
 
-### Exact branch and verified code/test baseline
+### Exact branch and current Phase 12 implementation baseline
 
 - Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`.
 - Only working branch: `multiplayer-framework-core-14118577486727081892`. Never create another branch, merge, open a PR, or write to main/master.
-- Latest implementation/test SHA: `2574489ff25e6f1fedc1e21718161bc5a7a1b230`; exact code/test CI [43731016036 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036).
-- Latest documentation closeout SHA: `884674ea6b7653e0f70804fc21a6f9afe4eeb732`; exact-head docs CI [43754359292 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43754359292).
-- Backend evidence on the code/test SHA: 10 Vitest files / 740 reported executions; generated/mirrored TS/JS execution counts are not unique source scenarios.
+- Phase 12 implementation/test SHA: `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; pushed and verified against the only allowed remote branch; exact-head CI 43921670336 passed Backend, Android and Durable Object SQLite jobs.
+- **Phase 12 closeout source:** implementation/test SHA `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; the current documentation closeout is committed immediately after it on the same permitted branch.
+- Backend evidence at Phase 12 closeout: 10 Vitest files / 744 reported executions (372 unique source scenarios; generated/mirrored TS/JS are not unique source tests).
 - Historical Phase 11-B Android baseline evidence: JVM tests and Debug APK compilation passed; NativeCombatRuntimeIntegrationTest had 74 @Test methods and NetworkProtocolParityTest had 15 at that baseline. Current Phase 12-A sources have 78 and 20 respectively, plus 3 reconnect lifecycle tests.
-- Durable Object evidence: four SQLite integration tests passed.
-- Phases 1–11 are complete within their documented acceptance boundaries. Phase 11-A characterization is retained as historical regression coverage; Phase 11-B implementation and automated acceptance are complete. Phase 12-A/B implementation and exact-head CI are complete; parent Phase 12 remains open pending user review.
+- Durable Object evidence at Phase 12 closeout: 14 real Workers Durable Object SQLite integration tests passed.
+- Phases 1–12 are complete for implementation and automated acceptance under their documented support boundaries. Phase 11-A characterization remains historical regression evidence; Phase 11-B and Phase 12-A/B closeouts are retained in the dated logs below.
 - Android applies validated contiguous EVENT_BATCH rows with rollback-before-commit sequencing. The Worker binds requestId to authenticated player and canonical action/payload fingerprints, replays exact requests, rejects conflicting reuse, and commits the covered ACTION state/claims/receipt/event/sequence/world-time atomically with after-commit network delivery.
 - Reconnect authentication uses a Bearer credential in the secure WebSocket upgrade header; identity is bound to the token owner, the token rotates, and each socket message checks that its attachment token remains current. The RECONNECT payload contains lastSequence only. Recovery replay policy remains complete contiguous ranges up to 50 events for eligible non-current publishers, otherwise full SNAPSHOT; RESYNC remains full SNAPSHOT.
 - Protocol remains 25 message values and 23 action values. No production Worker deployment or physical two-device match is claimed.
@@ -231,7 +231,7 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 - **Phases 1–9:** complete for implementation and automated acceptance under the limits recorded in ROADMAP.md.
 - **Phase 10:** complete for implementation and automated acceptance; see the Phase 10-E closeout and historical records below.
 - **Phase 11:** CLOSED for the accepted event ordering, request identity/replay, sequence safety, rollback and resynchronization scope at code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / CI `43731016036`.
-- **Phase 12-A / 12-B (implementation complete locally; CI/review pending):** authenticated token-owner sessions, credential rotation and Android reconnect; durable room rehydration and protected replay evidence; room schema migrations v1–2; atomic cross-table `LEVEL_DATA` replacement; persisted-session-token publisher loss/election/rebase with fail-closed missing-snapshot handling. Backend 372/372 and real Durable Object SQLite 14/14 pass locally; Android 132/132 + Debug APK passed. Parent Phase 12 remains OPEN until exact-head CI and user review; production deployment and physical-device validation are not claimed.
+- **Phase 12-A / 12-B (CLOSED for implementation and automated acceptance):** authenticated token-owner sessions, credential rotation and Android reconnect; durable room rehydration and protected replay evidence; room schema migrations v1–2; atomic cross-table `LEVEL_DATA` replacement; persisted-session-token publisher loss/election/rebase with fail-closed missing-snapshot handling. Backend 372 unique source tests / 744 mirrored executions, real Durable Object SQLite 14/14, Android 132/132 + Debug APK and exact-head CI 43921670336 all pass. Production deployment and physical-device validation remain Phases 22/23.
 - **Phase 13:** transport-independent room/session lifecycle.
 - **Phases 14–16:** Internet/WebSocket, LAN, Bluetooth (or explicitly unavailable).
 - **Phases 17–19:** Co-op lifecycle, PvP/Deathmatch, Survival.
@@ -257,9 +257,9 @@ Path: `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/`
 
 ## 5. Open Risks and Work After Phase 11
 
-The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–11 are complete for implementation and automated acceptance under their explicitly documented support boundaries. Phase 12-A and Phase 12-B implementation is complete locally; Phase 12 remains active/open for exact-head CI, remote review and user acceptance:
+The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–12 are complete for implementation and automated acceptance within their documented support boundaries; Phase 12 final review and exact-head CI are complete. Phase 13 is the next not-yet-started implementation phase:
 
-- **Phase 12 — durable recovery:** Phase 12-A/B implementation is committed and pushed: session identity/reconnect, bounded event recovery, atomic room-schema migrations, complete transactional `LEVEL_DATA` replacement, and token-fenced publisher loss/election/rebase. Backend 372/372, real DO SQLite 14/14 and Android 132/132 pass locally. Exact-head CI 43921670336 passed Backend, Android and Durable Object SQLite jobs; user review remains the final Phase 12 acceptance gate.
+- **Phase 12 — durable recovery:** CLOSED for implementation and automated acceptance at `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` / exact-head CI 43921670336. Session identity/reconnect, bounded event recovery, atomic room-schema migrations, complete transactional `LEVEL_DATA` replacement, and token-fenced publisher loss/election/rebase are implemented and tested (372 unique Backend source tests, 14 real DO SQLite tests, Android 132/132 + Debug APK). No production deployment or physical two-device claim; those are Phase 22/23 gates.
 - **Phase 13 — session lifecycle:** common room/readiness state and failure-safe start/leave behavior.
 - **Phases 14–16 — transports:** Internet/WebSocket, LAN, Bluetooth with an honest unavailable state if necessary.
 - **Phases 17–19 — modes:** Co-op lifecycle, PvP/Deathmatch, Survival.
@@ -267,7 +267,7 @@ The current authoritative scope is the 23-phase plan in ROADMAP.md. Phases 1–1
 - **Phase 22 — automated/service preflight:** real room/action lifecycle tests, multi-client scenarios, exact-SHA CI, deployment configuration and fresh-room Worker smoke test.
 - **Phase 23 — user-led physical-device playtest:** final only. The user reports actual results; append coherent Phase 24+ fixes afterward and preserve symptoms/reproduction steps.
 
-Phase 12-A and Phase 12-B implementation work is complete locally. Do not start Phase 13 automatically; keep Phase 12 open for exact-head CI and user review.
+Phase 12-A and Phase 12-B are CLOSED for implementation and automated acceptance. Do not start Phase 13 automatically; it is the next phase and requires its own explicit task authorization.
 
 Never assume a later phase is complete because a class or enum exists. Check current source and tests. Keep automated tests inside the phase that implements the behavior; only physical-device gameplay is reserved for Phase 23.
 
