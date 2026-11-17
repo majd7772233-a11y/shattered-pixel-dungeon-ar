@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** Phases 1–12 are CLOSED for their accepted implementation and automated-acceptance scopes. Phase 12-A/B implementation is complete and pushed at `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`; exact-head CI 43921670336 passed all three jobs and the requested source review is complete. Phase 13 is next and has not started. Production Worker deployment remains a Phase 22 gate; physical-device playtesting remains Phase 23.
+- **Phase status:** Phases 1-12 remain CLOSED at their accepted implementation/automated-acceptance scope. Phase 13 is ACTIVE/PARTIAL in the uncommitted worktree: server room lifecycle and Android session control are locally implemented and tested; in-game lobby UI and concurrency/cancellation acceptance remain open. Current evidence: backend 372 unique scenarios, Durable Object SQLite 15/15, Android core JVM 137/137 and full Debug APK PASS. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -686,11 +686,15 @@ Phase 12 does not claim a production Worker deployment or a physical two-device 
 **Priority:** P0 · **Dependencies:** phases 10–12.
 
 ### Work items
-- [ ] Separate transport-connected, authenticated/session-bound, room-created/joined, world-synchronized, ready and playing states.
-- [ ] Implement explicit create/join/leave/ready/start/room-state operations and enforce the chosen mode's player capacity before launch.
-- [ ] Make start contingent on valid room membership, the designated authority and a consistent world seed/snapshot; never launch a local/fake match on timeout.
-- [ ] Implement cancellation, connection timeout, bounded retry/backoff, duplicate-session prevention and cleanup of sockets/listeners/pending actions.
-- [ ] Add session-state machine tests for partial failures, simultaneous joins/starts, last-player departure, cancellation and late callbacks.
+- [x] Separate transport-connected, authenticated/session-bound, room-created/joined, world-synchronized, ready and playing states in the Android session model.
+- [x] Implement explicit create/join/leave/ready/start/room-state operations and enforce mode-specific minimum/maximum player counts.
+- [x] Make start contingent on valid room membership, owner/publisher authority, connected/ready members, matching world seed/sequence, complete native snapshot and no pending transition.
+- [x] Implement start cancellation, handshake/room-operation timeouts, bounded reconnect retry/backoff, duplicate-session prevention, generation-fenced callbacks and pending-operation cleanup.
+- [ ] Finish the test matrix for simultaneous joins/starts, cancellation/readiness reset and remaining late callbacks; partial failure, timeout, last-player departure and stale callback cases already pass.
+
+### 2026-11-17 implementation checkpoint (partial)
+
+The server room lifecycle and Android session-control layer are implemented and locally tested; see `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md`. Current evidence is Backend 372 unique source scenarios, real Durable Object SQLite 15/15, and Android core JVM 137/137 (10 JUnit reports; no failures/errors/skips); full `test assembleDebug` passes with APK SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. The client READY=true request now includes the escaped native `heroStateJson` and `className` required by the Worker. The Android setup screen still enters HeroSelectScene directly and does not expose an in-game lobby or wire Ready/Start/Cancel/Leave controls. Phase 13 remains OPEN; exact-head CI has not run for this worktree.
 
 ### Acceptance criteria
 - Connection alone never means the player is in a playable match.

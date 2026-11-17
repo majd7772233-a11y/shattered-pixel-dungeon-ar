@@ -280,3 +280,15 @@ Implementation/test commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` on `multip
 - **Durable Object SQLite rollback and eviction:** real Workers SQLite rollback/eviction recovery job PASS, including schema migration, atomic LEVEL_DATA and publisher recovery regressions.
 
 The same committed tree passed local TypeScript noEmit, backend 5 files / 372 unique source tests (744 reported executions including mirrored/generated JS), real Durable Object SQLite 1 file / 14 tests, Android 10 XML reports / 132 core JVM tests (0 failures/errors/skips) and `assembleDebug` (`BUILD SUCCESSFUL`). This is exact-head automated CI, not a production Worker deployment or physical two-device gameplay test. The requested final Phase 12 source review is complete; Phase 12 is CLOSED for implementation and automated acceptance.
+
+## Phase 13 current local verification (2026-11-17; partial worktree)
+
+The following checks apply to the uncommitted Phase 13 worktree, not to the older Phase 12 exact-head Actions run:
+
+- Backend TypeScript `npx tsc --noEmit --pretty false`: PASS.
+- Backend `npm test`: 10 files / 744 reported executions, representing 372 unique TypeScript source scenarios plus generated JavaScript mirrors: PASS.
+- Real Cloudflare Workers Durable Object SQLite integration `src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 15 tests: PASS.
+- Android `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 10 JUnit XML reports / 137 tests / 0 failures / 0 errors / 0 skipped.
+- The full `test assembleDebug --no-daemon --console=plain --rerun-tasks` command passed on 2026-11-17: 57 actionable tasks, 137 core JVM tests with zero failures/errors/skips, and Debug APK assembled. APK is 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. Re-run after the in-game lobby UI is integrated.
+- No exact-head GitHub Actions run is recorded for this worktree yet. Phase 12 Actions run 43921670336 applies only to the Phase 12 commit listed in the closeout section; it is not evidence for Phase 13.
+- No production Worker deployment or physical two-device test is claimed.

@@ -59,21 +59,40 @@ export class MatchRoomBase {
     this.sql = state.storage.sql;
   }
 
+  protected isRoomLifecycleEnabled(): boolean {
+    const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomLifecycleVersion").toArray()[0];
+    return String(row?.value || "") === "1";
+  }
+
+  protected isRoomMember(playerId: string): boolean {
+    if (!playerId) return false;
+    return this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomMember:" + playerId).toArray().length === 1;
+  }
+
   async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean) {
     const session = ws.deserializeAttachment() as SessionData | null;
     if (session) {
       if (session.sessionToken) {
-        this.sql.exec("UPDATE players SET connected = 0 WHERE player_id = ? AND session_token = ?",
-          session.playerId, session.sessionToken);
+        if (this.isRoomLifecycleEnabled()) {
+          this.sql.exec("UPDATE players SET connected = 0, ready = 0 WHERE player_id = ? AND session_token = ?",
+            session.playerId, session.sessionToken);
+        } else {
+          this.sql.exec("UPDATE players SET connected = 0 WHERE player_id = ? AND session_token = ?",
+            session.playerId, session.sessionToken);
+        }
+      } else if (this.isRoomLifecycleEnabled()) {
+        this.sql.exec("UPDATE players SET connected = 0, ready = 0 WHERE player_id = ?", session.playerId);
       } else {
         this.sql.exec("UPDATE players SET connected = 0 WHERE player_id = ?", session.playerId);
       }
-      this.broadcast({
-        protocolVersion: "1.0.0",
-        messageType: "PLAYER_LEFT",
-        senderId: session.playerId,
-        payloadJson: JSON.stringify({ playerId: session.playerId, code, reason })
-      });
+      if (!this.isRoomLifecycleEnabled()) {
+        this.broadcast({
+          protocolVersion: "1.0.0",
+          messageType: "PLAYER_LEFT",
+          senderId: session.playerId,
+          payloadJson: JSON.stringify({ playerId: session.playerId, code, reason })
+        });
+      }
     }
   }
 
@@ -82,7 +101,9 @@ export class MatchRoomBase {
     for (const ws of this.state.getWebSockets()) {
       try {
         const session = ws.deserializeAttachment() as SessionData | null;
-        if (session?.playerId) connected.add(String(session.playerId));
+        if (session?.playerId && (!this.isRoomLifecycleEnabled() || this.isRoomMember(String(session.playerId)))) {
+          connected.add(String(session.playerId));
+        }
       } catch (_) {}
     }
     return connected;

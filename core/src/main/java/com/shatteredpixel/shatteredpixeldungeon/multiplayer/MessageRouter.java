@@ -26,6 +26,12 @@ public final class MessageRouter {
         if (!manager.isMultiplayerActive()) return;
 
         switch (message.messageType) {
+            case ROOM_STATE:
+                Game.runOnRenderThread(() -> manager.applyRoomState(message));
+                break;
+            case MATCH_START:
+                manager.applyMatchStart(message);
+                break;
             case SESSION:
                 // The session baseline is installed by MultiplayerManager before routing.
                 break;
@@ -79,8 +85,6 @@ public final class MessageRouter {
             case HELLO:
             case CREATE_ROOM:
             case JOIN_ROOM:
-            case ROOM_STATE:
-            case MATCH_START:
             case ACTION:
             case LEVEL_DATA:
             case LEVEL_READY:
@@ -588,6 +592,7 @@ public final class MessageRouter {
                     || message.sequence < manager.getLastSequence()) return;
             if (WorldSnapshot.markCurrentWorldApplied(message.sequence)) {
                 manager.markSnapshotApplied(message.sequence);
+                manager.markWorldSynchronized();
             } else {
                 manager.requestResync(message.sequence);
             }
@@ -970,6 +975,7 @@ public final class MessageRouter {
                     if (WorldSnapshot.restoreWorld(snapshot)) {
                         applySnapshotPlayerReadiness(root.get("players"));
                         manager.markSnapshotApplied(snapshot.sequence);
+                      manager.markWorldSynchronized();
                         manager.synchronizeNativeWorldTurnCounter(snapshot.nativeWorldTurnCounter);
                         if (manager.isFloorTransitionPending()) {
                             manager.markFloorTransitionComplete();

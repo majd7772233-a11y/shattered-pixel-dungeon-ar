@@ -46,6 +46,10 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **CI:** Backend 10 files / 740 reported executions, Android JVM tests + Debug APK, Durable Object SQLite 4/4. Mirrored TS/JS executions are not unique source scenario counts.
 - **Boundaries at the 2026-11-15 Phase 11-B checkpoint:** protocol remained 25 messages / 23 actions; Phase 12 had not yet been authorized at that timestamp. Phase 12-A/B completion, exact-head CI and later review are recorded in the current 2026-11-16 checkpoint below.
 
+## Current checkpoint - 2026-11-17 - Phase 13 active/partial
+
+Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 now has the server room/session lifecycle and Android session-state/retry controls implemented in the current worktree. Local evidence: Backend 372 unique source scenarios, Durable Object SQLite 15/15, Android JVM 137/137, TypeScript noEmit, backend tests, Durable Object SQLite 15/15 and full `test assembleDebug` PASS. The in-game lobby UI is not yet wired: controls for Ready/Unready, owner Start/Cancel, and Leave remain the next integration task. Read `PHASE13_ROOM_SESSION_LIFECYCLE.md` before continuing. No exact-head CI, production deployment or physical two-device test is claimed for this worktree.
+
 ## Source-of-truth hierarchy
 
 1. The exact source tree at the active branch HEAD is implementation truth.

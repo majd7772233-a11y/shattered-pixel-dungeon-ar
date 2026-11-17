@@ -1,3 +1,18 @@
+# Current continuation checkpoint - 2026-11-17 (Phase 13 active/partial)
+
+Branch: `multiplayer-framework-core-14118577486727081892`
+Start HEAD: `2e27cee` (Phase 13 work is uncommitted).
+WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
+Phase 12 is CLOSED. Phase 13 is ACTIVE/PARTIAL, not complete.
+
+Verified: Backend 372 unique scenarios PASS; Durable Object SQLite 15/15 PASS; Android core JVM 137/137 PASS (10 XML reports, zero failures/errors/skips); TypeScript noEmit PASS; full `test assembleDebug --no-daemon --console=plain --rerun-tasks` BUILD SUCCESSFUL. APK 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. The lifecycle/reconnect suite has 8/8 passing tests, including READY payload serialization.
+
+Next: add the in-game multiplayer lobby window after first native-level publication. Wire Ready/Unready, owner Start/Cancel and Leave; show room/member/ready state and errors. Add simultaneous join/start and cancellation tests. Full Android test assembleDebug now passes; exact-head CI remains pending.
+
+Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for detailed implementation and evidence. Do not begin Phases 14-16.
+
+---
+
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`

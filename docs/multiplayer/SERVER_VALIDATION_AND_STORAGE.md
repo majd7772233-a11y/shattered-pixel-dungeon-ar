@@ -551,4 +551,27 @@ The real Workers Durable Object SQLite integration file contains 14 passing test
 
 Local verification on the current uncommitted worktree: TypeScript noEmit PASS; backend Vitest 5 files / 372 tests PASS; Durable Object SQLite 1 file / 14 tests PASS; Android core JVM 132 tests PASS (0 failures/errors/skips) and `assembleDebug` PASS. Versioned migrations 1–2, transactional LEVEL_DATA replacement and token-fenced publisher loss/handoff are covered by real-runtime/handler regressions. Exact-head GitHub Actions CI remains pending.
 
-Phase 12 now includes versioned migrations 1–2, complete cross-table LEVEL_DATA transactionality and token-fenced native publisher loss/election/rebase. The accepted implementation adds no protocol/schema vocabulary: 25 message types and 23 action types remain unchanged. Exact-head CI, production Worker deployment and physical two-device testing remain separate release gates.
+Phase 12 now includes versioned migrations 1–2, complete cross-table LEVEL_DATA transactionality and token-fenced native publisher loss/election/rebase. The accepted implementation adds no protocol/schema vocabulary: 25 message types and 23 action types remain unchanged. Exact-head CI, production Worker deployment and physical two-device testing remain separate release gates.## Phase 13 - Room lifecycle (2026-11-17; active/partial)
+
+The lifecycle-v1 implementation is isolated in `server/src/match-room/lifecycle.ts`, composed above the existing MatchRoom message/action layers. It is opt-in through the Internet upgrade query `lifecycle=1`; a populated legacy room cannot be retrofitted in place. The existing 25-message / 23-action protocol vocabulary is unchanged; the admission classifier now explicitly routes 12 Worker-inbound message types.
+
+### Durable room metadata
+
+- `roomLifecycleVersion`: lifecycle contract version (`1`).
+- `roomCreated`, `roomClosed`, `roomLifecycleState`: durable room creation/closure and LOBBY/PLAYING/CLOSED state.
+- `roomOwnerId`, `roomCapacity`: lobby owner and mode-specific capacity.
+- `roomMember:<playerId>`: durable member record and join order.
+- `roomReady:<playerId>`: ready flag tied to the exact world seed and sequence the client acknowledged.
+- `roomStartedAt`: start timestamp for an accepted MATCH_START.
+
+Membership is independent of an authenticated WebSocket session. A session is not a room member until CREATE_ROOM or JOIN_ROOM commits. ACTION requires authenticated membership; while in LOBBY it is rejected with MATCH_NOT_STARTED. A room's capacity and minimum player count are validated server-side.
+
+### Start and handoff invariants
+
+MATCH_START is accepted only for the room owner who is also the active level publisher; all members must be connected and ready; each READY proof must match the current seed and sequence; the current-depth native level snapshot must be complete; publisher readiness must match its current term; and no floor transition may be pending. Start/cancel/leave mutations use `transactionSync` so a failed operation does not leave partially updated membership, ready state or owner metadata.
+
+An owner leaving in LOBBY transfers owner and publisher authority to the earliest connected remaining member (falling back to the earliest durable member only when all remaining members are offline), and clears all remaining readiness proofs. The final member leaving closes the room permanently. New and resumed members receive a typed roster and the authoritative snapshot when one exists. The first native snapshot may be published while still in LOBBY so every participant can synchronize before setting READY.
+
+### Compatibility and verification boundary
+
+Rooms without `roomLifecycleVersion=1` retain the legacy path. This is not a Worker deployment claim. Current worktree evidence: Backend 372 unique source scenarios PASS, Durable Object SQLite 15/15 PASS, TypeScript noEmit PASS. The in-game lobby UI remains unconnected to the client Ready/Start/Cancel/Leave APIs; Phase 13 stays OPEN. See `PHASE13_ROOM_SESSION_LIFECYCLE.md` for the corresponding client state machine, tests and remaining UI integration.

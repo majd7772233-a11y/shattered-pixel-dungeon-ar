@@ -1,8 +1,8 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { validateWorkerInboundEnvelope } from "../protocol/message-admission";
-import { MatchRoomActions } from "./actions";
+import { MatchRoomLifecycle } from "./lifecycle";
 
-export class MatchRoomMessages extends MatchRoomActions {
+export class MatchRoomMessages extends MatchRoomLifecycle {
   private sendProtocolError(ws: WebSocket, requestId: string | undefined, error: string): void {
     try {
       ws.send(JSON.stringify({
@@ -64,6 +64,13 @@ export class MatchRoomMessages extends MatchRoomActions {
       // Never trust senderId from the frame; the accepted WebSocket attachment is authoritative.
       msg.senderId = session.playerId;
 
+      const lifecycleEnabled = this.isRoomLifecycleEnabled();
+      if (lifecycleEnabled && !["PING", "RECONNECT", "CREATE_ROOM", "JOIN_ROOM", "MATCH_START", "LEAVE"].includes(msg.messageType)
+          && !this.isRoomMember(session.playerId)) {
+        this.sendProtocolError(ws, requestId, "ROOM_MEMBERSHIP_REQUIRED");
+        return;
+      }
+
       if (msg.messageType === "RECONNECT") {
         await this.handleReconnect(ws, msg, session);
         return;
@@ -80,9 +87,17 @@ export class MatchRoomMessages extends MatchRoomActions {
       }
 
       if (msg.messageType === "ACTION") {
+        if (lifecycleEnabled && this.gameStatus !== "PLAYING") {
+          this.sendProtocolError(ws, requestId, "MATCH_NOT_STARTED");
+          return;
+        }
         await this.handleAction(ws, msg, session);
         return;
       } else if (msg.messageType === "READY") {
+        if (lifecycleEnabled) {
+          await this.handleRoomLifecycleMessage(ws, msg, session);
+          return;
+        }
         this.sql.exec(`UPDATE players SET ready = 1 WHERE player_id = ?`, session.playerId);
         this.broadcast({
           protocolVersion: "1.0.0",
@@ -123,7 +138,15 @@ export class MatchRoomMessages extends MatchRoomActions {
           payloadJson: JSON.stringify({ pong: true })
         }));
       } else if (msg.messageType === "CHAT") {
-        this.broadcast(msg);
+        if (lifecycleEnabled) this.broadcastToRoomMembers(msg);
+        else this.broadcast(msg);
+      } else if (msg.messageType === "CREATE_ROOM" || msg.messageType === "JOIN_ROOM"
+          || msg.messageType === "MATCH_START" || msg.messageType === "LEAVE") {
+        if (!lifecycleEnabled) {
+          this.sendProtocolError(ws, requestId, "ROOM_LIFECYCLE_NOT_ENABLED");
+          return;
+        }
+        await this.handleRoomLifecycleMessage(ws, msg, session);
       }
     } catch (error) {
       // Preserve the existing handler-error contract used by transaction rollback regressions.

@@ -923,7 +923,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length,
             nativeWorldTurnCounter: ackTurnCounter,
             entities: mobs.map((mob: any) => ({ mobId: Number(mob.mobId), entityId: String(mob.entityId) })) }) }));
-        if (isNativeWorldTurn || isNativeWorldMutation) {
+        const initialRoomSnapshotMarker = this.isRoomLifecycleEnabled() ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomInitialSnapshotSent").toArray()[0] : null;
+        const initialRoomSnapshot = this.isRoomLifecycleEnabled() && this.gameStatus === "LOBBY" && !isNativeWorldTurn && !isNativeWorldMutation && !isPublisherRebase && !initialRoomSnapshotMarker && hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot());
+        if (isNativeWorldTurn || isNativeWorldMutation || initialRoomSnapshot) {
           // Broadcast the complete server-committed world to peers, not a guessed delta.
           const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
           const connectedPlayerIds = this.connectedPlayerIds();
@@ -937,12 +939,18 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
             players, mobs: liveMobs, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
           };
+          if (initialRoomSnapshot) this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO NOTHING", "roomInitialSnapshotSent", JSON.stringify({ depth: this.currentDepth, seed: this.matchSeed, sequence: this.currentSequence }));
           const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
             senderId: session.playerId, sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
           for (const peer of this.state.getWebSockets()) {
-            if (peer === ws) continue;
+            if (peer === ws && !initialRoomSnapshot) continue;
             const peerSession = peer.deserializeAttachment() as SessionData | null;
-            if (!peerSession || peerSession.playerId === session.playerId) continue;
+            if (!peerSession || (!initialRoomSnapshot && peerSession.playerId === session.playerId)) continue;
+            if (initialRoomSnapshot) {
+              if (!this.isRoomMember(peerSession.playerId)) continue;
+              const activeToken = this.sql.exec("SELECT session_token FROM players WHERE player_id = ?", peerSession.playerId).toArray()[0];
+              if (!activeToken || String(activeToken.session_token || "") !== String(peerSession.sessionToken || "")) continue;
+            }
             peer.send(message);
           }
         }

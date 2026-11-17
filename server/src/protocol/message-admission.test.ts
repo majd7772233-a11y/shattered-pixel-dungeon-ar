@@ -7,7 +7,7 @@ import {
 } from "./message-admission";
 
 describe("Worker outer-message admission", () => {
-  it("classifies each of the eight implemented inbound message types", () => {
+  it("classifies each of the twelve implemented inbound message types", () => {
     for (const type of WORKER_INBOUND_MESSAGE_TYPES) {
       expect(classifyWorkerMessageType(type)).toBe("INBOUND");
     }

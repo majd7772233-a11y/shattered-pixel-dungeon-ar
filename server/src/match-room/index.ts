@@ -46,6 +46,23 @@ export class MatchRoom extends MatchRoomMessages {
       }
     }
     await super.webSocketClose(ws, code, reason, wasClean);
+    if (session && this.isRoomLifecycleEnabled() && this.isRoomMember(session.playerId)) {
+      this.broadcastToRoomMembers({
+        protocolVersion: "1.0.0",
+        messageType: "READY",
+        senderId: session.playerId,
+        sequence: this.currentSequence,
+        payloadJson: JSON.stringify({ playerId: session.playerId, ready: false })
+      }, ws);
+      this.broadcastToRoomMembers({
+        protocolVersion: "1.0.0",
+        messageType: "PLAYER_LEFT",
+        senderId: session.playerId,
+        sequence: this.currentSequence,
+        payloadJson: JSON.stringify({ playerId: session.playerId, code, reason })
+      }, ws);
+      this.broadcastRoomState("PLAYER_DISCONNECTED");
+    }
     if (!session) return;
 
     const publisherRow = this.sql.exec(
@@ -86,6 +103,7 @@ export class MatchRoom extends MatchRoomMessages {
     let nextTerm = 0;
     let preservedSnapshotAvailable = false;
     let handoffCommitted = false;
+    let roomOwnerTransferred = false;
     const failedCombatRequests: Array<{ attackerId: string; requestId: string }> = [];
     try {
       storage.transactionSync(() => {
@@ -109,7 +127,7 @@ export class MatchRoom extends MatchRoomMessages {
         // is missing or invalid. Revoke the old term below so its stale socket is fenced.
         const candidates = preservedSnapshotAvailable ? this.sql.exec(
           "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC"
-        ).toArray() : [];
+        ).toArray().filter((candidate: any) => !this.isRoomLifecycleEnabled() || this.isRoomMember(String(candidate.player_id))) : [];
         for (const candidate of candidates) {
           const candidateId = String(candidate.player_id || "");
           const candidateToken = String(candidate.session_token || "");
@@ -155,6 +173,14 @@ export class MatchRoom extends MatchRoomMessages {
           );
         } else {
           this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisher");
+        }
+
+        if (this.isRoomLifecycleEnabled() && this.gameStatus === "LOBBY" && nextPublisherId) {
+          const roomOwner = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomOwnerId").toArray()[0];
+          if (String(roomOwner?.value || "") === session.playerId) {
+            this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomOwnerId", nextPublisherId);
+            roomOwnerTransferred = true;
+          }
         }
 
         // Discard combat reservations that depended on the disconnected authority. The
@@ -206,6 +232,7 @@ export class MatchRoom extends MatchRoomMessages {
     if (preservedSnapshotAvailable) this.broadcastCurrentSnapshot(null);
     this.broadcast(this.levelPublisherStateMessage(preservedSnapshotAvailable
       ? "PUBLISHER_DISCONNECTED" : "PUBLISHER_DISCONNECTED_SNAPSHOT_UNAVAILABLE"));
+    if (roomOwnerTransferred) this.broadcastRoomState("ROOM_OWNER_HANDOFF");
   }
 
   async alarm(): Promise<void> {
@@ -258,6 +285,18 @@ export class MatchRoom extends MatchRoomMessages {
       return new Response("Invalid player identity", { status: 400 });
     }
 
+    const lifecycleRequested = url.searchParams.get("lifecycle") === "1";
+    if (url.searchParams.has("lifecycle") && !lifecycleRequested) {
+      return new Response("Invalid room lifecycle version", { status: 400 });
+    }
+    const lifecycleEnabled = lifecycleRequested || this.isRoomLifecycleEnabled();
+    if (lifecycleRequested && !this.isRoomLifecycleEnabled()) {
+      const existingPlayers = this.sql.exec("SELECT player_id FROM players LIMIT 1").toArray();
+      if (existingPlayers.length > 0) {
+        return new Response("Legacy room cannot be upgraded after players have joined", { status: 409 });
+      }
+    }
+
     const reconnecting = presentedSessionToken !== null;
 
     let playerId = "";
@@ -298,6 +337,9 @@ export class MatchRoom extends MatchRoomMessages {
       }
 
       storage.transactionSync(() => {
+        if (lifecycleRequested && !this.isRoomLifecycleEnabled()) {
+          this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomLifecycleVersion", "1");
+        }
         if (reconnecting) {
           const current = this.sql.exec(
             "SELECT player_id, pos FROM players WHERE player_id = ? AND session_token = ?",
@@ -336,7 +378,7 @@ export class MatchRoom extends MatchRoomMessages {
         const publisherRow = this.sql.exec(
           "SELECT value FROM room_meta WHERE key = 'levelPublisher'"
         ).toArray()[0];
-        if (!publisherRow) {
+        if (!publisherRow && !lifecycleEnabled) {
           const existingPlayer = this.sql.exec(
             "SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId
           ).toArray()[0];
@@ -421,6 +463,9 @@ export class MatchRoom extends MatchRoomMessages {
       sequence: this.currentSequence,
       payloadJson: JSON.stringify({
         playerId,
+        roomLifecycleVersion: lifecycleEnabled ? 1 : 0,
+        roomMembership: this.isRoomMember(playerId),
+        roomOwnerId: this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomOwnerId").toArray()[0]?.value || null,
         sessionToken,
         sequence: this.currentSequence,
         seed: this.matchSeed,
@@ -435,12 +480,16 @@ export class MatchRoom extends MatchRoomMessages {
     };
     server.send(JSON.stringify(welcome));
 
-    this.broadcast({
-      protocolVersion: "1.0.0",
-      messageType: "PLAYER_JOINED",
-      senderId: playerId,
-      payloadJson: JSON.stringify({ playerId, pos: spawnPos, resumed: reconnecting })
-    }, server);
+    if (!lifecycleEnabled) {
+      this.broadcast({
+        protocolVersion: "1.0.0",
+        messageType: "PLAYER_JOINED",
+        senderId: playerId,
+        payloadJson: JSON.stringify({ playerId, pos: spawnPos, resumed: reconnecting })
+      }, server);
+    } else if (this.isRoomMember(playerId)) {
+      this.sendRoomStateToSocket(server, reconnecting ? "SESSION_RESUMED" : "SESSION_BOUND");
+    }
 
     const publisherNeedsRebase = !promotedOnConnect && this.gameStatus === "PLAYING"
       && currentPublisherId !== null && !this.isLevelPublisherReady();

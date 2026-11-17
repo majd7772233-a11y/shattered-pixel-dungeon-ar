@@ -16,6 +16,7 @@ import com.watabou.noosa.Camera;
 import com.watabou.noosa.Game;
 
 import java.util.UUID;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 public class MultiplayerSetupScene extends PixelScene {
@@ -23,13 +24,15 @@ public class MultiplayerSetupScene extends PixelScene {
     private static final Pattern IPV4_PATTERN = Pattern.compile("^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\.([01]?\\d\\d?|2[0-4]\\d|25[0-5])$");
 
     public static String selectedTransportType = "INTERNET";
-    public static String roomName = "ROOM123";
+    public static String roomName = generateRoomCode();
     public static String targetIp = "192.168.1.100";
     public static boolean isHost = true;
     public static int maxPlayers = 2;
 
     private BitmapText hostInfoText;
     private StyledButton btnEditIp;
+    private StyledButton btnRoomMode;
+    private StyledButton btnRoomCode;
 
     public static boolean isValidIPv4(String ip) {
         if (ip == null) return false;
@@ -49,6 +52,40 @@ public class MultiplayerSetupScene extends PixelScene {
         title.y = h * 0.12f;
         add(title);
 
+        if ("INTERNET".equalsIgnoreCase(selectedTransportType)) {
+            btnRoomMode = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get(isHost ? "host_room" : "join_room")) {
+                @Override
+                protected void onClick() {
+                    isHost = !isHost;
+                    if (isHost) roomName = generateRoomCode();
+                    btnRoomMode.text(Messages.get(isHost ? "host_room" : "join_room"));
+                    refreshRoomCodeLabel();
+                }
+            };
+            btnRoomMode.setRect((w - 160) / 2f, h * 0.38f, 160, 22);
+            add(btnRoomMode);
+
+            btnRoomCode = new StyledButton(Chrome.Type.GREY_BUTTON_TR, Messages.get("room_name") + " " + roomName) {
+                @Override
+                protected void onClick() {
+                    Game.runOnRenderThread(() -> GameScene.show(new WndTextInput(
+                            Messages.get("room_name"), Messages.get("room_name"), roomName, 32, false,
+                            Messages.get("start_game"), Messages.get("cancel")) {
+                        @Override
+                        public void onSelect(boolean positive, String text) {
+                            if (!positive || text == null) return;
+                            String candidate = text.trim();
+                            if (candidate.matches("[A-Za-z0-9_-]{3,32}")) {
+                                roomName = candidate;
+                                refreshRoomCodeLabel();
+                            }
+                        }
+                    }));
+                }
+            };
+            btnRoomCode.setRect((w - 160) / 2f, h * 0.50f, 160, 22);
+            add(btnRoomCode);
+        }
         if ("LAN".equalsIgnoreCase(selectedTransportType)) {
             hostInfoText = new BitmapText(Messages.get("lan_searching"), pixelFont);
             hostInfoText.measure();
@@ -110,6 +147,13 @@ public class MultiplayerSetupScene extends PixelScene {
         add(btnStart);
     }
 
+    private static String generateRoomCode() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
+    }
+
+    private void refreshRoomCodeLabel() {
+        if (btnRoomCode != null) btnRoomCode.text(Messages.get("room_name") + " " + roomName);
+    }
     private void startMultiplayerSession() {
         NetworkTransport transport;
         String endpoint;
@@ -142,7 +186,7 @@ public class MultiplayerSetupScene extends PixelScene {
         }
 
         String playerId = UUID.randomUUID().toString();
-        MultiplayerManager.getInstance().startSession(endpoint, playerId, transport);
+        MultiplayerManager.getInstance().startSession(endpoint, playerId, transport, isHost);
 
         ShatteredPixelDungeon.switchNoFade(HeroSelectScene.class);
     }

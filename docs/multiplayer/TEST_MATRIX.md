@@ -504,3 +504,26 @@ The compaction count is not a strict global 200-row cap: latest replay rows plus
 ## Phase 12 exact-head GitHub Actions confirmation - 2026-11-16
 
 Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336): Backend typecheck/tests PASS; Android Java tests/debug APK compile PASS; actual Durable Object SQLite rollback/eviction PASS. All three jobs concluded `success`. Local final tree also passed TypeScript noEmit, backend 372 unique source scenarios / 744 mirrored executions, Durable Object SQLite 14/14, Android core JVM 132/132 (zero failures/errors/skips) and Debug APK build. The requested final source review is complete; Phase 12 is CLOSED for implementation and automated acceptance. No production Worker or physical two-device test is claimed.
+
+## Phase 13 - Room and session lifecycle (2026-11-17, partial)
+
+### Real Durable Object SQLite
+
+`server/src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 15 tests PASS. Coverage includes minimum/maximum player count, create/join and duplicate join, member-only ACTION and PLAYING-before-ACTION rejection, READY with matching seed/sequence, owner-only start, complete native snapshot/publisher requirements, roster delivery to new and resumed members, owner/publisher handoff (including preference for a connected successor when the oldest member is offline), last-member permanent closure, and refusal to rejoin a closed room.
+
+### Android session-state JVM
+
+`MultiplayerReconnectLifecycleTest.java`: 8 tests PASS as part of 137 core JVM tests across 10 XML reports. Covers host CREATE_ROOM vs guest JOIN_ROOM; READY serialization with escaped native `heroStateJson` and `className`; initial handshake timeout; generation-fenced late callbacks after endSession; bounded reconnect timeout/retry exhaustion; room-operation timeout; rejected/stale credentials; and authenticated reconnect without sequence advancement on SESSION alone.
+
+### Current aggregate local evidence
+
+- Backend: 372 unique TypeScript source scenarios PASS; Vitest reports 10 files / 744 executions because generated JavaScript mirrors the TypeScript suite.
+- TypeScript `npx tsc --noEmit --pretty false`: PASS.
+- Workers runtime Durable Object SQLite: 15/15 PASS.
+- Android core JVM: 137/137 PASS; 0 failures, errors or skipped.
+- `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL.
+- Full `test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 57 actionable tasks, 10 JUnit reports / 137 tests / zero failures, errors or skipped; APK 35,197,092 bytes, SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`.
+
+### Remaining acceptance gaps
+
+The setup screen currently transitions directly to HeroSelectScene. `GameScene.create()` publishes the first native level and sends LEVEL_READY, but no in-game lobby UI currently consumes ROOM_STATE and wires Ready/Unready, owner Start/Cancel or Leave. Tests for simultaneous join/start serialization and cancellation/readiness reset are outstanding. Re-run the full Android build after integrating the lobby UI. No exact-head Actions run, production Worker deployment or physical two-device test is claimed for this worktree. Phase 13 remains OPEN.

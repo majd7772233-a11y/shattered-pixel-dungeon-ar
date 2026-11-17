@@ -130,6 +130,8 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
       ? Number(acceptedTurnRow.value) : 0);
     return {
       ...originalWorld,
+      // The world schema keeps this legacy field empty; player Hero state is stored per member.
+      heroStateJson: "",
       nativeWorldTurnCounter: acceptedTurn,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),

@@ -1,339 +1,787 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
 import com.shatteredpixel.shatteredpixeldungeon.actors.Actor;
 import com.shatteredpixel.shatteredpixeldungeon.actors.hero.Hero;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 public class MultiplayerManager implements TransportCallback {
-    private static MultiplayerManager instance;
+   private static final ScheduledExecutorService SESSION_SCHEDULER = Executors.newSingleThreadScheduledExecutor(runnable -> {
+      Thread thread = new Thread(runnable, "spd-multiplayer-session-timeouts");
+      thread.setDaemon(true);
+      return thread;
+   });
+   private static final long DEFAULT_SESSION_HANDSHAKE_TIMEOUT_MS = 15000L;
+   private static final long DEFAULT_ROOM_OPERATION_TIMEOUT_MS = 12000L;
+   private static final long DEFAULT_RECONNECT_BASE_DELAY_MS = 250L;
+   private static final int DEFAULT_MAX_RECONNECT_ATTEMPTS = 3;
+   private static MultiplayerManager instance;
+   private boolean isMultiplayerActive = false;
+   private volatile boolean levelPublisher = false;
+   private volatile String levelPublisherId;
+   private volatile long levelPublisherTerm = -1L;
+   private volatile long publisherRebaseSentTerm = -1L;
+   private final Map<String, Long> publisherRebaseRequests = new ConcurrentHashMap();
+   private volatile boolean floorTransitionPending = false;
+   private volatile boolean resolvingAuthorityCombat = false;
+   private volatile String authorityCombatRequestId;
+   private String roomCode;
+   private String localPlayerId;
+   private String sessionToken;
+   private volatile boolean reconnectHandshakePending = false;
+   private volatile long lastSequence = 0L;
+   private volatile long lastResyncRequestedSequence = -1L;
+   private String lastPublishedLevelKey;
+   private long nativeWorldTurnCounter;
+   private Long authoritativeSeed;
+   private String pendingUnblessedAnkhBeforeHeroStateJson;
+   private String pendingUnblessedAnkhBeforeBuffsJson;
+   private int pendingUnblessedAnkhDepth = -1;
+   private int pendingUnblessedAnkhBranch = -1;
+   private boolean pendingUnblessedAnkhWasLevelLocked;
+   private volatile NetworkTransport activeTransport;
+   private Supplier<InternetTransport> internetTransportFactory = InternetTransport::new;
+   private GameMode currentGameMode = new CoopMode();
+   private volatile SessionState sessionState;
+   private volatile String sessionError;
+   private volatile int roomLifecycleVersion;
+   private volatile boolean createRoomOnConnect;
+   private volatile boolean roomMembership;
+   private volatile String roomOwnerId;
+   private volatile String roomStatus;
+   private volatile String roomLifecycleError;
+   private volatile int roomMemberCount;
+   private volatile int roomMaxPlayers;
+   private volatile boolean roomAllReady;
+   private volatile boolean roomSnapshotReady;
+   private volatile boolean localRoomReady;
+   private volatile long roomSequence;
+   private volatile long roomSeed;
+   private final Map<String, MessageType> pendingRoomOperations;
+   private final Map<String, ScheduledFuture<?>> pendingRoomOperationTimeouts = new ConcurrentHashMap<>();
+   private volatile long sessionGeneration;
+   private volatile ScheduledFuture<?> sessionHandshakeTimeoutTask;
+   private volatile ScheduledFuture<?> reconnectRetryTask;
+   private volatile int reconnectAttemptCount;
+   private volatile long sessionHandshakeTimeoutMs = DEFAULT_SESSION_HANDSHAKE_TIMEOUT_MS;
+   private volatile long roomOperationTimeoutMs = DEFAULT_ROOM_OPERATION_TIMEOUT_MS;
+   private volatile long reconnectBaseDelayMs = DEFAULT_RECONNECT_BASE_DELAY_MS;
+   private volatile int maxReconnectAttempts = DEFAULT_MAX_RECONNECT_ATTEMPTS;
+   private final Map<String, RemotePlayer> remotePlayers;
+   private final Map<String, NetworkMessage> pendingActions;
+   private final Map<Integer, String> actorToServerEntityId;
+   private final Map<String, Integer> serverEntityIdToActor;
 
-    private boolean isMultiplayerActive = false;
-    private volatile boolean levelPublisher = false;
-    private volatile String levelPublisherId;
-    private volatile long levelPublisherTerm = -1L;
-    private volatile long publisherRebaseSentTerm = -1L;
-    private final Map<String, Long> publisherRebaseRequests = new ConcurrentHashMap<>();
-    private volatile boolean floorTransitionPending = false;
-    private volatile boolean resolvingAuthorityCombat = false;
-    private volatile String authorityCombatRequestId;
-    private String roomCode;
-    private String localPlayerId;
-    private String sessionToken;
-    private volatile boolean reconnectHandshakePending = false;
-    private volatile long lastSequence = 0;
-    private volatile long lastResyncRequestedSequence = -1L;
-    private String lastPublishedLevelKey;
-    private long nativeWorldTurnCounter;
-    private Long authoritativeSeed;
-    private String pendingUnblessedAnkhBeforeHeroStateJson;
-    private String pendingUnblessedAnkhBeforeBuffsJson;
-    private int pendingUnblessedAnkhDepth = -1;
-    private int pendingUnblessedAnkhBranch = -1;
-    private boolean pendingUnblessedAnkhWasLevelLocked;
-    private volatile NetworkTransport activeTransport;
-    private java.util.function.Supplier<InternetTransport> internetTransportFactory = InternetTransport::new;
-    private GameMode currentGameMode = new CoopMode();
+   private MultiplayerManager() {
+      this.sessionState = MultiplayerManager.SessionState.DISCONNECTED;
+      this.createRoomOnConnect = true;
+      this.roomStatus = "LOBBY";
+      this.pendingRoomOperations = new ConcurrentHashMap();
+      this.remotePlayers = new ConcurrentHashMap();
+      this.pendingActions = new ConcurrentHashMap();
+      this.actorToServerEntityId = new ConcurrentHashMap();
+      this.serverEntityIdToActor = new ConcurrentHashMap();
+   }
 
-    private final Map<String, RemotePlayer> remotePlayers = new ConcurrentHashMap<>();
-    private final Map<String, NetworkMessage> pendingActions = new ConcurrentHashMap<>();
-    // Server entity identity is distinct from SPD's device-local Actor.id().
-    private final Map<Integer, String> actorToServerEntityId = new ConcurrentHashMap<>();
-    private final Map<String, Integer> serverEntityIdToActor = new ConcurrentHashMap<>();
+   public static synchronized MultiplayerManager getInstance() {
+      if (instance == null) {
+         instance = new MultiplayerManager();
+      }
 
-    private MultiplayerManager() {}
+      return instance;
+   }
 
-    public static synchronized MultiplayerManager getInstance() {
-        if (instance == null) {
-            instance = new MultiplayerManager();
-        }
-        return instance;
-    }
+   public void setGameMode(GameMode mode) {
+      if (mode != null) {
+         this.currentGameMode = mode;
+      }
 
-    public void setGameMode(GameMode mode) {
-        if (mode != null) {
-            this.currentGameMode = mode;
-        }
-    }
+   }
 
-    public GameMode getGameMode() {
-        return currentGameMode;
-    }
+   public GameMode getGameMode() {
+      return this.currentGameMode;
+   }
 
-    void setInternetTransportFactoryForTests(java.util.function.Supplier<InternetTransport> factory) {
-        internetTransportFactory = factory != null ? factory : InternetTransport::new;
-    }
+   void setInternetTransportFactoryForTests(Supplier<InternetTransport> factory) {
+      this.internetTransportFactory = factory != null ? factory : InternetTransport::new;
+   }
 
-    private TransportCallback callbackFor(final NetworkTransport transport) {
-        return new TransportCallback() {
-            private boolean isCurrentTransport() {
-                return activeTransport == transport;
-            }
+   private synchronized void cancelSessionHandshakeTimeout() {
+      ScheduledFuture<?> pending = sessionHandshakeTimeoutTask;
+      sessionHandshakeTimeoutTask = null;
+      if (pending != null) pending.cancel(false);
+   }
 
-            @Override public void onConnected() {
-                if (isCurrentTransport()) MultiplayerManager.this.onConnected();
-            }
+   private synchronized void cancelReconnectRetry() {
+      ScheduledFuture<?> pending = reconnectRetryTask;
+      reconnectRetryTask = null;
+      if (pending != null) pending.cancel(false);
+   }
 
-            @Override public void onDisconnected(String reason) {
-                if (isCurrentTransport()) MultiplayerManager.this.onDisconnected(reason);
-            }
+   private void cancelRoomOperationTimeout(String requestId) {
+      if (requestId == null) return;
+      ScheduledFuture<?> pending = pendingRoomOperationTimeouts.remove(requestId);
+      if (pending != null) pending.cancel(false);
+   }
 
-            @Override public void onMessageReceived(NetworkMessage message) {
-                if (isCurrentTransport()) MultiplayerManager.this.onMessageReceived(message);
-            }
+   private void clearPendingRoomOperations() {
+      pendingRoomOperations.clear();
+      for (ScheduledFuture<?> pending : pendingRoomOperationTimeouts.values()) {
+         if (pending != null) pending.cancel(false);
+      }
+      pendingRoomOperationTimeouts.clear();
+   }
 
-            @Override public void onError(Throwable error) {
-                if (isCurrentTransport()) MultiplayerManager.this.onError(error);
-            }
-        };
-    }
+   private synchronized void scheduleSessionHandshakeTimeout(long generation, NetworkTransport transport, boolean reconnecting) {
+      cancelSessionHandshakeTimeout();
+      sessionHandshakeTimeoutTask = SESSION_SCHEDULER.schedule(
+              () -> onSessionHandshakeTimeout(generation, transport, reconnecting),
+              sessionHandshakeTimeoutMs, TimeUnit.MILLISECONDS);
+   }
 
-    public void startSession(String roomCode, String initialPlayerId, NetworkTransport transport) throws IllegalArgumentException {
-        if ("BLUETOOTH".equalsIgnoreCase(transport.getTransportType()) && remotePlayers.size() >= BluetoothTransport.MAX_BLUETOOTH_PLAYERS) {
-            throw new IllegalArgumentException("Bluetooth supports a maximum of 2 players.");
-        }
+   private synchronized void onSessionHandshakeTimeout(long generation, NetworkTransport transport, boolean reconnecting) {
+      if (generation != sessionGeneration || activeTransport != transport) return;
+      sessionHandshakeTimeoutTask = null;
+      if (reconnecting) {
+         if (!reconnectHandshakePending || sessionToken == null) return;
+         reconnectHandshakePending = false;
+         scheduleReconnectRetry("RECONNECT_HANDSHAKE_TIMEOUT");
+         return;
+      }
+      if (sessionToken != null || (sessionState != SessionState.CONNECTING
+              && sessionState != SessionState.TRANSPORT_CONNECTED)) return;
+      failInitialSession("SESSION_HANDSHAKE_TIMEOUT");
+   }
 
-        this.roomCode = roomCode;
-        this.localPlayerId = initialPlayerId;
-        this.sessionToken = null;
-        this.reconnectHandshakePending = false;
-        this.levelPublisher = false;
-        this.levelPublisherId = null;
-        this.levelPublisherTerm = -1L;
-        this.publisherRebaseSentTerm = -1L;
-        this.publisherRebaseRequests.clear();
-        this.floorTransitionPending = false;
-        this.endAuthorityCombat();
-        this.lastSequence = 0L;
-        this.lastResyncRequestedSequence = -1L;
-        this.lastPublishedLevelKey = null;
-        this.nativeWorldTurnCounter = 0L;
-        this.authoritativeSeed = null;
-        clearPendingUnblessedAnkhRevival();
-        WorldSnapshot.clearAppliedSnapshot();
-        this.activeTransport = transport;
-        this.isMultiplayerActive = true;
-        this.remotePlayers.clear();
-        this.pendingActions.clear();
-        this.actorToServerEntityId.clear();
-        this.serverEntityIdToActor.clear();
+   private synchronized void scheduleReconnectRetry(String reason) {
+      if (!isMultiplayerActive || sessionToken == null || sessionGeneration <= 0L) return;
+      if (reconnectRetryTask != null && !reconnectRetryTask.isDone()) return;
+      if (reconnectAttemptCount >= maxReconnectAttempts) {
+         cancelSessionHandshakeTimeout();
+         reconnectHandshakePending = false;
+         isMultiplayerActive = false;
+         sessionState = SessionState.FAILED;
+         sessionError = "RECONNECT_ATTEMPTS_EXHAUSTED";
+         NetworkTransport failed = activeTransport;
+         activeTransport = null;
+         if (failed != null) {
+            try { failed.disconnect(); } catch (RuntimeException ignored) {}
+         }
+         return;
+      }
+      final long generation = sessionGeneration;
+      final int attempt = ++reconnectAttemptCount;
+      final long multiplier = 1L << Math.min(attempt - 1, 4);
+      final long delay = Math.min(reconnectBaseDelayMs * multiplier, 4000L);
+      reconnectHandshakePending = false;
+      sessionState = SessionState.RECONNECTING;
+      reconnectRetryTask = SESSION_SCHEDULER.schedule(() -> {
+         synchronized (MultiplayerManager.this) {
+            if (generation != sessionGeneration || !isMultiplayerActive
+                    || sessionState != SessionState.RECONNECTING) return;
+            reconnectRetryTask = null;
+            if (!reconnectInternetSession()) scheduleReconnectRetry("RECONNECT_START_FAILED");
+         }
+      }, delay, TimeUnit.MILLISECONDS);
+   }
 
-        try {
-            this.activeTransport.connect(roomCode, callbackFor(this.activeTransport));
-        } catch (Exception ignored) {}
-    }
+   void setSessionTimingForTests(long handshakeTimeoutMs, long operationTimeoutMs, long reconnectDelayMs, int retries) {
+      sessionHandshakeTimeoutMs = Math.max(1L, handshakeTimeoutMs);
+      roomOperationTimeoutMs = Math.max(1L, operationTimeoutMs);
+      reconnectBaseDelayMs = Math.max(1L, reconnectDelayMs);
+      maxReconnectAttempts = Math.max(0, retries);
+   }
 
-    /**
-     * Opens a new Internet socket for the existing in-memory player session. The server
-     * authenticates the Bearer credential from the upgrade header before rotating it and binding
-     * the accepted socket to that player.
-     * This deliberately does not reset the applied event sequence or native client state.
-     */
-    public synchronized boolean reconnectInternetSession() {
-        if (!isMultiplayerActive || reconnectHandshakePending
-                || localPlayerId == null || localPlayerId.isEmpty()
-                || sessionToken == null || sessionToken.isEmpty()
-                || roomCode == null || !(activeTransport instanceof InternetTransport)) return false;
-        String endpoint = buildReconnectEndpoint(roomCode, localPlayerId);
-        if (endpoint == null) return false;
+   long getSessionGenerationForTests() { return sessionGeneration; }
+   boolean isReconnectHandshakePendingForTests() { return reconnectHandshakePending; }
+   boolean isCurrentTransportForTests(NetworkTransport transport) { return activeTransport == transport; }
+   boolean isRejectedCredentialForTests(Throwable error) { return isRejectedSessionCredential(error); }
+   private TransportCallback callbackFor(final NetworkTransport transport, final long generation) {
+      return new TransportCallback() {
+         private boolean isCurrentTransport() {
+            return MultiplayerManager.this.activeTransport == transport
+                    && MultiplayerManager.this.sessionGeneration == generation;
+         }
 
-        NetworkTransport previous = activeTransport;
-        InternetTransport replacement = internetTransportFactory.get();
-        if (replacement == null) return false;
-        activeTransport = replacement;
-        reconnectHandshakePending = true;
-        if (previous != null) previous.disconnect();
-        try {
-            replacement.connect(endpoint, callbackFor(replacement), sessionToken);
-            return true;
-        } catch (Exception failure) {
-            reconnectHandshakePending = false;
-            if (activeTransport == replacement) activeTransport = previous;
-            return false;
-        }
-    }
+         public void onConnected() {
+            if (this.isCurrentTransport()) MultiplayerManager.this.onConnected();
+         }
 
-    static String buildReconnectEndpoint(String endpoint, String playerId) {
-        if (endpoint == null || endpoint.isEmpty() || playerId == null || playerId.isEmpty()) return null;
-        try {
-            String encodedPlayer = java.net.URLEncoder.encode(playerId, "UTF-8");
-            int fragmentAt = endpoint.indexOf('#');
+         public void onDisconnected(String reason) {
+            if (this.isCurrentTransport()) MultiplayerManager.this.onDisconnected(reason);
+         }
+
+         public void onMessageReceived(NetworkMessage message) {
+            if (this.isCurrentTransport()) MultiplayerManager.this.onMessageReceived(message);
+         }
+
+         public void onError(Throwable error) {
+            if (this.isCurrentTransport()) MultiplayerManager.this.onError(error);
+         }
+      };
+   }
+   public void startSession(String roomCode, String initialPlayerId, NetworkTransport transport) {
+      this.startSession(roomCode, initialPlayerId, transport, true);
+   }
+
+   public synchronized void startSession(String roomCode, String initialPlayerId, NetworkTransport transport, boolean createRoom) {
+      if (transport == null) throw new IllegalArgumentException("TRANSPORT_REQUIRED");
+      if (roomCode == null || roomCode.trim().isEmpty()) throw new IllegalArgumentException("ROOM_ENDPOINT_REQUIRED");
+      if (initialPlayerId == null || initialPlayerId.trim().isEmpty()) throw new IllegalArgumentException("PLAYER_ID_REQUIRED");
+      if (sessionState != SessionState.DISCONNECTED && sessionState != SessionState.FAILED) {
+         throw new IllegalStateException("SESSION_ALREADY_ACTIVE");
+      }
+      if ("BLUETOOTH".equalsIgnoreCase(transport.getTransportType())
+              && remotePlayers.size() >= BluetoothTransport.MAX_BLUETOOTH_PLAYERS) {
+         throw new IllegalArgumentException("Bluetooth supports a maximum of 2 players.");
+      }
+
+      sessionGeneration++;
+      cancelSessionHandshakeTimeout();
+      cancelReconnectRetry();
+      clearPendingRoomOperations();
+      reconnectAttemptCount = 0;
+
+      boolean internet = "INTERNET".equalsIgnoreCase(transport.getTransportType());
+      this.roomCode = internet ? buildRoomLifecycleEndpoint(roomCode.trim()) : roomCode.trim();
+      this.localPlayerId = initialPlayerId.trim();
+      this.sessionToken = null;
+      this.reconnectHandshakePending = false;
+      this.levelPublisher = false;
+      this.levelPublisherId = null;
+      this.levelPublisherTerm = -1L;
+      this.publisherRebaseSentTerm = -1L;
+      this.publisherRebaseRequests.clear();
+      this.floorTransitionPending = false;
+      this.endAuthorityCombat();
+      this.lastSequence = 0L;
+      this.lastResyncRequestedSequence = -1L;
+      this.lastPublishedLevelKey = null;
+      this.nativeWorldTurnCounter = 0L;
+      this.authoritativeSeed = null;
+      this.clearPendingUnblessedAnkhRevival();
+      WorldSnapshot.clearAppliedSnapshot();
+      this.activeTransport = transport;
+      this.createRoomOnConnect = createRoom;
+      this.sessionError = null;
+      this.roomLifecycleError = null;
+      this.roomLifecycleVersion = 0;
+      this.roomMembership = false;
+      this.roomOwnerId = null;
+      this.roomStatus = "LOBBY";
+      this.roomMemberCount = 0;
+      this.roomMaxPlayers = 0;
+      this.roomAllReady = false;
+      this.roomSnapshotReady = false;
+      this.localRoomReady = false;
+      this.roomSequence = 0L;
+      this.roomSeed = 0L;
+      this.isMultiplayerActive = !internet;
+      this.sessionState = SessionState.CONNECTING;
+      if (internet) scheduleSessionHandshakeTimeout(sessionGeneration, transport, false);
+
+      try {
+         transport.connect(this.roomCode, callbackFor(transport, sessionGeneration));
+      } catch (Exception failure) {
+         failInitialSession(failure.getMessage() == null ? "CONNECTION_START_FAILED" : failure.getMessage());
+      }
+   }
+   public synchronized boolean reconnectInternetSession() {
+      if (!isMultiplayerActive || reconnectHandshakePending || localPlayerId == null || localPlayerId.isEmpty()
+              || sessionToken == null || sessionToken.isEmpty() || roomCode == null
+              || !(activeTransport instanceof InternetTransport)) return false;
+      String endpoint = buildReconnectEndpoint(roomCode, localPlayerId);
+      if (endpoint == null) return false;
+
+      NetworkTransport previous = activeTransport;
+      InternetTransport replacement = internetTransportFactory.get();
+      if (replacement == null) return false;
+      activeTransport = replacement;
+      reconnectHandshakePending = true;
+      sessionState = SessionState.RECONNECTING;
+      try {
+         if (previous != null) previous.disconnect();
+         replacement.connect(endpoint, callbackFor(replacement, sessionGeneration), sessionToken);
+         if (reconnectHandshakePending) {
+            scheduleSessionHandshakeTimeout(sessionGeneration, replacement, true);
+         }
+         return true;
+      } catch (Exception failure) {
+         cancelSessionHandshakeTimeout();
+         reconnectHandshakePending = false;
+         if (activeTransport == replacement) activeTransport = previous;
+         return false;
+      }
+   }
+   static String buildRoomLifecycleEndpoint(String endpoint) {
+      if (endpoint != null && !endpoint.trim().isEmpty()) {
+         String value = endpoint.trim();
+         return !value.contains("?lifecycle=") && !value.contains("&lifecycle=") ? value + (value.contains("?") ? "&" : "?") + "lifecycle=1" : value;
+      } else {
+         return null;
+      }
+   }
+
+   static String buildReconnectEndpoint(String endpoint, String playerId) {
+      if (endpoint != null && !endpoint.isEmpty() && playerId != null && !playerId.isEmpty()) {
+         try {
+            String encodedPlayer = URLEncoder.encode(playerId, "UTF-8");
+            int fragmentAt = endpoint.indexOf(35);
             String base = fragmentAt >= 0 ? endpoint.substring(0, fragmentAt) : endpoint;
             String fragment = fragmentAt >= 0 ? endpoint.substring(fragmentAt) : "";
             String separator = base.contains("?") ? "&" : "?";
             return base + separator + "playerId=" + encodedPlayer + fragment;
-        } catch (Exception invalidEndpoint) {
+         } catch (Exception var7) {
             return null;
-        }
-    }
+         }
+      } else {
+         return null;
+      }
+   }
 
-    public void endSession() {
-        this.isMultiplayerActive = false;
-        if (activeTransport != null) {
-            activeTransport.disconnect();
-            activeTransport = null;
-        }
-        this.remotePlayers.clear();
-        this.pendingActions.clear();
-        this.actorToServerEntityId.clear();
-        this.serverEntityIdToActor.clear();
-        this.sessionToken = null;
-        this.reconnectHandshakePending = false;
-        this.levelPublisher = false;
-        this.levelPublisherId = null;
-        this.levelPublisherTerm = -1L;
-        this.publisherRebaseSentTerm = -1L;
-        this.publisherRebaseRequests.clear();
-        this.floorTransitionPending = false;
-        this.endAuthorityCombat();
-        this.localPlayerId = null;
-        this.roomCode = null;
-        this.lastSequence = 0L;
-        this.lastResyncRequestedSequence = -1L;
-        this.lastPublishedLevelKey = null;
-        this.nativeWorldTurnCounter = 0L;
-        this.authoritativeSeed = null;
-        clearPendingUnblessedAnkhRevival();
-        WorldSnapshot.clearAppliedSnapshot();
-    }
+   public synchronized void endSession() {
+      sessionGeneration++;
+      cancelSessionHandshakeTimeout();
+      cancelReconnectRetry();
+      clearPendingRoomOperations();
+      isMultiplayerActive = false;
+      sessionState = SessionState.DISCONNECTED;
+      sessionError = null;
+      roomMembership = false;
+      roomLifecycleVersion = 0;
+      roomOwnerId = null;
+      roomStatus = "LOBBY";
+      roomLifecycleError = null;
+      roomMemberCount = 0;
+      roomMaxPlayers = 0;
+      roomAllReady = false;
+      roomSnapshotReady = false;
+      localRoomReady = false;
+      roomSequence = 0L;
+      roomSeed = 0L;
 
-    public boolean isLevelPublisher() { return levelPublisher; }
+      NetworkTransport previous = activeTransport;
+      activeTransport = null;
+      if (previous != null) {
+         try { previous.disconnect(); } catch (RuntimeException ignored) {}
+      }
+      remotePlayers.clear();
+      pendingActions.clear();
+      actorToServerEntityId.clear();
+      serverEntityIdToActor.clear();
+      sessionToken = null;
+      reconnectHandshakePending = false;
+      reconnectAttemptCount = 0;
+      levelPublisher = false;
+      levelPublisherId = null;
+      levelPublisherTerm = -1L;
+      publisherRebaseSentTerm = -1L;
+      publisherRebaseRequests.clear();
+      floorTransitionPending = false;
+      endAuthorityCombat();
+      localPlayerId = null;
+      roomCode = null;
+      lastSequence = 0L;
+      lastResyncRequestedSequence = -1L;
+      lastPublishedLevelKey = null;
+      nativeWorldTurnCounter = 0L;
+      authoritativeSeed = null;
+      clearPendingUnblessedAnkhRevival();
+      WorldSnapshot.clearAppliedSnapshot();
+   }
+   public boolean isLevelPublisher() {
+      return this.levelPublisher;
+   }
 
-    public String getLevelPublisherId() { return levelPublisherId; }
+   public String getLevelPublisherId() {
+      return this.levelPublisherId;
+   }
 
-    public long getLevelPublisherTerm() { return levelPublisherTerm; }
+   public long getLevelPublisherTerm() {
+      return this.levelPublisherTerm;
+   }
 
-    /** Applies only server-authored, non-stale publisher generations. */
-    public synchronized void applyLevelPublisherChange(String publisherId, long term) {
-        if (term < 0L || term < levelPublisherTerm) return;
-        if (term == levelPublisherTerm && levelPublisherTerm >= 0L
-                && !java.util.Objects.equals(levelPublisherId, publisherId)) return;
-        boolean changed = term > levelPublisherTerm || !java.util.Objects.equals(levelPublisherId, publisherId);
-        levelPublisherTerm = term;
-        levelPublisherId = publisherId;
-        levelPublisher = publisherId != null && publisherId.equals(localPlayerId);
-        if (changed && levelPublisher) publisherRebaseSentTerm = -1L;
-    }
+   public synchronized void applyLevelPublisherChange(String publisherId, long term) {
+      if (term >= 0L && term >= this.levelPublisherTerm) {
+         if (term != this.levelPublisherTerm || this.levelPublisherTerm < 0L || Objects.equals(this.levelPublisherId, publisherId)) {
+            boolean changed = term > this.levelPublisherTerm || !Objects.equals(this.levelPublisherId, publisherId);
+            this.levelPublisherTerm = term;
+            this.levelPublisherId = publisherId;
+            this.levelPublisher = publisherId != null && publisherId.equals(this.localPlayerId);
+            if (changed && this.levelPublisher) {
+               this.publisherRebaseSentTerm = -1L;
+            }
 
-    public boolean isFloorTransitionPending() { return floorTransitionPending; }
+         }
+      }
+   }
 
-    public void markFloorTransitionPending() { floorTransitionPending = true; }
+   public boolean isFloorTransitionPending() {
+      return this.floorTransitionPending;
+   }
 
-    /** Only a restored server-committed destination snapshot releases the floor barrier. */
-    public void markFloorTransitionComplete() { floorTransitionPending = false; }
+   public void markFloorTransitionPending() {
+      this.floorTransitionPending = true;
+   }
 
-    /** Forces a fresh publish if the native floor-transition barrier aborts and loads the source floor again. */
-    public void invalidateCurrentLevelPublication() {
-        lastPublishedLevelKey = null;
-    }
+   public void markFloorTransitionComplete() {
+      this.floorTransitionPending = false;
+   }
 
-    public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
-        if (acceptedTurn >= 0L) nativeWorldTurnCounter = acceptedTurn;
-    }
+   public void invalidateCurrentLevelPublication() {
+      this.lastPublishedLevelKey = null;
+   }
 
-    public synchronized long getNativeWorldTurnCounter() {
-        return nativeWorldTurnCounter;
-    }
+   public synchronized void synchronizeNativeWorldTurnCounter(long acceptedTurn) {
+      if (acceptedTurn >= 0L) {
+         this.nativeWorldTurnCounter = acceptedTurn;
+      }
 
-    /** Publish the unchanged restored world before the Worker enables this publisher generation. */
-    public synchronized void publishPublisherRebase(boolean force) {
-        if (!isMultiplayerActive || !levelPublisher || activeTransport == null || Dungeon.level == null
-                || Dungeon.branch != 0 || floorTransitionPending || resolvingAuthorityCombat
-                || levelPublisherTerm < 0L) return;
-        if (!force && publisherRebaseSentTerm == levelPublisherTerm) return;
-        String snapshot = SPDLevelSnapshot.currentLevelJson();
-        if (snapshot == null || snapshot.length() < 2 || snapshot.charAt(snapshot.length() - 1) != '}') {
-            requestResync(lastSequence);
-            return;
-        }
-        String payload = snapshot.substring(0, snapshot.length() - 1)
-                + ",\"publisherRebase\":true,\"publisherRebaseTerm\":" + levelPublisherTerm + "}";
-        NetworkMessage message = new NetworkMessage();
-        message.messageType = MessageType.LEVEL_DATA;
-        message.senderId = localPlayerId;
-        message.requestId = UUID.randomUUID().toString();
-        message.payloadJson = payload;
-        publisherRebaseRequests.put(message.requestId, levelPublisherTerm);
-        pendingActions.put(message.requestId, message);
-        publisherRebaseSentTerm = levelPublisherTerm;
-        activeTransport.send(message);
-    }
+   }
 
-    public boolean isResolvingAuthorityCombat() { return resolvingAuthorityCombat; }
+   public synchronized long getNativeWorldTurnCounter() {
+      return this.nativeWorldTurnCounter;
+   }
 
-    public String getAuthorityCombatRequestId() { return authorityCombatRequestId; }
+   public synchronized void publishPublisherRebase(boolean force) {
+      if (this.isMultiplayerActive && this.levelPublisher && this.activeTransport != null && Dungeon.level != null && Dungeon.branch == 0 && !this.floorTransitionPending && !this.resolvingAuthorityCombat && this.levelPublisherTerm >= 0L) {
+         if (force || this.publisherRebaseSentTerm != this.levelPublisherTerm) {
+            String snapshot = SPDLevelSnapshot.currentLevelJson();
+            if (snapshot != null && snapshot.length() >= 2 && snapshot.charAt(snapshot.length() - 1) == '}') {
+               String var10000 = snapshot.substring(0, snapshot.length() - 1);
+               String payload = var10000 + ",\"publisherRebase\":true,\"publisherRebaseTerm\":" + this.levelPublisherTerm + "}";
+               NetworkMessage message = new NetworkMessage();
+               message.messageType = MessageType.LEVEL_DATA;
+               message.senderId = this.localPlayerId;
+               message.requestId = UUID.randomUUID().toString();
+               message.payloadJson = payload;
+               this.publisherRebaseRequests.put(message.requestId, this.levelPublisherTerm);
+               this.pendingActions.put(message.requestId, message);
+               this.publisherRebaseSentTerm = this.levelPublisherTerm;
+               this.activeTransport.send(message);
+            } else {
+               this.requestResync(this.lastSequence);
+            }
+         }
+      }
+   }
 
-    public void beginAuthorityCombat(String requestId) {
-        authorityCombatRequestId = requestId;
-        resolvingAuthorityCombat = requestId != null && !requestId.isEmpty();
-    }
+   public boolean isResolvingAuthorityCombat() {
+      return this.resolvingAuthorityCombat;
+   }
 
-    public void endAuthorityCombat() {
-        resolvingAuthorityCombat = false;
-        authorityCombatRequestId = null;
-    }
+   public String getAuthorityCombatRequestId() {
+      return this.authorityCombatRequestId;
+   }
 
-    public boolean isMultiplayerActive() {
-        return isMultiplayerActive;
-    }
+   public void beginAuthorityCombat(String requestId) {
+      this.authorityCombatRequestId = requestId;
+      this.resolvingAuthorityCombat = requestId != null && !requestId.isEmpty();
+   }
 
-    public String getRoomCode() {
-        return roomCode;
-    }
+   public void endAuthorityCombat() {
+      this.resolvingAuthorityCombat = false;
+      this.authorityCombatRequestId = null;
+   }
 
-    public String getLocalPlayerId() {
-        return localPlayerId;
-    }
+   public boolean isMultiplayerActive() {
+      return this.isMultiplayerActive;
+   }
 
-    /** Capture the server-committed dead state before the user confirms an unblessed Ankh. */
-    public void beginUnblessedAnkhRevival() {
-        clearPendingUnblessedAnkhRevival();
-        if (!isMultiplayerActive || Dungeon.hero == null || Dungeon.level == null) return;
-        try {
+   public SessionState getSessionState() {
+      return this.sessionState;
+   }
+
+   public String getSessionError() {
+      return this.sessionError;
+   }
+
+   public int getRoomLifecycleVersion() {
+      return this.roomLifecycleVersion;
+   }
+
+   public boolean isRoomMember() {
+      return this.roomMembership;
+   }
+
+   public String getRoomOwnerId() {
+      return this.roomOwnerId;
+   }
+
+   public String getRoomStatus() {
+      return this.roomStatus;
+   }
+
+   public String getRoomLifecycleError() {
+      return this.roomLifecycleError;
+   }
+
+   public int getRoomMemberCount() {
+      return this.roomMemberCount;
+   }
+
+   public int getRoomMaxPlayers() {
+      return this.roomMaxPlayers;
+   }
+
+   public boolean areAllRoomMembersReady() {
+      return this.roomAllReady;
+   }
+
+   public boolean isRoomSnapshotReady() {
+      return this.roomSnapshotReady;
+   }
+
+   public boolean isLocalRoomReady() {
+      return this.localRoomReady;
+   }
+
+   private void scheduleRoomOperationTimeout(final String requestId, final long generation) {
+      ScheduledFuture<?> timeout = SESSION_SCHEDULER.schedule(() -> {
+         if (generation != sessionGeneration) return;
+         MessageType expired = pendingRoomOperations.remove(requestId);
+         pendingRoomOperationTimeouts.remove(requestId);
+         if (expired != null) roomLifecycleError = "ROOM_OPERATION_TIMEOUT:" + expired.name();
+      }, roomOperationTimeoutMs, TimeUnit.MILLISECONDS);
+      ScheduledFuture<?> previous = pendingRoomOperationTimeouts.put(requestId, timeout);
+      if (previous != null) previous.cancel(false);
+      if (timeout.isDone()) pendingRoomOperationTimeouts.remove(requestId, timeout);
+   }
+   private boolean sendRoomLifecycleOperation(MessageType type, String payload) {
+      NetworkTransport transport = this.activeTransport;
+      if (!this.isMultiplayerActive || transport == null || this.roomLifecycleVersion < 1
+              || this.sessionToken == null || type == null || payload == null) return false;
+      NetworkMessage message = new NetworkMessage();
+      message.messageType = type;
+      message.senderId = this.localPlayerId;
+      message.requestId = UUID.randomUUID().toString();
+      message.payloadJson = payload;
+      this.pendingRoomOperations.put(message.requestId, type);
+      this.scheduleRoomOperationTimeout(message.requestId, this.sessionGeneration);
+      try {
+         transport.send(message);
+         return true;
+      } catch (RuntimeException failure) {
+         this.pendingRoomOperations.remove(message.requestId);
+         this.cancelRoomOperationTimeout(message.requestId);
+         this.roomLifecycleError = failure.getMessage() == null ? "ROOM_OPERATION_SEND_FAILED" : failure.getMessage();
+         return false;
+      }
+   }
+   public boolean createRoom() {
+      return this.roomLifecycleVersion >= 1 && !this.roomMembership ? this.sendRoomLifecycleOperation(MessageType.CREATE_ROOM, "{\"gameMode\":\"" + this.currentGameMode.getModeName() + "\"}") : false;
+   }
+
+   public boolean joinRoom() {
+      return this.roomLifecycleVersion >= 1 && !this.roomMembership ? this.sendRoomLifecycleOperation(MessageType.JOIN_ROOM, "{}") : false;
+   }
+
+   public static String buildRoomReadyPayload(boolean ready, long seed, long sequence, String className, String heroStateJson) {
+      StringBuilder payload = new StringBuilder(ready ? 192 : 64);
+      payload.append("{\"ready\":").append(ready)
+              .append(",\"seed\":").append(seed)
+              .append(",\"sequence\":").append(sequence);
+      if (ready) {
+         if (className == null || className.isEmpty() || heroStateJson == null || heroStateJson.isEmpty()) return null;
+         Json json = new Json();
+         payload.append(",\"className\":").append(json.toJson(className))
+                 .append(",\"heroStateJson\":").append(json.toJson(heroStateJson));
+      }
+      return payload.append('}').toString();
+   }
+
+   public boolean setRoomReady(boolean ready) {
+      if (!this.roomMembership || !this.roomSnapshotReady || this.roomSequence != this.lastSequence
+              || (this.sessionState != MultiplayerManager.SessionState.WORLD_SYNCED
+                  && this.sessionState != MultiplayerManager.SessionState.READY)) return false;
+      String className = null;
+      String heroStateJson = null;
+      if (ready) {
+         if (Dungeon.hero == null || Dungeon.level == null || Dungeon.hero.heroClass == null) return false;
+         className = Dungeon.hero.heroClass.name();
+         heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+      }
+      String payload = buildRoomReadyPayload(ready, this.roomSeed, this.roomSequence, className, heroStateJson);
+      return payload != null && this.sendRoomLifecycleOperation(MessageType.READY, payload);
+   }
+   public boolean requestRoomMatchStart() {
+      return this.roomMembership && this.localPlayerId.equals(this.roomOwnerId) && this.localRoomReady && this.roomAllReady && this.roomSnapshotReady && this.sessionState == MultiplayerManager.SessionState.READY ? this.sendRoomLifecycleOperation(MessageType.MATCH_START, "{\"operation\":\"START\",\"seed\":" + this.roomSeed + ",\"sequence\":" + this.roomSequence + "}") : false;
+   }
+
+   public boolean cancelRoomMatchStart() {
+      return this.roomMembership && this.localPlayerId.equals(this.roomOwnerId) && "LOBBY".equals(this.roomStatus) ? this.sendRoomLifecycleOperation(MessageType.MATCH_START, "{\"operation\":\"CANCEL\"}") : false;
+   }
+
+   public boolean leaveRoom() {
+      return !this.roomMembership ? false : this.sendRoomLifecycleOperation(MessageType.LEAVE, "{}");
+   }
+
+   public void markWorldSynchronized() {
+      if (this.roomMembership && this.roomLifecycleVersion >= 1 && this.sessionState != MultiplayerManager.SessionState.PLAYING && !this.localRoomReady) {
+         if (this.authoritativeSeed != null && this.roomSeed != this.authoritativeSeed) {
+            this.roomLifecycleError = "ROOM_SEED_MISMATCH";
+         } else {
+            this.roomSnapshotReady = true;
+            this.roomSequence = this.lastSequence;
+            this.sessionState = MultiplayerManager.SessionState.WORLD_SYNCED;
+         }
+      }
+   }
+
+   public void applyRoomState(NetworkMessage message) {
+      if (message != null && message.payloadJson != null) {
+         try {
+            JsonValue payload = (new JsonReader()).parse(message.payloadJson);
+            if (payload == null || !payload.isObject()) {
+               return;
+            }
+
+            JsonValue lifecycle = payload.get("lifecycleVersion");
+            if (lifecycle != null && lifecycle.isNumber()) {
+               this.roomLifecycleVersion = lifecycle.asInt();
+            }
+
+            JsonValue created = payload.get("roomCreated");
+            JsonValue closed = payload.get("roomClosed");
+            JsonValue status = payload.get("roomStatus");
+            JsonValue game = payload.get("gameStatus");
+            JsonValue owner = payload.get("ownerId");
+            JsonValue count = payload.get("memberCount");
+            JsonValue capacity = payload.get("maxPlayers");
+            JsonValue allReady = payload.get("allReady");
+            JsonValue snapshot = payload.get("worldSnapshotReady");
+            JsonValue seed = payload.get("seed");
+            JsonValue sequence = payload.get("sequence");
+            JsonValue members = payload.get("members");
+            this.roomStatus = status != null && status.isString() ? status.asString() : "LOBBY";
+            this.roomOwnerId = owner != null && owner.isString() ? owner.asString() : null;
+            this.roomMemberCount = count != null && count.isNumber() ? count.asInt() : 0;
+            this.roomMaxPlayers = capacity != null && capacity.isNumber() ? capacity.asInt() : 0;
+            this.roomAllReady = allReady != null && allReady.isBoolean() && allReady.asBoolean();
+            this.roomSnapshotReady = snapshot != null && snapshot.isBoolean() && snapshot.asBoolean();
+            if (seed != null && seed.isNumber()) {
+               this.roomSeed = seed.asLong();
+            }
+
+            if (sequence != null && sequence.isNumber()) {
+               this.roomSequence = sequence.asLong();
+            }
+
+            this.roomMembership = false;
+            this.localRoomReady = false;
+            if (members != null && members.isArray()) {
+               for(JsonValue member = members.child; member != null; member = member.next) {
+                  JsonValue playerId = member.get("playerId");
+                  if (playerId != null && playerId.isString() && playerId.asString().equals(this.localPlayerId)) {
+                     this.roomMembership = true;
+                     JsonValue ready = member.get("ready");
+                     this.localRoomReady = ready != null && ready.isBoolean() && ready.asBoolean();
+                     break;
+                  }
+               }
+            }
+
+            if (closed != null && closed.isBoolean() && closed.asBoolean()) {
+               this.sessionState = MultiplayerManager.SessionState.FAILED;
+               this.roomLifecycleError = "ROOM_CLOSED";
+            } else if (game != null && game.isString() && "PLAYING".equals(game.asString())) {
+               this.roomStatus = "PLAYING";
+               this.sessionState = MultiplayerManager.SessionState.PLAYING;
+            } else if (!this.roomMembership) {
+               this.sessionState = MultiplayerManager.SessionState.SESSION_BOUND;
+            } else if (this.localRoomReady) {
+               this.sessionState = MultiplayerManager.SessionState.READY;
+            } else if (this.sessionState != MultiplayerManager.SessionState.WORLD_SYNCED) {
+               this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
+            }
+         } catch (RuntimeException var19) {
+            this.roomLifecycleError = "INVALID_ROOM_STATE";
+         }
+
+      }
+   }
+
+   public void applyMatchStart(NetworkMessage message) {
+      if (message != null && message.payloadJson != null) {
+         try {
+            JsonValue payload = (new JsonReader()).parse(message.payloadJson);
+            JsonValue status = payload == null ? null : payload.get("status");
+            if (status != null && status.isString() && "PLAYING".equals(status.asString())) {
+               this.roomStatus = "PLAYING";
+               this.sessionState = MultiplayerManager.SessionState.PLAYING;
+            }
+         } catch (RuntimeException var4) {
+            this.roomLifecycleError = "INVALID_MATCH_START";
+         }
+
+      }
+   }
+
+   public String getRoomCode() {
+      return this.roomCode;
+   }
+
+   public String getLocalPlayerId() {
+      return this.localPlayerId;
+   }
+
+   public void beginUnblessedAnkhRevival() {
+      this.clearPendingUnblessedAnkhRevival();
+      if (this.isMultiplayerActive && Dungeon.hero != null && Dungeon.level != null) {
+         try {
             String stateJson = SPDLevelSnapshot.currentHeroStateJson();
-            JsonValue state = new JsonReader().parse(stateJson);
+            JsonValue state = (new JsonReader()).parse(stateJson);
             int ankhCount = state.getInt("ankhCount", 0);
             int blessedCount = state.getInt("blessedAnkhCount", 0);
-            if (state.getInt("hp", 1) != 0 || ankhCount - blessedCount < 1) return;
-            pendingUnblessedAnkhBeforeHeroStateJson = stateJson;
-            pendingUnblessedAnkhBeforeBuffsJson = SPDLevelSnapshot.currentCombatBuffsJson(Dungeon.hero);
-            pendingUnblessedAnkhDepth = Dungeon.depth;
-            pendingUnblessedAnkhBranch = Dungeon.branch;
-            pendingUnblessedAnkhWasLevelLocked = Dungeon.level.locked;
-        } catch (RuntimeException ignored) {
-            clearPendingUnblessedAnkhRevival();
-        }
-    }
-
-    /** Commits the native RESURRECT result on the render thread after InterlevelScene finishes. */
-    public void finishPendingUnblessedAnkhRevival() {
-        String beforeJson = pendingUnblessedAnkhBeforeHeroStateJson;
-        String beforeBuffs = pendingUnblessedAnkhBeforeBuffsJson;
-        int beforeDepth = pendingUnblessedAnkhDepth;
-        int beforeBranch = pendingUnblessedAnkhBranch;
-        boolean wasLevelLocked = pendingUnblessedAnkhWasLevelLocked;
-        clearPendingUnblessedAnkhRevival();
-        if (beforeJson == null || beforeBuffs == null || !isMultiplayerActive
-                || Dungeon.hero == null || Dungeon.level == null) return;
-        try {
-            String afterJson = SPDLevelSnapshot.currentHeroStateJson();
-            JsonValue before = new JsonReader().parse(beforeJson);
-            JsonValue after = new JsonReader().parse(afterJson);
-            if (beforeDepth != Dungeon.depth || beforeBranch != Dungeon.branch
-                    || before.getInt("ankhCount", 0) - after.getInt("ankhCount", 0) != 1
-                    || before.getInt("blessedAnkhCount", 0) != after.getInt("blessedAnkhCount", 0)
-                    || after.getInt("hp", 0) <= 0 || after.getInt("hp", 0) != after.getInt("ht", 0)) {
-                requestResync(getLastSequence());
-                return;
+            if (state.getInt("hp", 1) != 0 || ankhCount - blessedCount < 1) {
+               return;
             }
-            java.util.Map<String, Object> data = new HashMap<>();
+
+            this.pendingUnblessedAnkhBeforeHeroStateJson = stateJson;
+            this.pendingUnblessedAnkhBeforeBuffsJson = SPDLevelSnapshot.currentCombatBuffsJson(Dungeon.hero);
+            this.pendingUnblessedAnkhDepth = Dungeon.depth;
+            this.pendingUnblessedAnkhBranch = Dungeon.branch;
+            this.pendingUnblessedAnkhWasLevelLocked = Dungeon.level.locked;
+         } catch (RuntimeException var5) {
+            this.clearPendingUnblessedAnkhRevival();
+         }
+
+      }
+   }
+
+   public void finishPendingUnblessedAnkhRevival() {
+      String beforeJson = this.pendingUnblessedAnkhBeforeHeroStateJson;
+      String beforeBuffs = this.pendingUnblessedAnkhBeforeBuffsJson;
+      int beforeDepth = this.pendingUnblessedAnkhDepth;
+      int beforeBranch = this.pendingUnblessedAnkhBranch;
+      boolean wasLevelLocked = this.pendingUnblessedAnkhWasLevelLocked;
+      this.clearPendingUnblessedAnkhRevival();
+      if (beforeJson != null && beforeBuffs != null && this.isMultiplayerActive && Dungeon.hero != null && Dungeon.level != null) {
+         try {
+            String afterJson = SPDLevelSnapshot.currentHeroStateJson();
+            JsonValue before = (new JsonReader()).parse(beforeJson);
+            JsonValue after = (new JsonReader()).parse(afterJson);
+            if (beforeDepth != Dungeon.depth || beforeBranch != Dungeon.branch || before.getInt("ankhCount", 0) - after.getInt("ankhCount", 0) != 1 || before.getInt("blessedAnkhCount", 0) != after.getInt("blessedAnkhCount", 0) || after.getInt("hp", 0) <= 0 || after.getInt("hp", 0) != after.getInt("ht", 0)) {
+               this.requestResync(this.getLastSequence());
+               return;
+            }
+
+            Map<String, Object> data = new HashMap();
             data.put("revivalKind", "UNBLESSED_ANKH");
             data.put("combatDepth", Dungeon.depth);
             data.put("targetHpBefore", before.getInt("hp", 0));
@@ -350,492 +798,596 @@ public class MultiplayerManager implements TransportCallback {
             data.put("ankhCountAfter", after.getInt("ankhCount", 0));
             data.put("blessedAnkhCountBefore", before.getInt("blessedAnkhCount", 0));
             data.put("blessedAnkhCountAfter", after.getInt("blessedAnkhCount", 0));
-            data.put("heaps", new Json().fromJson(java.util.ArrayList.class, SPDLevelSnapshot.currentHeapsJson()));
+            data.put("heaps", (new Json()).fromJson(ArrayList.class, SPDLevelSnapshot.currentHeapsJson()));
             data.put("levelWasLocked", wasLevelLocked);
-            sendAction(NetworkActionType.REVIVE, NativeCombatJson.strictWriter().toJson(data), afterJson);
-        } catch (RuntimeException error) {
-            requestResync(getLastSequence());
-        }
-    }
+            this.sendAction(NetworkActionType.REVIVE, NativeCombatJson.strictWriter().toJson(data), afterJson);
+         } catch (RuntimeException var10) {
+            this.requestResync(this.getLastSequence());
+         }
 
-    private void clearPendingUnblessedAnkhRevival() {
-        pendingUnblessedAnkhBeforeHeroStateJson = null;
-        pendingUnblessedAnkhBeforeBuffsJson = null;
-        pendingUnblessedAnkhDepth = -1;
-        pendingUnblessedAnkhBranch = -1;
-        pendingUnblessedAnkhWasLevelLocked = false;
-    }
+      }
+   }
 
-    public String getSessionToken() {
-        return sessionToken;
-    }
+   private void clearPendingUnblessedAnkhRevival() {
+      this.pendingUnblessedAnkhBeforeHeroStateJson = null;
+      this.pendingUnblessedAnkhBeforeBuffsJson = null;
+      this.pendingUnblessedAnkhDepth = -1;
+      this.pendingUnblessedAnkhBranch = -1;
+      this.pendingUnblessedAnkhWasLevelLocked = false;
+   }
 
-    public long getLastSequence() {
-        return lastSequence;
-    }
+   public String getSessionToken() {
+      return this.sessionToken;
+   }
 
-    /** True while incremental events are blocked awaiting a full authoritative snapshot. */
-    public boolean hasPendingResync() {
-        return lastResyncRequestedSequence >= 0L;
-    }
+   public long getLastSequence() {
+      return this.lastSequence;
+   }
 
-    /** Commit only the next event sequence, after the render thread has applied it successfully. */
-    public boolean commitAppliedSequence(long sequence) {
-        if (sequence <= lastSequence || sequence != lastSequence + 1L) return false;
-        lastSequence = sequence;
-        return true;
-    }
+   public boolean hasPendingResync() {
+      return this.lastResyncRequestedSequence >= 0L;
+   }
 
-    /** Undo an immediately preceding sequence commit when capturing the applied checkpoint fails. */
-    public boolean rollbackAppliedSequence(long sequence, long previousSequence) {
-        if (lastSequence != sequence || previousSequence != sequence - 1L) return false;
-        lastSequence = previousSequence;
-        return true;
-    }
+   public boolean commitAppliedSequence(long sequence) {
+      if (sequence > this.lastSequence && sequence == this.lastSequence + 1L) {
+         this.lastSequence = sequence;
+         return true;
+      } else {
+         return false;
+      }
+   }
 
-    public void updateLastSequence(long seq) {
-        if (seq > this.lastSequence) this.lastSequence = seq;
-    }
+   public boolean rollbackAppliedSequence(long sequence, long previousSequence) {
+      if (this.lastSequence == sequence && previousSequence == sequence - 1L) {
+         this.lastSequence = previousSequence;
+         return true;
+      } else {
+         return false;
+      }
+   }
 
-    public void markSnapshotApplied(long seq) {
-        if (seq > this.lastSequence) this.lastSequence = seq;
-        lastResyncRequestedSequence = -1L;
-    }
+   public void updateLastSequence(long seq) {
+      if (seq > this.lastSequence) {
+         this.lastSequence = seq;
+      }
 
-    /** Requests a full authoritative snapshot after a failed restore, once per bad sequence. */
-    public void requestResync(long rejectedSnapshotSequence) {
-        if (!isMultiplayerActive || activeTransport == null) return;
-        long rejectedSequence = rejectedSnapshotSequence < 0L ? lastSequence : rejectedSnapshotSequence;
-        if (lastResyncRequestedSequence == rejectedSequence) return;
-        lastResyncRequestedSequence = rejectedSequence;
-        NetworkMessage msg = new NetworkMessage();
-        msg.messageType = MessageType.RESYNC;
-        msg.senderId = localPlayerId;
-        msg.requestId = UUID.randomUUID().toString();
-        msg.payloadJson = "{\"lastSequence\":" + lastSequence
-                + ",\"rejectedSnapshotSequence\":" + rejectedSequence + "}";
-        activeTransport.send(msg);
-    }
+   }
 
-    public Map<String, RemotePlayer> getRemotePlayers() {
-        return Collections.unmodifiableMap(remotePlayers);
-    }
+   public void markSnapshotApplied(long seq) {
+      if (seq > this.lastSequence) {
+         this.lastSequence = seq;
+      }
 
-    public void addRemotePlayer(RemotePlayer player) {
-        if (activeTransport != null && "BLUETOOTH".equalsIgnoreCase(activeTransport.getTransportType())
-                && remotePlayers.size() >= (BluetoothTransport.MAX_BLUETOOTH_PLAYERS - 1)) {
-            throw new IllegalStateException("Bluetooth multiplayer allows only 2 players max.");
-        }
-        remotePlayers.put(player.playerId, player);
-    }
+      this.lastResyncRequestedSequence = -1L;
+   }
 
-    public void removeRemotePlayer(String playerId) {
-        remotePlayers.remove(playerId);
-    }
+   public void requestResync(long rejectedSnapshotSequence) {
+      if (this.isMultiplayerActive && this.activeTransport != null) {
+         long rejectedSequence = rejectedSnapshotSequence < 0L ? this.lastSequence : rejectedSnapshotSequence;
+         if (this.lastResyncRequestedSequence != rejectedSequence) {
+            this.lastResyncRequestedSequence = rejectedSequence;
+            NetworkMessage msg = new NetworkMessage();
+            msg.messageType = MessageType.RESYNC;
+            msg.senderId = this.localPlayerId;
+            msg.requestId = UUID.randomUUID().toString();
+            msg.payloadJson = "{\"lastSequence\":" + this.lastSequence + ",\"rejectedSnapshotSequence\":" + rejectedSequence + "}";
+            this.activeTransport.send(msg);
+         }
+      }
+   }
 
-    public RemotePlayer getRemotePlayer(String playerId) {
-        return remotePlayers.get(playerId);
-    }
+   public Map<String, RemotePlayer> getRemotePlayers() {
+      return Collections.unmodifiableMap(this.remotePlayers);
+   }
 
-    public String getPlayerIdForHero(Hero hero) {
-        if (hero == null) return null;
-        if (hero == Dungeon.hero) return localPlayerId;
-        for (RemotePlayer player : remotePlayers.values()) {
-            if (player != null && player.heroInstance == hero) return player.playerId;
-        }
-        return null;
-    }
+   public void addRemotePlayer(RemotePlayer player) {
+      if (this.activeTransport != null && "BLUETOOTH".equalsIgnoreCase(this.activeTransport.getTransportType()) && this.remotePlayers.size() >= 1) {
+         throw new IllegalStateException("Bluetooth multiplayer allows only 2 players max.");
+      } else {
+         this.remotePlayers.put(player.playerId, player);
+      }
+   }
 
-    public Hero getHeroForPlayerId(String playerId) {
-        if (playerId == null || playerId.isEmpty()) return null;
-        if (playerId.equals(localPlayerId)) return Dungeon.hero;
-        RemotePlayer player = remotePlayers.get(playerId);
-        return player == null ? null : player.heroInstance;
-    }
+   public void removeRemotePlayer(String playerId) {
+      this.remotePlayers.remove(playerId);
+   }
 
-    public String getServerEntityId(int localActorId) {
-        return actorToServerEntityId.get(localActorId);
-    }
+   public RemotePlayer getRemotePlayer(String playerId) {
+      return (RemotePlayer)this.remotePlayers.get(playerId);
+   }
 
-    public Integer getLocalActorIdForServerEntity(String entityId) {
-        return entityId == null ? null : serverEntityIdToActor.get(entityId);
-    }
+   public String getPlayerIdForHero(Hero hero) {
+      if (hero == null) {
+         return null;
+      } else if (hero == Dungeon.hero) {
+         return this.localPlayerId;
+      } else {
+         for(RemotePlayer player : this.remotePlayers.values()) {
+            if (player != null && player.heroInstance == hero) {
+               return player.playerId;
+            }
+         }
 
-    public void registerServerEntityId(int localActorId, String entityId) {
-        if (localActorId < 0 || entityId == null || entityId.length() < 8 || entityId.length() > 80) return;
-        String oldEntity = actorToServerEntityId.put(localActorId, entityId);
-        if (oldEntity != null && !oldEntity.equals(entityId)) serverEntityIdToActor.remove(oldEntity, localActorId);
-        Integer oldActor = serverEntityIdToActor.put(entityId, localActorId);
-        if (oldActor != null && oldActor != localActorId) actorToServerEntityId.remove(oldActor, entityId);
-    }
+         return null;
+      }
+   }
 
-    public void removeServerEntityIdForActor(int localActorId) {
-        String entityId = actorToServerEntityId.remove(localActorId);
-        if (entityId != null) serverEntityIdToActor.remove(entityId, localActorId);
-    }
+   public Hero getHeroForPlayerId(String playerId) {
+      if (playerId != null && !playerId.isEmpty()) {
+         if (playerId.equals(this.localPlayerId)) {
+            return Dungeon.hero;
+         } else {
+            RemotePlayer player = (RemotePlayer)this.remotePlayers.get(playerId);
+            return player == null ? null : player.heroInstance;
+         }
+      } else {
+         return null;
+      }
+   }
 
-    public void handleServerEntityAck(NetworkMessage message) {
-        if (message == null || message.payloadJson == null) return;
-        try {
-            JsonValue payload = new JsonReader().parse(message.payloadJson);
+   public String getServerEntityId(int localActorId) {
+      return (String)this.actorToServerEntityId.get(localActorId);
+   }
+
+   public Integer getLocalActorIdForServerEntity(String entityId) {
+      return entityId == null ? null : (Integer)this.serverEntityIdToActor.get(entityId);
+   }
+
+   public void registerServerEntityId(int localActorId, String entityId) {
+      if (localActorId >= 0 && entityId != null && entityId.length() >= 8 && entityId.length() <= 80) {
+         String oldEntity = (String)this.actorToServerEntityId.put(localActorId, entityId);
+         if (oldEntity != null && !oldEntity.equals(entityId)) {
+            this.serverEntityIdToActor.remove(oldEntity, localActorId);
+         }
+
+         Integer oldActor = (Integer)this.serverEntityIdToActor.put(entityId, localActorId);
+         if (oldActor != null && oldActor != localActorId) {
+            this.actorToServerEntityId.remove(oldActor, entityId);
+         }
+
+      }
+   }
+
+   public void removeServerEntityIdForActor(int localActorId) {
+      String entityId = (String)this.actorToServerEntityId.remove(localActorId);
+      if (entityId != null) {
+         this.serverEntityIdToActor.remove(entityId, localActorId);
+      }
+
+   }
+
+   public void handleServerEntityAck(NetworkMessage message) {
+      if (message != null && message.payloadJson != null) {
+         try {
+            JsonValue payload = (new JsonReader()).parse(message.payloadJson);
             JsonValue turnCounter = payload == null ? null : payload.get("nativeWorldTurnCounter");
             if (turnCounter != null && turnCounter.isNumber() && turnCounter.asLong() >= 0L) {
-                nativeWorldTurnCounter = Math.max(nativeWorldTurnCounter, turnCounter.asLong());
+               this.nativeWorldTurnCounter = Math.max(this.nativeWorldTurnCounter, turnCounter.asLong());
             }
-            Long rebaseTerm = message.requestId == null ? null : publisherRebaseRequests.remove(message.requestId);
-            if (rebaseTerm != null && rebaseTerm.longValue() == levelPublisherTerm && levelPublisher) {
-                publisherRebaseSentTerm = levelPublisherTerm;
+
+            Long rebaseTerm = message.requestId == null ? null : (Long)this.publisherRebaseRequests.remove(message.requestId);
+            if (rebaseTerm != null && rebaseTerm == this.levelPublisherTerm && this.levelPublisher) {
+               this.publisherRebaseSentTerm = this.levelPublisherTerm;
             }
-            if (message.requestId != null) pendingActions.remove(message.requestId);
+
+            if (message.requestId != null) {
+               this.pendingActions.remove(message.requestId);
+            }
+
             JsonValue entities = payload == null ? null : payload.get("entities");
-            if (entities == null || !entities.isArray()) return;
-            for (JsonValue entity = entities.child; entity != null; entity = entity.next) {
-                JsonValue mobId = entity.get("mobId");
-                JsonValue entityId = entity.get("entityId");
-                if (mobId != null && mobId.isNumber() && entityId != null && entityId.isString()) {
-                    registerServerEntityId(mobId.asInt(), entityId.asString());
-                }
+            if (entities == null || !entities.isArray()) {
+               return;
             }
-        } catch (RuntimeException ignored) {
-            // Ignore malformed identity acknowledgements; the next full snapshot can resync.
-        }
-    }
 
-    public String sendAction(NetworkActionType actionType, String actionDetailsJson) {
-        return sendAction(actionType, actionDetailsJson, SPDLevelSnapshot.currentHeroStateJson());
-    }
+            for(JsonValue entity = entities.child; entity != null; entity = entity.next) {
+               JsonValue mobId = entity.get("mobId");
+               JsonValue entityId = entity.get("entityId");
+               if (mobId != null && mobId.isNumber() && entityId != null && entityId.isString()) {
+                  this.registerServerEntityId(mobId.asInt(), entityId.asString());
+               }
+            }
+         } catch (RuntimeException var9) {
+         }
 
-    /** Sends a native action and returns its request ID to correlate the completed native world delta. */
-    public String sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
-        if (!isMultiplayerActive || activeTransport == null || actionType == null || actionDetailsJson == null) return null;
+      }
+   }
 
-        // LifeLink Mob callbacks produced inside native Poison are included in the final Poison
-        // result. Sending them independently would expose a committed Mob death if the following
-        // Hero callback is rejected or the Worker restarts between the two messages.
-        if (actionType == NetworkActionType.SYNC_MOB_STATE
-                && NativeHeroBuffTickPublisher.shouldBufferLifeLinkMobDamage(actionDetailsJson)) {
+   public String sendAction(NetworkActionType actionType, String actionDetailsJson) {
+      return this.sendAction(actionType, actionDetailsJson, SPDLevelSnapshot.currentHeroStateJson());
+   }
+
+   public String sendAction(NetworkActionType actionType, String actionDetailsJson, String nativeHeroStateJson) {
+      if (this.isMultiplayerActive && this.activeTransport != null && actionType != null && actionDetailsJson != null) {
+         if (actionType == NetworkActionType.SYNC_MOB_STATE && NativeHeroBuffTickPublisher.shouldBufferLifeLinkMobDamage(actionDetailsJson)) {
             return null;
-        }
-        if (actionType == NetworkActionType.SYNC_HERO_STATE) {
-            String batchedDeath = NativeHeroBuffTickPublisher.enrichLethalPoisonEnvironmentDamage(actionDetailsJson);
-            if (batchedDeath != null) actionDetailsJson = batchedDeath;
-        }
-        NetworkMessage msg = new NetworkMessage();
-        msg.messageType = MessageType.ACTION;
-        msg.senderId = localPlayerId;
-        msg.requestId = UUID.randomUUID().toString();
-        String heroStateJson = nativeHeroStateJson == null ? "" : nativeHeroStateJson;
-        msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson
-                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
-        pendingActions.put(msg.requestId, msg);
-        activeTransport.send(msg);
-        return msg.requestId;
-    }
+         } else {
+            if (actionType == NetworkActionType.SYNC_HERO_STATE) {
+               String batchedDeath = NativeHeroBuffTickPublisher.enrichLethalPoisonEnvironmentDamage(actionDetailsJson);
+               if (batchedDeath != null) {
+                  actionDetailsJson = batchedDeath;
+               }
+            }
 
-    /** Reports the complete post-action native floor, correlated to an accepted movement/world intent. */
-    public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos) {
-        publishNativeWorldMutation(actionRequestId, actionName, from, targetPos, null);
-    }
+            NetworkMessage msg = new NetworkMessage();
+            msg.messageType = MessageType.ACTION;
+            msg.senderId = this.localPlayerId;
+            msg.requestId = UUID.randomUUID().toString();
+            String heroStateJson = nativeHeroStateJson == null ? "" : nativeHeroStateJson;
+            msg.payloadJson = "{\"action\":\"" + actionType.name() + "\", \"data\":" + actionDetailsJson + ",\"heroStateJson\":" + (new Json()).toJson(heroStateJson) + "}";
+            this.pendingActions.put(msg.requestId, msg);
+            this.activeTransport.send(msg);
+            return msg.requestId;
+         }
+      } else {
+         return null;
+      }
+   }
 
-    public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos, String nativeMutationDetailsJson) {
-        if (!isMultiplayerActive || activeTransport == null || actionRequestId == null || actionRequestId.isEmpty()
-                || Dungeon.level == null || Dungeon.branch != 0 || actionName == null) return;
-        String snapshot = SPDLevelSnapshot.currentLevelJson();
-        if (snapshot == null || snapshot.length() < 2 || snapshot.charAt(snapshot.length() - 1) != '}') {
-            requestResync(lastSequence);
-            return;
-        }
-        String mutation = snapshot.substring(0, snapshot.length() - 1)
-                + ",\"nativeWorldMutation\":true"
-                + ",\"nativeMutationAction\":" + new Json().toJson(actionName)
-                + ",\"nativeMutationRequestId\":" + new Json().toJson(actionRequestId)
-                + ",\"nativeMutationFrom\":" + from
-                + ",\"nativeMutationTargetPos\":" + targetPos
-                + (nativeMutationDetailsJson != null && nativeMutationDetailsJson.startsWith("{") && nativeMutationDetailsJson.endsWith("}")
-                    ? ",\"nativeMutationDetails\":" + nativeMutationDetailsJson : "") + "}";
-        NetworkMessage message = new NetworkMessage();
-        message.messageType = MessageType.LEVEL_DATA;
-        message.senderId = localPlayerId;
-        // Separate envelope ID: ACTION_ACCEPTED may already have consumed the intent ID.
-        message.requestId = UUID.randomUUID().toString();
-        message.payloadJson = mutation;
-        pendingActions.put(message.requestId, message);
-        activeTransport.send(message);
-    }
+   public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos) {
+      this.publishNativeWorldMutation(actionRequestId, actionName, from, targetPos, (String)null);
+   }
 
-    /** Each living peer proves it built the native destination floor before the server opens the barrier. */
-    public void sendLevelReady() {
-        if (!isMultiplayerActive || activeTransport == null || Dungeon.level == null || Dungeon.branch != 0) return;
-        NetworkMessage message = new NetworkMessage();
-        message.messageType = MessageType.LEVEL_READY;
-        message.senderId = localPlayerId;
-        message.requestId = UUID.randomUUID().toString();
-        String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
-        message.payloadJson = "{\"depth\":" + Dungeon.depth + ",\"branch\":" + Dungeon.branch
-                + ",\"seed\":" + Dungeon.seedCurDepth()
-                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
-        activeTransport.send(message);
-    }
+   public void publishNativeWorldMutation(String actionRequestId, String actionName, int from, int targetPos, String nativeMutationDetailsJson) {
+      if (this.isMultiplayerActive && this.activeTransport != null && actionRequestId != null && !actionRequestId.isEmpty() && Dungeon.level != null && Dungeon.branch == 0 && actionName != null) {
+         String snapshot = SPDLevelSnapshot.currentLevelJson();
+         if (snapshot != null && snapshot.length() >= 2 && snapshot.charAt(snapshot.length() - 1) == '}') {
+            String var10000 = snapshot.substring(0, snapshot.length() - 1);
+            String mutation = var10000 + ",\"nativeWorldMutation\":true,\"nativeMutationAction\":" + (new Json()).toJson(actionName) + ",\"nativeMutationRequestId\":" + (new Json()).toJson(actionRequestId) + ",\"nativeMutationFrom\":" + from + ",\"nativeMutationTargetPos\":" + targetPos + (nativeMutationDetailsJson != null && nativeMutationDetailsJson.startsWith("{") && nativeMutationDetailsJson.endsWith("}") ? ",\"nativeMutationDetails\":" + nativeMutationDetailsJson : "") + "}";
+            NetworkMessage message = new NetworkMessage();
+            message.messageType = MessageType.LEVEL_DATA;
+            message.senderId = this.localPlayerId;
+            message.requestId = UUID.randomUUID().toString();
+            message.payloadJson = mutation;
+            this.pendingActions.put(message.requestId, message);
+            this.activeTransport.send(message);
+         } else {
+            this.requestResync(this.lastSequence);
+         }
+      }
+   }
 
-    public void sendAuthorityAction(String requestId, NetworkActionType actionType,
-                                    String actionDetailsJson, String heroStateJson) {
-        if (!isMultiplayerActive || activeTransport == null || requestId == null || requestId.isEmpty()) return;
-        NetworkMessage msg = new NetworkMessage();
-        msg.messageType = MessageType.ACTION;
-        msg.senderId = localPlayerId;
-        msg.requestId = requestId;
-        msg.payloadJson = "{\"action\":\"" + actionType.name() + "\",\"data\":" + actionDetailsJson
-                + ",\"heroStateJson\":" + new Json().toJson(heroStateJson) + "}";
-        pendingActions.put(requestId, msg);
-        activeTransport.send(msg);
-    }
+   public void sendLevelReady() {
+      if (this.isMultiplayerActive && this.activeTransport != null && Dungeon.level != null && Dungeon.branch == 0) {
+         NetworkMessage message = new NetworkMessage();
+         message.messageType = MessageType.LEVEL_READY;
+         message.senderId = this.localPlayerId;
+         message.requestId = UUID.randomUUID().toString();
+         String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+         message.payloadJson = "{\"depth\":" + Dungeon.depth + ",\"branch\":" + Dungeon.branch + ",\"seed\":" + Dungeon.seedCurDepth() + ",\"heroStateJson\":" + (new Json()).toJson(heroStateJson) + "}";
+         this.activeTransport.send(message);
+      }
+   }
 
-    /** Sends the exact level generated by SPD's Java builders and painters to the room authority. */
-    public void applyAuthoritativeSeed() {
-        if (isMultiplayerActive && authoritativeSeed != null) {
-            Dungeon.seed = authoritativeSeed;
-        }
-    }
+   public void sendAuthorityAction(String requestId, NetworkActionType actionType, String actionDetailsJson, String heroStateJson) {
+      if (this.isMultiplayerActive && this.activeTransport != null && requestId != null && !requestId.isEmpty()) {
+         NetworkMessage msg = new NetworkMessage();
+         msg.messageType = MessageType.ACTION;
+         msg.senderId = this.localPlayerId;
+         msg.requestId = requestId;
+         msg.payloadJson = "{\"action\":\"" + actionType.name() + "\",\"data\":" + actionDetailsJson + ",\"heroStateJson\":" + (new Json()).toJson(heroStateJson) + "}";
+         this.pendingActions.put(requestId, msg);
+         this.activeTransport.send(msg);
+      }
+   }
 
-    public void publishCurrentLevel() {
-        if (!isMultiplayerActive || !levelPublisher || activeTransport == null || Dungeon.level == null
-                || Dungeon.branch != 0) return;
-        String levelKey = Dungeon.seed + ":" + Dungeon.branch + ":" + Dungeon.depth;
-        // A revisited floor still needs its real native instance and dynamic state at a group
-        // transition. Bypass the usual one-publication-per-key shortcut while the barrier is open.
-        if (levelKey.equals(lastPublishedLevelKey) && !floorTransitionPending) return;
-        String snapshot = SPDLevelSnapshot.currentLevelJson();
-        if (snapshot == null) return;
-        NetworkMessage msg = new NetworkMessage();
-        msg.messageType = MessageType.LEVEL_DATA;
-        msg.senderId = localPlayerId;
-        msg.requestId = UUID.randomUUID().toString();
-        msg.payloadJson = snapshot;
-        activeTransport.send(msg);
-        lastPublishedLevelKey = levelKey;
-    }
+   public void applyAuthoritativeSeed() {
+      if (this.isMultiplayerActive && this.authoritativeSeed != null) {
+         Dungeon.seed = this.authoritativeSeed;
+      }
 
-    /**
-     * Publish the complete native level after a shared Actor finishes its original Java SPD action.
-     * The Worker validates and sequences it instead of inventing AI movement or damage.
-     */
-    public synchronized void publishNativeWorldActorResult(Actor actor) {
-        if (!isMultiplayerActive || !levelPublisher || activeTransport == null
-                || Dungeon.level == null || !Actor.isMultiplayerSharedActor(actor)) return;
-        long nextCounter = nativeWorldTurnCounter + 1L;
-        String snapshot = SPDLevelSnapshot.currentNativeWorldTurnJson(actor, nextCounter);
-        if (snapshot == null || snapshot.isEmpty()) return;
-        NetworkMessage message = new NetworkMessage();
-        message.messageType = MessageType.LEVEL_DATA;
-        message.senderId = localPlayerId;
-        message.requestId = UUID.randomUUID().toString();
-        message.payloadJson = snapshot;
-        nativeWorldTurnCounter = nextCounter;
-        pendingActions.put(message.requestId, message);
-        activeTransport.send(message);
-    }
+   }
 
-    public void sendReconnect() {
-        if (!isMultiplayerActive || activeTransport == null || sessionToken == null) return;
+   public void publishCurrentLevel() {
+      if (this.isMultiplayerActive && this.levelPublisher && this.activeTransport != null && Dungeon.level != null && Dungeon.branch == 0) {
+         String levelKey = Dungeon.seed + ":" + Dungeon.branch + ":" + Dungeon.depth;
+         if (!levelKey.equals(this.lastPublishedLevelKey) || this.floorTransitionPending) {
+            String snapshot = SPDLevelSnapshot.currentLevelJson();
+            if (snapshot != null) {
+               NetworkMessage msg = new NetworkMessage();
+               msg.messageType = MessageType.LEVEL_DATA;
+               msg.senderId = this.localPlayerId;
+               msg.requestId = UUID.randomUUID().toString();
+               msg.payloadJson = snapshot;
+               this.activeTransport.send(msg);
+               this.lastPublishedLevelKey = levelKey;
+            }
+         }
+      }
+   }
 
-        NetworkMessage msg = new NetworkMessage();
-        msg.messageType = MessageType.RECONNECT;
-        msg.senderId = localPlayerId;
-        msg.requestId = UUID.randomUUID().toString();
-        msg.payloadJson = "{\"lastSequence\":" + lastSequence + "}";
+   public synchronized void publishNativeWorldActorResult(Actor actor) {
+      if (this.isMultiplayerActive && this.levelPublisher && this.activeTransport != null && Dungeon.level != null && Actor.isMultiplayerSharedActor(actor)) {
+         long nextCounter = this.nativeWorldTurnCounter + 1L;
+         String snapshot = SPDLevelSnapshot.currentNativeWorldTurnJson(actor, nextCounter);
+         if (snapshot != null && !snapshot.isEmpty()) {
+            NetworkMessage message = new NetworkMessage();
+            message.messageType = MessageType.LEVEL_DATA;
+            message.senderId = this.localPlayerId;
+            message.requestId = UUID.randomUUID().toString();
+            message.payloadJson = snapshot;
+            this.nativeWorldTurnCounter = nextCounter;
+            this.pendingActions.put(message.requestId, message);
+            this.activeTransport.send(message);
+         }
+      }
+   }
 
-        activeTransport.send(msg);
-    }
+   public void sendReconnect() {
+      if (this.isMultiplayerActive && this.activeTransport != null && this.sessionToken != null) {
+         NetworkMessage msg = new NetworkMessage();
+         msg.messageType = MessageType.RECONNECT;
+         msg.senderId = this.localPlayerId;
+         msg.requestId = UUID.randomUUID().toString();
+         msg.payloadJson = "{\"lastSequence\":" + this.lastSequence + "}";
+         this.activeTransport.send(msg);
+      }
+   }
 
-    @Override
-    public void onConnected() {
-        if (sessionToken != null) {
-            sendReconnect();
-        }
-    }
+   public void onConnected() {
+      if (this.sessionToken != null) {
+         this.sessionState = MultiplayerManager.SessionState.RECONNECTING;
+         this.sendReconnect();
+      } else if (this.activeTransport != null && "INTERNET".equalsIgnoreCase(this.activeTransport.getTransportType())) {
+         this.sessionState = MultiplayerManager.SessionState.TRANSPORT_CONNECTED;
+      } else {
+         this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
+      }
 
-    @Override
-    public void onDisconnected(String reason) {
-        // The replacement handshake owns the token while reconnect is in flight. A close
-        // before its SESSION response cannot safely retry the predecessor token.
-        if (!reconnectHandshakePending) reconnectInternetSession();
-    }
+   }
 
-    @Override
-    public void onMessageReceived(NetworkMessage message) {
-        if (message == null) return;
+   public void onDisconnected(String reason) {
+      if (sessionToken != null) {
+         cancelSessionHandshakeTimeout();
+         reconnectHandshakePending = false;
+         scheduleReconnectRetry(reason == null ? "RECONNECT_DISCONNECTED" : reason);
+         return;
+      }
+      failInitialSession(reason == null ? "CONNECTION_CLOSED_BEFORE_SESSION" : reason);
+   }
+   public void onMessageReceived(NetworkMessage message) {
+      if (message != null) {
+         if (this.isMultiplayerActive || message.messageType == MessageType.SESSION && this.sessionState == MultiplayerManager.SessionState.TRANSPORT_CONNECTED) {
+            if (message.messageType == MessageType.ERROR && message.payloadJson != null && message.payloadJson.contains("\"SESSION_REPLACED\"")) {
+               this.endSession();
+            } else {
+               if (message.messageType == MessageType.EVENT_BATCH && message.payloadJson != null) {
+                  try {
+                     JsonValue events = (new JsonReader()).parse(message.payloadJson);
+                     if (events != null && events.isArray()) {
+                        for(JsonValue event = events.child; event != null; event = event.next) {
+                           JsonValue action = event.get("action");
+                           if (action == null || !action.isObject()) {
+                              JsonValue stored = event.get("payload");
+                              if (stored != null && stored.isString()) {
+                                 action = (new JsonReader()).parse(stored.asString());
+                              } else if (stored != null && stored.isObject()) {
+                                 action = stored;
+                              }
+                           }
 
-        if (message.messageType == MessageType.ERROR && message.payloadJson != null
-                && message.payloadJson.contains("\"SESSION_REPLACED\"")) {
+                           JsonValue combatRequestId = action == null ? null : action.get("combatRequestId");
+                           if (combatRequestId != null && combatRequestId.isString()) {
+                              this.pendingActions.remove(combatRequestId.asString());
+                           }
+                        }
+                     }
+                  } catch (RuntimeException var20) {
+                  }
+               }
+
+               if (message.requestId != null && (message.messageType == MessageType.ACK || message.messageType == MessageType.ERROR)) {
+                  this.pendingRoomOperations.remove(message.requestId);
+                  this.cancelRoomOperationTimeout(message.requestId);
+               }
+
+               if ((message.messageType == MessageType.ACTION_ACCEPTED || message.messageType == MessageType.ACK) && message.requestId != null) {
+                  this.pendingActions.remove(message.requestId);
+               } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
+                  Long rejectedRebaseTerm = (Long)this.publisherRebaseRequests.remove(message.requestId);
+                  boolean rejectedPublisherRebase = rejectedRebaseTerm != null && rejectedRebaseTerm == this.levelPublisherTerm && this.levelPublisher;
+                  if (rejectedPublisherRebase) {
+                     this.publisherRebaseSentTerm = -1L;
+                     this.requestResync(message.sequence);
+                  }
+
+                  NetworkMessage rejected = (NetworkMessage)this.pendingActions.remove(message.requestId);
+                  boolean rejectedNativeTurn = false;
+                  if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA && rejected.payloadJson != null) {
+                     try {
+                        JsonValue rejectedSnapshot = (new JsonReader()).parse(rejected.payloadJson);
+                        JsonValue tick = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldTick");
+                        rejectedNativeTurn = tick != null && tick.asBoolean();
+                     } catch (RuntimeException var19) {
+                     }
+                  }
+
+                  boolean rejectedNativeWorldMutation = false;
+                  boolean rejectedWorldAction = false;
+                  if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA && rejected.payloadJson != null) {
+                     try {
+                        JsonValue rejectedSnapshot = (new JsonReader()).parse(rejected.payloadJson);
+                        JsonValue mutation = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldMutation");
+                        rejectedNativeWorldMutation = mutation != null && mutation.asBoolean();
+                     } catch (RuntimeException var18) {
+                     }
+                  }
+
+                  if (rejected != null && rejected.messageType == MessageType.ACTION && rejected.payloadJson != null) {
+                     try {
+                        JsonValue intent = (new JsonReader()).parse(rejected.payloadJson);
+                        JsonValue action = intent == null ? null : intent.get("action");
+                        String name = action == null ? "" : action.asString();
+                        rejectedWorldAction = "MOVE".equals(name) || "UNLOCK".equals(name) || "MINE".equals(name) || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name) || "PICKUP".equals(name) || "DROP".equals(name) || "EQUIP".equals(name) || "UNEQUIP".equals(name) || "BUY".equals(name) || "BUYBACK".equals(name) || "SELL".equals(name) || "USE_ITEM".equals(name) || "THROW".equals(name) || "ALCHEMY".equals(name) || "USE_ABILITY".equals(name);
+                     } catch (RuntimeException var17) {
+                     }
+                  }
+
+                  boolean rejectedTransition = rejected != null && rejected.payloadJson != null && rejected.payloadJson.contains("\"action\":\"LVL_TRANSITION\"");
+                  boolean transitionAlreadyPending = message.payloadJson != null && message.payloadJson.contains("TRANSITION_PENDING");
+                  if (rejectedTransition && !transitionAlreadyPending) {
+                     this.floorTransitionPending = false;
+                  }
+
+                  if (rejectedNativeTurn || rejectedNativeWorldMutation || rejectedWorldAction || rejectedTransition && !transitionAlreadyPending || rejected != null && rejected.payloadJson != null && (rejected.payloadJson.contains("\"action\":\"ATTACK\"") || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"") || rejected.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\"") || rejected.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"") || rejected.payloadJson.contains("\"action\":\"REVIVE\""))) {
+                     this.requestResync(message.sequence);
+                  }
+               }
+
+               if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
+                  final boolean resumingExistingSession = this.reconnectHandshakePending;
+                  final boolean initialHandshakePending = this.sessionToken == null;
+                  this.cancelSessionHandshakeTimeout();
+                  try {
+                     JsonValue payload = new JsonReader().parse(message.payloadJson);
+                     if (payload == null || !payload.isObject()) throw new IllegalArgumentException("INVALID_SESSION_RESPONSE");
+                     JsonValue playerIdValue = payload.get("playerId");
+                     JsonValue tokenValue = payload.get("sessionToken");
+                     boolean validRotatedToken = tokenValue != null && !tokenValue.isNull() && tokenValue.isString()
+                             && tokenValue.asString().matches("[A-Za-z0-9._~-]{16,256}");
+                     boolean internetSession = this.activeTransport != null
+                             && "INTERNET".equalsIgnoreCase(this.activeTransport.getTransportType());
+
+                     if (internetSession && !resumingExistingSession
+                             && (playerIdValue == null || !playerIdValue.isString()
+                                 || playerIdValue.asString().isEmpty() || !validRotatedToken)) {
+                        this.failInitialSession("INVALID_SESSION_RESPONSE");
+                        return;
+                     }
+                     if (resumingExistingSession && (playerIdValue == null || playerIdValue.isNull()
+                             || !this.localPlayerId.equals(playerIdValue.asString()) || !validRotatedToken)) {
+                        this.endSession();
+                        return;
+                     }
+
+                     if (playerIdValue != null && !playerIdValue.isNull()) this.localPlayerId = playerIdValue.asString();
+                     if (tokenValue != null && !tokenValue.isNull()) this.sessionToken = tokenValue.asString();
+
+                     JsonValue publisherValue = payload.get("isLevelPublisher");
+                     JsonValue publisherIdValue = payload.get("levelPublisherId");
+                     JsonValue publisherTermValue = payload.get("publisherTerm");
+                     if (publisherTermValue != null && !publisherTermValue.isNull()) {
+                        this.applyLevelPublisherChange(
+                                publisherIdValue == null || publisherIdValue.isNull() ? null : publisherIdValue.asString(),
+                                publisherTermValue.asLong());
+                     } else {
+                        this.levelPublisher = publisherValue != null && !publisherValue.isNull() && publisherValue.asBoolean();
+                        this.levelPublisherId = this.levelPublisher ? this.localPlayerId : null;
+                     }
+
+                     JsonValue sequenceValue = payload.get("sequence");
+                     if (!resumingExistingSession && sequenceValue != null && !sequenceValue.isNull()
+                             && sequenceValue.isNumber() && sequenceValue.asDouble() >= 0d
+                             && sequenceValue.asDouble() == Math.floor(sequenceValue.asDouble())) {
+                        this.updateLastSequence(sequenceValue.asLong());
+                     }
+                     JsonValue seedValue = payload.get("seed");
+                     if (seedValue != null && !seedValue.isNull()) {
+                        this.authoritativeSeed = seedValue.asLong();
+                        Dungeon.seed = this.authoritativeSeed;
+                     }
+
+                     this.reconnectHandshakePending = false;
+                     this.cancelSessionHandshakeTimeout();
+                     this.cancelReconnectRetry();
+                     this.reconnectAttemptCount = 0;
+                     if (internetSession) {
+                        this.isMultiplayerActive = true;
+                        this.sessionError = null;
+                        JsonValue lifecycleVersionValue = payload.get("roomLifecycleVersion");
+                        this.roomLifecycleVersion = lifecycleVersionValue != null && lifecycleVersionValue.isNumber()
+                                ? lifecycleVersionValue.asInt() : 0;
+                        JsonValue membershipValue = payload.get("roomMembership");
+                        this.roomMembership = membershipValue != null && membershipValue.isBoolean() && membershipValue.asBoolean();
+                        JsonValue ownerValue = payload.get("roomOwnerId");
+                        this.roomOwnerId = ownerValue != null && ownerValue.isString() ? ownerValue.asString() : null;
+                        this.roomSequence = this.lastSequence;
+                        this.roomSeed = this.authoritativeSeed == null ? 0L : this.authoritativeSeed;
+                        this.sessionState = !this.roomMembership && this.roomLifecycleVersion != 0
+                                ? MultiplayerManager.SessionState.SESSION_BOUND : MultiplayerManager.SessionState.ROOM_JOINED;
+                        if (this.roomLifecycleVersion == 0) this.roomMembership = true;
+                        else if (!resumingExistingSession && !this.roomMembership) {
+                           if (this.createRoomOnConnect) this.createRoom();
+                           else this.joinRoom();
+                        }
+                     }
+                  } catch (RuntimeException malformedSession) {
+                     if (resumingExistingSession) this.endSession();
+                     else if (initialHandshakePending) this.failInitialSession("INVALID_SESSION_RESPONSE");
+                  }
+               }
+               MessageRouter.routeMessage(message);
+            }
+         }
+      }
+   }
+
+   private synchronized void failInitialSession(String errorCode) {
+      cancelSessionHandshakeTimeout();
+      cancelReconnectRetry();
+      clearPendingRoomOperations();
+      reconnectHandshakePending = false;
+      isMultiplayerActive = false;
+      sessionState = SessionState.FAILED;
+      sessionError = errorCode == null || errorCode.isEmpty() ? "INITIAL_SESSION_FAILED" : errorCode;
+      sessionToken = null;
+      roomMembership = false;
+      roomLifecycleVersion = 0;
+      roomOwnerId = null;
+      roomStatus = "LOBBY";
+      roomLifecycleError = null;
+      localRoomReady = false;
+      roomSnapshotReady = false;
+      roomAllReady = false;
+      remotePlayers.clear();
+      pendingActions.clear();
+      NetworkTransport failed = activeTransport;
+      activeTransport = null;
+      if (failed != null) {
+         try { failed.disconnect(); } catch (RuntimeException ignored) {}
+      }
+   }
+   private boolean isRejectedSessionCredential(Throwable error) {
+      if (error != null && error.getMessage() != null) {
+         String message = error.getMessage();
+         return message.contains("HTTP/1.1 401") || message.contains("HTTP/1.1 403") || message.contains("HTTP/1.1 409");
+      } else {
+         return false;
+      }
+   }
+
+   public void onError(Throwable error) {
+      String reason = error == null || error.getMessage() == null ? "TRANSPORT_ERROR" : error.getMessage();
+      if (reconnectHandshakePending) {
+         if (isRejectedSessionCredential(error)) {
             endSession();
             return;
-        }
+         }
+         cancelSessionHandshakeTimeout();
+         reconnectHandshakePending = false;
+         scheduleReconnectRetry(reason);
+         return;
+      }
+      if (sessionToken == null) {
+         failInitialSession(reason);
+         return;
+      }
+      scheduleReconnectRetry(reason);
+   }
+   public static enum SessionState {
+      DISCONNECTED,
+      CONNECTING,
+      TRANSPORT_CONNECTED,
+      RECONNECTING,
+      SESSION_BOUND,
+      ROOM_JOINED,
+      WORLD_SYNCED,
+      READY,
+      PLAYING,
+      FAILED;
 
-        // Native combat accepted by another player's authority returns to the attacker in
-        // EVENT_BATCH. Clear its optimistic request from that sequenced result.
-        if (message.messageType == MessageType.EVENT_BATCH && message.payloadJson != null) {
-            try {
-                JsonValue events = new JsonReader().parse(message.payloadJson);
-                if (events != null && events.isArray()) {
-                    for (JsonValue event = events.child; event != null; event = event.next) {
-                        JsonValue action = event.get("action");
-                        if (action == null || !action.isObject()) {
-                            JsonValue stored = event.get("payload");
-                            if (stored != null && stored.isString()) action = new JsonReader().parse(stored.asString());
-                            else if (stored != null && stored.isObject()) action = stored;
-                        }
-                        JsonValue combatRequestId = action == null ? null : action.get("combatRequestId");
-                        if (combatRequestId != null && combatRequestId.isString()) {
-                            pendingActions.remove(combatRequestId.asString());
-                        }
-                    }
-                }
-            } catch (RuntimeException ignored) {}
-        }
-
-        if ((message.messageType == MessageType.ACTION_ACCEPTED || message.messageType == MessageType.ACK)
-                && message.requestId != null) {
-            pendingActions.remove(message.requestId);
-        } else if (message.messageType == MessageType.ERROR && message.requestId != null) {
-            Long rejectedRebaseTerm = publisherRebaseRequests.remove(message.requestId);
-            boolean rejectedPublisherRebase = rejectedRebaseTerm != null
-                    && rejectedRebaseTerm.longValue() == levelPublisherTerm && levelPublisher;
-            if (rejectedPublisherRebase) {
-                // The server keeps this generation gated until a lossless rebase commits.
-                // Clear the send marker so the next authoritative SNAPSHOT can trigger one retry.
-                publisherRebaseSentTerm = -1L;
-                requestResync(message.sequence);
-            }
-            NetworkMessage rejected = pendingActions.remove(message.requestId);
-            boolean rejectedNativeTurn = false;
-            if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA
-                    && rejected.payloadJson != null) {
-                try {
-                    JsonValue rejectedSnapshot = new JsonReader().parse(rejected.payloadJson);
-                    JsonValue tick = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldTick");
-                    rejectedNativeTurn = tick != null && tick.asBoolean();
-                } catch (RuntimeException ignored) {}
-            }
-            boolean rejectedNativeWorldMutation = false;
-            boolean rejectedWorldAction = false;
-            if (rejected != null && rejected.messageType == MessageType.LEVEL_DATA && rejected.payloadJson != null) {
-                try {
-                    JsonValue rejectedSnapshot = new JsonReader().parse(rejected.payloadJson);
-                    JsonValue mutation = rejectedSnapshot == null ? null : rejectedSnapshot.get("nativeWorldMutation");
-                    rejectedNativeWorldMutation = mutation != null && mutation.asBoolean();
-                } catch (RuntimeException ignored) {}
-            }
-            if (rejected != null && rejected.messageType == MessageType.ACTION && rejected.payloadJson != null) {
-                try {
-                    JsonValue intent = new JsonReader().parse(rejected.payloadJson);
-                    JsonValue action = intent == null ? null : intent.get("action");
-                    String name = action == null ? "" : action.asString();
-                    rejectedWorldAction = "MOVE".equals(name) || "UNLOCK".equals(name) || "MINE".equals(name)
-                            || "INTERACT".equals(name) || "OPEN_CHEST".equals(name) || "LVL_TRANSITION".equals(name)
-                            || "PICKUP".equals(name) || "DROP".equals(name) || "EQUIP".equals(name)
-                            || "UNEQUIP".equals(name) || "BUY".equals(name) || "BUYBACK".equals(name) || "SELL".equals(name)
-                            || "USE_ITEM".equals(name) || "THROW".equals(name) || "ALCHEMY".equals(name)
-                            || "USE_ABILITY".equals(name);
-                } catch (RuntimeException ignored) {}
-            }
-            boolean rejectedTransition = rejected != null && rejected.payloadJson != null
-                    && rejected.payloadJson.contains("\"action\":\"LVL_TRANSITION\"");
-            boolean transitionAlreadyPending = message.payloadJson != null
-                    && message.payloadJson.contains("TRANSITION_PENDING");
-            if (rejectedTransition && !transitionAlreadyPending) floorTransitionPending = false;
-            if (rejectedNativeTurn || rejectedNativeWorldMutation || rejectedWorldAction
-                    || (rejectedTransition && !transitionAlreadyPending)
-                    || (rejected != null && rejected.payloadJson != null
-                    && (rejected.payloadJson.contains("\"action\":\"ATTACK\"")
-                        || rejected.payloadJson.contains("\"action\":\"SYNC_MOB_STATE\"")
-                        || rejected.payloadJson.contains("\"action\":\"SYNC_PLAYER_COMBAT\"")
-                        || rejected.payloadJson.contains("\"action\":\"SYNC_HERO_STATE\"")
-                        || rejected.payloadJson.contains("\"action\":\"REVIVE\"")))) {
-                requestResync(message.sequence);
-            }
-        }
-
-        if (message.messageType == MessageType.SESSION && message.payloadJson != null) {
-            try {
-                JsonValue payload = new JsonReader().parse(message.payloadJson);
-                boolean resumingExistingSession = reconnectHandshakePending;
-                JsonValue playerIdValue = payload.get("playerId");
-                JsonValue tokenValue = payload.get("sessionToken");
-                boolean validRotatedToken = tokenValue != null && !tokenValue.isNull()
-                        && tokenValue.isString()
-                        && tokenValue.asString().matches("[A-Za-z0-9._~-]{16,256}");
-                if (resumingExistingSession && (playerIdValue == null || playerIdValue.isNull()
-                        || !localPlayerId.equals(playerIdValue.asString()) || !validRotatedToken)) {
-                    endSession();
-                    return;
-                }
-                if (playerIdValue != null && !playerIdValue.isNull()) {
-                    this.localPlayerId = playerIdValue.asString();
-                }
-                if (tokenValue != null && !tokenValue.isNull()) {
-                    this.sessionToken = tokenValue.asString();
-                }
-                JsonValue publisherValue = payload.get("isLevelPublisher");
-                JsonValue publisherIdValue = payload.get("levelPublisherId");
-                JsonValue publisherTermValue = payload.get("publisherTerm");
-                if (publisherTermValue != null && !publisherTermValue.isNull()) {
-                    applyLevelPublisherChange(
-                            publisherIdValue == null || publisherIdValue.isNull()
-                                    ? null : publisherIdValue.asString(),
-                            publisherTermValue.asLong());
-                } else {
-                    this.levelPublisher = publisherValue != null && !publisherValue.isNull()
-                            && publisherValue.asBoolean();
-                    this.levelPublisherId = levelPublisher ? localPlayerId : null;
-                }
-                // SESSION's sequence is the trusted initial room baseline for a new handshake.
-                // Subsequent EVENT_BATCH/ACTION_ACCEPTED envelopes never advance it on receipt:
-                // they commit individually only after contiguous native application.
-                JsonValue sequenceValue = payload.get("sequence");
-                if (!resumingExistingSession && sequenceValue != null && !sequenceValue.isNull()
-                        && sequenceValue.isNumber() && sequenceValue.asDouble() >= 0d
-                        && sequenceValue.asDouble() == Math.floor(sequenceValue.asDouble())) {
-                    updateLastSequence(sequenceValue.asLong());
-                }
-                reconnectHandshakePending = false;
-                JsonValue seedValue = payload.get("seed");
-                if (seedValue != null && !seedValue.isNull()) {
-                    // SESSION arrives before HeroSelectScene starts the run, so all clients
-                    // initialize Dungeon with the same seed before SPD builds its first floor.
-                    authoritativeSeed = seedValue.asLong();
-                    Dungeon.seed = authoritativeSeed;
-                }
-            } catch (RuntimeException ignored) {
-                // A malformed SESSION must not overwrite an existing valid token.
-            }
-        }
-
-        // Never advance the world sequence from an arbitrary transport envelope. SESSION
-        // establishes the initial handshake baseline; ACTION_ACCEPTED/EVENT_BATCH and full
-        // snapshots have explicit validation/application commit paths in MessageRouter.
-        MessageRouter.routeMessage(message);
-    }
-
-    private boolean isRejectedSessionCredential(Throwable error) {
-        if (error == null || error.getMessage() == null) return false;
-        String message = error.getMessage();
-        return message.contains("HTTP/1.1 401")
-                || message.contains("HTTP/1.1 403")
-                || message.contains("HTTP/1.1 409");
-    }
-
-    @Override
-    public void onError(Throwable error) {
-        if (reconnectHandshakePending) {
-            if (isRejectedSessionCredential(error)) {
-                endSession();
-                return;
-            }
-            // Do not spin on a failed upgrade. Keep the in-memory session available for a
-            // later transport failure/retry, using the last credential still held by the client.
-            reconnectHandshakePending = false;
-            return;
-        }
-        reconnectInternetSession();
-    }
+      // $FF: synthetic method
+      private static SessionState[] $values() {
+         return new SessionState[]{DISCONNECTED, CONNECTING, TRANSPORT_CONNECTED, RECONNECTING, SESSION_BOUND, ROOM_JOINED, WORLD_SYNCED, READY, PLAYING, FAILED};
+      }
+   }
 }

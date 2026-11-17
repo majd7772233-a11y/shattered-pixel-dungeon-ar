@@ -993,4 +993,110 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
+  it("enforces lifecycle minimum and maximum player counts, readiness, action gating, handoff, and permanent closure", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase13-room-lifecycle-core"));
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      const roomBroadcasts = [];
+      instance.broadcastToRoomMembers = message => roomBroadcasts.push(message);
+
+      sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomLifecycleVersion", "1");
+      const clients = new Map();
+      for (const playerId of ["phase13-host", "phase13-guest", "phase13-third", "phase13-fourth", "phase13-pending"]) {
+        const sessionToken = playerId + "-token";
+        sql.exec("INSERT INTO players (player_id,session_token,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?)",
+          playerId, sessionToken, 0, 10, 10, "ALIVE", 1, 0);
+        const sent = [];
+        clients.set(playerId, { sent, socket: { send: value => sent.push(String(value)), deserializeAttachment: () => ({ playerId, sessionToken }) } });
+      }
+      let requestNumber = 0;
+      const send = async (playerId, messageType, payload) => {
+        const client = clients.get(playerId);
+        const startAt = client.sent.length;
+        await instance.webSocketMessage(client.socket, JSON.stringify({
+          protocolVersion: "1.0.0", messageType, requestId: "phase13-" + (++requestNumber),
+          senderId: "untrusted", payloadJson: JSON.stringify(payload || {})
+        }));
+        return client.sent.slice(startAt).map(value => JSON.parse(value));
+      };
+      const errorOf = messages => {
+        const error = messages.find(message => message.messageType === "ERROR");
+        return error?.payloadJson ? JSON.parse(error.payloadJson).error : null;
+      };
+      const meta = key => sql.exec("SELECT value FROM room_meta WHERE key = ?", key).toArray()[0]?.value;
+      const memberCount = () => sql.exec("SELECT COUNT(*) AS count FROM room_meta WHERE substr(key,1,11)='roomMember:'").toArray()[0].count;
+
+      const created = await send("phase13-host", "CREATE_ROOM", { gameMode: "COOP_DUNGEON" });
+      expect(created.some(message => message.messageType === "ACK")).toBe(true);
+      expect(meta("roomOwnerId")).toBe("phase13-host");
+      expect(meta("roomCapacity")).toBe("4");
+      expect(meta("levelPublisher")).toBe("phase13-host");
+      expect(memberCount()).toBe(1);
+
+      const seed = instance.matchSeed;
+      const sequence = instance.currentSequence;
+      const nativeLevel = { schemaVersion: 1, depth: instance.currentDepth, width: 8, height: 8, branch: 0, entrancePos: 0, exitPos: 63, seed, locked: false, feeling: "NONE", levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel", heroStateJson: "{}", nativeLevelMetadataBundle: "phase13-native-level", tiles: Array.from({ length: 64 }, (_, pos) => ({ pos, terrain: 1, passable: true, solid: false, pit: false, losBlocking: false, flammable: false, secret: false, avoid: false, water: false, discoverable: false, openSpace: false })), transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [], visitedPositions: [], mappedPositions: [] };
+      sql.exec("UPDATE levels SET width=8,height=8,entrance_pos=0,exit_pos=63,seed=? WHERE depth=?", seed, instance.currentDepth);
+      sql.exec("DELETE FROM level_tiles WHERE depth=?", instance.currentDepth);
+      sql.exec("DELETE FROM mobs WHERE depth=?", instance.currentDepth);
+      for (let pos = 0; pos < 64; pos++) sql.exec("INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)", instance.currentDepth, pos, 1, 1, 0, 0, 0);
+      sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "levelSnapshot:" + instance.currentDepth, JSON.stringify(nativeLevel));
+      const readyHeroStateJson = JSON.stringify({ hp: 10, ht: 10, pos: 0, shielding: 0, combatBundle: "phase13-native-combat", inventoryBundle: "phase13-native-inventory", buffCount: 0 });
+      const readyPayload = { ready: true, seed, sequence, className: "WARRIOR", heroStateJson: readyHeroStateJson };
+      await send("phase13-host", "READY", readyPayload);
+      expect(errorOf(await send("phase13-host", "MATCH_START", { seed, sequence }))).toBe("ROOM_NOT_ENOUGH_PLAYERS");
+
+      for (const playerId of ["phase13-guest", "phase13-third", "phase13-fourth"]) {
+        const joined = await send(playerId, "JOIN_ROOM", {});
+        expect(joined.some(message => message.messageType === "ACK")).toBe(true);
+      }
+      expect(memberCount()).toBe(4);
+      expect(roomBroadcasts.some(message => message.messageType === "SNAPSHOT")).toBe(true);
+      const rosterFor = playerId => clients.get(playerId).sent.map(value => JSON.parse(value)).filter(message => message.messageType === "PLAYER_JOINED").map(message => message.senderId);
+      expect(rosterFor("phase13-guest")).toEqual(expect.arrayContaining(["phase13-host", "phase13-guest"]));
+      expect(rosterFor("phase13-third")).toEqual(expect.arrayContaining(["phase13-host", "phase13-guest", "phase13-third"]));
+      expect(rosterFor("phase13-fourth")).toEqual(expect.arrayContaining(["phase13-host", "phase13-guest", "phase13-third", "phase13-fourth"]));
+      expect(roomBroadcasts.filter(message => message.messageType === "PLAYER_JOINED").map(message => message.senderId)).toEqual(
+        ["phase13-guest", "phase13-third", "phase13-fourth"]
+      );
+      const resumedMessages = [];
+      instance.sendRoomStateToSocket({ send: value => resumedMessages.push(JSON.parse(String(value))) }, "SESSION_RESUMED");
+      expect(resumedMessages.filter(message => message.messageType === "PLAYER_JOINED")).toHaveLength(4);
+      expect(errorOf(await send("phase13-pending", "JOIN_ROOM", {}))).toBe("ROOM_FULL");
+      expect(memberCount()).toBe(4);
+      expect(errorOf(await send("phase13-pending", "ACTION", { action: "MOVE", data: {} }))).toBe("ROOM_MEMBERSHIP_REQUIRED");
+      expect(errorOf(await send("phase13-host", "ACTION", { action: "MOVE", data: {} }))).toBe("MATCH_NOT_STARTED");
+      expect(errorOf(await send("phase13-host", "MATCH_START", { seed, sequence }))).toBe("ROOM_PLAYERS_NOT_READY");
+
+      expect(errorOf(await send("phase13-third", "READY", { ready: true, seed: seed + 1, sequence }))).toBe("ROOM_WORLD_NOT_SYNCHRONIZED");
+      for (const playerId of ["phase13-guest", "phase13-third", "phase13-fourth"]) {
+        const readyMessages = await send(playerId, "READY", readyPayload);
+        expect(errorOf(readyMessages)).toBe(null);
+        expect(readyMessages.some(message => message.messageType === "ACK")).toBe(true);
+      }
+      sql.exec("DELETE FROM room_meta WHERE key = ?", "levelSnapshot:" + instance.currentDepth);
+      expect(errorOf(await send("phase13-guest", "MATCH_START", { seed, sequence }))).toBe("MATCH_START_AUTHORITY_REQUIRED");
+      expect(errorOf(await send("phase13-host", "MATCH_START", { seed, sequence }))).toBe("ROOM_START_SNAPSHOT_REQUIRED");
+
+      sql.exec("UPDATE players SET connected=0,ready=0 WHERE player_id=?", "phase13-guest");
+      const ownerLeave = await send("phase13-host", "LEAVE", {});
+      expect(ownerLeave.some(message => message.messageType === "ACK")).toBe(true);
+      expect(meta("roomOwnerId")).toBe("phase13-third");
+      expect(meta("levelPublisher")).toBe("phase13-third");
+      expect(Number(meta("levelPublisherTerm"))).toBe(2);
+      expect(Number(sql.exec("SELECT ready FROM players WHERE player_id = 'phase13-third'").toArray()[0].ready)).toBe(0);
+
+      sql.exec("UPDATE players SET connected=1 WHERE player_id=?", "phase13-guest");
+      await send("phase13-guest", "LEAVE", {});
+      expect(meta("roomOwnerId")).toBe("phase13-third");
+      await send("phase13-third", "LEAVE", {});
+      expect(meta("roomOwnerId")).toBe("phase13-fourth");
+      await send("phase13-fourth", "LEAVE", {});
+      expect(meta("roomClosed")).toBe("1");
+      expect(meta("roomLifecycleState")).toBe("CLOSED");
+      expect(memberCount()).toBe(0);
+      expect(errorOf(await send("phase13-pending", "JOIN_ROOM", {}))).toBe("ROOM_CLOSED");
+    });
+  });
+
 });
