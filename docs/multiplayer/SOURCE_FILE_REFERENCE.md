@@ -4,6 +4,8 @@
 
 ## 1. Repository structure
 
+> The top-level counts below are the historical source-audit baseline, not a live recount of the current tree.
+
 The audited Git tree contains 1,963 tracked blobs at the baseline. Main top-level areas:
 
 | Path | Approx. tracked files | Responsibility |
@@ -83,7 +85,7 @@ The temporary rollout tracker is retained while Batch 3 is pending; it must be d
 
 Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
 
-The package has 32 Java files:
+The package has 34 Java files:
 
 | File | Main responsibility |
 |---|---|
@@ -95,11 +97,13 @@ The package has 32 Java files:
 | InternetTransport.java | Custom TCP/TLS/WebSocket client |
 | LANTransport.java | TCP server/client and UDP host discovery |
 | LootClaimManager.java | In-memory claim helper |
-| MessageRouter.java | Exhaustive 25-value outer-message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING and snapshot readiness restore |
+| MessageRouter.java | Exhaustive 25-value outer-message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING, render-thread ROOM_STATE/MATCH_START and snapshot readiness restore |
 | MessageType.java | Outer protocol enum |
 | MultiHeroManager.java | Native Hero enumeration/nearest-hero helper |
 | MultiplayerActionDispatcher.java | Native Hero action dispatch bridge |
-| MultiplayerManager.java | Client session, transport, sequence, identities and publication |
+| MultiplayerManager.java | Client session/reconnect, lifecycle gate, room operations, sequence, identities and publication |
+| RoomLobbyState.java | Validated authoritative ROOM_STATE roster and revision for the lobby |
+| RoomMemberInfo.java | Immutable member identity/class/state/readiness/connectivity model |
 | MultiplayerRunProgress.java | Run progress state serialization/restore |
 | NativeCombatAuthorityPolicy.java | Authority selection helper for native combat |
 | NativeCombatJson.java | Strict JSON writer for combat payloads |
@@ -149,7 +153,8 @@ These are automated JVM tests. They do not prove a production Worker deployment 
 | scenes/MultiplayerTransportScene.java | Transport selection |
 | scenes/MultiplayerSetupScene.java | Host/client and endpoint setup/session start |
 | scenes/HeroSelectScene.java | Applies the authoritative seed before native game creation |
-| scenes/GameScene.java | Publishes current native level and updates sprites/visuals |
+| scenes/GameScene.java | Publishes current native level, ticks the lobby and gates native turns/cell input until PLAYING |
+| windows/WndMultiplayerLobby.java | In-game lifecycle lobby: authoritative roster/readiness, owner Start/readiness reset, Leave and reconnect/failure exit |
 | scenes/InterlevelScene.java | Native floor and revival transition lifecycle |
 
 ## 6. Android platform files
@@ -325,3 +330,17 @@ Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 437310
 | `server/src/match-room/durable-object-sqlite.integration.do.mjs` | Real Workers SQLite eviction/restart, replay, snapshot, retention, legacy terminal status and missing-level regression tests. |
 
 No Android or protocol-schema source changed for the final Phase 12-B closeout. `protocol/schema.json` remains at 25 messages / 23 actions. The multi-table LEVEL_DATA write path is covered by a single Durable Object `transactionSync` boundary with rollback tests; the 14-test real SQLite suite verifies no partial level state or publisher ACK escapes a failed commit.
+
+
+## Phase 13 lobby integration source map (2026-11-17)
+
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java`: sticky Internet lifecycle gate, validated roster access, local snapshot synchronization, room-operation correlation/timeouts and reconnect-exhaustion cleanup.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RoomLobbyState.java`: sole ROOM_STATE parser/store/revision; validates count/capacity, unique IDs, owner reference and allReady consistency.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RoomMemberInfo.java`: immutable member identity/class/state/readiness/connectivity model.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java`: render-thread ROOM_STATE and MATCH_START handling; ROOM_STATE is applied once.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/windows/WndMultiplayerLobby.java`: modal room/ready UI, owner Start/readiness reset, Leave and reconnect/failure exit.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/scenes/GameScene.java`: modal tick seam and native turn/cell-input gate before PLAYING.
+- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java`: lifecycle regressions for failed Internet gate and duplicate roster rejection.
+- `server/src/match-room/durable-object-sqlite.integration.do.mjs`: real SQLite race, cancel/reset, successful-start, late-join and post-start-cancel acceptance.
+
+No Android instrumentation/UI automation currently proves rendered layout or touch behavior; manual emulator acceptance remains open.

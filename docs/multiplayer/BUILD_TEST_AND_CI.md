@@ -292,3 +292,28 @@ The following local checks apply to the Phase 13 source/test commit `7a75b493124
 - The full `test assembleDebug --no-daemon --console=plain --rerun-tasks` command passed on 2026-11-17: 57 actionable tasks, 137 core JVM tests with zero failures/errors/skips, and Debug APK assembled. APK is 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. Re-run after the in-game lobby UI is integrated.
 - Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed Backend, Android and Durable Object SQLite jobs for commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
 - No production Worker deployment or physical two-device test is claimed.
+
+
+## Historical intermediate Phase 13 lobby integration checkpoint (2026-11-17; superseded below)
+
+This was the intermediate lobby-only checkpoint before owner-loss/rejoin acceptance was added. It is superseded by the current owner-loss/rejoin continuation below. The earlier APK/hash and CI run remain historical evidence for commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6` only.
+
+- Backend `npm run build`: PASS. `npm test`: PASS, 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios; generated JavaScript mirrors are build outputs).
+- Real Workers Durable Object SQLite integration: PASS, 16/16 tests. Phase 13 additions cover simultaneous JOIN_ROOM/MATCH_START, cancellation with all-member READY reset, successful synchronized start, MATCH_START/ROOM_STATE broadcasts, late-join refusal and post-start cancellation refusal.
+- Debug APK: 35,202,307 bytes; SHA-256 `C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B`.
+- Exact-head GitHub Actions for the new implementation/docs commit remain pending push and verification. Do not cite historical run 44100890572 for a newer SHA.
+- No production Worker deployment or physical two-device test was performed.
+## Phase 13 owner-loss/rejoin continuation — 2026-11-17 (current uncommitted worktree)
+
+This record supersedes the previous lobby checkpoint for current local verification only. Previous APK hashes and CI runs remain attached to their original commit/SHA and must not be reused as evidence for the new worktree.
+
+- Backend npm run build: PASS (TypeScript compiler exit 0).
+- Backend npm test: PASS, 10 Vitest files / 744 reported executions. This is 372 unique TypeScript source scenarios plus generated JavaScript mirrors emitted by tsc; mirrors are not additional unique scenarios.
+- Worker protocol guards: PASS — 25 message types, 23 action types, 12 inbound message types, 13 known non-inbound types, and 23 explicit Worker ACTION branches.
+- Real Workers Durable Object SQLite: PASS, 1 file / 17 tests, including abrupt owner WebSocket loss, transactional owner/publisher transfer, publisher-term advance, all-member player READY reset and durable READY-proof invalidation, and authoritative ROOM_STATE broadcast.
+- Android core JVM: forced :core:test --rerun-tasks PASS; 10 JUnit XML files / 141 tests / 0 failures / 0 errors / 0 skipped. The new resumedMemberAppliesTransferredOwnerAndFreshRosterAfterNetworkHandoff test verifies authenticated resume, rotated credential, stable former-owner identity, successor owner and complete roster replacement containing connected and offline members.
+- Full Android build: test assembleDebug --rerun-tasks --no-daemon --console=plain PASS; 57 actionable Gradle tasks, all 57 executed. JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true was applied to this process only to avoid a local Gradle loopback file-lock listener bind conflict; no global environment/network configuration was changed.
+- Debug APK: android/build/outputs/apk/debug/android-debug.apk, 35,202,307 bytes; SHA-256 C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B.
+- git diff --check: PASS after final documentation and source review. TypeScript-generated .js mirrors were removed from the worktree after testing; .ts sources and .mjs Durable Object test remain the maintained source files.
+- Exact-head GitHub Actions for the current implementation/docs commit: NOT_RUN yet (pending local commit and push). Historical run 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6.
+- Manual emulator UI/touch/layout acceptance: NOT_RUN by explicit user request; emulator remains available. Move visible lobby flow to Phase 20 and RTL/touch/layout checks to Phase 21. No production Worker deployment or physical two-device test is claimed.

@@ -29,6 +29,88 @@ public class MultiplayerReconnectLifecycleTest {
     }
 
     @Test
+    public void resumedMemberAppliesTransferredOwnerAndFreshRosterAfterNetworkHandoff() throws Exception {
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        RecordingInternetTransport reconnect = new RecordingInternetTransport();
+        manager.setSessionTimingForTests(5000L, 5000L, 20L, 3);
+        manager.setInternetTransportFactoryForTests(() -> reconnect);
+
+        manager.startSession("https://example.invalid/room/handoff-room/websocket",
+                "returning-owner", initial, false);
+        initial.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"returning-owner\",\"sessionToken\":\"initial-owner-session-token-0001\","
+                        + "\"sequence\":12,\"seed\":12345,\"roomLifecycleVersion\":1,"
+                        + "\"roomMembership\":true,\"roomOwnerId\":\"returning-owner\"}"));
+
+        String beforeDisconnect = "{\"lifecycleVersion\":1,\"roomStatus\":\"LOBBY\","
+                + "\"gameStatus\":\"LOBBY\",\"ownerId\":\"returning-owner\","
+                + "\"memberCount\":2,\"maxPlayers\":4,\"allReady\":true,"
+                + "\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":12,"
+                + "\"members\":["
+                + "{\"playerId\":\"returning-owner\",\"className\":\"HUNTRESS\","
+                + "\"state\":\"ALIVE\",\"ready\":true,\"connected\":true},"
+                + "{\"playerId\":\"successor-player\",\"className\":\"WARRIOR\","
+                + "\"state\":\"ALIVE\",\"ready\":true,\"connected\":true}]}";
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, beforeDisconnect));
+        manager.markWorldSynchronized();
+        Assert.assertTrue(manager.isLocalRoomOwner());
+        Assert.assertTrue(manager.isLocalRoomReady());
+        Assert.assertTrue(manager.isRoomSnapshotReady());
+
+        initial.simulateDisconnect();
+        awaitConnected(reconnect);
+        Assert.assertEquals(MultiplayerManager.SessionState.RECONNECTING, manager.getSessionState());
+        Assert.assertEquals("initial-owner-session-token-0001", reconnect.presentedToken);
+        awaitOnlyReconnectRequest(reconnect);
+
+        reconnect.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"returning-owner\",\"sessionToken\":\"rotated-owner-session-token-0002\","
+                        + "\"sequence\":12,\"seed\":12345,\"roomLifecycleVersion\":1,"
+                        + "\"roomMembership\":true,\"roomOwnerId\":\"successor-player\",\"resumed\":true}"));
+
+        Assert.assertEquals("returning-owner", manager.getLocalPlayerId());
+        Assert.assertEquals("rotated-owner-session-token-0002", manager.getSessionToken());
+        Assert.assertTrue(manager.isRoomMember());
+        Assert.assertEquals("successor-player", manager.getRoomOwnerId());
+        Assert.assertFalse(manager.isLocalRoomOwner());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        String resumedRoster = "{\"lifecycleVersion\":1,\"reason\":\"SESSION_RESUMED\","
+                + "\"roomStatus\":\"LOBBY\",\"gameStatus\":\"LOBBY\","
+                + "\"ownerId\":\"successor-player\",\"memberCount\":3,\"maxPlayers\":4,"
+                + "\"allReady\":false,\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":12,"
+                + "\"members\":["
+                + "{\"playerId\":\"successor-player\",\"className\":\"WARRIOR\","
+                + "\"state\":\"ALIVE\",\"ready\":false,\"connected\":true},"
+                + "{\"playerId\":\"returning-owner\",\"className\":\"HUNTRESS\","
+                + "\"state\":\"ALIVE\",\"ready\":false,\"connected\":true},"
+                + "{\"playerId\":\"offline-member\",\"className\":\"MAGE\","
+                + "\"state\":\"ALIVE\",\"ready\":false,\"connected\":false}]}";
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, resumedRoster));
+
+        Assert.assertNull(manager.getRoomLifecycleError());
+        Assert.assertEquals(MultiplayerManager.SessionState.WORLD_SYNCED, manager.getSessionState());
+        Assert.assertEquals("successor-player", manager.getRoomOwnerId());
+        Assert.assertEquals(3, manager.getRoomMemberCount());
+        Assert.assertFalse(manager.isLocalRoomReady());
+        Assert.assertTrue(manager.isRoomSnapshotReady());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        RoomMemberInfo[] restoredMembers = manager.getRoomMembers();
+        Assert.assertEquals(3, restoredMembers.length);
+        Assert.assertEquals("successor-player", restoredMembers[0].getPlayerId());
+        Assert.assertTrue(restoredMembers[0].isConnected());
+        Assert.assertFalse(restoredMembers[0].isReady());
+        Assert.assertEquals("returning-owner", restoredMembers[1].getPlayerId());
+        Assert.assertTrue(restoredMembers[1].isConnected());
+        Assert.assertFalse(restoredMembers[1].isReady());
+        Assert.assertEquals("offline-member", restoredMembers[2].getPlayerId());
+        Assert.assertFalse(restoredMembers[2].isConnected());
+        Assert.assertFalse(restoredMembers[2].isReady());
+        Assert.assertFalse(manager.isLocalRoomOwner());
+        Assert.assertFalse(manager.areAllRoomMembersReady());
+    }
+    @Test
     public void internetDisconnectAndErrorStartAuthenticatedReconnectWithoutRetryLoops() throws Exception {
         RecordingInternetTransport initial = new RecordingInternetTransport();
         RecordingInternetTransport firstReconnect = new RecordingInternetTransport();
@@ -60,7 +142,7 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertEquals("initial-session-token-0001", firstReconnect.presentedToken);
         Assert.assertTrue(firstReconnect.endpoint.contains("playerId=stable-player-id"));
         Assert.assertFalse(firstReconnect.endpoint.contains("initial-session-token-0001"));
-        NetworkMessage firstRequest = onlyReconnectRequest(firstReconnect);
+        NetworkMessage firstRequest = awaitOnlyReconnectRequest(firstReconnect);
         Assert.assertEquals("{\"lastSequence\":9}", firstRequest.payloadJson);
         Assert.assertFalse("The old socket must be disconnected after replacement is installed",
                 initial.connected);
@@ -74,7 +156,7 @@ public class MultiplayerReconnectLifecycleTest {
         awaitConnected(secondReconnect);
         Assert.assertEquals(2, factoryCalls[0]);
         Assert.assertEquals("initial-session-token-0001", secondReconnect.presentedToken);
-        Assert.assertEquals("{\"lastSequence\":9}", onlyReconnectRequest(secondReconnect).payloadJson);
+        Assert.assertEquals("{\"lastSequence\":9}", awaitOnlyReconnectRequest(secondReconnect).payloadJson);
 
         NetworkMessage resumed = new NetworkMessage(MessageType.SESSION,
                 "{\"playerId\":\"stable-player-id\",\"sessionToken\":\"rotated-session-token-0002\",\"sequence\":40}");
@@ -159,6 +241,81 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertEquals(MessageType.JOIN_ROOM, guest.sent.get(0).messageType);
     }
     @Test
+    public void roomStateKeepsServerSnapshotAvailabilitySeparateFromLocalSyncAndAllowsUnreadyAgain() {
+        RecordingInternetTransport transport = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/state-room/websocket", "host-player", transport, true);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"host-player\",\"sessionToken\":\"lifecycle-session-token-0001\",\"sequence\":0,\"seed\":12345,\"roomLifecycleVersion\":1,\"roomMembership\":false}"));
+
+        String unreadyState = "{\"lifecycleVersion\":1,\"roomStatus\":\"LOBBY\",\"gameStatus\":\"LOBBY\",\"ownerId\":\"host-player\",\"memberCount\":2,\"maxPlayers\":4,\"allReady\":false,\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":0,\"members\":[{\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":true},{\"playerId\":\"offline-player\",\"className\":\"WARRIOR\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":false}]}";
+        String readyState = unreadyState.replace("\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":false",
+                "\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":true");
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, unreadyState));
+        Assert.assertTrue(manager.isRoomMember());
+        Assert.assertFalse("Server snapshot availability is not proof it was applied locally", manager.isRoomSnapshotReady());
+        Assert.assertEquals(MultiplayerManager.SessionState.ROOM_JOINED, manager.getSessionState());
+        Assert.assertEquals(2, manager.getRoomMembers().length);
+        Assert.assertEquals("HUNTRESS", manager.getRoomMembers()[0].getClassName());
+        Assert.assertFalse(manager.getRoomMembers()[1].isConnected());
+        Assert.assertTrue(manager.isLocalRoomOwner());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.markWorldSynchronized();
+        Assert.assertTrue(manager.isRoomSnapshotReady());
+        Assert.assertEquals(MultiplayerManager.SessionState.WORLD_SYNCED, manager.getSessionState());
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, readyState));
+        Assert.assertTrue(manager.isLocalRoomReady());
+        Assert.assertEquals(MultiplayerManager.SessionState.READY, manager.getSessionState());
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, unreadyState));
+        Assert.assertFalse(manager.isLocalRoomReady());
+        Assert.assertTrue("Unready must keep the already-applied snapshot reusable", manager.isRoomSnapshotReady());
+        Assert.assertEquals(MultiplayerManager.SessionState.WORLD_SYNCED, manager.getSessionState());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.applyMatchStart(new NetworkMessage(MessageType.MATCH_START, "{\"status\":\"PLAYING\"}"));
+        Assert.assertTrue(manager.isRoomGameplayAllowed());
+        Assert.assertEquals(MultiplayerManager.SessionState.PLAYING, manager.getSessionState());
+    }
+    @Test
+    public void failedInternetLifecycleSessionRemainsBlockedUntilExplicitEndSession() {
+        RecordingInternetTransport transport = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/failed-lifecycle-room/websocket",
+                "failed-player", transport, false);
+
+        Assert.assertTrue(manager.isRoomLifecycleRequired());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+        manager.onDisconnected("initial connection closed before SESSION");
+
+        Assert.assertEquals(MultiplayerManager.SessionState.FAILED, manager.getSessionState());
+        Assert.assertTrue("A failed online room remains fail-closed until the user exits it",
+                manager.isRoomLifecycleRequired());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.endSession();
+        Assert.assertFalse(manager.isRoomLifecycleRequired());
+        Assert.assertTrue(manager.isRoomGameplayAllowed());
+    }
+
+    @Test
+    public void roomStateRejectsDuplicateMemberIdentitiesWithoutAcceptingPartialRoster() {
+        RecordingInternetTransport transport = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/duplicate-member-room/websocket",
+                "host-player", transport, true);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"host-player\",\"sessionToken\":\"lifecycle-session-token-0001\",\"sequence\":0,\"seed\":12345,\"roomLifecycleVersion\":1,\"roomMembership\":false}"));
+
+        String duplicateMembers = "{\"lifecycleVersion\":1,\"roomStatus\":\"LOBBY\",\"gameStatus\":\"LOBBY\",\"ownerId\":\"host-player\",\"memberCount\":2,\"maxPlayers\":4,\"allReady\":false,\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":0,\"members\":[{\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":true},{\"playerId\":\"host-player\",\"className\":\"WARRIOR\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":true}]}";
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, duplicateMembers));
+
+        Assert.assertFalse(manager.isRoomMember());
+        Assert.assertEquals("INVALID_ROOM_MEMBER_FIELDS", manager.getRoomLifecycleError());
+        Assert.assertEquals(0, manager.getRoomMembers().length);
+    }
+
+    @Test
     public void initialSessionHandshakeTimeoutFailsCleanlyAndLateCallbacksStayIgnored() throws Exception {
         RecordingInternetTransport initial = new RecordingInternetTransport();
         manager.setSessionTimingForTests(30L, 30L, 5L, 1);
@@ -198,6 +355,14 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertEquals(1, factoryCalls[0]);
         Assert.assertEquals("RECONNECT_ATTEMPTS_EXHAUSTED", manager.getSessionError());
         Assert.assertFalse(manager.isMultiplayerActive());
+        Assert.assertTrue("Internet lifecycle gating must survive retry exhaustion",
+                manager.isRoomLifecycleRequired());
+        Assert.assertFalse("Retry exhaustion must never unlock native solo gameplay",
+                manager.isRoomGameplayAllowed());
+
+        manager.endSession();
+        Assert.assertFalse(manager.isRoomLifecycleRequired());
+        Assert.assertTrue(manager.isRoomGameplayAllowed());
     }
 
     @Test
@@ -256,10 +421,21 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertTrue("Timed out waiting for reconnect transport", transport.connected);
     }
 
-    private static NetworkMessage onlyReconnectRequest(RecordingInternetTransport transport) {
-        Assert.assertEquals(1, transport.sent.size());
-        Assert.assertEquals(MessageType.RECONNECT, transport.sent.get(0).messageType);
-        return transport.sent.get(0);
+    private static NetworkMessage awaitOnlyReconnectRequest(RecordingInternetTransport transport)
+            throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 3000L;
+        while (System.currentTimeMillis() < deadline) {
+            synchronized (transport.sent) {
+                if (transport.sent.size() == 1) {
+                    Assert.assertEquals(MessageType.RECONNECT, transport.sent.get(0).messageType);
+                    return transport.sent.get(0);
+                }
+                Assert.assertTrue("Reconnect must not send duplicate handshake requests", transport.sent.size() <= 1);
+            }
+            Thread.sleep(5L);
+        }
+        Assert.fail("Timed out waiting for the reconnect handshake request");
+        return null;
     }
 
     private static final class RecordingInternetTransport extends InternetTransport {
@@ -288,7 +464,9 @@ public class MultiplayerReconnectLifecycleTest {
 
         @Override
         public void send(NetworkMessage message) {
-            sent.add(message);
+            synchronized (sent) {
+                sent.add(message);
+            }
         }
 
         @Override

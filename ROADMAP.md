@@ -99,7 +99,7 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** Phases 1-12 remain CLOSED at their accepted implementation/automated-acceptance scope. Phase 13 is ACTIVE/PARTIAL in the uncommitted worktree: server room lifecycle and Android session control are locally implemented and tested; in-game lobby UI and concurrency/cancellation acceptance remain open. Current evidence: backend 372 unique scenarios, Durable Object SQLite 15/15, Android core JVM 137/137 and full Debug APK PASS. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
+- **Phase status:** Phases 1-12 remain CLOSED. Phase 13 is ACTIVE/PARTIAL: lifecycle-v1 room authority, Android session controls, in-game lobby, render-thread ROOM_STATE and gameplay gate are implemented and locally tested. Current evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions, Durable Object SQLite 17/17, Android core JVM 141/141 and forced full Debug APK build PASS. Abrupt owner WebSocket loss, atomic owner/publisher transfer, all-member READY-proof invalidation and former-owner reconnect/roster restoration are covered by automated server and Android tests. Remaining Phase 13 gate: commit/push and exact-head CI. Visible emulator host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
 ### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -690,17 +690,22 @@ Phase 12 does not claim a production Worker deployment or a physical two-device 
 - [x] Implement explicit create/join/leave/ready/start/room-state operations and enforce mode-specific minimum/maximum player counts.
 - [x] Make start contingent on valid room membership, owner/publisher authority, connected/ready members, matching world seed/sequence, complete native snapshot and no pending transition.
 - [x] Implement start cancellation, handshake/room-operation timeouts, bounded reconnect retry/backoff, duplicate-session prevention, generation-fenced callbacks and pending-operation cleanup.
-- [ ] Finish the test matrix for simultaneous joins/starts, cancellation/readiness reset and remaining late callbacks; partial failure, timeout, last-player departure and stale callback cases already pass.
+- [x] Wire the in-game lifecycle lobby after native-level publication, validate the authoritative roster on the render thread, and gate native gameplay until PLAYING.
+- [x] Test simultaneous join/start serialization, cancellation/readiness reset, successful authoritative start, server broadcasts, late-join rejection and post-start cancel rejection in real Durable Object SQLite.
 
-### 2026-11-17 implementation checkpoint (partial)
+### 2026-11-17 implementation checkpoint (active/partial)
 
-The server room lifecycle and Android session-control layer are implemented and locally tested; see `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md`. Current evidence is Backend 372 unique source scenarios, real Durable Object SQLite 15/15, and Android core JVM 137/137 (10 JUnit reports; no failures/errors/skips); full `test assembleDebug` passes with APK SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. The client READY=true request now includes the escaped native `heroStateJson` and `className` required by the Worker. The Android setup screen still enters HeroSelectScene directly and does not expose an in-game lobby or wire Ready/Start/Cancel/Leave controls. Phase 13 remains OPEN. Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed all three jobs for commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
+The server room lifecycle and Android session-control layer include WndMultiplayerLobby, a validated authoritative roster store, render-thread ROOM_STATE/MATCH_START delivery, reconnect/failure exit handling and a hard native turn/input gate until PLAYING. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; real Durable Object SQLite 17/17 (including abrupt owner WebSocket loss, atomic owner/publisher transfer, all-member READY-proof invalidation and full ROOM_STATE broadcast); Android core JVM 141/141 and forced full test assembleDebug PASS. The Android reconnect regression verifies that a former owner retains identity, rotates its session token, resumes as a non-owner, and replaces the roster with the server-authoritative connected/offline members. Phase 13 remains OPEN only for commit/push and exact-head CI. Manual emulator UI/touch acceptance is deferred to Phases 20-21 and is not a Phase 13 blocker. Historical CI 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6. No production deployment or physical two-device test is claimed.
+
+### Remaining acceptance
+- [x] Verify abrupt owner WebSocket loss, atomic owner/publisher transfer, READY-proof invalidation, member token rotation and full roster restoration through real Durable Object SQLite and Android reconnect regression tests.
+- [ ] Commit/push the implementation and documentation on the permitted branch and verify all required exact-head CI jobs.
+- Emulator-visible lobby flow, touch interaction and rendered layout checks are deferred to Phases 20-21 by explicit user direction; they do not block Phase 13.
 
 ### Acceptance criteria
 - Connection alone never means the player is in a playable match.
 - The client has a single explicit session state and cannot accidentally start twice or remain half-connected.
 - Every failure ends in a truthful error, a safe retry state or a clean exit.
-
 ## Phase 14 — Internet/WebSocket Transport
 
 **Priority:** P0 · **Dependencies:** Phase 13 and the Phase 11–12 protocol/recovery contracts.
@@ -806,6 +811,7 @@ The server room lifecycle and Android session-control layer are implemented and 
 - [ ] Show connecting, session-bound, waiting for peer, syncing world, ready, starting, retrying, disconnected and match-ended states distinctly.
 - [ ] Disable start/gameplay controls until the selected transport, session and native world are actually ready.
 - [ ] Add UI tests or deterministic state tests for connection failures, late callbacks, duplicate taps and server rejection.
+- [ ] Perform emulator/in-app acceptance of the complete host/join/lobby flow: lobby open/close, owner/non-owner controls, retry/failure exit and MATCH_START transition.
 
 ### Acceptance criteria
 - First-time host/join flow is understandable without implementation knowledge.
@@ -819,6 +825,7 @@ The server room lifecycle and Android session-control layer are implemented and 
 ### Work items
 - [ ] Replace hardcoded new multiplayer text with localized resource keys and verify Arabic and English resources.
 - [ ] Audit Arabic RTL, long room codes, IP addresses, error messages, touch targets, safe insets, portrait/landscape and phone/tablet layouts.
+- [ ] Verify the lobby and reconnect screens visually on the emulator across Arabic/RTL and English, including touch targets and modal transitions.
 - [ ] Make back/cancel/leave actions clean up transport, listeners, pending requests, timers, session membership and authority state.
 - [ ] Check empty/loading/error/retry states, accessibility labels and focus order where supported by the UI framework.
 - [ ] Remove fake/placeholder maps, dummy mobs, stale remote heroes and fabricated success messages from user-visible match states; show actionable failure details.

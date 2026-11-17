@@ -505,25 +505,27 @@ The compaction count is not a strict global 200-row cap: latest replay rows plus
 
 Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336): Backend typecheck/tests PASS; Android Java tests/debug APK compile PASS; actual Durable Object SQLite rollback/eviction PASS. All three jobs concluded `success`. Local final tree also passed TypeScript noEmit, backend 372 unique source scenarios / 744 mirrored executions, Durable Object SQLite 14/14, Android core JVM 132/132 (zero failures/errors/skips) and Debug APK build. The requested final source review is complete; Phase 12 is CLOSED for implementation and automated acceptance. No production Worker or physical two-device test is claimed.
 
-## Phase 13 - Room and session lifecycle (2026-11-17, partial)
 
-### Real Durable Object SQLite
+## Phase 13 - Room, lobby and session lifecycle (2026-11-17, active/partial)
 
-`server/src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 15 tests PASS. Coverage includes minimum/maximum player count, create/join and duplicate join, member-only ACTION and PLAYING-before-ACTION rejection, READY with matching seed/sequence, owner-only start, complete native snapshot/publisher requirements, roster delivery to new and resumed members, owner/publisher handoff (including preference for a connected successor when the oldest member is offline), last-member permanent closure, and refusal to rejoin a closed room.
+### Automated coverage
 
-### Android session-state JVM
+- Backend: `npm run build` and `npm test` PASS; 10 Vitest files / 744 reported executions, representing 372 unique TypeScript source scenarios (generated JavaScript mirrors are not separate unique scenarios).
+- Real Workers Durable Object SQLite: 1 file / 17 tests PASS. Coverage includes concurrent JOIN_ROOM/MATCH_START, readiness reset/cancel, synchronized start, authoritative broadcasts, late-join/post-start-cancel refusal, and abrupt owner WebSocket loss with atomic owner/publisher transfer, publisher-term advance, reset of every READY flag and durable roomReady proof, and ROOM_STATE broadcast.
+- Debug APK: 35,202,307 bytes; SHA-256 `C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B`.
+- MultiplayerReconnectLifecycleTest contains 12 test methods. The new former-owner reconnect case checks authenticated resume, bearer-token rotation, retained player identity after owner transfer, server-authoritative owner ID and complete roster replacement including an offline member.
 
-`MultiplayerReconnectLifecycleTest.java`: 8 tests PASS as part of 137 core JVM tests across 10 XML reports. Covers host CREATE_ROOM vs guest JOIN_ROOM; READY serialization with escaped native `heroStateJson` and `className`; initial handshake timeout; generation-fenced late callbacks after endSession; bounded reconnect timeout/retry exhaustion; room-operation timeout; rejected/stale credentials; and authenticated reconnect without sequence advancement on SESSION alone.
+### Implementation under test
 
-### Current aggregate local evidence
+- `WndMultiplayerLobby` appears from GameScene after native-level publication and displays room/member/ready counts, host/local identity and per-member class/readiness/connectivity.
+- `RoomLobbyState` is the single validated server roster source. Its revision refreshes the modal after roster, local snapshot, pending operation, ACK/ERROR and timeout changes.
+- Owner Start requires a synchronized native snapshot, local/server readiness and LOBBY status; the server repeats all checks transactionally. The cancel operation is presented as readiness reset because the server clears every member proof.
+- MessageRouter applies ROOM_STATE and MATCH_START on the render thread. GameScene blocks native actor-turn processing and cell selection before authoritative PLAYING.
+- Reconnecting disables room operations; retry exhaustion clears pending requests and exposes explicit local exit. Internet lifecycle gating remains fail-closed until `endSession()`.
 
-- Backend: 372 unique TypeScript source scenarios PASS; Vitest reports 10 files / 744 executions because generated JavaScript mirrors the TypeScript suite.
-- TypeScript `npx tsc --noEmit --pretty false`: PASS.
-- Workers runtime Durable Object SQLite: 15/15 PASS.
-- Android core JVM: 137/137 PASS; 0 failures, errors or skipped.
-- `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL.
-- Full `test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 57 actionable tasks, 10 JUnit reports / 137 tests / zero failures, errors or skipped; APK 35,197,092 bytes, SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`.
+### Not yet proven
 
-### Remaining acceptance gaps
-
-The setup screen currently transitions directly to HeroSelectScene. `GameScene.create()` publishes the first native level and sends LEVEL_READY, but no in-game lobby UI currently consumes ROOM_STATE and wires Ready/Unready, owner Start/Cancel or Leave. Tests for simultaneous join/start serialization and cancellation/readiness reset are outstanding. Re-run the full Android build after integrating the lobby UI. Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed all three jobs for `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`. No production Worker deployment or physical two-device test is claimed. Phase 13 remains OPEN.
+- Android instrumentation/manual emulator UI acceptance has not been run. By user direction the visible lobby flow is deferred to Phase 20 and RTL/touch/layout review to Phase 21; no emulator session was used for this continuation.
+- Abrupt owner WebSocket loss, atomic owner/publisher transfer, readiness-proof reset, former-owner reconnect and fresh connected/offline roster restoration are now covered by real Durable Object SQLite and Android JVM regressions.
+- Exact-head GitHub Actions for the new source/docs commit are pending push/verification. Historical run 44100890572 applies only to `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
+- Current checkpoint: backend 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios plus generated JavaScript mirrors); Durable Object SQLite 17/17; Android core JVM 10 XML files / 141 tests / zero failures, errors or skips; forced full test assembleDebug PASS. No production Worker deployment or physical two-device match is claimed. Manual emulator UI/touch/layout checks are deferred to Phases 20-21. Phase 13 remains OPEN only for exact-head CI.

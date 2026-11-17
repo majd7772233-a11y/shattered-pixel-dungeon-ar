@@ -859,6 +859,7 @@ public class GameScene extends PixelScene {
 		}
 
 		super.update();
+		com.shatteredpixel.shatteredpixeldungeon.windows.WndMultiplayerLobby.tick();
 
 		if (notifyDelay > 0) notifyDelay -= Game.elapsed;
 
@@ -868,7 +869,7 @@ public class GameScene extends PixelScene {
 			waterOfs = water.offsetY(); //re-assign to account for auto adjust
 		}
 
-		if (!Actor.processing() && Dungeon.hero.isAlive()) {
+		if (!Actor.processing() && Dungeon.hero.isAlive() && MultiplayerManager.getInstance().isRoomGameplayAllowed()) {
 			if (actorThread == null || !actorThread.isAlive()) {
 				
 				actorThread = new Thread() {
@@ -928,7 +929,7 @@ public class GameScene extends PixelScene {
 
 		}
 
-		cellSelector.enable(Dungeon.hero.ready);
+		cellSelector.enable(Dungeon.hero.ready && MultiplayerManager.getInstance().isRoomGameplayAllowed());
 
 		if (!toDestroy.isEmpty()) {
 			for (Gizmo g : toDestroy) {
@@ -1614,7 +1615,7 @@ public class GameScene extends PixelScene {
 			cellSelector.listener.onSelect(null);
 		}
 		cellSelector.listener = listener;
-		cellSelector.enabled = Dungeon.hero.ready;
+		cellSelector.enabled = Dungeon.hero.ready && MultiplayerManager.getInstance().isRoomGameplayAllowed();
 		if (scene != null) {
 			scene.prompt(listener.prompt());
 		}

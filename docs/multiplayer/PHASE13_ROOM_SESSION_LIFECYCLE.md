@@ -2,49 +2,42 @@
 
 Date: 2026-11-17
 Branch: `multiplayer-framework-core-14118577486727081892`
-Status: server lifecycle and client session-control slice implemented and locally verified; in-game lobby UI and concurrency acceptance remain open.
+Status: lifecycle-v1 server logic, Android lobby integration and automated lifecycle/concurrency coverage are implemented and locally verified. Owner-loss/rejoin acceptance is covered by real Durable Object SQLite and Android client-state regressions. Phase 13 remains OPEN only until the implementation/docs commit is pushed and exact-head CI passes. Manual emulator UI/touch/layout acceptance is deferred to Phases 20-21 by user direction.
 
-## Implemented in the current worktree
+## Implemented
 
 ### Server and Durable Object
 
-- Added `server/src/match-room/lifecycle.ts` as the room lifecycle layer over the existing MatchRoom action pipeline.
-- New Internet sessions request lifecycle version 1 with `lifecycle=1`; existing rooms are not upgraded after durable player records already exist.
-- Implemented explicit `CREATE_ROOM`, `JOIN_ROOM`, `READY`, `MATCH_START` (start/cancel), `LEAVE`, and `ROOM_STATE` using the existing protocol vocabulary. The protocol remains 25 message types and 23 action types; 12 message types are classified as Worker inbound.
-- Durable membership, owner, capacity, readiness seed/sequence, lifecycle status, and room closure are persisted in SQLite `room_meta`.
-- Enforces mode-specific capacity and minimum player count, room membership before ACTION, PLAYING before gameplay ACTION, owner/publisher authority, connected and ready members, matching seed/sequence, complete native level snapshot, publisher readiness, and no pending floor transition before match start.
-- Owner departure transfers owner and publisher authority to the earliest still-connected member, preferring connected members over offline members; if all remaining members are offline, it retains the earliest durable member as a safe rejoin owner. All remaining readiness proofs are reset. Last-member departure permanently closes the room.
-- New members and resumed sessions receive the current roster and authoritative room snapshot when available. A committed first native level snapshot is distributed while the room is still in LOBBY.
-- Legacy rooms without `roomLifecycleVersion=1` keep the legacy message path; lifecycle activation is explicit and refuses to retrofit an already-populated legacy room.
+- `server/src/match-room/lifecycle.ts` owns lifecycle-v1 room membership and keeps legacy rooms on their existing path unless they explicitly negotiate `lifecycle=1`.
+- Explicit `CREATE_ROOM`, `JOIN_ROOM`, `READY`, `MATCH_START` start/cancel, `LEAVE` and authoritative `ROOM_STATE` retain the existing 25-message / 23-action protocol vocabulary.
+- SQLite persists membership, owner/publisher terms, capacity, readiness seed/sequence, lifecycle/game status and permanent last-member closure.
+- Start is fail-closed: owner and current publisher authority, connected/ready members, matching seed/sequence, a complete native first-level snapshot, matching publisher-ready term and no pending floor transition are all required.
+- Explicit owner departure transfers owner/publisher authority to an eligible successor and clears remaining readiness proofs; last-member departure closes the room.
+- Abrupt owner WebSocket loss with an eligible successor and persisted native snapshot performs the same readiness invalidation atomically with owner/publisher handoff: each room member has players.ready=0 and a matching durable roomReady proof with ready=false. The committed transaction broadcasts an authoritative ROOM_STATE to connected members; stale socket generations remain fenced by their session token.
+- New and resumed members receive authoritative room roster and snapshot state when available.
 
-### Android client session control
+### Android lobby and gameplay gate
 
-- `MultiplayerManager.SessionState` distinguishes DISCONNECTED, CONNECTING, TRANSPORT_CONNECTED, RECONNECTING, SESSION_BOUND, ROOM_JOINED, WORLD_SYNCED, READY, PLAYING, and FAILED.
-- Internet endpoints are normalized to include `lifecycle=1`; the setup screen distinguishes host/create from guest/join and generates or accepts a room code.
-- The client exposes create/join/ready/start/cancel/leave operations and tracks correlated room requests.
-- Readiness requires a successfully applied snapshot and matching room seed/sequence. `READY=true` includes `className` and escaped `heroStateJson` from the native Hero snapshot because the Worker validates those fields before setting the member ready. `READY=false` sends no stale Hero snapshot. Start requires local ownership, local readiness, all-ready state, and a synchronized snapshot before requesting the server start.
-- Connection/session handshake timeout is 15 seconds; room-operation timeout is 12 seconds; reconnect uses up to three attempts with 250 ms exponential base delay capped at 4 seconds.
-- Each connection callback is fenced by transport identity and `sessionGeneration`; ending/replacing a session invalidates late callbacks. Permanent 401/403/409 resume rejection clears the stale session. Retry exhaustion becomes an explicit FAILED state.
-- The current Android flow still transitions from `MultiplayerSetupScene` directly to `HeroSelectScene`. `GameScene.create()` publishes the native level and sends the level-ready signal, but no in-game room lobby currently calls the public ready/start/cancel/leave APIs. This is a known integration gap, not a completed UX.
+- `WndMultiplayerLobby` is opened from `GameScene` after the native level publication path has run. It displays room name/code, member/capacity and ready counts, each member's class/readiness/connection state, host and local-player markers.
+- Ready/Unready, owner Start, readiness reset (server `MATCH_START` cancel operation) and Leave are wired to the existing `MultiplayerManager` request methods. Pending operations disable controls; Start requires owner authority, local/server readiness and local snapshot synchronization while the server remains in `LOBBY`.
+- `RoomLobbyState` is the single parsed roster/revision store. It rejects malformed counts/capacity, duplicate/empty player IDs, invalid owner references and inconsistent `allReady`; a rejected roster fails closed instead of replacing the last trusted list.
+- `MessageRouter` applies one `ROOM_STATE` update on the render thread and handles `MATCH_START` on that thread. `GameScene` gates native turn processing and cell selection until the manager reports authoritative `PLAYING`.
+- The UI refreshes on roster, local snapshot, request, ACK/ERROR and timeout revisions. It shows reconnecting state and disables room operations while reconnecting. Retry exhaustion clears stale pending requests and exposes an explicit local exit, which ends the lifecycle only through `endSession()`.
+- Internet lifecycle gating is sticky across handshake/reconnect failure and is cleared only on explicit session exit; transport-connected or failed does not imply playable.
+- English and Arabic UI message resources include the new lobby labels.
 
-## Verification on the current worktree
+## Local automated verification
 
-- Backend: `npx tsc --noEmit --pretty false` PASS.
-- Backend suite: 372 unique TypeScript source scenarios PASS; runner reports 10 files / 744 executions because generated JavaScript mirrors the TypeScript tests.
-- Real Workers Durable Object SQLite suite: 1 file / 15 tests PASS. Includes minimum/maximum players, membership/action gating, readiness, owner/publisher transfer, room closure, roster delivery and resume snapshot behavior.
-- Android core JVM: 10 XML reports / 137 tests / 0 failures / 0 errors / 0 skipped. The lifecycle/reconnect class has 8 tests, including a new nested READY payload serialization regression that confirms `heroStateJson` survives JSON escaping and `className` is supplied; create-vs-join negotiation; initial handshake timeout; bounded reconnect exhaustion; room-operation timeout; rejected credentials; stale callbacks; and reconnect behavior.
-- `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL.
-- Full `test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL on 2026-11-17; 57 actionable tasks, 10 JUnit reports / 137 tests / 0 failures / 0 errors / 0 skipped. Debug APK: 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. Re-run after in-game lobby UI changes.
-- `git diff --check`: PASS; no whitespace errors remain.
-- Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed Backend typecheck/tests, Android JVM tests/Debug APK compile and real Durable Object SQLite for code commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
+- Backend: `npm run build` PASS; `npm test` PASS, 10 Vitest files / 744 reported executions (372 unique TypeScript scenarios; generated JS mirrors are build outputs, not additional unique source scenarios).
+- Real Workers Durable Object SQLite: 1 file / 17 tests PASS. Phase 13 coverage includes concurrent JOIN_ROOM vs MATCH_START serialization, cancellation and resetting every member READY proof, a fully synchronized MATCH_START, authoritative MATCH_START/ROOM_STATE broadcasts, late-join refusal, post-start cancel refusal, and abrupt owner WebSocket loss with atomic ownership/publisher transfer and all-member READY-proof invalidation.
+- Android MultiplayerReconnectLifecycleTest: 12 methods. The former-owner reconnect case verifies authenticated resume, session-token rotation, stable local identity, successor ownership, full connected/offline roster replacement, cleared readiness and a gameplay gate that remains closed until PLAYING.
+- Android core JVM: 10 JUnit XML files / 141 tests / 0 failures / 0 errors / 0 skipped. Forced :core:test --rerun-tasks completed BUILD SUCCESSFUL.
+- Forced full test assembleDebug --rerun-tasks --no-daemon --console=plain: 57/57 Gradle tasks executed, BUILD SUCCESSFUL. APK android/build/outputs/apk/debug/android-debug.apk: 35,202,307 bytes; SHA-256 C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B. Full build/runtime evidence: BUILD_TEST_AND_CI.md.
+- `git diff --check`: PASS at the last source review. Exact-head GitHub Actions for the new commit are pending push/verification; run 44100890572 is historical evidence for the earlier `7a75b493124f99a773b23d089a2ee8d3ded2ebd6` commit only.
 - No production Worker deployment or physical two-device test is claimed.
 
 ## Remaining Phase 13 work
 
-1. Add an in-game lobby window after the first native level is published, using the existing `GameScene.create()` initialization seam so the host can produce the snapshot required by MATCH_START.
-2. Display room code, member/ready counts and per-player readiness; wire Ready/Unready, owner Start/Cancel, and Leave to the current `MultiplayerManager` methods. Disable Start until all server-side prerequisites are satisfied.
-3. Keep the lobby modal until authoritative MATCH_START / PLAYING; show explicit connection, room, snapshot, and operation-timeout errors. Ensure leaving returns to a clean non-multiplayer state without late callbacks reopening the room.
-4. Add tests for simultaneous join/start serialization, cancellation/readiness reset, and UI state transitions; add focused tests for owner departure while disconnected and member reconnection.
-5. Run the full Android `test assembleDebug`, backend and Durable Object suites after the UI integration; then perform exact-head GitHub Actions on the resulting commit.
-
-Phase 13 remains OPEN. Do not begin Phases 14-16 or claim end-to-end multiplayer readiness until the lobby UI and remaining concurrency tests pass.
+1. Commit and push the complete implementation/test/documentation state to multiplayer-framework-core-14118577486727081892.
+2. Verify Backend, Android and Durable Object SQLite GitHub Actions jobs on the exact pushed SHA; do not reuse historical CI as evidence for the new commit.
+3. Leave emulator-visible lobby checks for Phase 20 (host/join and lobby interactions) and Phase 21 (RTL, touch targets, insets and device layouts); they are intentionally not a Phase 13 acceptance gate.

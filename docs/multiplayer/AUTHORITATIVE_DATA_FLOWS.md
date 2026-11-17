@@ -23,9 +23,21 @@ Observed client-side path:
 7. GameScene.create() calls publishCurrentLevel() and sendLevelReady() when multiplayer is active.
 8. The server handles room state/readiness, then publishes accepted room/snapshot/event state through its Durable Object.
 
-Important current limitation: the source flow does not visibly gate the scene transition on a confirmed server SESSION/ROOM_STATE/ready result. The setup path also catches LAN/Bluetooth host-start exceptions without surfacing them. Treat connection/readiness UX and all transport handshakes as open work, not completed behavior.
+Important boundary: `MultiplayerSetupScene` still transitions to `HeroSelectScene` without waiting for a confirmed server SESSION/ROOM_STATE. The in-game lobby now appears from GameScene after native-level publication; GameScene separately blocks native turns and cell selection until authoritative PLAYING. LAN/Bluetooth host-start exceptions and transport-specific runtime UX remain open audit targets.
 
 Relevant files: TitleScene.java, MultiplayerTransportScene.java, MultiplayerSetupScene.java, MultiplayerManager.java, HeroSelectScene.java, GameScene.java, selected transport, MatchRoom.fetch()/webSocketMessage(), and protocol definitions.
+
+## 2A. Lifecycle-v1 room lobby and authoritative start
+
+1. An Internet session requests lifecycle version 1; rooms without that opt-in retain the legacy path.
+2. `MultiplayerSetupScene` starts the transport/session and proceeds to HeroSelectScene. `GameScene` publishes the first native level and sends LEVEL_READY before the lobby exposes Ready/Start.
+3. `WndMultiplayerLobby.tick()` opens the modal in GameScene. `RoomLobbyState` parses the server ROOM_STATE once on the render thread and publishes a validated roster plus revision.
+4. READY is sent only after the local native snapshot has been applied and seed/sequence match. READY=true carries the native class and serialized Hero state required by the Worker.
+5. Only the owner can start; UI requires local snapshot synchronization, local/server readiness and LOBBY status. The Worker repeats publisher, membership, readiness, seed/sequence, snapshot and transition checks transactionally.
+6. Authoritative MATCH_START moves the manager to PLAYING and closes the modal. GameScene does not spend native actors or enable cell selection before PLAYING.
+7. Leave waits for server confirmation and ends the local lifecycle cleanly. Retry exhaustion clears pending requests and exposes explicit local exit; failed/reconnecting Internet state never unlocks solo gameplay implicitly.
+
+The lobby is only a presentation/command surface. The server owns membership, readiness, publisher, start, cancellation and closure. Malformed roster data leaves the last trusted roster intact and disables state-changing actions.
 
 ## 3. Native movement and world mutation
 

@@ -509,7 +509,27 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       socket.addEventListener("message", listener);
     });
 
-    const firstResponse = await stub.fetch(new Request(baseUrl, {
+    const collectMessages = (socket, requiredCounts) => new Promise((resolve, reject) => {
+      const messages = [];
+      const timeout = setTimeout(() => {
+        socket.removeEventListener("message", listener);
+        reject(new Error("Timed out collecting lifecycle resume messages"));
+      }, 5000);
+      const listener = event => {
+        let message;
+        try { message = JSON.parse(String(event.data)); } catch (_) { return; }
+        messages.push(message);
+        const complete = Object.entries(requiredCounts).every(([type,count]) =>
+          messages.filter(value => value.messageType === type).length >= count
+        );
+        if (!complete) return;
+        clearTimeout(timeout);
+        socket.removeEventListener("message", listener);
+        resolve(messages);
+      };
+      socket.addEventListener("message", listener);
+    });
+    const firstResponse = await stub.fetch(new Request(baseUrl + "?lifecycle=1", {
       headers: { Upgrade: "websocket" }
     }));
     expect(firstResponse.status).toBe(101);
@@ -524,16 +544,34 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     const firstToken = firstSession.sessionToken;
 
     await runInDurableObject(stub, async (_instance, state) => {
-      state.storage.sql.exec("UPDATE players SET pos = ?, hp = ? WHERE player_id = ?", 77, 13, playerId);
+      const sql = state.storage.sql;
+      sql.exec("UPDATE players SET pos = ?, hp = ?, ready = 1 WHERE player_id = ?", 77, 13, playerId);
+      const observerId = "phase13-reconnect-observer";
+      sql.exec(
+        "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?,?)",
+        observerId, observerId + "-token", "MAGE", 88, 12, 20, "ALIVE", 1, 1
+      );
+      for (const [key,value] of [
+        ["roomCreated","1"], ["roomClosed","0"], ["roomLifecycleState","LOBBY"],
+        ["roomOwnerId",playerId], ["roomCapacity","4"], ["gameMode","COOP_DUNGEON"]
+      ]) {
+        sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, value);
+      }
+      for (const [memberId,joinedAt,role] of [[playerId,1,"OWNER"],[observerId,2,"PLAYER"]]) {
+        sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "roomMember:" + memberId, JSON.stringify({ joinedAt, role }));
+        sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "roomReady:" + memberId, JSON.stringify({ ready: true, seed: _instance.matchSeed, sequence: _instance.currentSequence }));
+      }
     });
 
     // Neither a bare playerId nor another player's token can claim this existing identity.
-    const bareIdentity = await stub.fetch(new Request(baseUrl + "?playerId=" + encodeURIComponent(playerId), {
+    const bareIdentity = await stub.fetch(new Request(baseUrl + "?lifecycle=1&playerId=" + encodeURIComponent(playerId), {
       headers: { Upgrade: "websocket" }
     }));
     expect(bareIdentity.status).toBe(401);
     const tokenInUrl = await stub.fetch(new Request(
-      baseUrl + "?playerId=" + encodeURIComponent(playerId) + "&sessionToken=" + encodeURIComponent(firstToken),
+      baseUrl + "?lifecycle=1&playerId=" + encodeURIComponent(playerId) + "&sessionToken=" + encodeURIComponent(firstToken),
       { headers: { Upgrade: "websocket" } }
     ));
     expect(tokenInUrl.status).toBe(400);
@@ -548,10 +586,10 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
         "SELECT player_id,session_token,pos,hp,connected FROM players WHERE player_id = ?", playerId
       ).toArray()[0];
       expect(row).toMatchObject({ player_id: playerId, session_token: firstToken, pos: 77, hp: 13, connected: 1 });
-      expect(state.storage.sql.exec("SELECT player_id FROM players").toArray()).toHaveLength(1);
+      expect(state.storage.sql.exec("SELECT player_id FROM players").toArray()).toHaveLength(2);
     });
 
-    const reconnectUrl = baseUrl + "?playerId=" + encodeURIComponent(playerId);
+    const reconnectUrl = baseUrl + "?lifecycle=1&playerId=" + encodeURIComponent(playerId);
     const secondResponse = await stub.fetch(new Request(reconnectUrl, {
       headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
     }));
@@ -559,11 +597,22 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     const secondSocket = secondResponse.webSocket;
     expect(secondSocket).toBeTruthy();
     secondSocket.accept();
+    const lifecycleResumePromise = collectMessages(secondSocket, { ROOM_STATE: 1, PLAYER_JOINED: 2 });
     const secondWelcome = await receiveMessage(secondSocket, "SESSION");
     const secondSession = JSON.parse(secondWelcome.payloadJson);
     expect(secondSession).toMatchObject({ playerId, pos: 77, resumed: true });
     expect(secondSession.sessionToken).toBeTruthy();
     expect(secondSession.sessionToken).not.toBe(firstToken);
+    expect(secondSession).toMatchObject({
+      roomLifecycleVersion: 1, roomMembership: true, roomOwnerId: playerId
+    });
+    const lifecycleResumeMessages = await lifecycleResumePromise;
+    const resumedRoomState = lifecycleResumeMessages.find(message => message.messageType === "ROOM_STATE");
+    expect(JSON.parse(resumedRoomState.payloadJson)).toMatchObject({
+      reason: "SESSION_RESUMED", ownerId: playerId, memberCount: 2, roomStatus: "LOBBY"
+    });
+    const resumedRoster = lifecycleResumeMessages.filter(message => message.messageType === "PLAYER_JOINED");
+    expect(resumedRoster.map(message => message.senderId)).toEqual(expect.arrayContaining([playerId, "phase13-reconnect-observer"]));
 
     // The authenticated current socket attachment is sufficient; the message carries no token.
     const recoveryPromise = receiveMessage(secondSocket, "SNAPSHOT");
@@ -589,10 +638,15 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       const rows = state.storage.sql.exec(
         "SELECT player_id,session_token,pos,hp,connected FROM players"
       ).toArray();
-      expect(rows).toEqual([{
+      expect(rows).toHaveLength(2);
+      expect(rows.find(row => row.player_id === playerId)).toMatchObject({
         player_id: playerId, session_token: secondSession.sessionToken,
         pos: 77, hp: 13, connected: 1
-      }]);
+      });
+      expect(rows.find(row => row.player_id === "phase13-reconnect-observer")).toMatchObject({
+        player_id: "phase13-reconnect-observer", session_token: "phase13-reconnect-observer-token",
+        pos: 88, hp: 12, connected: 1
+      });
     });
 
     try { firstSocket.close(); } catch (_) {}
@@ -993,6 +1047,86 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
+  it("starts a fully synchronized room atomically and refuses late joins or cancellation", async () => {
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase13-authoritative-match-start"));
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      const broadcasts = [];
+      instance.broadcastToRoomMembers = message => broadcasts.push(message);
+      sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomLifecycleVersion", "1");
+      const clients = new Map();
+      for (const playerId of ["phase13-start-host", "phase13-start-guest", "phase13-start-late"]) {
+        const sessionToken = playerId + "-token";
+        sql.exec("INSERT INTO players (player_id,session_token,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?)",
+          playerId, sessionToken, 0, 10, 10, "ALIVE", 1, 0);
+        const sent = [];
+        clients.set(playerId, { sent, socket: { send: value => sent.push(String(value)), deserializeAttachment: () => ({ playerId, sessionToken }) } });
+      }
+      let requestNumber = 0;
+      const send = async (playerId, messageType, payload) => {
+        const client = clients.get(playerId);
+        const startAt = client.sent.length;
+        await instance.webSocketMessage(client.socket, JSON.stringify({
+          protocolVersion: "1.0.0", messageType, requestId: "phase13-start-" + (++requestNumber),
+          senderId: "untrusted", payloadJson: JSON.stringify(payload || {})
+        }));
+        return client.sent.slice(startAt).map(value => JSON.parse(value));
+      };
+      const errorOf = messages => {
+        const error = messages.find(message => message.messageType === "ERROR");
+        return error?.payloadJson ? JSON.parse(error.payloadJson).error : null;
+      };
+      const meta = key => sql.exec("SELECT value FROM room_meta WHERE key = ?", key).toArray()[0]?.value;
+
+      const created = await send("phase13-start-host", "CREATE_ROOM", { gameMode: "COOP_DUNGEON" });
+      expect(created.some(message => message.messageType === "ACK")).toBe(true);
+      const seed = instance.matchSeed;
+      const sequence = instance.currentSequence;
+      const nativeLevel = {
+        schemaVersion: 1, depth: instance.currentDepth, width: 8, height: 8, branch: 0,
+        entrancePos: 0, exitPos: 63, seed, locked: false, feeling: "NONE",
+        levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+        heroStateJson: "{}", nativeLevelMetadataBundle: "phase13-start-native-level",
+        tiles: Array.from({ length: 64 }, (_, pos) => ({ pos, terrain: 1, passable: true,
+          solid: false, pit: false, losBlocking: false, flammable: false, secret: false,
+          avoid: false, water: false, discoverable: false, openSpace: false })),
+        transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
+        visitedPositions: [], mappedPositions: []
+      };
+      sql.exec("UPDATE levels SET width=8,height=8,entrance_pos=0,exit_pos=63,seed=? WHERE depth=?", seed, instance.currentDepth);
+      sql.exec("DELETE FROM level_tiles WHERE depth=?", instance.currentDepth);
+      sql.exec("DELETE FROM mobs WHERE depth=?", instance.currentDepth);
+      for (let pos = 0; pos < 64; pos++) {
+        sql.exec("INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)",
+          instance.currentDepth, pos, 1, 1, 0, 0, 0);
+      }
+      sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelSnapshot:" + instance.currentDepth, JSON.stringify(nativeLevel));
+      const heroStateJson = JSON.stringify({ hp: 10, ht: 10, pos: 0, shielding: 0,
+        combatBundle: "phase13-start-combat", inventoryBundle: "phase13-start-inventory", buffCount: 0 });
+      const readyPayload = { ready: true, seed, sequence, className: "WARRIOR", heroStateJson };
+      expect(errorOf(await send("phase13-start-host", "READY", readyPayload))).toBe(null);
+      expect(errorOf(await send("phase13-start-guest", "JOIN_ROOM", {}))).toBe(null);
+      expect(errorOf(await send("phase13-start-guest", "READY", readyPayload))).toBe(null);
+      expect(meta("levelPublisherReadyTerm")).toBe(meta("levelPublisherTerm"));
+
+      const started = await send("phase13-start-host", "MATCH_START", { seed, sequence });
+      expect(errorOf(started)).toBe(null);
+      expect(instance.gameStatus).toBe("PLAYING");
+      expect(meta("roomLifecycleState")).toBe("PLAYING");
+      expect(Number(meta("roomStartedAt"))).toBeGreaterThan(0);
+      expect(broadcasts.some(message => message.messageType === "MATCH_START"
+        && message.senderId === "SERVER")).toBe(true);
+      expect(broadcasts.some(message => message.messageType === "ROOM_STATE"
+        && JSON.parse(message.payloadJson).gameStatus === "PLAYING")).toBe(true);
+
+      expect(errorOf(await send("phase13-start-late", "JOIN_ROOM", {}))).toBe("ROOM_NOT_JOINABLE");
+      expect(errorOf(await send("phase13-start-host", "MATCH_START", { operation: "CANCEL" })))
+        .toBe("ROOM_START_CANCEL_FORBIDDEN");
+      expect(instance.gameStatus).toBe("PLAYING");
+    });
+  });
+
   it("enforces lifecycle minimum and maximum player counts, readiness, action gating, handoff, and permanent closure", async () => {
     const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase13-room-lifecycle-core"));
     await runInDurableObject(stub, async (instance, state) => {
@@ -1046,10 +1180,23 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       await send("phase13-host", "READY", readyPayload);
       expect(errorOf(await send("phase13-host", "MATCH_START", { seed, sequence }))).toBe("ROOM_NOT_ENOUGH_PLAYERS");
 
-      for (const playerId of ["phase13-guest", "phase13-third", "phase13-fourth"]) {
-        const joined = await send(playerId, "JOIN_ROOM", {});
-        expect(joined.some(message => message.messageType === "ACK")).toBe(true);
-      }
+      const firstJoin = await send("phase13-guest", "JOIN_ROOM", {});
+      expect(firstJoin.some(message => message.messageType === "ACK")).toBe(true);
+
+      // JOIN_ROOM and MATCH_START race through the same Durable Object transaction queue.
+      // Regardless of which handler wins, the unready third member cannot be omitted from start validation.
+      const [racingJoin, racingStart] = await Promise.all([
+        send("phase13-third", "JOIN_ROOM", {}),
+        send("phase13-host", "MATCH_START", { seed, sequence })
+      ]);
+      expect(errorOf(racingJoin)).toBe(null);
+      expect(racingJoin.some(message => message.messageType === "ACK")).toBe(true);
+      expect(errorOf(racingStart)).toBe("ROOM_PLAYERS_NOT_READY");
+      expect(instance.gameStatus).toBe("LOBBY");
+      expect(memberCount()).toBe(3);
+
+      const fourthJoin = await send("phase13-fourth", "JOIN_ROOM", {});
+      expect(fourthJoin.some(message => message.messageType === "ACK")).toBe(true);
       expect(memberCount()).toBe(4);
       expect(roomBroadcasts.some(message => message.messageType === "SNAPSHOT")).toBe(true);
       const rosterFor = playerId => clients.get(playerId).sent.map(value => JSON.parse(value)).filter(message => message.messageType === "PLAYER_JOINED").map(message => message.senderId);
@@ -1074,6 +1221,27 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
         expect(errorOf(readyMessages)).toBe(null);
         expect(readyMessages.some(message => message.messageType === "ACK")).toBe(true);
       }
+      expect(Number(sql.exec("SELECT COUNT(*) AS count FROM players WHERE ready=1 AND player_id IN ('phase13-host','phase13-guest','phase13-third','phase13-fourth')").toArray()[0].count)).toBe(4);
+
+      const cancelled = await send("phase13-host", "MATCH_START", { operation: "CANCEL" });
+      expect(errorOf(cancelled)).toBe(null);
+      expect(cancelled.some(message => message.messageType === "ACK")).toBe(true);
+      expect(meta("roomLifecycleState")).toBe("LOBBY");
+      expect(instance.gameStatus).toBe("LOBBY");
+      expect(Number(sql.exec("SELECT COUNT(*) AS count FROM players WHERE ready=1 AND player_id IN ('phase13-host','phase13-guest','phase13-third','phase13-fourth')").toArray()[0].count)).toBe(0);
+      for (const playerId of ["phase13-host", "phase13-guest", "phase13-third", "phase13-fourth"]) {
+        const readiness = JSON.parse(meta("roomReady:" + playerId));
+        expect(readiness).toMatchObject({ ready: false, seed, sequence });
+      }
+
+      // Cancellation is an authoritative reset: every member must explicitly ready again.
+      for (const playerId of ["phase13-host", "phase13-guest", "phase13-third", "phase13-fourth"]) {
+        const readyMessages = await send(playerId, "READY", readyPayload);
+        expect(errorOf(readyMessages)).toBe(null);
+        expect(readyMessages.some(message => message.messageType === "ACK")).toBe(true);
+      }
+      expect(Number(sql.exec("SELECT COUNT(*) AS count FROM players WHERE ready=1 AND player_id IN ('phase13-host','phase13-guest','phase13-third','phase13-fourth')").toArray()[0].count)).toBe(4);
+
       sql.exec("DELETE FROM room_meta WHERE key = ?", "levelSnapshot:" + instance.currentDepth);
       expect(errorOf(await send("phase13-guest", "MATCH_START", { seed, sequence }))).toBe("MATCH_START_AUTHORITY_REQUIRED");
       expect(errorOf(await send("phase13-host", "MATCH_START", { seed, sequence }))).toBe("ROOM_START_SNAPSHOT_REQUIRED");
@@ -1099,4 +1267,139 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
   });
 
-});
+
+  it("atomically resets every READY proof when the room owner loses its WebSocket", async () => {
+    const ownerId = "phase13-network-owner";
+    const successorId = "phase13-a-successor";
+    const observerId = "phase13-z-observer";
+    const seed = 24681357;
+    const roomId = env.MATCH_ROOM.idFromName("phase13-owner-network-disconnect-readiness-reset");
+    const stub = env.MATCH_ROOM.get(roomId);
+    const successorMessages = [];
+    const observerMessages = [];
+    const successorHero = JSON.stringify({
+      hp: 10, ht: 10, pos: 0, shielding: 0,
+      combatBundle: "phase13-successor-native-combat",
+      inventoryBundle: "phase13-successor-native-inventory",
+      buffCount: 0
+    });
+    const ownerSocket = {
+      deserializeAttachment: () => ({ playerId: ownerId, sessionToken: ownerId + "-token" })
+    };
+    const successorSocket = {
+      send: value => successorMessages.push(JSON.parse(String(value))),
+      deserializeAttachment: () => ({ playerId: successorId, sessionToken: successorId + "-token" })
+    };
+    const observerSocket = {
+      send: value => observerMessages.push(JSON.parse(String(value))),
+      deserializeAttachment: () => ({ playerId: observerId, sessionToken: observerId + "-token" })
+    };
+
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      instance.gameMode = "COOP_DUNGEON";
+      instance.gameStatus = "LOBBY";
+      instance.currentDepth = 1;
+      instance.currentSequence = 0;
+      instance.matchSeed = seed;
+      instance.state.getWebSockets = () => [successorSocket, observerSocket];
+
+      const nativeLevel = {
+        schemaVersion: 1, depth: 1, width: 8, height: 8, branch: 0,
+        entrancePos: 0, exitPos: 63, seed, locked: false, feeling: "NONE",
+        levelClass: "com.shatteredpixel.shatteredpixeldungeon.levels.RegularLevel",
+        heroStateJson: successorHero, nativeLevelMetadataBundle: "phase13-network-native-level",
+        tiles: Array.from({ length: 64 }, (_, pos) => ({
+          pos, terrain: 1, passable: true, solid: false, pit: false,
+          losBlocking: false, flammable: false, secret: false, avoid: false,
+          water: false, discoverable: false, openSpace: false
+        })),
+        transitions: [], heaps: [], traps: [], blobs: [], plants: [], mobs: [],
+        visitedPositions: [], mappedPositions: []
+      };
+      sql.exec(
+        "UPDATE levels SET width=8,height=8,entrance_pos=0,exit_pos=63,seed=? WHERE depth=?",
+        seed, instance.currentDepth
+      );
+      sql.exec("DELETE FROM level_tiles WHERE depth=?", instance.currentDepth);
+      sql.exec("DELETE FROM mobs WHERE depth=?", instance.currentDepth);
+      for (let pos = 0; pos < 64; pos++) {
+        sql.exec(
+          "INSERT INTO level_tiles (depth,pos,terrain,passable,solid,pit,los_blocking) VALUES (?,?,?,?,?,?,?)",
+          instance.currentDepth, pos, 1, 1, 0, 0, 0
+        );
+      }
+
+      for (const [playerId, joinedAt] of [[ownerId, 1], [successorId, 2], [observerId, 3]]) {
+        sql.exec(
+          "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?,?)",
+          playerId, playerId + "-token", "WARRIOR", 0, 10, 10, "ALIVE", 1, 1
+        );
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "roomMember:" + playerId, JSON.stringify({ joinedAt, role: playerId === ownerId ? "OWNER" : "PLAYER" })
+        );
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "roomReady:" + playerId, JSON.stringify({ ready: true, seed, sequence: 0 })
+        );
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "heroState:" + playerId, successorHero
+        );
+      }
+
+      for (const [key, value] of [
+        ["roomLifecycleVersion", "1"],
+        ["roomCreated", "1"],
+        ["roomClosed", "0"],
+        ["roomLifecycleState", "LOBBY"],
+        ["roomOwnerId", ownerId],
+        ["roomCapacity", "4"],
+        ["gameMode", "COOP_DUNGEON"],
+        ["levelPublisher", ownerId],
+        ["levelPublisherTerm", "4"],
+        ["levelPublisherReadyTerm", "4"],
+        ["seed", String(seed)],
+        ["depth", "1"],
+        ["levelSnapshot:1", JSON.stringify(nativeLevel)]
+      ]) {
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          key, value
+        );
+      }
+
+      await instance.webSocketClose(ownerSocket, 1006, "network connection lost", false);
+
+      expect(sql.exec("SELECT connected,ready FROM players WHERE player_id=?", ownerId).toArray()[0])
+        .toMatchObject({ connected: 0, ready: 0 });
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='roomOwnerId'").toArray()[0].value).toBe(successorId);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisher'").toArray()[0].value).toBe(successorId);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherTerm'").toArray()[0].value).toBe("5");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherReadyTerm'").toArray()[0].value).toBe("5");
+
+      for (const playerId of [ownerId, successorId, observerId]) {
+        const row = sql.exec("SELECT ready FROM players WHERE player_id=?", playerId).toArray()[0];
+        expect(row.ready).toBe(0);
+        const readiness = JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "roomReady:" + playerId).toArray()[0].value);
+        expect(readiness).toEqual({ ready: false, seed, sequence: 0 });
+      }
+
+      const ownerHandoff = successorMessages.find(message =>
+        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
+      );
+      expect(ownerHandoff).toBeTruthy();
+      expect(JSON.parse(ownerHandoff.payloadJson)).toMatchObject({
+        ownerId: successorId, memberCount: 3, allReady: false, roomStatus: "LOBBY"
+      });
+      expect(JSON.parse(ownerHandoff.payloadJson).members).toEqual(expect.arrayContaining([
+        expect.objectContaining({ playerId: ownerId, connected: false, ready: false }),
+        expect.objectContaining({ playerId: successorId, connected: true, ready: false }),
+        expect.objectContaining({ playerId: observerId, connected: true, ready: false })
+      ]));
+      expect(observerMessages.some(message =>
+        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
+      )).toBe(true);
+    });
+  });});

@@ -30,7 +30,7 @@ public final class MessageRouter {
                 Game.runOnRenderThread(() -> manager.applyRoomState(message));
                 break;
             case MATCH_START:
-                manager.applyMatchStart(message);
+                Game.runOnRenderThread(() -> manager.applyMatchStart(message));
                 break;
             case SESSION:
                 // The session baseline is installed by MultiplayerManager before routing.

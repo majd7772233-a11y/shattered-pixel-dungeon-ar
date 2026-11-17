@@ -462,3 +462,15 @@ Phase 11-B baseline inventory: NativeCombatRuntimeIntegrationTest.java had 74 @T
 - A resumed SESSION must return the same playerId and a replacement token. Missing identity/token or a changed player identity clears the stale client session.
 - The reconnect SESSION does not advance the native applied-sequence watermark; existing EVENT_BATCH/SNAPSHOT application paths remain responsible for committing recovered state.
 - Unit tests cover Bearer-header construction, malformed/short tokens, raw encoded endpoint preservation, identity mismatch, missing replacement token, and watermark preservation.
+
+
+## 17. Phase 13 in-game lifecycle lobby (2026-11-17)
+
+- `GameScene.update()` calls `WndMultiplayerLobby.tick()` after `GameScene.create()` publishes the native level and sends LEVEL_READY.
+- `WndMultiplayerLobby` is a UI surface only. It reads the validated roster/revision from `RoomLobbyState` and forwards commands to `MultiplayerManager`.
+- Owner Start requires local native snapshot synchronization, local readiness, every connected member ready and LOBBY status. The Worker repeats authority and snapshot checks transactionally.
+- MessageRouter applies ROOM_STATE exactly once and MATCH_START on the render thread. Malformed roster data does not replace the last trusted member list; state-changing actions remain disabled.
+- GameScene gates native actor turns and cell selection until `isRoomGameplayAllowed()` confirms PLAYING. A connection or failed/reconnecting handshake never unlocks native gameplay.
+- The lifecycle-required Internet flag survives handshake/reconnect failure and is cleared only by explicit endSession. Retry exhaustion clears pending room requests and allows local exit instead of trapping the user behind an unacknowledgeable Leave.
+- MultiplayerReconnectLifecycleTest now contains 12 cases. The former-owner reconnect regression retains the player identity, rotates the session token, updates the owner ID to the successor, and applies the complete SESSION_RESUMED roster with connected and offline members. Readiness remains false and gameplay remains blocked until PLAYING.
+- No Android instrumentation or manual emulator rendering/touch test is claimed. By user direction these visible UI checks are deferred to Phases 20-21 and are not Phase 13 blockers.

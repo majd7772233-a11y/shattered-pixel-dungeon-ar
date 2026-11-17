@@ -60,6 +60,7 @@ public class MultiplayerManager implements TransportCallback {
    private volatile SessionState sessionState;
    private volatile String sessionError;
    private volatile int roomLifecycleVersion;
+   private volatile boolean roomLifecycleSession;
    private volatile boolean createRoomOnConnect;
    private volatile boolean roomMembership;
    private volatile String roomOwnerId;
@@ -141,6 +142,7 @@ public class MultiplayerManager implements TransportCallback {
 
    private void clearPendingRoomOperations() {
       pendingRoomOperations.clear();
+      RoomLobbyState.clear();
       for (ScheduledFuture<?> pending : pendingRoomOperationTimeouts.values()) {
          if (pending != null) pending.cancel(false);
       }
@@ -174,9 +176,11 @@ public class MultiplayerManager implements TransportCallback {
       if (reconnectAttemptCount >= maxReconnectAttempts) {
          cancelSessionHandshakeTimeout();
          reconnectHandshakePending = false;
+         clearPendingRoomOperations();
          isMultiplayerActive = false;
          sessionState = SessionState.FAILED;
          sessionError = "RECONNECT_ATTEMPTS_EXHAUSTED";
+          RoomLobbyState.touch();
          NetworkTransport failed = activeTransport;
          activeTransport = null;
          if (failed != null) {
@@ -190,6 +194,7 @@ public class MultiplayerManager implements TransportCallback {
       final long delay = Math.min(reconnectBaseDelayMs * multiplier, 4000L);
       reconnectHandshakePending = false;
       sessionState = SessionState.RECONNECTING;
+       RoomLobbyState.touch();
       reconnectRetryTask = SESSION_SCHEDULER.schedule(() -> {
          synchronized (MultiplayerManager.this) {
             if (generation != sessionGeneration || !isMultiplayerActive
@@ -258,6 +263,7 @@ public class MultiplayerManager implements TransportCallback {
       reconnectAttemptCount = 0;
 
       boolean internet = "INTERNET".equalsIgnoreCase(transport.getTransportType());
+      this.roomLifecycleSession = internet;
       this.roomCode = internet ? buildRoomLifecycleEndpoint(roomCode.trim()) : roomCode.trim();
       this.localPlayerId = initialPlayerId.trim();
       this.sessionToken = null;
@@ -364,6 +370,7 @@ public class MultiplayerManager implements TransportCallback {
       sessionError = null;
       roomMembership = false;
       roomLifecycleVersion = 0;
+       roomLifecycleSession = false;
       roomOwnerId = null;
       roomStatus = "LOBBY";
       roomLifecycleError = null;
@@ -519,6 +526,30 @@ public class MultiplayerManager implements TransportCallback {
       return this.roomMembership;
    }
 
+   public boolean isRoomLifecycleRequired() {
+      return this.roomLifecycleSession || this.roomLifecycleVersion >= 1
+              || (this.activeTransport != null && "INTERNET".equalsIgnoreCase(this.activeTransport.getTransportType()));
+   }
+
+   public boolean isRoomGameplayAllowed() {
+      return !this.isRoomLifecycleRequired() || this.sessionState == SessionState.PLAYING;
+   }
+
+   public RoomMemberInfo[] getRoomMembers() {
+      return RoomLobbyState.getMembers();
+   }
+
+   public long getRoomStateRevision() {
+      return RoomLobbyState.getRevision();
+   }
+
+   public boolean isLocalRoomOwner() {
+      return this.localPlayerId != null && this.localPlayerId.equals(this.roomOwnerId);
+   }
+   public boolean hasPendingRoomOperations() {
+      return !this.pendingRoomOperations.isEmpty();
+   }
+
    public String getRoomOwnerId() {
       return this.roomOwnerId;
    }
@@ -556,7 +587,10 @@ public class MultiplayerManager implements TransportCallback {
          if (generation != sessionGeneration) return;
          MessageType expired = pendingRoomOperations.remove(requestId);
          pendingRoomOperationTimeouts.remove(requestId);
-         if (expired != null) roomLifecycleError = "ROOM_OPERATION_TIMEOUT:" + expired.name();
+         if (expired != null) {
+            roomLifecycleError = "ROOM_OPERATION_TIMEOUT:" + expired.name();
+            RoomLobbyState.touch();
+         }
       }, roomOperationTimeoutMs, TimeUnit.MILLISECONDS);
       ScheduledFuture<?> previous = pendingRoomOperationTimeouts.put(requestId, timeout);
       if (previous != null) previous.cancel(false);
@@ -572,6 +606,7 @@ public class MultiplayerManager implements TransportCallback {
       message.requestId = UUID.randomUUID().toString();
       message.payloadJson = payload;
       this.pendingRoomOperations.put(message.requestId, type);
+      RoomLobbyState.touch();
       this.scheduleRoomOperationTimeout(message.requestId, this.sessionGeneration);
       try {
          transport.send(message);
@@ -580,6 +615,7 @@ public class MultiplayerManager implements TransportCallback {
          this.pendingRoomOperations.remove(message.requestId);
          this.cancelRoomOperationTimeout(message.requestId);
          this.roomLifecycleError = failure.getMessage() == null ? "ROOM_OPERATION_SEND_FAILED" : failure.getMessage();
+         RoomLobbyState.touch();
          return false;
       }
    }
@@ -632,19 +668,29 @@ public class MultiplayerManager implements TransportCallback {
    }
 
    public void markWorldSynchronized() {
-      if (this.roomMembership && this.roomLifecycleVersion >= 1 && this.sessionState != MultiplayerManager.SessionState.PLAYING && !this.localRoomReady) {
+      if (this.roomMembership && this.roomLifecycleVersion >= 1
+              && this.sessionState != MultiplayerManager.SessionState.PLAYING) {
          if (this.authoritativeSeed != null && this.roomSeed != this.authoritativeSeed) {
             this.roomLifecycleError = "ROOM_SEED_MISMATCH";
-         } else {
+            RoomLobbyState.touch();
+         } else if (this.roomSequence == this.lastSequence) {
             this.roomSnapshotReady = true;
-            this.roomSequence = this.lastSequence;
-            this.sessionState = MultiplayerManager.SessionState.WORLD_SYNCED;
+            this.sessionState = this.localRoomReady
+                    ? MultiplayerManager.SessionState.READY
+                    : MultiplayerManager.SessionState.WORLD_SYNCED;
+            RoomLobbyState.touch();
          }
       }
    }
 
    public void applyRoomState(NetworkMessage message) {
       if (message != null && message.payloadJson != null) {
+         RoomLobbyState.apply(message);
+         if (RoomLobbyState.getError() != null) {
+            this.roomLifecycleError = RoomLobbyState.getError();
+            return;
+         }
+         this.roomLifecycleError = null;
          try {
             JsonValue payload = (new JsonReader()).parse(message.payloadJson);
             if (payload == null || !payload.isObject()) {
@@ -673,13 +719,19 @@ public class MultiplayerManager implements TransportCallback {
             this.roomMemberCount = count != null && count.isNumber() ? count.asInt() : 0;
             this.roomMaxPlayers = capacity != null && capacity.isNumber() ? capacity.asInt() : 0;
             this.roomAllReady = allReady != null && allReady.isBoolean() && allReady.asBoolean();
-            this.roomSnapshotReady = snapshot != null && snapshot.isBoolean() && snapshot.asBoolean();
+            long previousRoomSeed = this.roomSeed;
+            long previousRoomSequence = this.roomSequence;
+            boolean serverSnapshotAvailable = snapshot != null && snapshot.isBoolean() && snapshot.asBoolean();
+            if (!serverSnapshotAvailable) this.roomSnapshotReady = false;
             if (seed != null && seed.isNumber()) {
                this.roomSeed = seed.asLong();
             }
 
             if (sequence != null && sequence.isNumber()) {
                this.roomSequence = sequence.asLong();
+            }
+            if (previousRoomSeed != this.roomSeed || previousRoomSequence != this.roomSequence || this.roomSequence != this.lastSequence) {
+               this.roomSnapshotReady = false;
             }
 
             this.roomMembership = false;
@@ -702,11 +754,14 @@ public class MultiplayerManager implements TransportCallback {
             } else if (game != null && game.isString() && "PLAYING".equals(game.asString())) {
                this.roomStatus = "PLAYING";
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
+                RoomLobbyState.touch();
             } else if (!this.roomMembership) {
                this.sessionState = MultiplayerManager.SessionState.SESSION_BOUND;
             } else if (this.localRoomReady) {
                this.sessionState = MultiplayerManager.SessionState.READY;
-            } else if (this.sessionState != MultiplayerManager.SessionState.WORLD_SYNCED) {
+            } else if (this.roomSnapshotReady && this.roomSequence == this.lastSequence) {
+               this.sessionState = MultiplayerManager.SessionState.WORLD_SYNCED;
+            } else {
                this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
             }
          } catch (RuntimeException var19) {
@@ -724,9 +779,11 @@ public class MultiplayerManager implements TransportCallback {
             if (status != null && status.isString() && "PLAYING".equals(status.asString())) {
                this.roomStatus = "PLAYING";
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
+               RoomLobbyState.touch();
             }
          } catch (RuntimeException var4) {
             this.roomLifecycleError = "INVALID_MATCH_START";
+             RoomLobbyState.touch();
          }
 
       }
@@ -1176,8 +1233,16 @@ public class MultiplayerManager implements TransportCallback {
                }
 
                if (message.requestId != null && (message.messageType == MessageType.ACK || message.messageType == MessageType.ERROR)) {
-                  this.pendingRoomOperations.remove(message.requestId);
+                  MessageType completedRoomOperation = this.pendingRoomOperations.remove(message.requestId);
                   this.cancelRoomOperationTimeout(message.requestId);
+                  if (completedRoomOperation != null) {
+                     if (message.messageType == MessageType.ERROR) {
+                        this.roomLifecycleError = "ROOM_OPERATION_REJECTED:" + completedRoomOperation.name();
+                     } else {
+                        this.roomLifecycleError = null;
+                     }
+                     RoomLobbyState.touch();
+                  }
                }
 
                if ((message.messageType == MessageType.ACTION_ACCEPTED || message.messageType == MessageType.ACK) && message.requestId != null) {

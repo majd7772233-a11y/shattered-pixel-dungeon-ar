@@ -48,7 +48,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Current checkpoint - 2026-11-17 - Phase 13 active/partial
 
-Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 now has the server room/session lifecycle and Android session-state/retry controls implemented in the current worktree. Local evidence: Backend 372 unique source scenarios, Durable Object SQLite 15/15, Android JVM 137/137, TypeScript noEmit, backend tests, Durable Object SQLite 15/15 and full `test assembleDebug` PASS. The in-game lobby UI is not yet wired: controls for Ready/Unready, owner Start/Cancel, and Leave remain the next integration task. Read `PHASE13_ROOM_SESSION_LIFECYCLE.md` before continuing. Exact-head CI [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed all three jobs for `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`; production deployment and physical two-device test remain unclaimed.
+Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 includes lifecycle-v1 server authority, WndMultiplayerLobby, validated server roster, render-thread ROOM_STATE/MATCH_START handling, reconnect/failure exit handling and native gameplay gating until PLAYING. Current local evidence: backend 372 unique TypeScript source scenarios / 744 reported executions, real Durable Object SQLite 17/17, Android core JVM 141/141 and forced full test assembleDebug PASS (final APK metadata is in BUILD_TEST_AND_CI.md). Abrupt owner WebSocket loss, atomic owner/publisher handoff, all-member readiness reset and former-owner reconnect/roster restoration now have server and Android automated regression coverage. Remaining: commit/push and exact-head CI. Manual emulator UI/touch/layout acceptance is deferred to Phases 20-21. Historical CI 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6. Read PHASE13_ROOM_SESSION_LIFECYCLE.md before continuing. Production deployment and physical two-device test remain unclaimed.
 
 ## Source-of-truth hierarchy
 
@@ -87,9 +87,9 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Batch 1 exact-HEAD CI | [Run 42470021358](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42470021358) — success |
 | Source tree blobs | 1,963 at the Batch 2 baseline |
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
-| Multiplayer Java package | 32 files |
+| Multiplayer Java package | 34 files (including Phase 13 room state/member models) |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1–12 closed for implementation and automated acceptance; Phase 13 next/not started; Phase 22 deployment/service gate and Phase 23 physical-device gate remain open |
+| Phase state | Phases 1-12 closed; Phase 13 active/partial with in-game lobby integration and automated lifecycle acceptance; Phase 22 deployment/service gate and Phase 23 physical-device gate remain open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 

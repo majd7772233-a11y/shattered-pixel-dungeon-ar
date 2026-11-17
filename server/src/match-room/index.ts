@@ -179,6 +179,22 @@ export class MatchRoom extends MatchRoomMessages {
           const roomOwner = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomOwnerId").toArray()[0];
           if (String(roomOwner?.value || "") === session.playerId) {
             this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomOwnerId", nextPublisherId);
+            // An abrupt owner disconnect invalidates every READY proof just like an explicit
+            // LEAVE. Keep player flags and durable proofs in the same handoff transaction.
+            const roomMemberRows = this.sql.exec(
+              "SELECT key FROM room_meta WHERE substr(key,1,?) = ?",
+              "roomMember:".length, "roomMember:"
+            ).toArray();
+            for (const memberRow of roomMemberRows) {
+              const memberId = String(memberRow.key || "").slice("roomMember:".length);
+              if (!memberId) continue;
+              this.sql.exec("UPDATE players SET ready = 0 WHERE player_id = ?", memberId);
+              this.sql.exec(
+                "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "roomReady:" + memberId,
+                JSON.stringify({ ready: false, seed: this.matchSeed, sequence: this.currentSequence })
+              );
+            }
             roomOwnerTransferred = true;
           }
         }
