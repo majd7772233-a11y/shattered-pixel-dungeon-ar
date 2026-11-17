@@ -506,7 +506,7 @@ The compaction count is not a strict global 200-row cap: latest replay rows plus
 Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336): Backend typecheck/tests PASS; Android Java tests/debug APK compile PASS; actual Durable Object SQLite rollback/eviction PASS. All three jobs concluded `success`. Local final tree also passed TypeScript noEmit, backend 372 unique source scenarios / 744 mirrored executions, Durable Object SQLite 14/14, Android core JVM 132/132 (zero failures/errors/skips) and Debug APK build. The requested final source review is complete; Phase 12 is CLOSED for implementation and automated acceptance. No production Worker or physical two-device test is claimed.
 
 
-## Phase 13 - Room, lobby and session lifecycle (2026-11-17, active/partial)
+## Phase 13 - Room, lobby and session lifecycle (2026-11-17, CLOSED: implementation + automated acceptance)
 
 ### Automated coverage
 
@@ -527,5 +527,5 @@ Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43
 
 - Android instrumentation/manual emulator UI acceptance has not been run. By user direction the visible lobby flow is deferred to Phase 20 and RTL/touch/layout review to Phase 21; no emulator session was used for this continuation.
 - Abrupt owner WebSocket loss, atomic owner/publisher transfer, readiness-proof reset, former-owner reconnect and fresh connected/offline roster restoration are now covered by real Durable Object SQLite and Android JVM regressions.
-- Exact-head GitHub Actions for the new source/docs commit are pending push/verification. Historical run 44100890572 applies only to `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
-- Current checkpoint: backend 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios plus generated JavaScript mirrors); Durable Object SQLite 17/17; Android core JVM 10 XML files / 141 tests / zero failures, errors or skips; forced full test assembleDebug PASS. No production Worker deployment or physical two-device match is claimed. Manual emulator UI/touch/layout checks are deferred to Phases 20-21. Phase 13 remains OPEN only for exact-head CI.
+- Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] completed SUCCESS on fbf46ef15a1ec4554710a43894cfa4969c3176a7: Backend typecheck/tests, Android JVM tests + Debug APK compile, and Durable Object SQLite rollback/eviction all passed.
+- Current checkpoint: backend 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios plus generated JavaScript mirrors); Durable Object SQLite 17/17; Android core JVM 10 XML files / 141 tests / zero failures, errors or skips; forced full test assembleDebug PASS. Exact-head Actions run 1272 is green for the implementation SHA. Phase 13 is CLOSED for implementation and automated acceptance. Emulator UI/touch/layout acceptance is deferred to Phases 20-21; no production Worker deployment or physical two-device match is claimed.

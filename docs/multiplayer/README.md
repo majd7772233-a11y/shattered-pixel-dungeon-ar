@@ -46,9 +46,9 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 - **CI:** Backend 10 files / 740 reported executions, Android JVM tests + Debug APK, Durable Object SQLite 4/4. Mirrored TS/JS executions are not unique source scenario counts.
 - **Boundaries at the 2026-11-15 Phase 11-B checkpoint:** protocol remained 25 messages / 23 actions; Phase 12 had not yet been authorized at that timestamp. Phase 12-A/B completion, exact-head CI and later review are recorded in the current 2026-11-16 checkpoint below.
 
-## Current checkpoint - 2026-11-17 - Phase 13 active/partial
+## Current checkpoint - 2026-11-17 - Phase 13 CLOSED (implementation + automated acceptance)
 
-Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 includes lifecycle-v1 server authority, WndMultiplayerLobby, validated server roster, render-thread ROOM_STATE/MATCH_START handling, reconnect/failure exit handling and native gameplay gating until PLAYING. Current local evidence: backend 372 unique TypeScript source scenarios / 744 reported executions, real Durable Object SQLite 17/17, Android core JVM 141/141 and forced full test assembleDebug PASS (final APK metadata is in BUILD_TEST_AND_CI.md). Abrupt owner WebSocket loss, atomic owner/publisher handoff, all-member readiness reset and former-owner reconnect/roster restoration now have server and Android automated regression coverage. Remaining: commit/push and exact-head CI. Manual emulator UI/touch/layout acceptance is deferred to Phases 20-21. Historical CI 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6. Read PHASE13_ROOM_SESSION_LIFECYCLE.md before continuing. Production deployment and physical two-device test remain unclaimed.
+Phase 12 remains closed. Phase 13 is CLOSED for implementation and automated acceptance: lifecycle-v1 server authority, WndMultiplayerLobby, validated room roster, render-thread ROOM_STATE/MATCH_START handling, reconnect/failure exit and native gameplay gating until PLAYING are implemented. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported executions, real Durable Object SQLite 17/17, Android core JVM 141/141 and forced full test assembleDebug PASS. Abrupt owner WebSocket loss, atomic owner/publisher handoff, all-member readiness reset and former-owner reconnect/roster restoration have server and Android regression coverage. Exact-head Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed all three jobs on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Visible emulator host/join/lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21. Production deployment and physical two-device test remain unclaimed.
 
 ## Source-of-truth hierarchy
 
@@ -89,7 +89,7 @@ If interrupted, record the exact remaining documentation update and complete it 
 | Tracked Markdown files | 15 before Batch 2; 21 after its six new files |
 | Multiplayer Java package | 34 files (including Phase 13 room state/member models) |
 | Backend entry | Historical baseline: 10,095 lines / 658,825 bytes; after Stage 1: 3,635 lines; after Stage 2: root `server/src/index.ts` was 51 lines; after Stage 3: root facade is 35 lines, router is `server/src/worker.ts`, and `MatchRoom` is in `server/src/match-room/index.ts` |
-| Phase state | Phases 1-12 closed; Phase 13 active/partial with in-game lobby integration and automated lifecycle acceptance; Phase 22 deployment/service gate and Phase 23 physical-device gate remain open |
+| Phase state | Phases 1-13 closed for implementation and automated acceptance; Phase 20 host/join/lobby UX, Phase 21 RTL/layout, Phase 22 deployment/service gate and Phase 23 physical-device gate remain open |
 | Live Worker smoke test | Not claimed |
 | Physical two-device match | Not performed / not claimed |
 

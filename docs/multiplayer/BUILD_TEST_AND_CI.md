@@ -301,9 +301,9 @@ This was the intermediate lobby-only checkpoint before owner-loss/rejoin accepta
 - Backend `npm run build`: PASS. `npm test`: PASS, 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios; generated JavaScript mirrors are build outputs).
 - Real Workers Durable Object SQLite integration: PASS, 16/16 tests. Phase 13 additions cover simultaneous JOIN_ROOM/MATCH_START, cancellation with all-member READY reset, successful synchronized start, MATCH_START/ROOM_STATE broadcasts, late-join refusal and post-start cancellation refusal.
 - Debug APK: 35,202,307 bytes; SHA-256 `C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B`.
-- Exact-head GitHub Actions for the new implementation/docs commit remain pending push and verification. Do not cite historical run 44100890572 for a newer SHA.
+- This is an intermediate pre-handoff checkpoint; the later owner-loss/rejoin continuation below contains the superseding final test totals and exact-head CI result.
 - No production Worker deployment or physical two-device test was performed.
-## Phase 13 owner-loss/rejoin continuation — 2026-11-17 (current uncommitted worktree)
+## Phase 13 owner-loss/rejoin continuation — 2026-11-17 (verified implementation commit and exact-head CI)
 
 This record supersedes the previous lobby checkpoint for current local verification only. Previous APK hashes and CI runs remain attached to their original commit/SHA and must not be reused as evidence for the new worktree.
 
@@ -315,5 +315,5 @@ This record supersedes the previous lobby checkpoint for current local verificat
 - Full Android build: test assembleDebug --rerun-tasks --no-daemon --console=plain PASS; 57 actionable Gradle tasks, all 57 executed. JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true was applied to this process only to avoid a local Gradle loopback file-lock listener bind conflict; no global environment/network configuration was changed.
 - Debug APK: android/build/outputs/apk/debug/android-debug.apk, 35,202,307 bytes; SHA-256 C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B.
 - git diff --check: PASS after final documentation and source review. TypeScript-generated .js mirrors were removed from the worktree after testing; .ts sources and .mjs Durable Object test remain the maintained source files.
-- Exact-head GitHub Actions for the current implementation/docs commit: NOT_RUN yet (pending local commit and push). Historical run 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6.
+- Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] completed SUCCESS on fbf46ef15a1ec4554710a43894cfa4969c3176a7: Backend typecheck/tests, Android JVM tests + Debug APK compile, and Durable Object SQLite rollback/eviction all passed.
 - Manual emulator UI/touch/layout acceptance: NOT_RUN by explicit user request; emulator remains available. Move visible lobby flow to Phase 20 and RTL/touch/layout checks to Phase 21. No production Worker deployment or physical two-device test is claimed.

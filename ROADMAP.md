@@ -99,9 +99,9 @@ The historical documentation batches established the technical references now in
 - **Recovery policy:** reconnect replays only a complete contiguous retained range of at most 50 events for an eligible non-current publisher; otherwise the server sends a full SNAPSHOT. RESYNC remains a full-SNAPSHOT path.
 - **CI:** Backend TypeScript build and 10 Vitest files / 740 reported executions passed; Android JVM tests and Debug APK compilation passed; Durable Object runtime SQLite integration passed 4/4. The 740 count includes mirrored/generated TS/JS executions and is not a count of unique source scenarios.
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
-- **Phase status:** Phases 1-12 remain CLOSED. Phase 13 is ACTIVE/PARTIAL: lifecycle-v1 room authority, Android session controls, in-game lobby, render-thread ROOM_STATE and gameplay gate are implemented and locally tested. Current evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions, Durable Object SQLite 17/17, Android core JVM 141/141 and forced full Debug APK build PASS. Abrupt owner WebSocket loss, atomic owner/publisher transfer, all-member READY-proof invalidation and former-owner reconnect/roster restoration are covered by automated server and Android tests. Remaining Phase 13 gate: commit/push and exact-head CI. Visible emulator host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
+- **Phase status:** Phases 1-13 are CLOSED for implementation and automated acceptance within their documented support boundaries. Phase 13 delivered lifecycle-v1 room authority, in-game lobby, validated server roster, render-thread message routing, native gameplay gate, abrupt owner-loss handoff, all-member readiness-proof invalidation and authenticated former-owner resume with credential rotation and roster replacement. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; Durable Object SQLite 17/17; Android core JVM 141/141; full Debug APK build PASS. Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed Backend, Android and Durable Object SQLite on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Emulator-visible host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
-### Historical Phase 10-C continuation checkpoint### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
+### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
 - Repository/only working branch: majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
 - Live code/test HEAD audited for Phase 10-C: 2d9a36d6c90ae95a91e6d08dca7a5bc4861c7fa5; this is newer than the user-supplied c8998912005e458fac7a8776618b073f33f4d642. Do not reset to the older checkpoint.
@@ -681,7 +681,7 @@ Final local evidence: TypeScript build/noEmit PASS; Backend 10 Vitest files / 74
 
 Phase 12 does not claim a production Worker deployment or a physical two-device multiplayer match. Those remain explicit later gates: Phase 22 deployment/service preflight and Phase 23 user-led physical-device playtest. Phase 13 room/readiness/start lifecycle is the next implementation phase and was not started by this closeout.
 
-## Phase 13 — Common Room/Session Lifecycle and Readiness
+## Phase 13 — Common Room/Session Lifecycle and Readiness (CLOSED: implementation + automated acceptance)
 
 **Priority:** P0 · **Dependencies:** phases 10–12.
 
@@ -693,14 +693,16 @@ Phase 12 does not claim a production Worker deployment or a physical two-device 
 - [x] Wire the in-game lifecycle lobby after native-level publication, validate the authoritative roster on the render thread, and gate native gameplay until PLAYING.
 - [x] Test simultaneous join/start serialization, cancellation/readiness reset, successful authoritative start, server broadcasts, late-join rejection and post-start cancel rejection in real Durable Object SQLite.
 
-### 2026-11-17 implementation checkpoint (active/partial)
+### 2026-11-17 closeout (CLOSED: implementation and automated acceptance)
 
-The server room lifecycle and Android session-control layer include WndMultiplayerLobby, a validated authoritative roster store, render-thread ROOM_STATE/MATCH_START delivery, reconnect/failure exit handling and a hard native turn/input gate until PLAYING. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; real Durable Object SQLite 17/17 (including abrupt owner WebSocket loss, atomic owner/publisher transfer, all-member READY-proof invalidation and full ROOM_STATE broadcast); Android core JVM 141/141 and forced full test assembleDebug PASS. The Android reconnect regression verifies that a former owner retains identity, rotates its session token, resumes as a non-owner, and replaces the roster with the server-authoritative connected/offline members. Phase 13 remains OPEN only for commit/push and exact-head CI. Manual emulator UI/touch acceptance is deferred to Phases 20-21 and is not a Phase 13 blocker. Historical CI 44100890572 applies only to 7a75b493124f99a773b23d089a2ee8d3ded2ebd6. No production deployment or physical two-device test is claimed.
+The server room lifecycle and Android session-control layer are implemented and locally verified: WndMultiplayerLobby, validated authoritative roster, render-thread ROOM_STATE/MATCH_START delivery, reconnect/failure exit handling and hard native turn/input gate until PLAYING. Abrupt owner WebSocket loss transfers owner/publisher authority transactionally, invalidates every READY proof and broadcasts the current ROOM_STATE; the returning former owner resumes with the same player identity, a rotated token and the successor owner ID plus a fresh connected/offline roster. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; real Durable Object SQLite 17/17; Android core JVM 141/141; forced full test assembleDebug PASS. Exact-head GitHub Actions run 1272 (https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355) is SUCCESS for commit fbf46ef15a1ec4554710a43894cfa4969c3176a7, with Backend, Android and Durable Object SQLite all green. Phase 13 is CLOSED for implementation and automated acceptance. Emulator UI/touch/layout checks were not run by user request and are explicitly deferred to Phases 20-21. No production deployment or physical two-device test is claimed.
 
-### Remaining acceptance
-- [x] Verify abrupt owner WebSocket loss, atomic owner/publisher transfer, READY-proof invalidation, member token rotation and full roster restoration through real Durable Object SQLite and Android reconnect regression tests.
-- [ ] Commit/push the implementation and documentation on the permitted branch and verify all required exact-head CI jobs.
-- Emulator-visible lobby flow, touch interaction and rendered layout checks are deferred to Phases 20-21 by explicit user direction; they do not block Phase 13.
+### Phase 13 closeout
+- [x] Abrupt owner WebSocket loss, atomic owner/publisher transfer, all-member READY-proof invalidation and authoritative ROOM_STATE broadcast verified by real Durable Object SQLite tests.
+- [x] Former-owner authenticated reconnect, token rotation, stable player identity, ownership change and complete roster restoration verified by Android JVM regression.
+- [x] Local backend, Durable Object SQLite, Android JVM and Debug APK builds pass.
+- [x] Commit fbf46ef15a1ec4554710a43894cfa4969c3176a7 pushed to the permitted branch; exact-head Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed all three jobs.
+- Emulator-visible host/join/lobby flow remains a Phase 20 task; RTL/touch/layout review remains a Phase 21 task. These are not Phase 13 blockers.
 
 ### Acceptance criteria
 - Connection alone never means the player is in a playable match.

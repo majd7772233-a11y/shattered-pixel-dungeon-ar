@@ -2,7 +2,7 @@
 
 Date: 2026-11-17
 Branch: `multiplayer-framework-core-14118577486727081892`
-Status: lifecycle-v1 server logic, Android lobby integration and automated lifecycle/concurrency coverage are implemented and locally verified. Owner-loss/rejoin acceptance is covered by real Durable Object SQLite and Android client-state regressions. Phase 13 remains OPEN only until the implementation/docs commit is pushed and exact-head CI passes. Manual emulator UI/touch/layout acceptance is deferred to Phases 20-21 by user direction.
+Status: CLOSED for implementation and automated acceptance. Lifecycle-v1 server logic, Android lobby integration, reconnect recovery and owner-loss/rejoin acceptance are implemented and locally verified. Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed Backend, Android and Durable Object SQLite for fbf46ef15a1ec4554710a43894cfa4969c3176a7. Emulator UI/touch/layout acceptance is intentionally deferred to Phases 20-21 by user direction.
 
 ## Implemented
 
@@ -33,11 +33,14 @@ Status: lifecycle-v1 server logic, Android lobby integration and automated lifec
 - Android MultiplayerReconnectLifecycleTest: 12 methods. The former-owner reconnect case verifies authenticated resume, session-token rotation, stable local identity, successor ownership, full connected/offline roster replacement, cleared readiness and a gameplay gate that remains closed until PLAYING.
 - Android core JVM: 10 JUnit XML files / 141 tests / 0 failures / 0 errors / 0 skipped. Forced :core:test --rerun-tasks completed BUILD SUCCESSFUL.
 - Forced full test assembleDebug --rerun-tasks --no-daemon --console=plain: 57/57 Gradle tasks executed, BUILD SUCCESSFUL. APK android/build/outputs/apk/debug/android-debug.apk: 35,202,307 bytes; SHA-256 C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B. Full build/runtime evidence: BUILD_TEST_AND_CI.md.
-- `git diff --check`: PASS at the last source review. Exact-head GitHub Actions for the new commit are pending push/verification; run 44100890572 is historical evidence for the earlier `7a75b493124f99a773b23d089a2ee8d3ded2ebd6` commit only.
+- `git diff --check`: PASS at the last source review. Exact-head GitHub Actions run 1272 (https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355) passed Backend, Android and Durable Object SQLite on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Historical run 44100890572 applies only to the earlier `7a75b493124f99a773b23d089a2ee8d3ded2ebd6` commit only.
 - No production Worker deployment or physical two-device test is claimed.
 
-## Remaining Phase 13 work
+## Deferred acceptance outside Phase 13
 
-1. Commit and push the complete implementation/test/documentation state to multiplayer-framework-core-14118577486727081892.
-2. Verify Backend, Android and Durable Object SQLite GitHub Actions jobs on the exact pushed SHA; do not reuse historical CI as evidence for the new commit.
-3. Leave emulator-visible lobby checks for Phase 20 (host/join and lobby interactions) and Phase 21 (RTL, touch targets, insets and device layouts); they are intentionally not a Phase 13 acceptance gate.
+- Phase 20: emulator/in-app host/join/setup/lobby acceptance, including lobby open/close, owner/non-owner controls, reconnect/failure exit and MATCH_START transition.
+- Phase 21: Arabic RTL/English layout, room code and IP rendering, touch targets, insets, orientation, screen sizes, modal transitions and navigation/cleanup.
+- Phase 22: production Worker deployment and service preflight; no deployment is claimed here.
+- Phase 23: user-led physical-device playtest; no physical two-device test is claimed here.
+
+Phase 13 is CLOSED for implementation and automated acceptance. Do not mark the deferred visual or release gates complete until their own evidence exists.

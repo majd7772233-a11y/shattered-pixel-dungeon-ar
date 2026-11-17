@@ -1,4 +1,4 @@
-# Current continuation checkpoint - 2026-11-17 (Phase 13 active/partial)
+# Current continuation checkpoint - 2026-11-17 (Phase 13 CLOSED for implementation + automated acceptance)
 
 Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
@@ -10,7 +10,7 @@ Phase 12 is CLOSED. Phase 13 implementation and local automated acceptance now c
 - **Debug APK:** 35,202,307 bytes; SHA-256 C2E40AA02A5161082EE2A196312F7B24AABDB82857019EFA1F20F50277C3C05B.
 - **Current verification:** backend TypeScript build PASS; npm test 10 files / 744 reported executions (372 unique TS scenarios) PASS; Durable Object SQLite 17/17 PASS; Android JVM 141/141 PASS; forced full test assembleDebug PASS (57 actionable Gradle tasks, all executed).
 
-Remaining Phase 13 gate: commit/push the complete implementation and documentation on the only permitted branch, then verify exact-head Backend, Android and Durable Object SQLite CI. The emulator must remain available to the user; visible lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21.
+Phase 13 implementation, automated acceptance, commit/push and exact-head CI are complete. Commit fbf46ef15a1ec4554710a43894cfa4969c3176a7 is pushed on the only permitted branch; Actions run 1272 is green for Backend, Android and Durable Object SQLite. Keep the emulator available: visible host/join/lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21. No production deployment or physical two-device playtest is claimed.
 
 Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for the detailed boundary. Do not begin Phases 14-16. No Worker production deployment or physical two-device match is claimed.
 ---
@@ -37,7 +37,7 @@ Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for the detailed bound
 
 ## Phase 12 final status and boundaries
 
-Phase 12-A, Phase 12-B and parent Phase 12 are CLOSED for implementation and automated acceptance. The accepted work covers session identity/reconnect, durable recovery/replay retention, versioned schema migration, cross-table `LEVEL_DATA` atomicity, and token-fenced publisher loss/election/handoff. Phase 13 room/readiness/start lifecycle was not started at this historical checkpoint. The current status is recorded at the top of this file: Phase 13 active/partial.
+Phase 12-A, Phase 12-B, parent Phase 12 and Phase 13 are CLOSED for implementation and automated acceptance. Phase 13 exact-head CI run 1272 passed all three jobs on fbf46ef15a1ec4554710a43894cfa4969c3176a7. The earlier dated notes below are historical checkpoints and are superseded by this current status.
 
 ## Next phase and preserved execution rules
 
