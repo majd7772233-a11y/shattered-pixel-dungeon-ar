@@ -36,7 +36,7 @@ Status: server lifecycle and client session-control slice implemented and locall
 - `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL.
 - Full `test assembleDebug --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL on 2026-11-17; 57 actionable tasks, 10 JUnit reports / 137 tests / 0 failures / 0 errors / 0 skipped. Debug APK: 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. Re-run after in-game lobby UI changes.
 - `git diff --check`: PASS; no whitespace errors remain.
-- No exact-head GitHub Actions run has been performed for the current Phase 13 worktree. The older Phase 12 run 43921670336 applies only to its recorded Phase 12 implementation commit.
+- Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed Backend typecheck/tests, Android JVM tests/Debug APK compile and real Durable Object SQLite for code commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
 - No production Worker deployment or physical two-device test is claimed.
 
 ## Remaining Phase 13 work

@@ -283,12 +283,12 @@ The same committed tree passed local TypeScript noEmit, backend 5 files / 372 un
 
 ## Phase 13 current local verification (2026-11-17; partial worktree)
 
-The following checks apply to the uncommitted Phase 13 worktree, not to the older Phase 12 exact-head Actions run:
+The following local checks apply to the Phase 13 source/test commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6` on the permitted branch:
 
 - Backend TypeScript `npx tsc --noEmit --pretty false`: PASS.
 - Backend `npm test`: 10 files / 744 reported executions, representing 372 unique TypeScript source scenarios plus generated JavaScript mirrors: PASS.
 - Real Cloudflare Workers Durable Object SQLite integration `src/match-room/durable-object-sqlite.integration.do.mjs`: 1 file / 15 tests: PASS.
 - Android `:core:test --no-daemon --console=plain --rerun-tasks`: BUILD SUCCESSFUL; 10 JUnit XML reports / 137 tests / 0 failures / 0 errors / 0 skipped.
 - The full `test assembleDebug --no-daemon --console=plain --rerun-tasks` command passed on 2026-11-17: 57 actionable tasks, 137 core JVM tests with zero failures/errors/skips, and Debug APK assembled. APK is 35,197,092 bytes; SHA-256 `83C3104CBCA9B31B0C01D6F8A80F1A6C27B8984C2B5BB33938AC6570720EE371`. Re-run after the in-game lobby UI is integrated.
-- No exact-head GitHub Actions run is recorded for this worktree yet. Phase 12 Actions run 43921670336 applies only to the Phase 12 commit listed in the closeout section; it is not evidence for Phase 13.
+- Exact-head GitHub Actions [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed Backend, Android and Durable Object SQLite jobs for commit `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`.
 - No production Worker deployment or physical two-device test is claimed.

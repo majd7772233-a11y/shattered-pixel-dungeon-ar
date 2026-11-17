@@ -48,7 +48,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 ## Current checkpoint - 2026-11-17 - Phase 13 active/partial
 
-Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 now has the server room/session lifecycle and Android session-state/retry controls implemented in the current worktree. Local evidence: Backend 372 unique source scenarios, Durable Object SQLite 15/15, Android JVM 137/137, TypeScript noEmit, backend tests, Durable Object SQLite 15/15 and full `test assembleDebug` PASS. The in-game lobby UI is not yet wired: controls for Ready/Unready, owner Start/Cancel, and Leave remain the next integration task. Read `PHASE13_ROOM_SESSION_LIFECYCLE.md` before continuing. No exact-head CI, production deployment or physical two-device test is claimed for this worktree.
+Phase 12 remains closed at its accepted implementation and exact-head CI scope. Phase 13 now has the server room/session lifecycle and Android session-state/retry controls implemented in the current worktree. Local evidence: Backend 372 unique source scenarios, Durable Object SQLite 15/15, Android JVM 137/137, TypeScript noEmit, backend tests, Durable Object SQLite 15/15 and full `test assembleDebug` PASS. The in-game lobby UI is not yet wired: controls for Ready/Unready, owner Start/Cancel, and Leave remain the next integration task. Read `PHASE13_ROOM_SESSION_LIFECYCLE.md` before continuing. Exact-head CI [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) passed all three jobs for `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`; production deployment and physical two-device test remain unclaimed.
 
 ## Source-of-truth hierarchy
 
