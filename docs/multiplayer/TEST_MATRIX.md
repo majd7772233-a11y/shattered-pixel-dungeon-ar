@@ -104,6 +104,18 @@ This is a focused fail-closed regression suite for native pickup callbacks that 
 
 ## 4. Core JVM test files
 
+### InternetTransportProtocolTest.java — Phase 14-A suite (15 authored tests; execution pending)
+
+Coverage planned in source:
+- RFC 6455 sample Sec-WebSocket-Accept digest and complete Authorization/upgrade request shape;
+- positive upgrade response and rejection of wrong status, missing tokens, mismatched/duplicate accept, malformed/folded/oversized headers and unrequested extensions/subprotocols;
+- endpoint path/query preservation and Bearer credential validation;
+- server frame payload lengths at 125/126/65,535/65,536 boundaries and rejection of masked, reserved, RSV, non-canonical, oversized and invalid control frames;
+- text fragmentation with interleaved PING, invalid continuation/binary messages, strict UTF-8/UTF-16, client masking and CLOSE code/reason rules;
+- localhost mock peer that exercises HTTP 101 upgrade, two PING/PONG exchanges, fragmented SESSION delivery and graceful CLOSE echo.
+
+**Evidence boundary:** these 15 test methods are authored but were not executed when this checkpoint was written. Do not add them to verified test totals until focused and full Gradle runs report PASS. A localhost mock proves deterministic client protocol behavior, not production Worker availability, Android network lifecycle or physical-device connectivity.
+
 ### NativeCombatRuntimeIntegrationTest.java — 46 tests
 
 Coverage includes:
@@ -149,6 +161,8 @@ The test method names and exact current methods are in core/src/test/java/com/sh
 Total across these six multiplayer test classes: 65 source test methods.
 
 ## 5. Mapping tests to roadmap phases
+
+- Phase 14-A: `InternetTransportProtocolTest.java` (strict HTTP upgrade, RFC 6455 frame/fragment/control behavior and localhost mock peer). It complements, but does not replace, a live Worker service smoke test, which remains in Phase 14-B.
 
 | Roadmap phase | Relevant tests |
 |---|---|

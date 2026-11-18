@@ -10,7 +10,7 @@ All paths are repository-relative. Reopen each source file at the active branch 
 
 Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
 
-The audited tree contains 34 Java files:
+The audited tree contains 36 Java files after the Phase 14-A transport split:
 
 | File | Responsibility observed in source | Related components / change impact |
 |---|---|---|
@@ -19,7 +19,9 @@ The audited tree contains 34 Java files:
 | DeathmatchMode.java | Deathmatch GameMode rule descriptor. | GameMode, Worker match-end/scoring/FOV rules; validate all rules on server/client. |
 | EmbeddedMatchAuthority.java | Small embedded/local authority with start() and processAction(...). | LAN/local host assumptions; not the Worker or a complete native authority. |
 | GameMode.java | Common interface for mode descriptors. | All mode implementations and UI/serialization mappings. |
-| InternetTransport.java | Custom socket/TLS/WebSocket client implementing NetworkTransport. | Worker WebSocket endpoint, handshake/framing, manager callbacks; framing changes require server and integration tests. |
+| InternetTransport.java | TCP/TLS WebSocket client implementing NetworkTransport; performs bounded connect/upgrade, verifies TLS hostname, validates the upgrade, reads/writes RFC 6455 frames and dispatches typed messages. | Worker endpoint and TransportCallback; 14-A covers wire correctness, while manager callback/retry/thread lifecycle stays in 14-B. |
+| WebSocketHandshake.java | Strict HTTP/1.1 WebSocket upgrade request/response helper, request-target construction, Bearer header validation and Sec-WebSocket-Accept calculation. | InternetTransport, Worker `fetch()` room path and session-token admission; test positive and negative upgrade responses. |
+| WebSocketFrameCodec.java | Bounded RFC 6455 server-frame parser, text-fragment assembler, strict UTF-8/close validation and masked client-frame writer. | InternetTransport; tests must cover lengths, masking, RSV/opcodes, fragmentation, interleaved controls, ping/pong and close. |
 | LANTransport.java | TCP server/client and UDP host discovery; sends network messages and exposes connected state. | Setup scene, host/client topology, socket lifecycle, discovery, peer compatibility and multi-device tests. |
 | LootClaimManager.java | In-memory claim/release/clear helper scoped by depth/branch and heap/item/player. | Server durable claims and pickup/drop logic; not a substitute for durable Worker claims. |
 | MessageRouter.java | Exhaustive 25-value client message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING handlers, render-thread ROOM_STATE and MATCH_START delivery, explicit non-inbound decisions |
@@ -116,6 +118,8 @@ These files are outside the multiplayer package but part of the feature.
 | android/src/main/AndroidManifest.xml | Android permissions and application entry. | Transport/permission work must update manifest and runtime permission handling where required. |
 
 ## 5. Test-file map
+
+- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A handshake/frame boundary suite plus localhost mock WebSocket exchange; 15 authored tests are pending first local execution at this checkpoint.
 
 ### Core JVM tests
 

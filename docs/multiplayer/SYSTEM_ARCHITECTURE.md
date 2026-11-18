@@ -89,11 +89,13 @@ MultiplayerManager is the client-side session coordinator. It is not the Worker,
 All transports implement NetworkTransport and report through TransportCallback. The abstraction lets the manager start, send, stop, and query a transport without owning socket mechanics.
 
 Current source implementations:
-- InternetTransport: custom TCP/TLS socket and WebSocket handshake/framing implementation.
+- InternetTransport: TCP/TLS client, explicit connect and HTTP-upgrade timeouts, HTTPS hostname verification, strict HTTP/1.1 WebSocket upgrade validation, RFC 6455 frame read/write, fragmented text assembly and control-frame handling. It delegates handshake parsing to WebSocketHandshake and frame parsing/encoding to WebSocketFrameCodec.
+- WebSocketHandshake: validates HTTP/1.1 status 101, Upgrade/Connection tokens, exact Sec-WebSocket-Accept, duplicate/malformed headers, and refuses unrequested extensions/subprotocols. It builds the path/query and optional Bearer header without putting the session secret in the URL.
+- WebSocketFrameCodec: validates server unmasked frames, canonical payload-length encodings, RSV/opcodes, control-frame rules, strict UTF-8, close codes and bounded frame/message payloads; writes all client frames with a fresh four-byte mask.
 - LANTransport: local TCP server/client and UDP host discovery.
 - BluetoothTransport: common Java facade over NativeBluetoothProvider; Android-specific AndroidBluetoothProvider implements that provider interface.
 
-Do not infer production readiness from implementation presence. Handshake correctness, fragmentation, message framing, timeouts, reconnection, host/client startup, discovery, OS permissions, lifecycle, and real two-device tests require separate evidence. The setup UI currently catches some LAN/Bluetooth startup exceptions without surfacing them and immediately advances after startSession; truthful connection UX is still an open audit target.
+Phase 14-A is limited to the wire/transport boundary and deterministic local endpoint tests. The current codec sets a 16 MiB maximum frame/message payload; verify that this remains compatible with the largest supported native level snapshots before raising or lowering it. Localhost tests do not prove a deployed Worker smoke test, Android network lifecycle, callback-thread safety, or physical two-device behavior; manager/retry/render-thread/network-background work is reserved for Phase 14-B. Do not infer production readiness from source presence alone. The setup UI still catches some LAN/Bluetooth startup exceptions without surfacing them and immediately advances after startSession; truthful connection UX remains an open audit target.
 
 ### 3.4 Backend room layer
 

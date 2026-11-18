@@ -101,6 +101,16 @@ The historical documentation batches established the technical references now in
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
 - **Phase status:** Phases 1-13 are CLOSED for implementation and automated acceptance within their documented support boundaries. Phase 13 delivered lifecycle-v1 room authority, in-game lobby, validated server roster, render-thread message routing, native gameplay gate, abrupt owner-loss handoff, all-member readiness-proof invalidation and authenticated former-owner resume with credential rotation and roster replacement. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; Durable Object SQLite 17/17; Android core JVM 141/141; full Debug APK build PASS. Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed Backend, Android and Durable Object SQLite on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Emulator-visible host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
+### Current Phase 14-A checkpoint — 2026-11-18 (IN PROGRESS)
+
+- **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / `multiplayer-framework-core-14118577486727081892`.
+- **Starting parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`; Phases 1–13 remain closed within their prior documented acceptance boundaries.
+- **Authorized slice:** Phase 14-A only. It covers the Internet endpoint/upgrade contract, TLS hostname verification and connection/handshake timeouts, RFC 6455 frame validation/masking/fragmentation/control frames/UTF-8 and bounded payloads, with local deterministic tests.
+- **Explicitly deferred to 14-B:** manager/callback/reconnect thread safety, render-thread scene/UI integration, Android connectivity/background/screen-off handling and service-level Worker lifecycle smoke tests.
+- **Current implementation checkpoint:** strict handshake and frame-codec helper sources, the InternetTransport integration and a localhost transport protocol test suite have been prepared. Local execution, compile/test results, commit SHA and exact-head CI are still pending at this checkpoint; do not mark 14-A complete until those results are recorded.
+- No production Worker deployment, live service smoke test, emulator test or physical-device match is claimed.
+
+
 ### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
 - Repository/only working branch: majd7772233-a11y/shattered-pixel-dungeon-ar / multiplayer-framework-core-14118577486727081892.
@@ -708,21 +718,52 @@ The server room lifecycle and Android session-control layer are implemented and 
 - Connection alone never means the player is in a playable match.
 - The client has a single explicit session state and cannot accidentally start twice or remain half-connected.
 - Every failure ends in a truthful error, a safe retry state or a clean exit.
-## Phase 14 — Internet/WebSocket Transport
+## Phase 14 — Internet/WebSocket Transport (split into 14-A and 14-B)
 
 **Priority:** P0 · **Dependencies:** Phase 13 and the Phase 11–12 protocol/recovery contracts.
 
-### Work items
-- [ ] Verify the handshake and endpoint contract against the deployed Worker, including required headers and correct room URL behavior.
-- [ ] Audit WebSocket framing/masking, fragmentation, text payload limits, UTF-8, ping/pong, close codes, TLS and timeout behavior.
-- [ ] Make connection callbacks and reconnect/retry paths thread-safe; marshal scene/UI changes onto the render thread.
-- [ ] Handle network changes, temporary offline state, screen-off/background behavior and slow or half-open connections on supported Android versions.
-- [ ] Add deterministic transport tests with a local/mock compliant endpoint and service-level smoke tests before physical-device validation.
+This phase is deliberately split at the transport boundary so the wire protocol and deterministic socket behavior can be closed independently from Android lifecycle/thread orchestration.
 
-### Acceptance criteria
-- Internet sessions either connect and establish a real room or return a specific visible failure.
+### Phase 14-A — WebSocket wire transport and protocol correctness
+
+**Status:** IN PROGRESS — implementation and deterministic test suite are being added; local execution and exact-head CI evidence are pending.
+
+Scope:
+- [ ] Verify the client endpoint mapping against Worker source: `/room/{roomCode}/websocket`, `lifecycle=1`, optional player identity assertion, and Bearer session credential only in the Authorization header (never in the URL).
+- [ ] Validate the complete RFC 6455 HTTP/1.1 upgrade: status 101, Upgrade/Connection tokens, request key and exact Sec-WebSocket-Accept; reject malformed/duplicate headers, unrequested extensions and protocols.
+- [ ] Harden TCP/TLS setup: explicit connect and upgrade-handshake timeouts, HTTPS hostname verification, and secure-scheme requirement whenever a session token is present.
+- [ ] Implement bounded server-frame parsing and masked client-frame writing, including canonical 7/16/64-bit lengths, RSV/opcode/mask checks, fragmented text assembly, strict UTF-8, interleaved control frames, PING/PONG, CLOSE validation and bounded payload memory.
+- [ ] Add deterministic JUnit tests for the handshake/frame codec and an ephemeral localhost WebSocket peer that exercises the full upgrade, PING/PONG, fragmented message and CLOSE exchange.
+- [ ] Run the focused core JVM suite and full Android test/debug build; verify backend/Worker contract parity and exact-head CI.
+
+Acceptance for 14-A:
+- [ ] A valid local compliant endpoint completes the handshake; invalid/non-101 responses, bad accept values, malformed frames and unsupported data frames fail closed.
+- [ ] Every client frame is masked; server frames are unmasked; fragmentation and interleaved control frames preserve message boundaries.
+- [ ] Frame/message size, UTF-8 and close-code failures are bounded and deterministic; no attacker-controlled length can overflow an allocation.
+- [ ] Bearer credentials never appear in the request URL and are rejected on insecure endpoints.
+- [ ] Local/mock transport tests and exact-head CI pass. A live production Worker smoke test is not claimed by localhost tests.
+
+### Phase 14-B — Session lifecycle, Android threading and network transitions
+
+**Status:** NOT STARTED — do not pull these tasks into 14-A.
+
+Scope:
+- [ ] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe.
+- [ ] Marshal scene/UI mutations and user-visible connection failures onto the libGDX render thread.
+- [ ] Handle network changes, temporary offline state, screen-off/background behavior, Android process/activity lifecycle and slow or half-open sockets on supported Android versions.
+- [ ] Add deterministic manager/callback tests plus service-level smoke checks for actual Worker room creation/join, authenticated resume and failure visibility.
+
+Acceptance for 14-B:
+- [ ] An old socket/callback cannot change the state of a newer session or revive a closed session.
+- [ ] No scene/UI mutation occurs off the render thread.
+- [ ] Network loss/recovery and background transitions preserve or explicitly fail the session without corrupting gameplay authority or replay state.
+- [ ] Service-level tests prove room creation/join and authenticated resume against the intended Worker deployment before physical-device acceptance.
+
+### Parent Phase 14 acceptance
+- Internet sessions either establish the requested room or report a specific visible failure.
 - Malformed frames, timeouts and disconnects cannot corrupt gameplay state.
 - No UI scene is changed from an unsafe callback thread.
+- Phase 14 is not CLOSED until both 14-A and 14-B satisfy their own evidence gates.
 
 ## Phase 15 — LAN Transport
 

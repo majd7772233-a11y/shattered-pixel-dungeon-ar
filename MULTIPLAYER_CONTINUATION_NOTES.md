@@ -1,8 +1,8 @@
-# Current continuation checkpoint - 2026-11-17 (Phase 13 CLOSED for implementation + automated acceptance)
+# Current continuation checkpoint - 2026-11-18 (Phase 13 CLOSED; Phase 14-A IN PROGRESS)
 
 Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
-Baseline HEAD before this continuation: `7fe2e7964b356f85991cb2d8f364474cf4317328`.
+Phase 14-A starting parent: `ff97f45133e52ccc709ec71266a243e8e62484e4` (verified local/origin HEAD before this slice).
 WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
 
 Phase 12 is CLOSED. Phase 13 implementation and local automated acceptance now cover the in-game WndMultiplayerLobby, validated roster, render-thread state routing, native gameplay gate, fail-closed reconnect, abrupt owner socket loss, atomic owner/publisher transfer, all-member READY reset and former-owner authenticated reconnect with token rotation and full roster restoration.
@@ -13,6 +13,20 @@ Phase 12 is CLOSED. Phase 13 implementation and local automated acceptance now c
 Phase 13 implementation, automated acceptance, commit/push and exact-head CI are complete. Commit fbf46ef15a1ec4554710a43894cfa4969c3176a7 is pushed on the only permitted branch; Actions run 1272 is green for Backend, Android and Durable Object SQLite. Keep the emulator available: visible host/join/lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21. No production deployment or physical two-device playtest is claimed.
 
 Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for the detailed boundary. Do not begin Phases 14-16. No Worker production deployment or physical two-device match is claimed.
+
+## Phase 14-A — Internet/WebSocket wire transport (2026-11-18; IN PROGRESS)
+
+- **Only working branch:** `multiplayer-framework-core-14118577486727081892`; do not create branches, PRs or merges and do not work on main/master.
+- **Parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`.
+- **Phase split:** 14-A = Worker endpoint/upgrade contract, secure TLS and timeout setup, RFC 6455 frame/mask/fragmentation/UTF-8/control-frame validation and deterministic localhost tests. 14-B = session-manager/callback/reconnect concurrency, render-thread UI, Android network/background/screen-off and service-level Worker smoke tests. Do not begin 14-B without explicit user authorization.
+- **Implementation sources prepared:** `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/WebSocketHandshake.java`, `WebSocketFrameCodec.java`, and updated `InternetTransport.java`; planned test file: `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java`.
+- **Recovery note:** the interrupted local write left the local `InternetTransport.java` incomplete. The full intended source was saved as Git blob `15c76906d8c1e5cccc7a17f9d3fce205e046cc3f`; the full handshake and frame codec blobs are `c2093bbe4cd9f728128a904ad3a021c5d28d1639` and `e7c3798144c4e8c7aad11a2a215fc39c0f5c9cb7`. The local handshake and frame codec have since been restored and verified at 7,200 and 9,678 bytes respectively. The local InternetTransport file still needs restoration from the full blob before testing.
+- **Test blob prepared:** `8339dd91e675dfb90464c0153b0ab47fd03c3319` (20,518 bytes); includes handshake digest/header rejection, frame-length boundaries, strict framing/UTF-8/close checks, client masking and a localhost mock WebSocket peer for upgrade/PING/PONG/fragmented text/CLOSE.
+- **Current evidence:** no Phase 14-A tests or Gradle build have yet run; do not report them as passed. No Phase 14 commit/push or exact-head CI is claimed at this checkpoint.
+- **WebGPT task:** `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` remains RUNNING/open. Do not call submit_result or terminate it.
+- **No emulator use:** Phase 20/21 emulator checks remain deferred. No production Worker deployment or physical-device multiplayer session is claimed.
+
+
 ---
 
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)

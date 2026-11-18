@@ -50,6 +50,14 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 Phase 12 remains closed. Phase 13 is CLOSED for implementation and automated acceptance: lifecycle-v1 server authority, WndMultiplayerLobby, validated room roster, render-thread ROOM_STATE/MATCH_START handling, reconnect/failure exit and native gameplay gating until PLAYING are implemented. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported executions, real Durable Object SQLite 17/17, Android core JVM 141/141 and forced full test assembleDebug PASS. Abrupt owner WebSocket loss, atomic owner/publisher handoff, all-member readiness reset and former-owner reconnect/roster restoration have server and Android regression coverage. Exact-head Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed all three jobs on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Visible emulator host/join/lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21. Production deployment and physical two-device test remain unclaimed.
 
+## Current continuation checkpoint — 2026-11-18 — Phase 14-A IN PROGRESS
+
+Phase 13 remains CLOSED for implementation and automated acceptance at the previous documented boundary. Phase 14 has been divided into two independently accepted slices:
+- **14-A — WebSocket wire transport:** Worker endpoint/upgrade contract, TLS hostname verification and timeouts, strict RFC 6455 frame parsing/writing, masking, fragmentation, UTF-8, control frames and deterministic localhost tests.
+- **14-B — Android/session lifecycle:** manager/callback/retry thread safety, render-thread UI, Android connectivity/background/screen-off handling and service-level Worker lifecycle smoke tests. This slice is not started.
+
+The new transport sources and the 15-test `InternetTransportProtocolTest.java` suite have been prepared. The test suite and Gradle builds have not yet been executed at this checkpoint; consult ROADMAP.md, GPT.md and MULTIPLAYER_CONTINUATION_NOTES.md for the exact working state. Do not mark Phase 14-A complete or claim deployed Worker/physical-device validation until exact test and CI evidence is recorded.
+
 ## Source-of-truth hierarchy
 
 1. The exact source tree at the active branch HEAD is implementation truth.

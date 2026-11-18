@@ -1,21 +1,31 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Locale;
 
+/** Internet transport using a strictly validated RFC 6455 WebSocket connection. */
 public class InternetTransport implements NetworkTransport {
+    static final int CONNECT_TIMEOUT_MS = 10000;
+    static final int HANDSHAKE_TIMEOUT_MS = 10000;
+    private static final String DEFAULT_ENDPOINT =
+            "wss://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket";
+
     private Socket socket;
-    private InputStream in;
-    private OutputStream out;
-    private boolean isConnected = false;
-    private TransportCallback callback;
-    private final ByteArrayOutputStream fragmentationBuffer = new ByteArrayOutputStream();
+    private DataInputStream in;
+    private DataOutputStream out;
+    private volatile boolean isConnected;
+    private volatile TransportCallback callback;
 
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
@@ -24,77 +34,162 @@ public class InternetTransport implements NetworkTransport {
 
     void connect(String endpoint, TransportCallback callback, String sessionToken) throws Exception {
         this.callback = callback;
-        URI uri = new URI(endpoint != null ? endpoint : "https://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket");
-        String host = uri.getHost() != null ? uri.getHost() : "spd-multiplayer.majd7772233.workers.dev";
-        boolean isSsl = uri.getScheme() == null || uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("wss");
-        if (sessionToken != null && !isSsl) {
+        URI uri = new URI(endpoint == null || endpoint.trim().isEmpty() ? DEFAULT_ENDPOINT : endpoint.trim());
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        boolean secure;
+        if ("wss".equals(scheme) || "https".equals(scheme)) {
+            secure = true;
+        } else if ("ws".equals(scheme) || "http".equals(scheme)) {
+            secure = false;
+        } else {
+            throw new IllegalArgumentException("Unsupported WebSocket endpoint scheme.");
+        }
+        String host = uri.getHost();
+        if (host == null || host.isEmpty() || uri.getUserInfo() != null) {
+            throw new IllegalArgumentException("A valid WebSocket host is required.");
+        }
+        if (sessionToken != null && !secure) {
             throw new IllegalArgumentException("Session credentials require a secure WebSocket endpoint.");
         }
-        int port = uri.getPort() != -1 ? uri.getPort() : (isSsl ? 443 : 80);
-        String requestTarget = buildRequestTarget(uri);
-        String authorization = buildAuthorizationHeader(sessionToken);
+        int port = uri.getPort() != -1 ? uri.getPort() : (secure ? 443 : 80);
+        if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid WebSocket endpoint port.");
+        String requestTarget = WebSocketHandshake.buildRequestTarget(uri);
+        String authorization = WebSocketHandshake.buildAuthorizationHeader(sessionToken);
         if (sessionToken != null && authorization == null) {
             throw new IllegalArgumentException("Invalid session token.");
         }
+        ensureAsciiRequestTarget(requestTarget);
+        String hostHeader = buildHostHeader(host, port, secure);
+        byte[] nonce = new byte[16];
+        new SecureRandom().nextBytes(nonce);
+        String clientKey = Base64.getEncoder().encodeToString(nonce);
+        String request = WebSocketHandshake.buildRequest(hostHeader, requestTarget, clientKey, authorization);
 
-        new Thread(() -> {
-            try {
-                if (isSsl) {
-                    socket = SSLSocketFactory.getDefault().createSocket(host, port);
-                } else {
-                    socket = new Socket(host, port);
-                }
-
-                in = socket.getInputStream();
-                out = socket.getOutputStream();
-
-                byte[] nonce = new byte[16];
-                new SecureRandom().nextBytes(nonce);
-                String wsKey = Base64.getEncoder().encodeToString(nonce);
-
-                // Perform Strict WebSocket Upgrade Handshake
-                String handshake = "GET " + requestTarget + " HTTP/1.1\r\n" +
-                        "Host: " + host + "\r\n" +
-                        "Upgrade: websocket\r\n" +
-                        "Connection: Upgrade\r\n" +
-                        "Sec-WebSocket-Key: " + wsKey + "\r\n" +
-                        "Sec-WebSocket-Version: 13\r\n" +
-                        (authorization == null ? "" : "Authorization: " + authorization + "\r\n") +
-                        "\r\n";
-
-                synchronized (this) {
-                    out.write(handshake.getBytes("UTF-8"));
-                    out.flush();
-                }
-
-                // Read HTTP response status line
-                StringTextBuilder sb = new StringTextBuilder();
-                String statusLine = readLine(in, sb);
-                if (statusLine != null && statusLine.contains("101")) {
-                    while (true) {
-                        String header = readLine(in, sb);
-                        if (header == null || header.isEmpty()) break;
-                    }
-
-                    isConnected = true;
-                    if (callback != null) {
-                        callback.onConnected();
-                    }
-
-                    listen();
-                } else {
-                    if (callback != null) callback.onError(new Exception("WebSocket Handshake Failed (Requires HTTP 101): " + statusLine));
-                    closeUnconnectedSocket();
-                }
-            } catch (Exception e) {
-                if (callback != null) callback.onError(e);
-                closeUnconnectedSocket();
-            }
-        }).start();
+        new Thread(() -> runConnection(host, port, secure, request, clientKey),
+                "spd-internet-websocket").start();
     }
 
-    private void closeUnconnectedSocket() {
+    private void runConnection(String host, int port, boolean secure, String request, String clientKey) {
+        try {
+            Socket rawSocket = new Socket();
+            socket = rawSocket;
+            rawSocket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+            rawSocket.setSoTimeout(HANDSHAKE_TIMEOUT_MS);
+            rawSocket.setTcpNoDelay(true);
+
+            if (secure) {
+                SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+                SSLSocket sslSocket = (SSLSocket) factory.createSocket(rawSocket, host, port, true);
+                SSLParameters parameters = sslSocket.getSSLParameters();
+                parameters.setEndpointIdentificationAlgorithm("HTTPS");
+                sslSocket.setSSLParameters(parameters);
+                sslSocket.setUseClientMode(true);
+                sslSocket.setSoTimeout(HANDSHAKE_TIMEOUT_MS);
+                sslSocket.startHandshake();
+                socket = sslSocket;
+            }
+
+            in = new DataInputStream(socket.getInputStream());
+            out = new DataOutputStream(socket.getOutputStream());
+            out.write(request.getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            WebSocketHandshake.validateUpgradeResponse(in, clientKey);
+            socket.setSoTimeout(0);
+            isConnected = true;
+            TransportCallback current = callback;
+            if (current != null) current.onConnected();
+            listen();
+        } catch (Exception failure) {
+            TransportCallback current = callback;
+            if (current != null) current.onError(failure);
+        } finally {
+            disconnect();
+            closeSocketResources();
+        }
+    }
+
+    private void listen() {
+        WebSocketFrameCodec.MessageAssembler assembler = new WebSocketFrameCodec.MessageAssembler();
+        try {
+            while (isConnected) {
+                WebSocketFrameCodec.Frame frame = WebSocketFrameCodec.readServerFrame(in);
+                if (frame.opcode == WebSocketFrameCodec.PING) {
+                    sendControlFrame(WebSocketFrameCodec.PONG, frame.payload);
+                    continue;
+                }
+                if (frame.opcode == WebSocketFrameCodec.PONG) continue;
+                if (frame.opcode == WebSocketFrameCodec.CLOSE) {
+                    sendControlFrame(WebSocketFrameCodec.CLOSE, frame.payload);
+                    closeSocketAndNotify("WebSocket closed by server" + closeReason(frame.payload));
+                    return;
+                }
+                String completeText = assembler.accept(frame);
+                if (completeText != null) {
+                    TransportCallback current = callback;
+                    if (current != null) current.onMessageReceived(NetworkMessage.parseJson(completeText));
+                }
+            }
+        } catch (WebSocketFrameCodec.WebSocketProtocolException protocolFailure) {
+            try {
+                sendControlFrame(WebSocketFrameCodec.CLOSE,
+                        WebSocketFrameCodec.closePayload(protocolFailure.closeCode, "Protocol error"));
+            } catch (IOException ignored) {}
+            TransportCallback current = callback;
+            if (current != null) current.onError(protocolFailure);
+        } catch (IOException failure) {
+            if (isConnected) {
+                TransportCallback current = callback;
+                if (current != null) current.onError(failure);
+            }
+        } finally {
+            if (isConnected) closeSocketAndNotify("WebSocket connection closed");
+        }
+    }
+
+    private synchronized void sendControlFrame(int opcode, byte[] payload) throws IOException {
+        if (!isConnected || out == null) return;
+        WebSocketFrameCodec.writeClientFrame(out, opcode, payload);
+    }
+
+    @Override
+    public synchronized void send(NetworkMessage message) {
+        if (!isConnected || out == null) return;
+        try {
+            if (message == null) throw new IllegalArgumentException("Network message is required");
+            byte[] payload = WebSocketFrameCodec.encodeUtf8(message.toJson());
+            if (payload.length > WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD) {
+                throw new IOException("Outgoing WebSocket message exceeds the 16 MiB limit");
+            }
+            WebSocketFrameCodec.writeClientFrame(out, WebSocketFrameCodec.TEXT, payload);
+        } catch (Exception failure) {
+            TransportCallback current = callback;
+            if (current != null) current.onError(failure);
+        }
+    }
+
+    @Override
+    public synchronized void disconnect() {
+        if (!isConnected) return;
+        try {
+            if (out != null) {
+                WebSocketFrameCodec.writeClientFrame(out, WebSocketFrameCodec.CLOSE,
+                        WebSocketFrameCodec.closePayload(1000, ""));
+            }
+        } catch (Exception ignored) {}
+        closeSocketAndNotify("Disconnected from internet match server");
+    }
+
+    private synchronized void closeSocketAndNotify(String reason) {
+        boolean wasConnected = isConnected;
         isConnected = false;
+        closeSocketResources();
+        if (wasConnected) {
+            TransportCallback current = callback;
+            if (current != null) current.onDisconnected(reason);
+        }
+    }
+
+    private synchronized void closeSocketResources() {
         try { if (in != null) in.close(); } catch (Exception ignored) {}
         try { if (out != null) out.close(); } catch (Exception ignored) {}
         try { if (socket != null) socket.close(); } catch (Exception ignored) {}
@@ -104,176 +199,49 @@ public class InternetTransport implements NetworkTransport {
     }
 
     static String buildAuthorizationHeader(String sessionToken) {
-        if (sessionToken == null || !sessionToken.matches("[A-Za-z0-9._~-]{16,256}")) return null;
-        return "Bearer " + sessionToken;
+        return WebSocketHandshake.buildAuthorizationHeader(sessionToken);
     }
 
     static String buildRequestTarget(URI uri) {
-        String path = uri.getRawPath() != null && !uri.getRawPath().isEmpty()
-                ? uri.getRawPath() : "/room/DEFAULT_ROOM/websocket";
-        String query = uri.getRawQuery();
-        return query == null || query.isEmpty() ? path : path + "?" + query;
+        return WebSocketHandshake.buildRequestTarget(uri);
     }
 
-    private String readLine(InputStream is, StringTextBuilder sb) throws Exception {
-        sb.clear();
-        int b;
-        while ((b = is.read()) != -1) {
-            if (b == '\r') {
-                int next = is.read();
-                if (next == '\n' || next == -1) break;
-                sb.append((char) b);
-                sb.append((char) next);
-            } else if (b == '\n') {
-                break;
-            } else {
-                sb.append((char) b);
+    static String expectedWebSocketAccept(String key) throws IOException {
+        return WebSocketHandshake.expectedAccept(key);
+    }
+
+    static String buildUpgradeRequest(String hostHeader, String requestTarget, String key, String authorization) {
+        return WebSocketHandshake.buildRequest(hostHeader, requestTarget, key, authorization);
+    }
+
+    static void validateUpgradeResponse(java.io.InputStream input, String key) throws IOException {
+        WebSocketHandshake.validateUpgradeResponse(input, key);
+    }
+
+    private static String buildHostHeader(String host, int port, boolean secure) {
+        String formattedHost = host.indexOf(':') >= 0 && !host.startsWith("[") ? "[" + host + "]" : host;
+        int defaultPort = secure ? 443 : 80;
+        return port == defaultPort ? formattedHost : formattedHost + ":" + port;
+    }
+
+    private static void ensureAsciiRequestTarget(String target) {
+        for (int i = 0; i < target.length(); i++) {
+            char value = target.charAt(i);
+            if (value <= 0x20 || value >= 0x7f || value == '#') {
+                throw new IllegalArgumentException("WebSocket request target must be URI-escaped ASCII.");
             }
         }
-        return sb.toString();
     }
 
-    private void listen() {
+    private static String closeReason(byte[] payload) {
+        if (payload.length < 2) return "";
+        int code = ((payload[0] & 0xff) << 8) | (payload[1] & 0xff);
         try {
-            while (isConnected) {
-                int b1 = in.read();
-                if (b1 == -1) break;
-                int b2 = in.read();
-                if (b2 == -1) break;
-
-                boolean fin = (b1 & 0x80) != 0;
-                int opcode = b1 & 0x0F;
-
-                if (opcode == 0x8) { // Close frame
-                    disconnect();
-                    break;
-                } else if (opcode == 0x9) { // Ping frame - respond with Pong
-                    sendPong();
-                    continue;
-                }
-
-                int payloadLen = b2 & 0x7F;
-                if (payloadLen == 126) {
-                    payloadLen = (in.read() << 8) | in.read();
-                } else if (payloadLen == 127) {
-                    long longLen = 0;
-                    for (int i = 0; i < 8; i++) {
-                        longLen = (longLen << 8) | in.read();
-                    }
-                    payloadLen = (int) longLen;
-                }
-
-                boolean masked = (b2 & 0x80) != 0;
-                byte[] maskingKey = new byte[4];
-                if (masked) {
-                    in.read(maskingKey);
-                }
-
-                byte[] payload = new byte[payloadLen];
-                int bytesRead = 0;
-                while (bytesRead < payloadLen) {
-                    int r = in.read(payload, bytesRead, payloadLen - bytesRead);
-                    if (r == -1) break;
-                    bytesRead += r;
-                }
-
-                if (masked) {
-                    for (int i = 0; i < payloadLen; i++) {
-                        payload[i] ^= maskingKey[i % 4];
-                    }
-                }
-
-                // Handle Text (0x1) and Continuation (0x0) frames with Fragmentation Assembly
-                if (opcode == 0x1 || opcode == 0x0) {
-                    synchronized (fragmentationBuffer) {
-                        fragmentationBuffer.write(payload);
-                        if (fin) {
-                            String jsonStr = new String(fragmentationBuffer.toByteArray(), "UTF-8");
-                            fragmentationBuffer.reset();
-                            if (callback != null) {
-                                NetworkMessage msg = parseMessage(jsonStr);
-                                callback.onMessageReceived(msg);
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            if (callback != null && isConnected) callback.onError(e);
-        } finally {
-            disconnect();
-        }
-    }
-
-    private synchronized void sendPong() {
-        if (!isConnected || out == null) return;
-        try {
-            byte[] mask = new byte[4];
-            new SecureRandom().nextBytes(mask);
-            out.write(0x8A); // Pong opcode (FIN = 1, opcode = 0xA)
-            out.write(0x80); // 0 length, masked
-            out.write(mask);
-            out.flush();
-        } catch (Exception ignored) {}
-    }
-
-    private NetworkMessage parseMessage(String jsonStr) {
-        return NetworkMessage.parseJson(jsonStr);
-    }
-
-    @Override
-    public synchronized void send(NetworkMessage message) {
-        if (!isConnected || out == null) return;
-        try {
-            if (message == null) throw new IllegalArgumentException("Network message is required");
-            byte[] payload = message.toJson().getBytes("UTF-8");
-            byte[] mask = new byte[4];
-            new SecureRandom().nextBytes(mask);
-
-            out.write(0x81); // Text frame (FIN = 1, opcode = 0x1)
-            if (payload.length <= 125) {
-                out.write(0x80 | payload.length);
-            } else if (payload.length <= 65535) {
-                out.write(0x80 | 126);
-                out.write((payload.length >> 8) & 0xFF);
-                out.write(payload.length & 0xFF);
-            } else {
-                out.write(0x80 | 127);
-                for (int i = 7; i >= 0; i--) {
-                    out.write((payload.length >> (i * 8)) & 0xFF);
-                }
-            }
-
-            out.write(mask);
-            for (int i = 0; i < payload.length; i++) {
-                out.write(payload[i] ^ mask[i % 4]);
-            }
-            out.flush();
-        } catch (Exception e) {
-            if (callback != null) callback.onError(e);
-        }
-    }
-
-    @Override
-    public synchronized void disconnect() {
-        if (!isConnected) return;
-        this.isConnected = false;
-        try {
-            if (out != null) {
-                // Send WebSocket Close frame (0x88)
-                byte[] mask = new byte[4];
-                new SecureRandom().nextBytes(mask);
-                out.write(0x88);
-                out.write(0x80);
-                out.write(mask);
-                out.flush();
-            }
-            if (in != null) in.close();
-            if (out != null) out.close();
-            if (socket != null) socket.close();
-        } catch (Exception ignored) {}
-        if (callback != null) {
-            callback.onDisconnected("Disconnected from internet match server");
+            String reason = WebSocketFrameCodec.decodeUtf8(
+                    java.util.Arrays.copyOfRange(payload, 2, payload.length));
+            return " (" + code + (reason.isEmpty() ? "" : ": " + reason) + ")";
+        } catch (IOException impossibleAfterValidation) {
+            return " (" + code + ")";
         }
     }
 
@@ -285,12 +253,5 @@ public class InternetTransport implements NetworkTransport {
     @Override
     public String getTransportType() {
         return "INTERNET";
-    }
-
-    private static class StringTextBuilder {
-        private final StringBuilder sb = new StringBuilder();
-        public void append(char c) { sb.append(c); }
-        public void clear() { sb.setLength(0); }
-        public String toString() { return sb.toString(); }
     }
 }
