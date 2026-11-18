@@ -52,4 +52,9 @@ describe("full SNAPSHOT serialized byte budget", () => {
   });
 
   it("counts escaped multi-byte and lone-surrogate strings exactly", () => {
-    const value = { text: "\u00e9".repeat(20) + "\u4e2d" + "\uD83D\uDE80" + "\uD800" + "\u0001" }
+    const value = { text: "\u00e9".repeat(20) + "\u4e2d" + "\uD83D\uDE80" + "\uD800" + "\u0001" };
+    expect(getJsonUtf8ByteLength(value)).toBe(
+      new TextEncoder().encode(JSON.stringify(value)).byteLength
+    );
+  });
+});

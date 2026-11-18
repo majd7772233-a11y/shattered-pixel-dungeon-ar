@@ -590,6 +590,29 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
     });
 
     const reconnectUrl = baseUrl + "?lifecycle=1&playerId=" + encodeURIComponent(playerId);
+
+    // A candidate reconnect must not rotate the token or mark a new socket connected
+    // until the exact recovery snapshot has passed the aggregate wire-size preflight.
+    await runInDurableObject(stub, async instance => {
+      instance.buildSnapshotMessage = () => { throw new Error("SNAPSHOT_TOO_LARGE"); };
+    });
+    const oversizedReconnect = await stub.fetch(new Request(reconnectUrl, {
+      headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
+    }));
+    expect(oversizedReconnect.status).toBe(413);
+    expect(await oversizedReconnect.text()).toBe("SNAPSHOT_TOO_LARGE");
+    await runInDurableObject(stub, async (_instance, state) => {
+      const row = state.storage.sql.exec(
+        "SELECT player_id,session_token,pos,hp,connected FROM players WHERE player_id = ?", playerId
+      ).toArray()[0];
+      expect(row).toMatchObject({
+        player_id: playerId, session_token: firstToken, pos: 77, hp: 13, connected: 1
+      });
+    });
+    await runInDurableObject(stub, async instance => {
+      delete instance.buildSnapshotMessage;
+    });
+
     const secondResponse = await stub.fetch(new Request(reconnectUrl, {
       headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
     }));
@@ -1403,4 +1426,29 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(sql.exec("SELECT value FROM room_meta WHERE key='roomOwnerId'").toArray()[0].value).toBe(successorId);
       expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisher'").toArray()[0].value).toBe(successorId);
       expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherTerm'").toArray()[0].value).toBe("5");
-      expect(sql.exec("SELECT value FROM room_meta WHERE key='
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherReadyTerm'").toArray()[0].value).toBe("5");
+
+      for (const playerId of [ownerId, successorId, observerId]) {
+        const row = sql.exec("SELECT ready FROM players WHERE player_id=?", playerId).toArray()[0];
+        expect(row.ready).toBe(0);
+        const readiness = JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "roomReady:" + playerId).toArray()[0].value);
+        expect(readiness).toEqual({ ready: false, seed, sequence: 0 });
+      }
+
+      const ownerHandoff = successorMessages.find(message =>
+        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
+      );
+      expect(ownerHandoff).toBeTruthy();
+      expect(JSON.parse(ownerHandoff.payloadJson)).toMatchObject({
+        ownerId: successorId, memberCount: 3, allReady: false, roomStatus: "LOBBY"
+      });
+      expect(JSON.parse(ownerHandoff.payloadJson).members).toEqual(expect.arrayContaining([
+        expect.objectContaining({ playerId: ownerId, connected: false, ready: false }),
+        expect.objectContaining({ playerId: successorId, connected: true, ready: false }),
+        expect.objectContaining({ playerId: observerId, connected: true, ready: false })
+      ]));
+      expect(observerMessages.some(message =>
+        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
+      )).toBe(true);
+    });
+  });});
