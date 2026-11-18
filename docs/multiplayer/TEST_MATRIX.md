@@ -546,3 +546,16 @@ Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43
 - Abrupt owner WebSocket loss, atomic owner/publisher transfer, readiness-proof reset, former-owner reconnect and fresh connected/offline roster restoration are now covered by real Durable Object SQLite and Android JVM regressions.
 - Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] completed SUCCESS on fbf46ef15a1ec4554710a43894cfa4969c3176a7: Backend typecheck/tests, Android JVM tests + Debug APK compile, and Durable Object SQLite rollback/eviction all passed.
 - Current checkpoint: backend 10 Vitest files / 744 reported executions (372 unique TypeScript source scenarios plus generated JavaScript mirrors); Durable Object SQLite 17/17; Android core JVM 10 XML files / 141 tests / zero failures, errors or skips; forced full test assembleDebug PASS. Exact-head Actions run 1272 is green for the implementation SHA. Phase 13 is CLOSED for implementation and automated acceptance. Emulator UI/touch/layout acceptance is deferred to Phases 20-21; no production Worker deployment or physical two-device match is claimed.
+
+## Phase 14-B1 - callback and transport lifecycle safety (2026-11-18)
+
+### Android/JVM regressions
+
+- MultiplayerReconnectLifecycleTest.java now contains 13 tests; transportCallbackWaitsForSessionReplacementAndCannotReviveTheOldSession deliberately holds the manager transition monitor while a callback thread attempts to deliver an old SESSION. It proves the callback cannot slip between generation check and state dispatch; after the manager closes and opens a replacement session, the old callback is rejected and cannot install its token or player identity, advance the replacement sequence, or change Dungeon.seed.
+- InternetTransportProtocolTest.java now contains 18 tests; disconnectCancelsAnInFlightHttpUpgradeWithoutLateCallbacks stalls a localhost peer after receiving the HTTP Upgrade request. Disconnect must close the pending TCP socket and emit no connected/disconnected/message/error callback for a WebSocket that never reached HTTP 101.
+- PONG and CLOSE control-frame writes are fenced by the owning InternetTransport generation so a listener from a cancelled connection cannot write into a later attempt's stream. The callback connection-state guard is scoped to InternetTransport; LAN/Bluetooth callback timing remains unchanged.
+- Full local forced verification: gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain - BUILD SUCCESSFUL; 11 JUnit XML reports / 161 tests / zero failures, errors or skips. Debug APK: 35,210,270 bytes; SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
+
+### Boundary
+
+This closes only the 14-B1 manager/callback and InternetTransport-attempt safety slice. Render-thread dispatch, Android network/background/screen-off behavior, deployed Worker room smoke, emulator UI and physical-device play remain unverified and open.

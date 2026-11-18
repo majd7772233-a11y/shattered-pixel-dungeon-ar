@@ -1,5 +1,7 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
+import com.shatteredpixel.shatteredpixeldungeon.Dungeon;
+
 import com.badlogic.gdx.utils.JsonReader;
 import com.badlogic.gdx.utils.JsonValue;
 
@@ -11,6 +13,8 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class MultiplayerReconnectLifecycleTest {
 
@@ -315,6 +319,48 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertEquals(0, manager.getRoomMembers().length);
     }
 
+    @Test
+    public void transportCallbackWaitsForSessionReplacementAndCannotReviveTheOldSession() throws Exception {
+        long previousDungeonSeed = Dungeon.seed;
+        try {
+            RecordingInternetTransport initial = new RecordingInternetTransport();
+            manager.startSession("https://example.invalid/room/old-generation/websocket", "old-player", initial);
+            TransportCallback staleCallback = initial.callback;
+            CountDownLatch callbackStarted = new CountDownLatch(1);
+            CountDownLatch callbackFinished = new CountDownLatch(1);
+            Thread lateCallback = new Thread(() -> {
+                callbackStarted.countDown();
+                staleCallback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                        "{\"playerId\":\"old-player\",\"sessionToken\":\"stale-session-token-0001\",\"sequence\":99,\"seed\":99999}"));
+                callbackFinished.countDown();
+            }, "test-stale-multiplayer-callback");
+            RecordingInternetTransport replacement = new RecordingInternetTransport();
+            synchronized (manager) {
+                lateCallback.start();
+                Assert.assertTrue("Callback thread did not start", callbackStarted.await(2, TimeUnit.SECONDS));
+                long blockedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+                while (lateCallback.getState() != Thread.State.BLOCKED
+                        && System.nanoTime() < blockedDeadline) Thread.yield();
+                Assert.assertEquals("Callback must block on the manager transition lock",
+                        Thread.State.BLOCKED, lateCallback.getState());
+                manager.endSession();
+                manager.startSession("https://example.invalid/room/new-generation/websocket", "new-player", replacement);
+                Assert.assertEquals(MultiplayerManager.SessionState.TRANSPORT_CONNECTED, manager.getSessionState());
+            }
+            Assert.assertTrue("Stale callback did not leave the generation gate", callbackFinished.await(2, TimeUnit.SECONDS));
+            lateCallback.join(2000L);
+            Assert.assertFalse(lateCallback.isAlive());
+            Assert.assertTrue(manager.isCurrentTransportForTests(replacement));
+            Assert.assertEquals("new-player", manager.getLocalPlayerId());
+            Assert.assertNull("Old SESSION must not install its bearer token", manager.getSessionToken());
+            Assert.assertEquals("Old SESSION must not advance the replacement sequence", 0L, manager.getLastSequence());
+            Assert.assertEquals("Old SESSION must not replace the global dungeon seed", previousDungeonSeed, Dungeon.seed);
+            Assert.assertEquals("Old SESSION must not change the replacement state",
+                    MultiplayerManager.SessionState.TRANSPORT_CONNECTED, manager.getSessionState());
+        } finally {
+            Dungeon.seed = previousDungeonSeed;
+        }
+    }
     @Test
     public void initialSessionHandshakeTimeoutFailsCleanlyAndLateCallbacksStayIgnored() throws Exception {
         RecordingInternetTransport initial = new RecordingInternetTransport();

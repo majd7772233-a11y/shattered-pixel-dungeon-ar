@@ -1,10 +1,10 @@
-# Current continuation checkpoint - 2026-11-18 (Phase 13 CLOSED; Phase 14-A CLOSED; Phase 14-B NOT STARTED)
+# Current continuation checkpoint - 2026-11-18 (Phase 13 CLOSED; Phase 14-A CLOSED; Phase 14-B IN PROGRESS - 14-B1 LOCALLY VERIFIED (CI PENDING))
 
 Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
 WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
 
-Phase 14-A is CLOSED for implementation and local automated acceptance. The complete acceptance record is `docs/multiplayer/PHASE14A_CLOSEOUT.md`. Phase 14-B is NOT STARTED and must not begin until explicit user authorization.
+Phase 14-A is CLOSED for implementation and local automated acceptance. The complete acceptance record is docs/multiplayer/PHASE14A_CLOSEOUT.md. Phase 14-B has started with 14-B1 locally implemented and verified. Parent Phase 14 and Phase 14-B remain OPEN.
 
 ## Phase 14-A closeout — 2026-11-18
 
@@ -18,10 +18,19 @@ Phase 14-A is CLOSED for implementation and local automated acceptance. The comp
 - **Exact-head CI:** final code/test HEAD `0f0d84e24ecbdc3253ae17d6a2d613c4513cac28` passed all three jobs in [Actions run 1285 / 44353955443](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44353955443). The reconnect overflow regression keeps the injected size failure and upgrade request within the same live Durable Object instance.
 - **Not claimed:** no production Worker, hosted live room smoke, emulator UI acceptance or physical-device match.
 
-## Handoff to Phase 14-B
+## Phase 14-B1 - callback and transport lifecycle safety (2026-11-18)
 
-14-B remains NOT STARTED. Its scope is manager/callback/reconnect thread safety, render-thread dispatch, Android network/background/screen-off behavior and live Worker lifecycle smoke. Wait for explicit user authorization. Keep the WebGPT task RUNNING/open.
+- Start HEAD: 45dd579c3f7f5638f30f75ebd4e7bc43ff881a42 on the sole permitted branch multiplayer-framework-core-14118577486727081892.
+- Manager: callback transport identity and sessionGeneration are checked and dispatched atomically under the manager monitor. onConnected, onDisconnected, onMessageReceived and onError are synchronized with session transitions. isMultiplayerActive, localPlayerId and sessionToken are volatile for cross-thread readers.
+- Internet transport: each asynchronous TCP/TLS/HTTP Upgrade worker is tagged with a transport generation. Disconnect invalidates even a pre-upgrade attempt, closes the pending TCP/TLS socket, and prevents stale workers from taking ownership of socket/stream fields or delivering late notifications. PONG/CLOSE control frames are generation-scoped. External callbacks run outside the transport monitor to avoid reverse lock ordering with the manager.
+- New tests: MultiplayerReconnectLifecycleTest.transportCallbackWaitsForSessionReplacementAndCannotReviveTheOldSession; InternetTransportProtocolTest.disconnectCancelsAnInFlightHttpUpgradeWithoutLateCallbacks.
+- Verification: forced root test assembleDebug --rerun-tasks --no-daemon --console=plain PASS (57 tasks executed; 11 JUnit XML / 161 tests / zero failures, errors or skips). APK: 35,210,270 bytes; SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
+- Not done: no exact-head GitHub CI exists for the uncommitted B1 diff yet; backend source is unchanged; no render-thread migration, network/background/screen-off lifecycle, hosted Worker smoke, emulator UI or physical-device match is claimed.
+- Next: 14-B2 - generation-safe render-thread dispatch for callback-caused scene/native/UI effects. SESSION still writes Dungeon.seed in the transport callback and must be included. Do not begin it in the same execution slice.
 
+## Handoff to Phase 14-B2
+
+Phase 14-B remains IN PROGRESS. The next bounded continuation is 14-B2 (generation-safe render-thread dispatch). Keep the WebGPT task RUNNING/open.
 ---
 
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)
@@ -142,4 +151,4 @@ The entries below preserve the evidence and decisions at the time each bounded s
 
 ## Exact next-chat guard
 
-On a new task, re-fetch the live branch HEAD and exact matching CI, reread every Markdown file and the current PROJECT_EXECUTION_PROTOCOL_AR.md before editing. Work only on the named branch, do not create branches or PRs, and stay within the explicitly requested phase/slice. Do not begin Phase 11 or any later slice automatically.
+On a new task, re-fetch the live branch HEAD and exact matching CI, reread every Markdown file and the current PROJECT_EXECUTION_PROTOCOL_AR.md before editing. Work only on the named branch, do not create branches or PRs, and stay within the explicitly requested phase/slice. Do not begin any next phase/slice automatically; use the active continuation checkpoint and explicit user request.

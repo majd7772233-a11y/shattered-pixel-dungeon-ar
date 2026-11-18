@@ -22,6 +22,14 @@ This section records local and exact-head CI evidence for the closed Phase 14-A 
 - **Byte boundary regressions:** exact 15.5 MiB accepted and one-byte-over rejected; oversized nested JSON rejected before serialization; JSON/UTF-8 parity verified for Arabic, accents, emoji, lone surrogates and escaped controls.
 - **Evidence boundary:** no production Worker, hosted live room/session, emulator UI or physical two-device match is claimed.
 
+## Phase 14-B1 local verification - 2026-11-18
+
+- Command: gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain.
+- Environment: process-local ANDROID_HOME and ANDROID_SDK_ROOT pointed to the configured Android SDK. No repository local.properties or machine-wide environment variable was written.
+- Result: BUILD SUCCESSFUL, 57 Gradle tasks executed. Core JUnit reports: 11 XML files / 161 tests / 0 failures / 0 errors / 0 skipped.
+- Debug APK: android/build/outputs/apk/debug/android-debug.apk, 35,210,270 bytes; SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
+- Targeted forced run of MultiplayerReconnectLifecycleTest and InternetTransportProtocolTest also passed before the full suite.
+- This is local JVM/build evidence only. No exact-head GitHub Actions run exists until this change is committed and pushed. The command does not test a deployed Worker, Android radio/network transitions, background/screen-off behavior, or rendered UI.
 ## 2. Backend package
 
 Working directory: server/

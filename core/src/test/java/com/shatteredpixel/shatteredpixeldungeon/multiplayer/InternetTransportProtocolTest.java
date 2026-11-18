@@ -18,6 +18,7 @@ import java.util.Base64;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class InternetTransportProtocolTest {
 
@@ -214,6 +215,70 @@ public class InternetTransportProtocolTest {
             // The local writer rejects an invalid control-frame size before writing any bytes.
         }
         Assert.assertArrayEquals(new byte[]{3, (byte) 0xe8}, WebSocketFrameCodec.closePayload(1000, ""));
+    }
+
+    @Test
+    public void disconnectCancelsAnInFlightHttpUpgradeWithoutLateCallbacks() throws Exception {
+        final ServerSocket server = new ServerSocket(0);
+        server.setSoTimeout(5000);
+        final CountDownLatch requestReceived = new CountDownLatch(1);
+        final CountDownLatch peerObservedClose = new CountDownLatch(1);
+        final AtomicReference<Throwable> serverFailure = new AtomicReference<>();
+        final AtomicInteger connected = new AtomicInteger();
+        final AtomicInteger disconnected = new AtomicInteger();
+        final AtomicInteger messages = new AtomicInteger();
+        final AtomicInteger errors = new AtomicInteger();
+
+        Thread peerThread = new Thread(() -> {
+            try (Socket peer = server.accept()) {
+                peer.setSoTimeout(5000);
+                BufferedReader requestReader = new BufferedReader(
+                        new InputStreamReader(peer.getInputStream(), StandardCharsets.US_ASCII));
+                Assert.assertNotNull("Upgrade request line must arrive", requestReader.readLine());
+                String header;
+                while ((header = requestReader.readLine()) != null && !header.isEmpty()) {
+                    // Consume the complete request; deliberately do not send HTTP 101.
+                }
+                requestReceived.countDown();
+                int endOfStream = peer.getInputStream().read();
+                Assert.assertEquals("Cancellation must close the pending TCP socket", -1, endOfStream);
+            } catch (Throwable failure) {
+                serverFailure.set(failure);
+            } finally {
+                peerObservedClose.countDown();
+            }
+        }, "spd-cancelled-websocket-upgrade-peer");
+        peerThread.setDaemon(true);
+        peerThread.start();
+
+        InternetTransport transport = new InternetTransport();
+        transport.connect("ws://127.0.0.1:" + server.getLocalPort() + "/room/CANCEL/websocket",
+                new TransportCallback() {
+                    @Override public void onConnected() { connected.incrementAndGet(); }
+                    @Override public void onDisconnected(String reason) { disconnected.incrementAndGet(); }
+                    @Override public void onMessageReceived(NetworkMessage message) { messages.incrementAndGet(); }
+                    @Override public void onError(Throwable error) { errors.incrementAndGet(); }
+                });
+
+        Assert.assertTrue("Client did not reach the deliberately stalled HTTP upgrade",
+                requestReceived.await(5, TimeUnit.SECONDS));
+        Assert.assertFalse("The WebSocket must not be connected before HTTP 101", transport.isConnected());
+        transport.disconnect();
+        Assert.assertTrue("Disconnect did not close the pending TCP connection",
+                peerObservedClose.await(5, TimeUnit.SECONDS));
+        peerThread.join(2000L);
+        Assert.assertFalse("Mock peer did not terminate", peerThread.isAlive());
+        Assert.assertNull("Mock peer failed: " + serverFailure.get(), serverFailure.get());
+
+        // A cancelled pre-upgrade attempt was never a connected WebSocket, so it must not emit
+        // onConnected, onDisconnected, onMessageReceived or a misleading retry-triggering error.
+        Thread.sleep(50L);
+        Assert.assertEquals(0, connected.get());
+        Assert.assertEquals(0, disconnected.get());
+        Assert.assertEquals(0, messages.get());
+        Assert.assertEquals(0, errors.get());
+        Assert.assertFalse(transport.isConnected());
+        server.close();
     }
 
     @Test

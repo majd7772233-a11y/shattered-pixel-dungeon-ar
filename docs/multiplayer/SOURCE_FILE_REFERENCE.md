@@ -94,7 +94,7 @@ The package has 34 Java files:
 | DeathmatchMode.java | Deathmatch rule descriptor |
 | EmbeddedMatchAuthority.java | Small embedded/local authority helper; not a Worker replacement |
 | GameMode.java | Mode descriptor interface |
-| InternetTransport.java | Custom TCP/TLS/WebSocket client |
+| InternetTransport.java | Generation-fenced TCP/TLS/WebSocket client; cancellable in-flight HTTP Upgrade; synchronized socket/stream ownership and generation-scoped control frames |
 | LANTransport.java | TCP server/client and UDP host discovery |
 | LootClaimManager.java | In-memory claim helper |
 | MessageRouter.java | Exhaustive 25-value outer-message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING, render-thread ROOM_STATE/MATCH_START and snapshot readiness restore |
@@ -321,7 +321,7 @@ Exact source/test SHA f2d79038d1e420461be7a1956471324de5c1ef74 passed CI 4361872
 
 Exact code/test SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` passed [CI 43731016036](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43731016036). Current integration test inventory is 74 Android @Test methods; the separate parity suite remains at 15.
 
-| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java | Phase 12-A: transport-generation callback isolation, single in-flight reconnect guard, HTTP 409 credential invalidation, and reconnect retry body/header regression coverage (3 @Test methods). |
+| core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java | Phase 12-A/B1: authenticated reconnect lifecycle, generation-atomic manager callback dispatch, stale-session replacement race and retry/timeout behavior. |
 
 ## Phase 12-B source additions/ownership — 2026-11-16
 

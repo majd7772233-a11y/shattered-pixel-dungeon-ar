@@ -50,6 +50,13 @@ Client MultiplayerManager:
 - installs the rotated token but does not advance the applied sequence from the reconnect SESSION; replayed events/snapshot must apply through the existing native paths;
 - requests RESYNC after invalid or failed state application.
 
+### Phase 14-B1 callback isolation
+
+The Android callback wrapper captures the exact transport object and sessionGeneration; it checks both and dispatches while holding the same MultiplayerManager monitor used by session replacement and close. This prevents an already-running stale callback from passing a separate pre-check and then applying a SESSION/token to the replacement session.
+
+InternetTransport separately generation-fences its background TCP/TLS/HTTP Upgrade worker. Disconnect invalidates a pending handshake as well as an established WebSocket, closes its socket, and prevents stale workers from installing shared socket/stream fields or sending PONG/CLOSE on a subsequent attempt. No callback is invoked while holding the transport monitor.
+
+These are local Android/JVM regressions, not evidence of network handoff on an Android device or a deployed Worker. Generation-safe render-thread side-effect dispatch remains 14-B2.
 Server RECONNECT:
 - relies on the authenticated {playerId, sessionToken} socket attachment established at upgrade;
 - confirms that this exact attachment still matches the current persisted player/token row;

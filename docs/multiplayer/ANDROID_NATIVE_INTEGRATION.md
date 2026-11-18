@@ -39,6 +39,16 @@ Treat these as separate stages:
 
 Do not access Dungeon.level, Actor collections, native Bundles, Hero inventory, sprites or GameScene collections from arbitrary transport worker threads. A future event-router refactor must preserve deterministic event ordering and render-thread ownership.
 
+### Phase 14-B1 - transport/session callback ownership
+
+- MultiplayerManager.callbackFor() binds each callback to both the exact NetworkTransport object and the captured sessionGeneration.
+- The identity/generation check and callback dispatch execute under the same manager monitor as startSession(), reconnectInternetSession() and endSession(). This removes the check-then-dispatch gap that could otherwise admit an old SESSION after replacement.
+- The callback entrypoints onConnected, onDisconnected, onMessageReceived and onError are synchronized. Cross-thread readers use volatile session-active, local-player and session-token fields.
+- InternetTransport gives each asynchronous connection attempt its own generation. Cancellation closes a TCP socket even while HTTP Upgrade is pending, and stale workers cannot install sockets/streams, write control frames or notify a newer attempt.
+- External callbacks are never invoked while holding the InternetTransport monitor. Keep this lock ordering when adding transport lifecycle work.
+- The isConnected callback guard applies only to InternetTransport on connected/message callbacks, where the transport generation is authoritative. LAN and Bluetooth callback ordering is not delayed or suppressed by a new state check.
+
+Still open for Phase 14-B2: manager SESSION handling currently assigns Dungeon.seed in the transport callback. Route callback-caused native/world/UI mutations onto the libGDX render thread, and preserve the captured generation through the queued runnable so a previously queued event cannot mutate a later session. The above callback gate does not itself make every message's side effects render-thread safe.
 ## 3. Actor scheduler integration
 
 Source: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/actors/Actor.java

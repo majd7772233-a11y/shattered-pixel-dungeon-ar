@@ -31,7 +31,7 @@ public class MultiplayerManager implements TransportCallback {
    private static final long DEFAULT_RECONNECT_BASE_DELAY_MS = 250L;
    private static final int DEFAULT_MAX_RECONNECT_ATTEMPTS = 3;
    private static MultiplayerManager instance;
-   private boolean isMultiplayerActive = false;
+   private volatile boolean isMultiplayerActive = false;
    private volatile boolean levelPublisher = false;
    private volatile String levelPublisherId;
    private volatile long levelPublisherTerm = -1L;
@@ -41,8 +41,8 @@ public class MultiplayerManager implements TransportCallback {
    private volatile boolean resolvingAuthorityCombat = false;
    private volatile String authorityCombatRequestId;
    private String roomCode;
-   private String localPlayerId;
-   private String sessionToken;
+   private volatile String localPlayerId;
+   private volatile String sessionToken;
    private volatile boolean reconnectHandshakePending = false;
    private volatile long lastSequence = 0L;
    private volatile long lastResyncRequestedSequence = -1L;
@@ -216,27 +216,33 @@ public class MultiplayerManager implements TransportCallback {
    boolean isReconnectHandshakePendingForTests() { return reconnectHandshakePending; }
    boolean isCurrentTransportForTests(NetworkTransport transport) { return activeTransport == transport; }
    boolean isRejectedCredentialForTests(Throwable error) { return isRejectedSessionCredential(error); }
+   private void dispatchTransportCallback(NetworkTransport transport, long generation, Runnable action) {
+      synchronized (this) {
+         if (this.activeTransport != transport || this.sessionGeneration != generation) return;
+         action.run();
+      }
+   }
+
    private TransportCallback callbackFor(final NetworkTransport transport, final long generation) {
       return new TransportCallback() {
-         private boolean isCurrentTransport() {
-            return MultiplayerManager.this.activeTransport == transport
-                    && MultiplayerManager.this.sessionGeneration == generation;
-         }
-
          public void onConnected() {
-            if (this.isCurrentTransport()) MultiplayerManager.this.onConnected();
+            dispatchTransportCallback(transport, generation, () -> {
+               if (!(transport instanceof InternetTransport) || transport.isConnected()) MultiplayerManager.this.onConnected();
+            });
          }
 
          public void onDisconnected(String reason) {
-            if (this.isCurrentTransport()) MultiplayerManager.this.onDisconnected(reason);
+            dispatchTransportCallback(transport, generation, () -> MultiplayerManager.this.onDisconnected(reason));
          }
 
          public void onMessageReceived(NetworkMessage message) {
-            if (this.isCurrentTransport()) MultiplayerManager.this.onMessageReceived(message);
+            dispatchTransportCallback(transport, generation, () -> {
+               if (!(transport instanceof InternetTransport) || transport.isConnected()) MultiplayerManager.this.onMessageReceived(message);
+            });
          }
 
          public void onError(Throwable error) {
-            if (this.isCurrentTransport()) MultiplayerManager.this.onError(error);
+            dispatchTransportCallback(transport, generation, () -> MultiplayerManager.this.onError(error));
          }
       };
    }
@@ -1180,7 +1186,7 @@ public class MultiplayerManager implements TransportCallback {
       }
    }
 
-   public void onConnected() {
+   public synchronized void onConnected() {
       if (this.sessionToken != null) {
          this.sessionState = MultiplayerManager.SessionState.RECONNECTING;
          this.sendReconnect();
@@ -1192,7 +1198,7 @@ public class MultiplayerManager implements TransportCallback {
 
    }
 
-   public void onDisconnected(String reason) {
+   public synchronized void onDisconnected(String reason) {
       if (sessionToken != null) {
          cancelSessionHandshakeTimeout();
          reconnectHandshakePending = false;
@@ -1201,7 +1207,7 @@ public class MultiplayerManager implements TransportCallback {
       }
       failInitialSession(reason == null ? "CONNECTION_CLOSED_BEFORE_SESSION" : reason);
    }
-   public void onMessageReceived(NetworkMessage message) {
+   public synchronized void onMessageReceived(NetworkMessage message) {
       if (message != null) {
          if (this.isMultiplayerActive || message.messageType == MessageType.SESSION && this.sessionState == MultiplayerManager.SessionState.TRANSPORT_CONNECTED) {
             if (message.messageType == MessageType.ERROR && message.payloadJson != null && message.payloadJson.contains("\"SESSION_REPLACED\"")) {
@@ -1420,7 +1426,7 @@ public class MultiplayerManager implements TransportCallback {
       }
    }
 
-   public void onError(Throwable error) {
+   public synchronized void onError(Throwable error) {
       String reason = error == null || error.getMessage() == null ? "TRANSPORT_ERROR" : error.getMessage();
       if (reconnectHandshakePending) {
          if (isRejectedSessionCredential(error)) {

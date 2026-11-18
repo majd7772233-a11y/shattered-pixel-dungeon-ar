@@ -121,7 +121,7 @@ These files are outside the multiplayer package but part of the feature.
 
 ## 5. Test-file map
 
-- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A strict upgrade/status/credential and RFC 6455 frame/localhost peer suite; 17 tests PASS. Full core test run: 159/159 across 11 JUnit XML reports.
+- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A RFC 6455 plus Phase 14-B1 in-flight upgrade cancellation suite; 18 tests PASS. Full core test run: 161/161 across 11 JUnit XML reports.
 - `server/src/match-room/snapshot-size.test.ts` — complete UTF-8 JSON budget, exact 15.5 MiB boundary, escaping/Unicode parity and pre-serialization rejection; 5 tests.
 - `server/src/match-room/durable-object-sqlite.integration.do.mjs` — real Workers Durable Object + SQLite lifecycle/recovery; 17 tests PASS.
 
@@ -189,3 +189,8 @@ The ACTION schema now has 23 action-specific field definitions. The source inven
 - server/src/match-room/lifelink-death.integration.test.ts: deterministic MatchRoom request replay/conflict/rollback tests, including regression constraints for reconnect behavior.
 
 Phase 11-B remains closed at SHA `2574489ff25e6f1fedc1e21718161bc5a7a1b230` / CI 43731016036. Phase 12-A/B is CLOSED at `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` / CI 43921670336. Phase 13 is ACTIVE/PARTIAL: lifecycle-v1 room membership, Android session state, in-game `WndMultiplayerLobby`, validated roster, render-thread routing and native gameplay gate until PLAYING are implemented locally. Current evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions, real Durable Object SQLite 16/16, Android core JVM 140/140 and full Debug APK PASS. Remaining owner WebSocket-loss/member-rejoin and rendered emulator UI acceptance are open, as is exact-head CI for the next commit. Historical CI [44100890572](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44100890572) applies only to `7a75b493124f99a773b23d089a2ee8d3ded2ebd6`; Phase 22/23 production/device checks remain separate.
+
+### Phase 14-B1 current test additions
+
+- MultiplayerReconnectLifecycleTest.java: deterministic stale callback/session replacement race; the suite now includes the B1 regression alongside authenticated resume, retry budget and timeout cases.
+- InternetTransportProtocolTest.java: cancellation while HTTP Upgrade is pending; the suite now has 18 tests, including localhost WebSocket lifecycle/framing behavior.

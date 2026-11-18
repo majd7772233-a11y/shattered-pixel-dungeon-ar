@@ -22,6 +22,15 @@ All engineering pages in this set are written in English for consistency with so
 10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
 
+## Current continuation checkpoint - 2026-11-18 - Phase 14-B in progress
+
+- Phase 14-A is CLOSED for implementation and automated acceptance at its recorded exact-head CI.
+- Phase 14-B1 is locally implemented and verified on top of 45dd579c3f7f5638f30f75ebd4e7bc43ff881a42. The working changes are still uncommitted on the same permitted branch.
+- Manager safety: transport identity and session generation are validated and dispatched atomically under the manager monitor. Session callback entrypoints share that lock; active/player/token fields read cross-thread are volatile.
+- Internet transport safety: every TCP/TLS/HTTP Upgrade worker is generation-owned. Disconnect invalidates pending and established attempts, closes the active socket, prevents stale workers from installing streams, and suppresses their callbacks. PONG/CLOSE frames are generation-scoped. Callbacks run outside the transport monitor.
+- Local Android verification: forced full test assembleDebug --rerun-tasks completed successfully; 11 JUnit XML reports, 161 tests, zero failures/errors/skips; APK 35,210,270 bytes, SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
+- Not claimed: exact-head CI for this uncommitted change, render-thread dispatch completion, Android connectivity/background/screen-off handling, hosted Worker smoke, emulator UI or physical-device multiplayer.
+- Next bounded slice: 14-B2 - generation-safe render-thread dispatch for callback-triggered native/scene/UI effects, including the SESSION seed update.
 ## Current source-refactor state
 
 The three-stage source refactor is complete for implementation and automated acceptance. Exact-HEAD CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/full tests and Android JVM/debug-APK jobs both succeeded.
@@ -50,7 +59,7 @@ The Stage 2 baseline root had 51 lines; after Stage 3 it has 35 lines. `protocol
 
 Phase 12 remains closed. Phase 13 is CLOSED for implementation and automated acceptance: lifecycle-v1 server authority, WndMultiplayerLobby, validated room roster, render-thread ROOM_STATE/MATCH_START handling, reconnect/failure exit and native gameplay gating until PLAYING are implemented. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported executions, real Durable Object SQLite 17/17, Android core JVM 141/141 and forced full test assembleDebug PASS. Abrupt owner WebSocket loss, atomic owner/publisher handoff, all-member readiness reset and former-owner reconnect/roster restoration have server and Android regression coverage. Exact-head Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed all three jobs on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Visible emulator host/join/lobby checks are deferred to Phase 20 and RTL/touch/layout checks to Phase 21. Production deployment and physical two-device test remain unclaimed.
 
-## Current continuation checkpoint — 2026-11-18 — Phase 14-A IN PROGRESS
+## Superseded pre-closeout checkpoint - 2026-11-18 - Phase 14-A
 
 Phase 13 remains CLOSED for implementation and automated acceptance at its previous documented boundary. Phase 14 is split into two independently accepted slices:
 

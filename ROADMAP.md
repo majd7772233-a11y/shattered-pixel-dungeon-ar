@@ -104,7 +104,7 @@ The historical documentation batches established the technical references now in
 ### Current Phase 14-A checkpoint — 2026-11-18 (CLOSED; aggregate SNAPSHOT cap, atomic preflight and all local suites PASS)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / `multiplayer-framework-core-14118577486727081892`.
-- **Phase status:** Phase 14-A is CLOSED for implementation and automated acceptance. Parent Phase 14 remains OPEN because 14-B has not started.
+- **Phase status:** Phase 14-A is CLOSED. Parent Phase 14 remains OPEN; Phase 14-B is IN PROGRESS, with 14-B1 locally implemented and verified. Render-thread dispatch, Android network/background lifecycle and live Worker smoke remain.
 - **Aggregate snapshot contract:** Android's existing frame ceiling remains 16,777,216 bytes. Server full-SNAPSHOT maximum is **15.5 MiB / 16,252,928 UTF-8 bytes**, 512 KiB below Android. Nested payload JSON is measured before serialization and the full escaped envelope is measured before sending.
 - **Atomic rejection:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions preflight the resulting snapshot before SQLite commit or authoritative floor mutation. Initial WebSocket handshakes and authenticated reconnects preflight before token rotation/connection acceptance and return HTTP 413 on oversize. Over-budget states return `SNAPSHOT_TOO_LARGE`; they are not committed or silently truncated. RECONNECT/RESYNC and room-resume failures surface explicit size errors.
 - **Single canonical serializer:** all production full-SNAPSHOT paths use `MatchRoomSnapshots.buildSnapshotMessage`; lifecycle-v1 snapshots include only connected durable room members. Incoming text frames above 16 MiB UTF-8 are rejected before JSON.parse.
@@ -116,7 +116,7 @@ The historical documentation batches established the technical references now in
 - **Byte-boundary tests:** exact 15.5 MiB accepted; one more byte rejected; nested oversize rejected before serialization; exact UTF-8/JSON parity verified for Arabic, accents, emoji, lone surrogates and controls.
 - **Exact-head CI:** commit `0f0d84e24ecbdc3253ae17d6a2d613c4513cac28` passed all three required jobs in [Actions run 1285 / 44353955443](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44353955443): Backend typecheck/tests, Android Debug APK compile and Durable Object SQLite rollback/eviction.
 - **Not claimed:** no production Worker deployment, live hosted room/session smoke, emulator UI run, or physical-device match. Those remain outside 14-A.
-- **14-B:** NOT STARTED. Begin only after explicit user authorization.
+- **14-B:** IN PROGRESS. 14-B1 callback/transport lifecycle safety has local JVM/build evidence; the next bounded slice is 14-B2 generation-safe render-thread dispatch.
 
 ### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -761,18 +761,16 @@ Acceptance for 14-A:
 - [x] Preserve SQLite replay/proof rows while sending only the newest 200 events in ascending order; prove 515 rows remain after RESYNC.
 - [x] Verify local backend (380/380), real Durable Object SQLite (17/17), Android/JVM (159/159) and Debug APK build.
 
-### Phase 14-B — Session lifecycle, Android threading and network transitions
-
-**Status:** NOT STARTED — Phase 14-A is closed; do not begin 14-B until explicit user authorization.
-
+### Phase 14-B - Session lifecycle, Android threading and network transitions
+**Status:** IN PROGRESS - 14-B1 (callback/transport generation safety) is implemented and locally verified. Phase 14-B remains OPEN; render-thread dispatch, Android lifecycle/network transitions and live Worker smoke are still outstanding.
 Scope:
-- [ ] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe.
-- [ ] Marshal scene/UI mutations and user-visible connection failures onto the libGDX render thread.
+- [x] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe (14-B1).
+- [x] Add deterministic manager/callback regressions for session replacement, stale SESSION delivery and cancellation during HTTP Upgrade (14-B1).
+- [ ] Marshal scene/UI mutations and user-visible connection failures onto the libGDX render thread. In particular, review SESSION handling that currently assigns Dungeon.seed from the transport callback before changing it.
 - [ ] Handle network changes, temporary offline state, screen-off/background behavior, Android process/activity lifecycle and slow or half-open sockets on supported Android versions.
-- [ ] Add deterministic manager/callback tests plus service-level smoke checks for actual Worker room creation/join, authenticated resume and failure visibility.
-
+- [ ] Add service-level smoke checks for actual Worker room creation/join, authenticated resume and failure visibility.
 Acceptance for 14-B:
-- [ ] An old socket/callback cannot change the state of a newer session or revive a closed session.
+- [x] An old socket/callback cannot change the state of a newer session or revive a closed session (manager callback generation/identity gate; JVM race regression).
 - [ ] No scene/UI mutation occurs off the render thread.
 - [ ] Network loss/recovery and background transitions preserve or explicitly fail the session without corrupting gameplay authority or replay state.
 - [ ] Service-level tests prove room creation/join and authenticated resume against the intended Worker deployment before physical-device acceptance.
