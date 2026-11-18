@@ -449,10 +449,23 @@ export class MatchRoom extends MatchRoomMessages {
             promotedOnConnect = true;
           }
         }
+
+        // A connection can trigger a full recovery broadcast after publisher promotion/rebase.
+        // Prove the committed connection state remains deliverable before rotating/creating the
+        // authoritative session row. Lifecycle non-members do not receive full room snapshots yet.
+        const shouldPreflightSnapshot = lifecycleEnabled
+          ? this.isRoomMember(playerId)
+          : hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot());
+        if (shouldPreflightSnapshot) {
+          this.buildSnapshotMessage(lifecycleEnabled ? "SERVER" : null);
+        }
       });
     } catch (error) {
       try { server.close(1011, "Session establishment failed"); } catch (_) {}
       const reason = error instanceof Error ? error.message : "";
+      if (reason === "SNAPSHOT_TOO_LARGE") {
+        return new Response("SNAPSHOT_TOO_LARGE", { status: 413 });
+      }
       if (reason === "PLAYER_ID_ALREADY_REGISTERED") {
         return new Response("A session token is required for this player", { status: 401 });
       }

@@ -221,6 +221,7 @@ All production full SNAPSHOT paths use the single `MatchRoomSnapshots.buildSnaps
 - Maximum accepted complete SNAPSHOT: **15.5 MiB / 16,252,928 UTF-8 bytes**, leaving 512 KiB below Android's unchanged **16 MiB / 16,777,216-byte** frame limit.
 - Over-budget data returns `SNAPSHOT_TOO_LARGE`; no data is silently trimmed.
 - LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions are preflighted before the applicable SQLite transaction or authoritative floor mutation commits.
+- Initial WebSocket handshake and authenticated reconnect also preflight before rotating the persisted session token or accepting the socket; an oversized recovery snapshot returns HTTP 413 and leaves the prior token/connection state unchanged.
 - RECONNECT, RESYNC, room lifecycle broadcasts and general full snapshots use the same bounded builder. Lifecycle-v1 snapshots are restricted to connected durable room members.
 - Inbound text frames above 16 MiB UTF-8 are rejected before JSON parsing.
 - Only the newest 200 replay events are transmitted in ascending order; older SQLite event and LifeLink proof evidence remains stored.

@@ -22,13 +22,15 @@ Phase 14-A now has one server-side byte contract for complete client `SNAPSHOT` 
 
 One canonical `buildSnapshotMessage` path in `server/src/match-room/snapshots.ts` is used for full snapshots from native `LEVEL_DATA`, general broadcasts, `RECONNECT`, `RESYNC`, lifecycle room broadcasts and floor transitions.
 
-The exact post-change snapshot is preflighted **inside the same SQLite transaction** before commit for:
+The exact post-change snapshot is preflighted **inside the same SQLite transaction or connection-admission boundary** before a durable session/state change for:
 - native `LEVEL_DATA` publication;
 - authoritative `ACTION` mutations;
 - lifecycle `JOIN_ROOM`, `READY` and `MATCH_START` transitions;
 - projected floor-transition destination and participant state before the new floor becomes authoritative.
 
 When the preflight fails, the transaction rolls back. Clients receive an explicit size error where a response path exists; reconnect fallback returns `SNAPSHOT_TOO_LARGE` rather than a generic malformed-payload error. Room-resume failure is surfaced rather than swallowed.
+
+The initial WebSocket handshake and authenticated reconnect in `server/src/match-room/index.ts` also preflight the recovery snapshot before rotating the session token or accepting the socket as connected. An oversized resume receives HTTP **413** with `SNAPSHOT_TOO_LARGE`; the prior token and persisted player/connection state remain unchanged. The real Durable Object SQLite test forces this failure and then verifies the original token/state before retrying a normal reconnect.
 
 Lifecycle-v1 snapshots include connected **room members only**, not unrelated connected sessions.
 

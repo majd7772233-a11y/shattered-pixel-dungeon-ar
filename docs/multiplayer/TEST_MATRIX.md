@@ -110,7 +110,7 @@ Coverage remains the strict HTTP/WebSocket upgrade, TLS/credential contract, RFC
 
 - `snapshot-size.test.ts`: **5 tests** — exact JSON UTF-8 parity (Arabic/accent/emoji/lone-surrogate/control escaping), complete outer envelope, exact 15.5 MiB acceptance, one-byte-over rejection and oversized nested JSON rejection before serialization.
 - `lifelink-death.integration.test.ts`: ACTION snapshot-preflight rollback, explicit RECONNECT oversize response and replay-window regression (515 retained DB rows / newest 200 sent).
-- `durable-object-sqlite.integration.do.mjs`: **17 real Workers + SQLite tests** pass, including durable recovery and room-member-only snapshot behavior.
+- `durable-object-sqlite.integration.do.mjs`: **17 real Workers + SQLite tests** pass, including durable recovery, room-member-only snapshots and handshake/reconnect overflow rejection before token rotation (HTTP 413).
 - `NativeCombatRuntimeIntegrationTest.nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings`: maximum-collection fixture; complete SNAPSHOT 15,664,067 bytes, below server cap 16,252,928 and Android cap 16,777,216.
 
 **Aggregate policy:** a complete accepted server SNAPSHOT is at most 15.5 MiB UTF-8. Oversized candidates are rejected with `SNAPSHOT_TOO_LARGE` before related SQLite transaction/floor state commits. This is a universal bound on accepted snapshots, not a promise that all theoretical maximum native Bundle/item combinations fit. No state is silently truncated. All full snapshot sends use the same builder; inbound text frames above 16 MiB are rejected before JSON parsing.

@@ -9,7 +9,7 @@ Phase 14-A is CLOSED for implementation and local automated acceptance. The comp
 ## Phase 14-A closeout — 2026-11-18
 
 - **Wire limit:** Android remains at 16 MiB / 16,777,216 bytes. Server full-SNAPSHOT maximum is 15.5 MiB / 16,252,928 UTF-8 bytes, leaving 512 KiB. Nested payload JSON is counted before serialization; final escaped envelope is measured before send.
-- **Atomicity:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions preflight their full resulting snapshot before their SQLite transaction or authoritative floor commit. Oversize returns SNAPSHOT_TOO_LARGE; no silent truncation or partial commit.
+- **Atomicity:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions preflight their full resulting snapshot before their SQLite transaction or authoritative floor commit. Handshake/reconnect admission also preflights before token rotation or accepting the new connection (HTTP 413 on oversize). Oversize returns SNAPSHOT_TOO_LARGE; no silent truncation or partial commit.
 - **All routes:** LEVEL_DATA peer broadcast, RECONNECT, RESYNC, lifecycle broadcasts and general full snapshots use the canonical builder. Lifecycle-v1 snapshots include connected room members only. Inbound text >16 MiB UTF-8 is rejected before parsing.
 - **Replay:** newest 200 events are sent in ascending order; all SQLite evidence remains. Regression: 515 rows survive while RESYNC sends 200.
 - **Local evidence:** npm test 380/380 (6 files); TypeScript build PASS; real Workers Durable Object SQLite 17/17; Android build PASS with 159/159 core JVM tests (11 reports; zero failures/errors/skips; 57 Gradle tasks). APK SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`.
