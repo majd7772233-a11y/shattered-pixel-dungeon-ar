@@ -593,23 +593,21 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
 
     // A candidate reconnect must not rotate the token or mark a new socket connected
     // until the exact recovery snapshot has passed the aggregate wire-size preflight.
-    await runInDurableObject(stub, async instance => {
+    await runInDurableObject(stub, async (instance, state) => {
+      // Keep the injected failure and the upgrade request on the same live DO instance.
+      // Separate runInDurableObject/stub.fetch calls may rehydrate another worker isolate.
       instance.buildSnapshotMessage = () => { throw new Error("SNAPSHOT_TOO_LARGE"); };
-    });
-    const oversizedReconnect = await stub.fetch(new Request(reconnectUrl, {
-      headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
-    }));
-    expect(oversizedReconnect.status).toBe(413);
-    expect(await oversizedReconnect.text()).toBe("SNAPSHOT_TOO_LARGE");
-    await runInDurableObject(stub, async (_instance, state) => {
+      const oversizedReconnect = await instance.fetch(new Request(reconnectUrl, {
+        headers: { Upgrade: "websocket", Authorization: "Bearer " + firstToken }
+      }));
+      expect(oversizedReconnect.status).toBe(413);
+      expect(await oversizedReconnect.text()).toBe("SNAPSHOT_TOO_LARGE");
       const row = state.storage.sql.exec(
         "SELECT player_id,session_token,pos,hp,connected FROM players WHERE player_id = ?", playerId
       ).toArray()[0];
       expect(row).toMatchObject({
         player_id: playerId, session_token: firstToken, pos: 77, hp: 13, connected: 1
       });
-    });
-    await runInDurableObject(stub, async instance => {
       delete instance.buildSnapshotMessage;
     });
 
