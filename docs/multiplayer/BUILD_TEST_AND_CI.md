@@ -6,7 +6,7 @@ This document records commands and workflow configuration inspected at the docum
 
 ## Current Phase 14-A Closeout Verification — 2026-11-18
 
-This section records local evidence for the closed Phase 14-A implementation. The exact closeout commit SHA and CI run are appended only after all three jobs on the final head pass.
+This section records local and exact-head CI evidence for the closed Phase 14-A implementation. Final source/test HEAD `89ff8fcaf31b7cf0b4078027f78ecc64c09676bf` passed all three jobs in [GitHub Actions run 1283 / 44352316406](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44352316406): Backend typecheck/tests, Android Debug APK compilation and real Durable Object SQLite rollback/eviction.
 
 - **Branch:** `multiplayer-framework-core-14118577486727081892`; no other branch, PR or merge is part of this work.
 - **Complete SNAPSHOT byte policy:** Android's unchanged limit is **16,777,216 bytes**. Server cap is **16,252,928 UTF-8 bytes (15.5 MiB)**, leaving 512 KiB. `snapshot-size.ts` counts JSON.stringify-compatible UTF-8 bytes; it pre-counts nested payload before serialization and checks the complete escaped outer envelope before sending. Oversize fails with `SNAPSHOT_TOO_LARGE`.

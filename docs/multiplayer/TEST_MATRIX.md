@@ -115,7 +115,7 @@ Coverage remains the strict HTTP/WebSocket upgrade, TLS/credential contract, RFC
 
 **Aggregate policy:** a complete accepted server SNAPSHOT is at most 15.5 MiB UTF-8. Oversized candidates are rejected with `SNAPSHOT_TOO_LARGE` before related SQLite transaction/floor state commits. This is a universal bound on accepted snapshots, not a promise that all theoretical maximum native Bundle/item combinations fit. No state is silently truncated. All full snapshot sends use the same builder; inbound text frames above 16 MiB are rejected before JSON parsing.
 
-**Latest local evidence:** Backend `npm test` **380/380 across 6 files**, TypeScript build PASS, Durable Object SQLite **17/17**, Android Debug build **BUILD SUCCESSFUL** with **159/159 core JVM tests** across 11 reports. APK SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`. Exact-head CI for the closeout commit is the outstanding remote evidence gate. No production Worker or physical-device test is claimed.
+**Latest local evidence:** Backend `npm test` **380/380 across 6 files**, TypeScript build PASS, Durable Object SQLite **17/17**, Android Debug build **BUILD SUCCESSFUL** with **159/159 core JVM tests** across 11 reports. APK SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`. Exact-head CI on `89ff8fcaf31b7cf0b4078027f78ecc64c09676bf` passed all three jobs in [run 1283 / 44352316406](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44352316406). No production Worker or physical-device test is claimed.
 
 ### NativeCombatRuntimeIntegrationTest.java — 79 tests
 

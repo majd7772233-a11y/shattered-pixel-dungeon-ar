@@ -45,6 +45,7 @@ The replay payload is bounded to the newest **200 events in ascending sequence o
 | Durable Object | Real Workers + SQLite integration: **17/17 passed** |
 | Android/JVM | `gradlew.bat test assembleDebug --no-daemon --console=plain`: **BUILD SUCCESSFUL**, 57 tasks; 11 core JUnit reports, **159 tests / 0 failures / 0 errors / 0 skipped** |
 | Debug APK | `android/build/outputs/apk/debug/android-debug.apk`, 36,949,480 bytes; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C` |
+| Exact-head CI | Commit `89ff8fcaf31b7cf0b4078027f78ecc64c09676bf`; [Actions run 1283 / 44352316406](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44352316406) — Backend, Android Debug APK and Durable Object SQLite all passed |
 | Maximum-collection fixture | 100×100 cells, 512 mobs, 10,000 heaps/traps/plants, 10,000 visited/mapped positions, four players, 2,060 stored rows, 200 transmitted replay events |
 | Measured fixture sizes | Inner level JSON **13,631,699 bytes**; complete `LEVEL_DATA` **14,613,062 bytes**; complete `SNAPSHOT` **15,664,067 bytes** |
 | Headroom | Fixture is **588,861 bytes** below server cap and **1,113,149 bytes** below Android cap |

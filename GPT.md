@@ -10,7 +10,7 @@
 - **Android/JVM:** full gradlew.bat test assembleDebug — BUILD SUCCESSFUL, 57 tasks, 11 JUnit XML reports / 159 tests / 0 failures/errors/skips. APK 36,949,480 bytes; SHA-256 A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C. Android SDK supplied process-locally; no local.properties or global environment changes.
 - **Stress payload:** 100×100 cells, 512 mobs, 10,000 heaps/traps/plants and visited/mapped cells, four players, 2,060 DB event rows; 200 replay events transmitted. Complete SNAPSHOT 15,664,067 bytes: 588,861 below server cap and 1,113,149 below Android cap.
 - **Exact size tests:** exact 15.5 MiB boundary, one-byte-over rejection, pre-serialization nested JSON rejection, Arabic/accent/emoji/lone-surrogate/control escaping parity.
-- **CI:** earlier exact-head runs 1279/1280 were green; record the new closeout SHA/run only after all three jobs on that exact head pass.
+- **Exact-head CI:** commit `89ff8fcaf31b7cf0b4078027f78ecc64c09676bf` passed Backend, Android Debug APK and Durable Object SQLite in [Actions run 1283 / 44352316406](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44352316406).
 - **Not claimed:** production Worker deployment, hosted live room/session, emulator UI or physical two-device match.
 - **Next phase boundary:** 14-B owns manager/callback/reconnect thread safety, render-thread UI dispatch, Android network/background/screen-off lifecycle and live Worker smoke. Do not start until explicitly authorized.
 - **WebGPT task:** d8ff20f1-780c-4e55-acc5-ed2dfe8d71be must remain RUNNING/open; do not submit/terminate unless explicitly asked.
@@ -19,7 +19,7 @@
 
 - Full implementation/evidence: `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md`.
 - Remaining Phase 13 visual acceptance is intentionally deferred: host/join/lobby interactions to Phase 20 and RTL/touch/layout checks to Phase 21. Do not use the emulator before the user requests that phase.
-- Phase 13 exact-head CI is green. Phase 14-A local automated tests/build passed on `11955c577eec4ebbb09075a7f60263fa72d6d12a`; exact-head CI is the next evidence gate. Stop after finishing 14-A and do not begin 14-B until the user requests it. Keep emulator UI checks in Phases 20-21.
+- Phase 13 exact-head CI remains green. Phase 14-A final closeout exact-head CI passed on `89ff8fcaf31b7cf0b4078027f78ecc64c09676bf` (run 1283). Do not begin 14-B until the user requests it. Keep emulator UI checks in Phases 20-21.
 - Keep WebGPT task RUNNING/open; do not submit/terminate it.
 
 **Source-of-truth hierarchy:** PROJECT_EXECUTION_PROTOCOL_AR.md governs workflow; ROADMAP.md governs phase scope/status/acceptance; exact source and exact-head CI govern implementation evidence; docs/multiplayer/ is the maintained architecture/test reference.
