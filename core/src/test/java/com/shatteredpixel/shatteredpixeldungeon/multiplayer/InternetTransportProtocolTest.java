@@ -73,6 +73,13 @@ public class InternetTransportProtocolTest {
     }
 
     @Test
+    public void preservesHttpStatusForExpiredSessionAndConflictHandling() {
+        assertHandshakeRejectedWithStatus("HTTP/1.1 401 Unauthorized\\r\\n\\r\\n", "HTTP/1.1 401");
+        assertHandshakeRejectedWithStatus("HTTP/1.1 403 Forbidden\\r\\n\\r\\n", "HTTP/1.1 403");
+        assertHandshakeRejectedWithStatus("HTTP/1.1 409 Conflict\\r\\n\\r\\n", "HTTP/1.1 409");
+    }
+
+    @Test
     public void rejectsDuplicateSecurityHeadersAndUnrequestedExtensions() {
         String validPrefix = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
                 + "Connection: Upgrade\r\nSec-WebSocket-Accept: " + RFC_SAMPLE_ACCEPT + "\r\n";
@@ -91,6 +98,30 @@ public class InternetTransportProtocolTest {
         for (int i = 0; i < 9000; i++) oversized.append('a');
         oversized.append("\r\n\r\n");
         assertHandshakeRejected(oversized.toString());
+    }
+
+    @Test
+    public void rejectsMalformedClientKeysAndAuthorizationHeaderInjection() throws Exception {
+        try {
+            InternetTransport.buildUpgradeRequest("example.test", "/room/LOCAL/websocket", "not-a-client-key", null);
+            Assert.fail("The client key must be canonical Base64 for exactly 16 random bytes");
+        } catch (IllegalArgumentException expected) {
+            // Invalid keys must not become part of an HTTP request.
+        }
+        try {
+            InternetTransport.buildUpgradeRequest("example.test", "/room/LOCAL/websocket", RFC_SAMPLE_KEY,
+                    "Bearer session-token-0123456789\\r\\nInjected: yes");
+            Assert.fail("Authorization must reject HTTP header injection");
+        } catch (IllegalArgumentException expected) {
+            // Session credentials are restricted to the Worker token grammar.
+        }
+        try {
+            new InternetTransport().connect("ws://example.test/room/LOCAL/websocket", null,
+                    "session-token-0123456789");
+            Assert.fail("Session credentials must never be sent over an insecure WebSocket endpoint");
+        } catch (IllegalArgumentException expected) {
+            // Credentials are accepted only over wss/https.
+        }
     }
 
     @Test
@@ -175,9 +206,13 @@ public class InternetTransportProtocolTest {
         assertProtocolFailure(1002, () -> WebSocketFrameCodec.closePayload(2000, ""));
         assertProtocolFailure(1002, () -> WebSocketFrameCodec.validateClosePayload(new byte[]{0}));
         assertProtocolFailure(1002, () -> WebSocketFrameCodec.validateClosePayload(new byte[]{0x03, (byte) 0xf7}));
-        assertProtocolFailure(1002, () -> WebSocketFrameCodec.writeClientFrame(
-                new DataOutputStream(new ByteArrayOutputStream()), WebSocketFrameCodec.PING,
-                new byte[126], new byte[]{1, 2, 3, 4}));
+        try {
+            WebSocketFrameCodec.writeClientFrame(new DataOutputStream(new ByteArrayOutputStream()),
+                    WebSocketFrameCodec.PING, new byte[126], new byte[]{1, 2, 3, 4});
+            Assert.fail("Outgoing control frames over 125 bytes must be rejected");
+        } catch (IOException expected) {
+            // The local writer rejects an invalid control-frame size before writing any bytes.
+        }
         Assert.assertArrayEquals(new byte[]{3, (byte) 0xe8}, WebSocketFrameCodec.closePayload(1000, ""));
     }
 
@@ -265,6 +300,17 @@ public class InternetTransportProtocolTest {
         Assert.assertTrue("Close callback did not arrive", disconnected.await(5, TimeUnit.SECONDS));
         Assert.assertTrue("Local mock peer did not finish", serverDone.await(5, TimeUnit.SECONDS));
         Assert.assertNull("Mock peer/client failed: " + serverFailure.get(), serverFailure.get());
+    }
+
+    private static void assertHandshakeRejectedWithStatus(String response, String expectedStatus) {
+        try {
+            InternetTransport.validateUpgradeResponse(
+                    new ByteArrayInputStream(response.getBytes(StandardCharsets.US_ASCII)), RFC_SAMPLE_KEY);
+            Assert.fail("A non-101 HTTP response must be rejected");
+        } catch (IOException expected) {
+            Assert.assertTrue("Expected status in error: " + expected.getMessage(),
+                    expected.getMessage().contains(expectedStatus));
+        }
     }
 
     private static void assertHandshakeRejected(String response) {

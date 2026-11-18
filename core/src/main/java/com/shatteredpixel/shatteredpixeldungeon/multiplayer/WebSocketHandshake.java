@@ -44,8 +44,12 @@ final class WebSocketHandshake {
     static void validateUpgradeResponse(InputStream input, String clientKey) throws IOException {
         int[] totalBytes = {0};
         String statusLine = readHeaderLine(input, totalBytes);
-        if (statusLine == null || !statusLine.matches("HTTP/1\\.1 101(?: .*)?")) {
-            throw new IOException("WebSocket upgrade rejected: expected HTTP/1.1 101 Switching Protocols");
+        if (statusLine == null) {
+            throw new IOException("WebSocket upgrade failed: the server closed before sending an HTTP status line");
+        }
+        if (!statusLine.matches("HTTP/1\\.1 101(?: .*)?")) {
+            // Preserve 401/403/409 for MultiplayerManager credential-rejection handling.
+            throw new IOException("WebSocket upgrade rejected: " + statusLine);
         }
         Map<String, String> headers = new LinkedHashMap<>();
         int count = 0;
@@ -92,7 +96,7 @@ final class WebSocketHandshake {
     static String buildRequest(String hostHeader, String requestTarget, String clientKey, String authorization) {
         if (hostHeader == null || hostHeader.isEmpty() || containsControl(hostHeader)
                 || requestTarget == null || !requestTarget.startsWith("/") || containsControl(requestTarget)
-                || clientKey == null || clientKey.isEmpty()) {
+                || clientKey == null || !isValidClientKey(clientKey) || !isValidAuthorization(authorization)) {
             throw new IllegalArgumentException("Invalid WebSocket upgrade request parameters");
         }
         StringBuilder request = new StringBuilder(256);
@@ -106,6 +110,19 @@ final class WebSocketHandshake {
         return request.append("\r\n").toString();
     }
 
+    private static boolean isValidAuthorization(String authorization) {
+        return authorization == null || authorization.matches("Bearer [A-Za-z0-9._~-]{16,256}");
+    }
+
+    private static boolean isValidClientKey(String clientKey) {
+        try {
+            byte[] decoded = Base64.getDecoder().decode(clientKey);
+            return decoded.length == 16 && Base64.getEncoder().encodeToString(decoded).equals(clientKey);
+        } catch (IllegalArgumentException invalidKey) {
+            return false;
+        }
+    }
+
     private static String readHeaderLine(InputStream input, int[] totalBytes) throws IOException {
         ByteArrayOutputStream line = new ByteArrayOutputStream();
         boolean sawCarriageReturn = false;
@@ -115,7 +132,7 @@ final class WebSocketHandshake {
                 if (line.size() == 0 && !sawCarriageReturn) return null;
                 throw new IOException("Truncated WebSocket upgrade header line");
             }
-            if (++totalBytes[0] > MAX_HEADER_BYTES || line.size() > MAX_HEADER_LINE_BYTES) {
+            if (++totalBytes[0] > MAX_HEADER_BYTES || line.size() >= MAX_HEADER_LINE_BYTES) {
                 throw new IOException("WebSocket upgrade headers exceed the configured limit");
             }
             if (sawCarriageReturn) {
