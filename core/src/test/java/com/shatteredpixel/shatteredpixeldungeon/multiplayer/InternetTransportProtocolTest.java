@@ -74,9 +74,9 @@ public class InternetTransportProtocolTest {
 
     @Test
     public void preservesHttpStatusForExpiredSessionAndConflictHandling() {
-        assertHandshakeRejectedWithStatus("HTTP/1.1 401 Unauthorized\\r\\n\\r\\n", "HTTP/1.1 401");
-        assertHandshakeRejectedWithStatus("HTTP/1.1 403 Forbidden\\r\\n\\r\\n", "HTTP/1.1 403");
-        assertHandshakeRejectedWithStatus("HTTP/1.1 409 Conflict\\r\\n\\r\\n", "HTTP/1.1 409");
+        assertHandshakeRejectedWithStatus("HTTP/1.1 401 Unauthorized\r\n\r\n", "HTTP/1.1 401");
+        assertHandshakeRejectedWithStatus("HTTP/1.1 403 Forbidden\r\n\r\n", "HTTP/1.1 403");
+        assertHandshakeRejectedWithStatus("HTTP/1.1 409 Conflict\r\n\r\n", "HTTP/1.1 409");
     }
 
     @Test
@@ -110,7 +110,7 @@ public class InternetTransportProtocolTest {
         }
         try {
             InternetTransport.buildUpgradeRequest("example.test", "/room/LOCAL/websocket", RFC_SAMPLE_KEY,
-                    "Bearer session-token-0123456789\\r\\nInjected: yes");
+                    "Bearer session-token-0123456789\r\nInjected: yes");
             Assert.fail("Authorization must reject HTTP header injection");
         } catch (IllegalArgumentException expected) {
             // Session credentials are restricted to the Worker token grammar.
