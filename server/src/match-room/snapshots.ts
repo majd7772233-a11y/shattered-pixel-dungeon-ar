@@ -1,24 +1,72 @@
-import type { SessionData } from "../protocol/types";
+import type { NetworkMessage, SessionData } from "../protocol/types";
+import { MAX_SERVER_SNAPSHOT_BYTES, serializeJsonWithinBudget, serializeSnapshotWithinBudget } from "./snapshot-size";
 import { isValidNativeHeroStateJson } from "../validators/combat-state";
 import { isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canFinalizeNativeFloorTransition } from "../validators/floor-transitions";
 import { MatchRoomCombat } from "./combat";
 
 export class MatchRoomSnapshots extends MatchRoomCombat {
-  protected broadcastCurrentSnapshot(excludePlayerId: string | null = null) {
-    const events = this.replayWindowEvents();
+  /** Build and enforce the one canonical full-snapshot wire representation. */
+  protected buildSnapshotMessage(
+    senderId: string | null = null,
+    depth: number = this.currentDepth,
+    includeEvents: boolean = true,
+    playerOverrides?: Map<string, { heroStateJson: string; hp: number; ht: number; pos: number; state: string }>
+  ): string {
     const connectedPlayerIds = this.connectedPlayerIds();
-    const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray()
-      .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-      const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
-      return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
+    // Lifecycle rooms expose player state only for durable room members, not unrelated connected sessions.
+    const lifecycleVersion = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "roomLifecycleVersion"
+    ).toArray()[0]?.value;
+    const roomMemberIds = String(lifecycleVersion || "") === "1"
+      ? new Set(this.sql.exec(
+        "SELECT key,value FROM room_meta WHERE substr(key,1,?) = ?",
+        "roomMember:".length, "roomMember:"
+      ).toArray().map((row: any) => String(row.key).slice("roomMember:".length)))
+      : null;
+    const players = this.sql.exec(
+      "SELECT player_id,class_name,pos,hp,ht,ready,state FROM players"
+    ).toArray().filter((player: any) => connectedPlayerIds.has(String(player.player_id))
+      && (!roomMemberIds || roomMemberIds.has(String(player.player_id)))).map((player: any) => {
+      const playerId = String(player.player_id);
+      const override = playerOverrides?.get(playerId);
+      const savedHero = override ? null : this.sql.exec(
+        "SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId
+      ).toArray()[0];
+      return {
+        ...player,
+        ...(override ? { hp: override.hp, ht: override.ht, pos: override.pos, state: override.state } : {}),
+        hero_state_json: override ? override.heroStateJson
+          : savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : ""
+      };
     });
-    const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
-    const snapshotPayload = {
-      sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
-      players, mobs: liveMobs, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
+    const mobs = this.sql.exec(
+      "SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", depth
+    ).toArray();
+    const payload = {
+      sequence: this.currentSequence,
+      seed: this.matchSeed,
+      depth,
+      gameMode: this.gameMode,
+      players,
+      mobs,
+      ...(includeEvents ? { events: this.replayWindowEvents() } : {}),
+      worldTime: this.worldTime,
+      level: this.getCurrentLevelSnapshot(depth)
     };
-    const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
-      sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
+    const message: NetworkMessage = {
+      protocolVersion: "1.0.0",
+      messageType: "SNAPSHOT",
+      ...(senderId ? { senderId } : {}),
+      sequence: this.currentSequence,
+      // Bound the nested JSON before allocating its serialized string; the outer escaped envelope
+      // is measured again by serializeSnapshotWithinBudget before it is sent.
+      payloadJson: serializeJsonWithinBudget(payload, MAX_SERVER_SNAPSHOT_BYTES)
+    };
+    return serializeSnapshotWithinBudget(message);
+  }
+
+  protected broadcastCurrentSnapshot(excludePlayerId: string | null = null) {
+    const message = this.buildSnapshotMessage();
     for (const peer of this.state.getWebSockets()) {
       const peerSession = peer.deserializeAttachment() as SessionData | null;
       if (!peerSession || (excludePlayerId != null && peerSession.playerId === excludePlayerId)) continue;
@@ -91,6 +139,16 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
     if (!canFinalizeNativeFloorTransition(this.currentDepth, pending, pending.snapshotReady,
         destinationValid, readyStates.length, connected.length)) return;
 
+    // Validate the exact post-transition wire snapshot before changing the authoritative floor.
+    const projectedPlayers = new Map(readyStates.map(ready => [ready.playerId, {
+      heroStateJson: ready.heroStateJson,
+      hp: ready.hero.hp,
+      ht: ready.hero.ht,
+      pos: newPos,
+      state: ready.hero.hp > 0 ? "ALIVE" : "DEAD"
+    }]));
+    this.buildSnapshotMessage(null, pending.depth, true, projectedPlayers);
+
     // Commit room depth and all player states together only after the destination is proven ready.
     this.currentDepth = pending.depth;
     this.sql.exec("INSERT INTO room_meta (key,value) VALUES ('depth',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -108,10 +166,10 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
     this.broadcastCurrentSnapshot(null);
   }
 
-  protected getCurrentLevelSnapshot() {
-    const level = this.sql.exec(`SELECT depth,width,height,entrance_pos,exit_pos,seed FROM levels WHERE depth = ?`, this.currentDepth).toArray()[0];
+  protected getCurrentLevelSnapshot(depth: number = this.currentDepth) {
+    const level = this.sql.exec(`SELECT depth,width,height,entrance_pos,exit_pos,seed FROM levels WHERE depth = ?`, depth).toArray()[0];
     if (!level) return null;
-    const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${this.currentDepth}`).toArray()[0];
+    const saved = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `levelSnapshot:${depth}`).toArray()[0];
     let original: any = {};
     if (saved && typeof saved.value === "string") {
       try { original = JSON.parse(String(saved.value)); } catch (_) { original = {}; }
@@ -124,7 +182,7 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
     const originalTiles = new Map<number, any>(
       (Array.isArray(original.tiles) ? original.tiles : []).map((tile: any) => [Number(tile.pos), tile])
     );
-    const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
+    const liveMobs = this.sql.exec(`SELECT mob_id,name,pos,hp,ht,str,dmg_max,next_act_at,state FROM mobs WHERE depth = ?`, depth).toArray();
     const acceptedTurnRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, "nativeWorldTurnCounter").toArray()[0];
     const acceptedTurn = Math.max(0, Number.isSafeInteger(Number(acceptedTurnRow?.value))
       ? Number(acceptedTurnRow.value) : 0);
@@ -135,7 +193,7 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
       nativeWorldTurnCounter: acceptedTurn,
       depth: Number(level.depth), width: Number(level.width), height: Number(level.height),
       entrancePos: Number(level.entrance_pos), exitPos: Number(level.exit_pos), seed: Number(level.seed),
-      tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray().map((tile: any) => {
+      tiles: this.sql.exec(`SELECT pos,terrain,passable,solid,pit,los_blocking FROM level_tiles WHERE depth = ? ORDER BY pos`, depth).toArray().map((tile: any) => {
         const savedTile = originalTiles.get(Number(tile.pos)) || {};
         return {
           ...savedTile, ...tile,
@@ -148,7 +206,7 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
         };
       }),
       transitions: Array.isArray(original.transitions) ? original.transitions :
-        this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, this.currentDepth).toArray(),
+        this.sql.exec(`SELECT transition_id,pos,type,target_depth FROM level_transitions WHERE depth = ? ORDER BY pos`, depth).toArray(),
       mobs: liveMobs.map((mob: any) => {
         const savedMob = originalMobs.get(Number(mob.mob_id)) || {};
         return {

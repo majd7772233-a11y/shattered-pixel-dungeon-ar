@@ -1,6 +1,7 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
 import { validateWorkerInboundEnvelope } from "../protocol/message-admission";
 import { MatchRoomLifecycle } from "./lifecycle";
+import { ANDROID_MAX_WEBSOCKET_MESSAGE_BYTES, getUtf8ByteLength } from "./snapshot-size";
 
 export class MatchRoomMessages extends MatchRoomLifecycle {
   private sendProtocolError(ws: WebSocket, requestId: string | undefined, error: string): void {
@@ -29,6 +30,12 @@ export class MatchRoomMessages extends MatchRoomLifecycle {
 
       if (typeof message !== "string") {
         this.sendProtocolError(ws, undefined, "UNSUPPORTED_FRAME_TYPE");
+        return;
+      }
+
+      if (getUtf8ByteLength(message, ANDROID_MAX_WEBSOCKET_MESSAGE_BYTES)
+          > ANDROID_MAX_WEBSOCKET_MESSAGE_BYTES) {
+        this.sendProtocolError(ws, undefined, "MESSAGE_TOO_LARGE");
         return;
       }
 
@@ -106,31 +113,7 @@ export class MatchRoomMessages extends MatchRoomLifecycle {
           payloadJson: JSON.stringify({ playerId: session.playerId, ready: true })
         });
       } else if (msg.messageType === "RESYNC") {
-        const events = this.replayWindowEvents();
-        const connectedPlayerIds = this.connectedPlayerIds();
-        const players = this.sql.exec(`SELECT player_id, class_name, pos, hp, ht, ready, state FROM players`).toArray()
-          .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-          const savedHero = this.sql.exec(`SELECT value FROM room_meta WHERE key = ?`, `heroState:${player.player_id}`).toArray()[0];
-          return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
-        });
-        const mobs = this.sql.exec(`SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?`, this.currentDepth).toArray();
-
-        ws.send(JSON.stringify({
-          protocolVersion: "1.0.0",
-          messageType: "SNAPSHOT",
-          sequence: this.currentSequence,
-          payloadJson: JSON.stringify({
-            sequence: this.currentSequence,
-            seed: this.matchSeed,
-            depth: this.currentDepth,
-            gameMode: this.gameMode,
-            players,
-            mobs,
-            events,
-            worldTime: this.worldTime,
-            level: this.getCurrentLevelSnapshot()
-          })
-        }));
+        ws.send(this.buildSnapshotMessage());
       } else if (msg.messageType === "PING") {
         ws.send(JSON.stringify({
           protocolVersion: "1.0.0",

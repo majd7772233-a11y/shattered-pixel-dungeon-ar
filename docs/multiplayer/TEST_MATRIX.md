@@ -106,26 +106,16 @@ This is a focused fail-closed regression suite for native pickup callbacks that 
 
 ### InternetTransportProtocolTest.java — Phase 14-A suite (17 tests; PASS)
 
-Local execution on the working tree based on pushed base `3c460a44963bac9677dc837a253e0de43f1c1815` (payload-size regression included):
-- Focused Gradle `:core:test --tests ...InternetTransportProtocolTest`: BUILD SUCCESSFUL, 17 tests, zero failures/errors/skips.
-- Full Gradle `test assembleDebug`: BUILD SUCCESSFUL; 11 core JUnit XML reports / 159 tests / zero failures/errors/skips.
+Coverage remains the strict HTTP/WebSocket upgrade, TLS/credential contract, RFC 6455 frame parsing, masking, fragmentation, UTF-8, PING/PONG, CLOSE and localhost peer exchange described in the historical detailed matrix. Phase 14-A closeout adds these server aggregate-snapshot regressions:
 
-Coverage:
-- RFC 6455 sample Sec-WebSocket-Accept digest and complete Authorization/upgrade request shape;
-- positive upgrade response and rejection of wrong status, missing tokens, mismatched/duplicate accept, malformed/folded/oversized headers and unrequested extensions/subprotocols;
-- HTTP 401/403/409 response status preservation so expired/rejected sessions remain distinguishable from transient transport failure;
-- canonical Base64 Sec-WebSocket-Key validation and Authorization header-injection rejection;
-- refusal to send a session credential through an insecure `ws://` endpoint;
-- endpoint path/query preservation and confirmation that Bearer session credentials are not included in the URL;
-- server frame payload lengths at 125/126/65,535/65,536 boundaries and rejection of masked, reserved, RSV, non-canonical, oversized and invalid control frames;
-- text fragmentation with interleaved PING, invalid continuation/binary messages, strict UTF-8/UTF-16, client masking and CLOSE code/reason rules;
-- localhost mock peer that exercises HTTP 101 upgrade, two PING/PONG exchanges, fragmented SESSION delivery and graceful CLOSE echo.
+- `snapshot-size.test.ts`: **5 tests** — exact JSON UTF-8 parity (Arabic/accent/emoji/lone-surrogate/control escaping), complete outer envelope, exact 15.5 MiB acceptance, one-byte-over rejection and oversized nested JSON rejection before serialization.
+- `lifelink-death.integration.test.ts`: ACTION snapshot-preflight rollback, explicit RECONNECT oversize response and replay-window regression (515 retained DB rows / newest 200 sent).
+- `durable-object-sqlite.integration.do.mjs`: **17 real Workers + SQLite tests** pass, including durable recovery and room-member-only snapshot behavior.
+- `NativeCombatRuntimeIntegrationTest.nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings`: maximum-collection fixture; complete SNAPSHOT 15,664,067 bytes, below server cap 16,252,928 and Android cap 16,777,216.
 
-**Native payload budget regression — additional method in this class:** `nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings` stresses a 100×100 (10,000-cell) level with 512 mobs, 10,000 heaps/traps/plants, all visited/mapped positions, four co-op players, 2,060 retained DB event rows and the newest 200 transmitted replay rows. It measures the real escaped UTF-8 `NetworkMessage.toJson()` envelopes against `MAX_MESSAGE_PAYLOAD` (16 MiB). Local result: **13,631,699-byte** inner level JSON; **14,613,062-byte** `LEVEL_DATA`; **15,664,067-byte** complete `SNAPSHOT`; **1,113,149-byte** remaining headroom; 1 test / 0 failures. This proves the tested maximum-dimension/collection fixture fits, not the absolute theoretical maximum of every legal native Bundle/item combination: there is no aggregate serialized-byte cap for all allowed per-entity values.
+**Aggregate policy:** a complete accepted server SNAPSHOT is at most 15.5 MiB UTF-8. Oversized candidates are rejected with `SNAPSHOT_TOO_LARGE` before related SQLite transaction/floor state commits. This is a universal bound on accepted snapshots, not a promise that all theoretical maximum native Bundle/item combinations fit. No state is silently truncated. All full snapshot sends use the same builder; inbound text frames above 16 MiB are rejected before JSON parsing.
 
-**Server replay-window regression:** `server/src/match-room/lifelink-death.integration.test.ts` now checks RESYNC with 515 stored rows: the full SNAPSHOT exposes only the newest 200 in ascending order, while all 515 remain in SQLite for LifeLink validation. The same helper is used by all four event-bearing server full-snapshot builders. Focused suite PASS (48 tests); full Backend `npm test` PASS (373 tests across 5 files) and `npm run build` / tsc PASS.
-
-**Evidence boundary:** The local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head GitHub Actions [run 1279 / 44329234387](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44329234387) passed all three jobs on `907426a127151dc1acc7517496bd5415a5183526`. No live Worker deployment/service smoke test is claimed. The universal aggregate serialized-size bound remains open.
+**Latest local evidence:** Backend `npm test` **380/380 across 6 files**, TypeScript build PASS, Durable Object SQLite **17/17**, Android Debug build **BUILD SUCCESSFUL** with **159/159 core JVM tests** across 11 reports. APK SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`. Exact-head CI for the closeout commit is the outstanding remote evidence gate. No production Worker or physical-device test is claimed.
 
 ### NativeCombatRuntimeIntegrationTest.java — 79 tests
 

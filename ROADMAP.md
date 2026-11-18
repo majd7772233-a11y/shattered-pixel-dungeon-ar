@@ -101,18 +101,22 @@ The historical documentation batches established the technical references now in
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
 - **Phase status:** Phases 1-13 are CLOSED for implementation and automated acceptance within their documented support boundaries. Phase 13 delivered lifecycle-v1 room authority, in-game lobby, validated server roster, render-thread message routing, native gameplay gate, abrupt owner-loss handoff, all-member readiness-proof invalidation and authenticated former-owner resume with credential rotation and roster replacement. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; Durable Object SQLite 17/17; Android core JVM 141/141; full Debug APK build PASS. Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed Backend, Android and Durable Object SQLite on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Emulator-visible host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
-### Current Phase 14-A checkpoint — 2026-11-18 (IN PROGRESS; local suites, maximum-collection replay-window stress test, and exact-head GitHub CI PASS)
+### Current Phase 14-A checkpoint — 2026-11-18 (CLOSED; aggregate SNAPSHOT cap, atomic preflight and all local suites PASS)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / `multiplayer-framework-core-14118577486727081892`.
-- **Latest published commit:** `907426a127151dc1acc7517496bd5415a5183526` (`Bound replay rows in full snapshots to prevent WebSocket overflow`), parent `3c460a44963bac9677dc837a253e0de43f1c1815`; branch `multiplayer-framework-core-14118577486727081892`.
-- **Exact-head GitHub CI:** [Actions run 1279 / 44329234387](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44329234387) passed all three jobs on `907426a127151dc1acc7517496bd5415a5183526`: Backend typecheck/tests, Android unit tests + Debug APK, and Durable Object SQLite rollback/eviction. This is the CI result for the replay-window fix and maximum-collection regression, not just its parent.
-- **Local Android/JVM full verification:** `gradlew.bat test assembleDebug --no-daemon --console=plain` — **BUILD SUCCESSFUL**, 57 tasks (2 executed, 55 up-to-date); 11 core JUnit XML reports / **159 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: `android/build/outputs/apk/debug/android-debug.apk`, 36,949,480 bytes; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`. Android SDK and IPv4 Java options were passed to the Gradle process only; no global Windows environment or `local.properties` was changed.
-- **Local backend verification:** `npm test` — all schema/routing validators passed and **373 Vitest tests / 5 files passed** (including the new replay-retention regression); `npm run build` / TypeScript `tsc` passed. The 32 untracked in-place `.js` files emitted by `tsc` were removed; source `.ts` files remain unchanged except the documented server modifications.
-- **Maximum-collection payload stress test:** `NativeCombatRuntimeIntegrationTest.nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings` passes. The fixture uses the server validation ceilings for dimensions/collection counts: 100×100 cells, 512 mobs, 10,000 heaps, 10,000 traps, 10,000 plants, 10,000 visited and mapped positions, four co-op players, and **2,060 retained DB event rows**. It serializes only the newest **200 replay events** into the client SNAPSHOT, matching the new server helper. Full UTF-8 sizes after `NetworkMessage.toJson()`: inner native level JSON **13,631,699 bytes**; `LEVEL_DATA` wire envelope **14,613,062 bytes**; complete `SNAPSHOT` wire envelope **15,664,067 bytes**. The client cap is **16,777,216 bytes**, leaving **1,113,149 bytes** (about 6.64%) in the tested fixture. All three assertions pass.
-- **Actual payload-overflow fix:** all server builders of full client snapshots now use `MatchRoomBase.replayWindowEvents()`, which returns the newest `MAX_REPLAY_WINDOW_EVENTS` (200) in ascending sequence order. Updated call sites: `actions.ts` peer snapshot after native `LEVEL_DATA`, `lifecycle.ts` room snapshot, `messages.ts` `RESYNC`, and `snapshots.ts` broadcast snapshot. Crucially, this does NOT delete or truncate SQLite event rows: older LifeLink `CHAR_DAMAGED` evidence and latest Hero Buff/player-damage boundaries remain available to server validation. New regression confirms a 515-row DB still retains all 515 while RESYNC emits only the newest 200 rows.
-- **Remaining payload limitation:** this fixture reaches maximum accepted dimensions and collection counts with representative native bundles, but not the largest possible serialized value in every bundle/item. Individual bundle strings are bounded, and heap item counts have per-heap limits, yet there is no aggregate serialized-world byte cap for every legal combination. Therefore the measured server-validation-ceiling scenario fits, but a universal mathematical guarantee for every theoretically legal payload remains **NOT PROVEN**. Keep formal aggregate-size/chunking policy as an open 14-A boundary; do not raise the Android 16 MiB cap just to mask oversize payloads.
-- **Next Phase 14-A work:** exact-head CI for the published replay-window fix is green. The remaining open acceptance is a universal aggregate serialized-size bound for all legal native Bundle/heap-item combinations (or a bounded chunking design). Do not raise the Android 16 MiB cap as a workaround. The tested maximum-dimension/collection fixture is proven to fit; every theoretically legal per-entity combination is not.
-- **Explicitly deferred to 14-B:** manager/callback/reconnect thread safety, render-thread UI integration, Android connectivity/background/screen-off behavior and live Worker lifecycle smoke tests. No production deployment, live service room smoke test, emulator test or physical-device match is claimed.
+- **Phase status:** Phase 14-A is CLOSED for implementation and automated acceptance. Parent Phase 14 remains OPEN because 14-B has not started.
+- **Aggregate snapshot contract:** Android's existing frame ceiling remains 16,777,216 bytes. Server full-SNAPSHOT maximum is **15.5 MiB / 16,252,928 UTF-8 bytes**, 512 KiB below Android. Nested payload JSON is measured before serialization and the full escaped envelope is measured before sending.
+- **Atomic rejection:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions preflight the resulting snapshot before SQLite commit or authoritative floor mutation. Over-budget states return `SNAPSHOT_TOO_LARGE`; they are not committed or silently truncated. RECONNECT/RESYNC and room-resume failures surface explicit size errors.
+- **Single canonical serializer:** all production full-SNAPSHOT paths use `MatchRoomSnapshots.buildSnapshotMessage`; lifecycle-v1 snapshots include only connected durable room members. Incoming text frames above 16 MiB UTF-8 are rejected before JSON.parse.
+- **Replay evidence:** send newest 200 replay events in ascending order; retain all SQLite rows including LifeLink proof evidence. Regression: 515 stored rows remain while RESYNC sends 200.
+- **Local backend:** `npm test` — all schema/routing guards and **380 Vitest tests / 6 files passed**. `npm run build` / TypeScript passed; `noEmit:true` avoids compiler-generated JS in the TS source tree.
+- **Real Durable Object:** Cloudflare Workers + SQLite integration **17/17 passed**.
+- **Local Android/JVM:** full `gradlew.bat test assembleDebug` — **BUILD SUCCESSFUL**, 57 tasks; 11 core JUnit reports / **159 tests / 0 failures / 0 errors / 0 skipped**. Debug APK 36,949,480 bytes; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`.
+- **Maximum-collection fixture:** 100×100 cells, 512 mobs, 10,000 heaps/traps/plants/visited/mapped positions, four players and 2,060 stored DB rows. Measured: inner native level JSON **13,631,699 bytes**; complete LEVEL_DATA **14,613,062 bytes**; complete SNAPSHOT **15,664,067 bytes**. This is 588,861 bytes below server cap and 1,113,149 bytes below Android cap.
+- **Byte-boundary tests:** exact 15.5 MiB accepted; one more byte rejected; nested oversize rejected before serialization; exact UTF-8/JSON parity verified for Arabic, accents, emoji, lone surrogates and controls.
+- **CI:** previous exact-head runs 1279 and 1280 were green. The final closeout SHA requires a fresh exact-head run across all three CI jobs before its run ID is recorded here.
+- **Not claimed:** no production Worker deployment, live hosted room/session smoke, emulator UI run, or physical-device match. Those remain outside 14-A.
+- **14-B:** NOT STARTED. Begin only after explicit user authorization.
 
 ### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
 
@@ -729,7 +733,7 @@ This phase is deliberately split at the transport boundary so the wire protocol 
 
 ### Phase 14-A — WebSocket wire transport and protocol correctness
 
-**Status:** IN PROGRESS — local client/server implementation, full automated suites, maximum-collection replay-window stress fixture, and exact-head GitHub CI PASS; universal worst-case aggregate payload policy remains pending.
+**Status:** CLOSED for implementation and automated acceptance — exact UTF-8 aggregate SNAPSHOT bound, pre-commit rejection, canonical full-snapshot builder, replay retention and local verification. Parent Phase 14 remains OPEN until 14-B.
 
 Scope:
 - [x] Verify the client endpoint mapping against Worker source: `/room/{roomCode}/websocket`, `lifecycle=1`, optional player identity assertion, and Bearer session credential only in the Authorization header (never in the URL).
@@ -749,11 +753,17 @@ Acceptance for 14-A:
 - [x] Bearer credentials never appear in the request URL and are rejected on insecure endpoints.
 - [x] Local/mock transport tests and exact-head GitHub CI run 1279 pass. A live production Worker smoke test is not claimed by localhost tests.
 - [x] Confirm the 16 MiB ceiling is above the tested maximum-dimension/maximum-collection fixture after server replay-window bounding (15,664,067 bytes including the complete escaped SNAPSHOT envelope).
-- [ ] Prove a universal aggregate limit for all allowed per-entity Bundle/heap-item combinations, or design bounded chunking; the stress fixture uses representative native Bundle values and does not prove the absolute theoretical maximum.
+- [x] Enforce a universal accepted-message invariant: every complete client SNAPSHOT is at most 15.5 MiB UTF-8 (16,252,928 bytes), 512 KiB below Android's unchanged 16 MiB cap; oversized combinations are rejected rather than committed or truncated.
+- [x] Count nested payload JSON before serialization and the final escaped NetworkMessage envelope before sending; verify exact UTF-8 byte parity and boundary behavior.
+- [x] Preflight LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions before their SQLite transaction or authoritative floor change commits.
+- [x] Route LEVEL_DATA peer publication, RECONNECT, RESYNC, lifecycle and general snapshots through one bounded builder; filter lifecycle-v1 snapshots to connected room members.
+- [x] Reject inbound UTF-8 text frames above 16 MiB before JSON.parse; keep Android MAX_MESSAGE_PAYLOAD unchanged.
+- [x] Preserve SQLite replay/proof rows while sending only the newest 200 events in ascending order; prove 515 rows remain after RESYNC.
+- [x] Verify local backend (380/380), real Durable Object SQLite (17/17), Android/JVM (159/159) and Debug APK build.
 
 ### Phase 14-B — Session lifecycle, Android threading and network transitions
 
-**Status:** NOT STARTED — do not pull these tasks into 14-A.
+**Status:** NOT STARTED — Phase 14-A is closed; do not begin 14-B until explicit user authorization.
 
 Scope:
 - [ ] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe.

@@ -214,6 +214,17 @@ SPDLevelSnapshot exports state from the actual native game, including: The seria
 
 The server full-snapshot admission path validates bounded structure, required fields, numeric domains, positions and uniqueness before persistence. protocol/schema.json describes the shared envelope and native payload shapes.
 
+### Phase 14-A complete serialized-byte admission
+
+All production full SNAPSHOT paths use the single `MatchRoomSnapshots.buildSnapshotMessage` builder. `snapshot-size.ts` counts the exact UTF-8 JSON representation, including escaping of the inner `payloadJson` string. Nested payload data is measured before JSON serialization; the outer envelope is measured before its wire text is returned.
+
+- Maximum accepted complete SNAPSHOT: **15.5 MiB / 16,252,928 UTF-8 bytes**, leaving 512 KiB below Android's unchanged **16 MiB / 16,777,216-byte** frame limit.
+- Over-budget data returns `SNAPSHOT_TOO_LARGE`; no data is silently trimmed.
+- LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions are preflighted before the applicable SQLite transaction or authoritative floor mutation commits.
+- RECONNECT, RESYNC, room lifecycle broadcasts and general full snapshots use the same bounded builder. Lifecycle-v1 snapshots are restricted to connected durable room members.
+- Inbound text frames above 16 MiB UTF-8 are rejected before JSON parsing.
+- Only the newest 200 replay events are transmitted in ascending order; older SQLite event and LifeLink proof evidence remains stored.
+
 ### Restoration
 
 1. MessageRouter receives a full snapshot.

@@ -88,11 +88,13 @@ These files are outside the multiplayer package but part of the feature.
 | server/src/match-room/base.ts | Shared room state/SQL fields and foundational WebSocket close/broadcast methods. | Do not duplicate room state between layers. |
 | server/src/match-room/persistence.ts | SQLite schema/init, claimed item migration and fallback level generation. | Preserve schema, migrations, SQL and initialization order. |
 | server/src/match-room/combat.ts | Pending combat reservation/reconciliation, combat position checks, LOS and FOV. | Preserve authority checks, lock expiry and FOV behavior. |
-| server/src/match-room/snapshots.ts | Level snapshots, floor-transition finalization and match-end rules. | Preserve event sequencing and full snapshot contents. |
-| server/src/match-room/actions.ts | Reconnect, level data/ready and native action request handlers. | ACTION remains sequential in one method; do not reorder SQL writes or event publication. |
-| server/src/match-room/messages.ts | WebSocket frame/session checks, fail-closed envelope admission, message dispatch and error boundary. | Preserve the 12 explicit inbound routes, trusted attachment-derived senderId and existing handler-exception contract. |
-| server/src/match-room/lifecycle.ts | Lifecycle-v1 room membership, create/join/leave/ready/start/cancel, room-state roster/snapshot delivery, capacity and owner/publisher handoff. | Preserve transactionSync boundaries, owner/publisher checks, seed/sequence/snapshot gates, legacy-room opt-in and room closure semantics. |
-| server/src/match-room/index.ts | The single exported MatchRoom Durable Object class; owns constructor/alarm/HTTP fetch. | Preserve class export name and Wrangler `class_name: MatchRoom`.
+| server/src/match-room/snapshots.ts | Canonical full-SNAPSHOT builder, UTF-8 budget admission, floor-transition finalization and match-end rules. | Every full snapshot must pass the 15.5 MiB preflight; preserve replay evidence and room-member filtering. |
+| server/src/match-room/actions.ts | Reconnect, LEVEL_DATA/LEVEL_READY and native ACTION handlers. | Keep snapshot preflight inside the existing transaction so over-budget updates roll back before ACK/publication. |
+| server/src/match-room/messages.ts | WebSocket session/frame admission, 16 MiB UTF-8 inbound guard, fail-closed dispatch, bounded RESYNC and error boundary. | Keep the size gate before JSON.parse and preserve routes/authenticated sender identity. |
+| server/src/match-room/lifecycle.ts | Lifecycle-v1 membership and room snapshots, create/join/leave/ready/start/cancel, capacity and owner/publisher handoff. | Preflight JOIN/READY/START before commit; send snapshots only to durable room members; preserve lifecycle transactions. |
+| server/src/match-room/index.ts | The single exported MatchRoom Durable Object class; owns constructor/alarm/HTTP fetch. | Preserve class export name and Wrangler `class_name: MatchRoom`. |
+| server/src/match-room/snapshot-size.ts | Exact JSON-compatible UTF-8 byte counting and bounded serialization for incoming frames and complete outgoing SNAPSHOT envelopes. | Keep Android at 16 MiB and complete server SNAPSHOT ceiling at 15.5 MiB; reject before parse/commit/send. |
+| server/src/match-room/snapshot-size.test.ts | Exact JSON/UTF-8 parity, escaping/Unicode, 15.5 MiB boundary and pre-allocation rejection. | Keep byte-boundary and Unicode cases synchronized with the wire serializer.
 | server/src/validators/entity-identity.ts and floor-transitions.ts | Stable entity mapping, movement and floor transition validation. | Keep the original fail-closed rules and native transition assumptions. |
 | server/src/validators/equipment.ts, item-state.ts and abilities.ts | Quickslots, equipment, item/buff bundle safety, use/status and ability validation. | Shared helper imports are explicit; avoid weakening item ownership or mutation checks. |
 | server/src/validators/shop.ts and world-actions.ts | Buy/sell/buyback/shopkeeper and world action admission validators. | Preserve exact inventory, heap and action-cost transitions. |
@@ -119,7 +121,9 @@ These files are outside the multiplayer package but part of the feature.
 
 ## 5. Test-file map
 
-- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A strict upgrade/status/credential and frame-boundary suite plus localhost mock WebSocket exchange; 17 tests PASS locally (17/17). Full core test run: 158/158 across 11 JUnit XML reports.
+- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A strict upgrade/status/credential and RFC 6455 frame/localhost peer suite; 17 tests PASS. Full core test run: 159/159 across 11 JUnit XML reports.
+- `server/src/match-room/snapshot-size.test.ts` — complete UTF-8 JSON budget, exact 15.5 MiB boundary, escaping/Unicode parity and pre-serialization rejection; 5 tests.
+- `server/src/match-room/durable-object-sqlite.integration.do.mjs` — real Workers Durable Object + SQLite lifecycle/recovery; 17 tests PASS.
 
 ### Core JVM tests
 

@@ -387,6 +387,19 @@ The per-row validator still verifies identity, time/cooldown and every immutable
 Backend tests cover valid priority-tier consumption and forged attempts to spend Barrier before priority-2 or priority-1 capacity. The Android JVM regression executes the actual Poison actor with all tiers active. Exact-head CI at `3291698d1fbbb6bc37611d1a8276bb2477c50b58` passed [run 42703880852](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42703880852).
 
 
+## Phase 14-A — Bounded complete SNAPSHOT wire size and atomic rejection (2026-11-18)
+
+- `server/src/match-room/snapshot-size.ts` defines the unchanged Android receive ceiling (16 MiB / 16,777,216 UTF-8 bytes) and the server complete SNAPSHOT ceiling (15.5 MiB / 16,252,928 bytes; 512 KiB reserve).
+- The JSON size walker matches `JSON.stringify` UTF-8 behavior including quote/backslash/control escaping, Arabic/non-ASCII text, supplementary pairs and lone surrogates. It counts nested payload JSON before materializing its serialized string, then measures the complete outer envelope with the nested `payloadJson` escaped as a JSON string.
+- Full SNAPSHOT construction is canonical in `MatchRoomSnapshots.buildSnapshotMessage`. Native LEVEL_DATA peer publication, RECONNECT, RESYNC, room lifecycle broadcasts, general broadcasts and projected floor transitions all use the bounded message.
+- LEVEL_DATA, ACTION, JOIN_ROOM, READY and MATCH_START preflight inside their current `transactionSync` before commit. Projected floor-transition snapshots are checked before depth/participant state becomes authoritative. Over-budget results throw `SNAPSHOT_TOO_LARGE`, rolling back rather than truncating.
+- Lifecycle-v1 full snapshots filter player records to connected durable room members. Other connected sessions are excluded.
+- Incoming text frames larger than 16 MiB UTF-8 receive `MESSAGE_TOO_LARGE` before JSON parsing.
+- Replay sends newest 200 events in ascending order without deleting older SQLite proof/evidence rows. RESYNC regression confirms 515 remain stored while 200 are sent.
+- Local acceptance: backend 380/380 tests, TypeScript build PASS, real Workers SQLite 17/17, Android/JVM 159/159 and Debug APK build PASS. Full details: `PHASE14A_CLOSEOUT.md`.
+
+**Boundary:** the universal bound applies to every snapshot the server accepts and publishes; it does not claim every theoretical maximum native Bundle/item combination fits. Over-budget states are rejected atomically. No production Worker or physical-device playtest is implied.
+
 ## 7. Pending locks and deadlines
 
 - Pending native combat is reserved by request, attacker and optional target keys. A previous reservation older than 15 seconds may be cleared; a fresh conflicting reservation is rejected.

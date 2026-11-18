@@ -273,6 +273,11 @@ These stages are source organization only. They do not change or renumber gamepl
 | `server/src/match-room/messages.ts` | WebSocket envelope parsing/dispatch/error handling |
 | `server/src/match-room/index.ts` | Final single exported MatchRoom class; constructor, alarm and room HTTP fetch |
 
+- `server/src/match-room/snapshot-size.ts` — JSON.stringify-compatible UTF-8 byte counter and bounded serialization for the 15.5 MiB complete SNAPSHOT envelope and 16 MiB inbound text guard.
+- `server/src/match-room/snapshot-size.test.ts` — exact JSON/UTF-8 parity, escaping, Unicode, exact limit, one-byte-over and pre-allocation rejection.
+- `server/src/match-room/lifelink-death.integration.test.ts` — replay retention, ACTION preflight rollback and explicit RECONNECT oversize errors.
+- `server/src/match-room/durable-object-sqlite.integration.do.mjs` — real Workers SQLite lifecycle/recovery and room-member snapshot checks.
+
 All layers share one instance through inheritance. This is not a new Durable Object per layer.
 
 ## 4.2 Historical Phase 10-D typed PLAYER_LEFT lifecycle regression

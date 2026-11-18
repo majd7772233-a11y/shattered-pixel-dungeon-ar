@@ -131,7 +131,19 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         this.sendRoomRosterToSocket(ws);
         if (hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot())) this.broadcastRoomSnapshot();
       }
-    } catch (_) {}
+    } catch (error) {
+      // Do not silently hide a rejected oversized snapshot from a resumed member.
+      try {
+        ws.send(JSON.stringify({
+          protocolVersion: "1.0.0",
+          messageType: "ERROR",
+          sequence: this.currentSequence,
+          payloadJson: JSON.stringify({
+            error: error instanceof Error && error.message ? error.message : "UNKNOWN_ERROR"
+          })
+        }));
+      } catch (_) {}
+    }
   }
 
   protected broadcastRoomState(reason: string): void {
@@ -146,7 +158,10 @@ export class MatchRoomLifecycle extends MatchRoomActions {
   }
 
   protected broadcastToRoomMembers(message: NetworkMessage, excludeWs?: WebSocket): void {
-    const serialized = JSON.stringify(message);
+    this.broadcastSerializedToRoomMembers(JSON.stringify(message), excludeWs);
+  }
+
+  protected broadcastSerializedToRoomMembers(serialized: string, excludeWs?: WebSocket): void {
     for (const socket of this.state.getWebSockets()) {
       if (socket === excludeWs) continue;
       try {
@@ -312,6 +327,8 @@ export class MatchRoomLifecycle extends MatchRoomActions {
           this.setRoomMeta(ROOM_MEMBER_PREFIX + session.playerId, JSON.stringify({ joinedAt: Date.now(), role: "PLAYER" }));
           this.setRoomMeta(ROOM_READY_PREFIX + session.playerId, JSON.stringify({ ready: false, seed: this.matchSeed, sequence: this.currentSequence }));
           this.sql.exec("UPDATE players SET ready = 0, connected = 1 WHERE player_id = ?", session.playerId);
+          // Reject membership before commit if the resulting authoritative room snapshot is too large.
+          this.buildSnapshotMessage("SERVER");
         });
       } catch (error) {
         this.sendLifecycleError(ws, msg, error instanceof Error ? error.message : "ROOM_JOIN_FAILED");
@@ -404,6 +421,8 @@ export class MatchRoomLifecycle extends MatchRoomActions {
           seed: this.matchSeed,
           sequence: this.currentSequence
         }));
+        // Hero/READY state contributes to every room SNAPSHOT; enforce its size before committing it.
+        this.buildSnapshotMessage("SERVER");
       });
       this.sendLifecycleAck(ws, msg, "READY");
       this.broadcastToRoomMembers({
@@ -498,6 +517,8 @@ export class MatchRoomLifecycle extends MatchRoomActions {
           this.setRoomMeta("roomLifecycleState", "PLAYING");
           this.setRoomMeta("roomStartedAt", String(Date.now()));
           this.persistEventLogState();
+          // Prove the exact PLAYING room snapshot fits before committing the lifecycle transition.
+          this.buildSnapshotMessage("SERVER");
         });
       } catch (error) {
         this.gameStatus = "LOBBY";
@@ -587,37 +608,6 @@ export class MatchRoomLifecycle extends MatchRoomActions {
   }
 
   protected broadcastRoomSnapshot(): void {
-    const memberIds = new Set(this.roomMembers().map(member => member.playerId));
-    const connectedPlayerIds = this.connectedPlayerIds();
-    const players = this.sql.exec(
-      "SELECT player_id,class_name,pos,hp,ht,ready,state FROM players"
-    ).toArray().filter((player: any) => memberIds.has(String(player.player_id))
-      && connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-      const savedHero = this.sql.exec(
-        "SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)
-      ).toArray()[0];
-      return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
-    });
-    const mobs = this.sql.exec(
-      "SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth
-    ).toArray();
-    const events = this.replayWindowEvents();
-    this.broadcastToRoomMembers({
-      protocolVersion: "1.0.0",
-      messageType: "SNAPSHOT",
-      senderId: "SERVER",
-      sequence: this.currentSequence,
-      payloadJson: JSON.stringify({
-        sequence: this.currentSequence,
-        seed: this.matchSeed,
-        depth: this.currentDepth,
-        gameMode: this.gameMode,
-        players,
-        mobs,
-        events,
-        worldTime: this.worldTime,
-        level: this.getCurrentLevelSnapshot()
-      })
-    });
+    this.broadcastSerializedToRoomMembers(this.buildSnapshotMessage("SERVER"));
   }
 }

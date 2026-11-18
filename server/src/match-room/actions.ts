@@ -108,7 +108,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       ));
     };
     try {
-      storage.transactionSync(() => this.handleActionInTransaction(transactionalWs, msg, session));
+      storage.transactionSync(() => {
+        this.handleActionInTransaction(transactionalWs, msg, session);
+        // Roll back gameplay state if the resulting authoritative full snapshot cannot be delivered.
+        this.buildSnapshotMessage(session.playerId);
+      });
       transactionCommitted = true;
     } catch (error) {
       this.currentSequence = checkpoint.sequence;
@@ -220,34 +224,14 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         }
       }
 
-      const connectedPlayerIds = this.connectedPlayerIds();
-      const players = this.sql.exec("SELECT player_id, class_name, pos, hp, ht, ready, state FROM players").toArray()
-        .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-          const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + player.player_id).toArray()[0];
-          return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
-        });
-      const mobs = this.sql.exec("SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
-
-      ws.send(JSON.stringify({
-        protocolVersion: "1.0.0",
-        messageType: "SNAPSHOT",
-        sequence: this.currentSequence,
-        payloadJson: JSON.stringify({
-          sequence: this.currentSequence,
-          seed: this.matchSeed,
-          depth: this.currentDepth,
-          gameMode: this.gameMode,
-          players,
-          mobs,
-          worldTime: this.worldTime,
-          level: this.getCurrentLevelSnapshot()
-        })
-      }));
+      ws.send(this.buildSnapshotMessage(null, this.currentDepth, false));
       ws.send(JSON.stringify(this.levelPublisherStateMessage("RECONNECT")));
-    } catch (_) {
+    } catch (error) {
+      const errorCode = error instanceof Error && error.message === "SNAPSHOT_TOO_LARGE"
+        ? "SNAPSHOT_TOO_LARGE" : "INVALID_RECONNECT_PAYLOAD";
       ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
         requestId: msg.requestId, sequence: this.currentSequence,
-        payloadJson: JSON.stringify({ error: "INVALID_RECONNECT_PAYLOAD" }) }));
+        payloadJson: JSON.stringify({ error: errorCode }) }));
     }
   }
 
@@ -907,13 +891,17 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               }
             }
 
+            // Preflight the exact complete snapshot against the pending transaction state.
+            this.buildSnapshotMessage(session.playerId, depth);
           });
-        } catch (_) {
+        } catch (error) {
           // Roll back all cross-table state and keep in-memory sequencing aligned with SQLite.
           this.currentSequence = sequenceBeforeCommit;
           this.worldTime = worldTimeBeforeCommit;
+          const errorCode = error instanceof Error && error.message === "SNAPSHOT_TOO_LARGE"
+            ? "SNAPSHOT_TOO_LARGE" : "LEVEL_DATA_COMMIT_FAILED";
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
-            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "LEVEL_DATA_COMMIT_FAILED" }) }));
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: errorCode }) }));
           return;
         }
         const ackTurnRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "nativeWorldTurnCounter").toArray()[0];
@@ -927,21 +915,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         const initialRoomSnapshot = this.isRoomLifecycleEnabled() && this.gameStatus === "LOBBY" && !isNativeWorldTurn && !isNativeWorldMutation && !isPublisherRebase && !initialRoomSnapshotMarker && hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot());
         if (isNativeWorldTurn || isNativeWorldMutation || initialRoomSnapshot) {
           // Broadcast the complete server-committed world to peers, not a guessed delta.
-          const events = this.replayWindowEvents();
-          const connectedPlayerIds = this.connectedPlayerIds();
-          const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray()
-            .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
-            const savedHero = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + String(player.player_id)).toArray()[0];
-            return { ...player, hero_state_json: savedHero && typeof savedHero.value === "string" ? String(savedHero.value) : "" };
-          });
-          const liveMobs = this.sql.exec("SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth).toArray();
-          const snapshotPayload = {
-            sequence: this.currentSequence, seed: this.matchSeed, depth: this.currentDepth, gameMode: this.gameMode,
-            players, mobs: liveMobs, events, worldTime: this.worldTime, level: this.getCurrentLevelSnapshot()
-          };
           if (initialRoomSnapshot) this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO NOTHING", "roomInitialSnapshotSent", JSON.stringify({ depth: this.currentDepth, seed: this.matchSeed, sequence: this.currentSequence }));
-          const message = JSON.stringify({ protocolVersion: "1.0.0", messageType: "SNAPSHOT",
-            senderId: session.playerId, sequence: this.currentSequence, payloadJson: JSON.stringify(snapshotPayload) });
+          const message = this.buildSnapshotMessage(session.playerId);
           for (const peer of this.state.getWebSockets()) {
             if (peer === ws && !initialRoomSnapshot) continue;
             const peerSession = peer.deserializeAttachment() as SessionData | null;
@@ -982,9 +957,14 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             `transitionReady:${session.playerId}`,
             JSON.stringify({ depth: ready.depth, branch: ready.branch, seed: ready.seed, heroStateJson }));
           this.tryFinalizeLevelTransition();
-        } catch (_) {
+        } catch (error) {
+          const errorCode = error instanceof Error && error.message === "SNAPSHOT_TOO_LARGE"
+            ? "SNAPSHOT_TOO_LARGE" : "INVALID_LEVEL_READY";
+          if (errorCode === "SNAPSHOT_TOO_LARGE") {
+            this.sql.exec("DELETE FROM room_meta WHERE key = ?", "transitionReady:" + session.playerId);
+          }
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
-            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "INVALID_LEVEL_READY" }) }));
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: errorCode }) }));
         }
         return;
   }

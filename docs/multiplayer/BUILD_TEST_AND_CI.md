@@ -4,21 +4,23 @@
 
 This document records commands and workflow configuration inspected at the documentation audit HEAD. It distinguishes local source checks, backend compilation/tests, Android JVM tests/debug APK compilation, live Cloudflare Worker deployment/smoke test, and physical two-device playtest. These are different evidence levels.
 
-## Current Phase 14-A Local Verification — 2026-11-18
+## Current Phase 14-A Closeout Verification — 2026-11-18
 
-This section supersedes earlier local Phase 14-A transport/payload measurements only; historical Phase 12/13 evidence remains tied to its original commit and APK SHA.
+This section records local evidence for the closed Phase 14-A implementation. The exact closeout commit SHA and CI run are appended only after all three jobs on the final head pass.
 
-- **Latest published code SHA:** `907426a127151dc1acc7517496bd5415a5183526`; branch `multiplayer-framework-core-14118577486727081892`. Exact-head GitHub Actions [run 1279 / 44329234387](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44329234387) passed all three jobs: Backend typecheck/tests, Android JVM tests + Debug APK, and Durable Object SQLite rollback/eviction.
-- **Focused protocol test:** `gradlew.bat :core:test --tests com.shatteredpixel.shatteredpixeldungeon.multiplayer.InternetTransportProtocolTest --no-daemon --console=plain` — PASS, 17 tests, 0 failures/errors/skips.
-- **Maximum-collection payload test:** `:core:test --tests com.shatteredpixel.shatteredpixeldungeon.multiplayer.NativeCombatRuntimeIntegrationTest.nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings --no-daemon --console=plain` — PASS, 1/1. Fixture uses 100×100 cells, 512 mobs, 10,000 heaps/traps/plants, full visited/mapped arrays, four co-op players and 2,060 stored DB proof/replay rows; it serializes the newest 200 replay rows only. Real UTF-8 measurements: **13,631,699-byte inner level JSON**, **14,613,062-byte complete LEVEL_DATA envelope**, **15,664,067-byte complete SNAPSHOT envelope**. Compared with **16,777,216-byte** client limit, measured headroom is **1,113,149 bytes** (~6.64%).
-- **Server replay-window change:** `MatchRoomBase.replayWindowEvents()` uses `MAX_REPLAY_WINDOW_EVENTS=200`, returning newest-first SQL rows reversed into ascending sequence order. Applied to the four complete client snapshot paths: `actions.ts`, `lifecycle.ts`, `messages.ts`, and `snapshots.ts`. Protected LifeLink history is retained in SQLite. New test in `lifelink-death.integration.test.ts` proves a 515-row DB returns only the newest 200 in RESYNC without deleting source rows.
-- **Full local Android verification:** `gradlew.bat test assembleDebug --no-daemon --console=plain` — **BUILD SUCCESSFUL**, 57 tasks (2 executed, 55 up-to-date); core: 11 JUnit XML reports / **159 tests / 0 failures / 0 errors / 0 skipped**.
-- **Debug APK:** `android/build/outputs/apk/debug/android-debug.apk`; **36,949,480 bytes**; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`.
-- **Full backend verification:** `npm test` — contract/schema/routing validators PASS; **373 Vitest tests / 5 files passed**. `npm run build` (`tsc`) PASS. TypeScript emitted 32 untracked `.js` files in `server/src`; they were removed after verification, leaving no generated files in the source tree.
-- **Measurement caveat:** the stress fixture reaches maximum accepted dimensions/collection counts but uses representative native bundles and one Ankh per heap; it does not maximize each individual Bundle or all 512 heap items. No aggregate serialized-byte cap is enforced for every legal combination. Thus the tested fixture is PASS, but a universal worst-case guarantee is **NOT PROVEN**. Keep the 16 MiB client limit; formal aggregate bounds or a separate chunking policy remain an open Phase 14-A item.
-- **Environment:** Android SDK supplied process-locally through `ANDROID_HOME` and `ANDROID_SDK_ROOT` = `C:\Users\Magd\AppData\Local\Android\Sdk`; `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true` process-only. No global Windows environment or `local.properties` changed.
-- **Remaining verification boundary:** exact-head CI for `907426a` is green. No production Worker deployment, live room/session smoke test, emulator test, or physical two-device match is claimed. The universal aggregate payload-size guarantee remains open.
-- **No production Worker deployment, live service room smoke test, emulator test or physical two-device session is claimed.**
+- **Branch:** `multiplayer-framework-core-14118577486727081892`; no other branch, PR or merge is part of this work.
+- **Complete SNAPSHOT byte policy:** Android's unchanged limit is **16,777,216 bytes**. Server cap is **16,252,928 UTF-8 bytes (15.5 MiB)**, leaving 512 KiB. `snapshot-size.ts` counts JSON.stringify-compatible UTF-8 bytes; it pre-counts nested payload before serialization and checks the complete escaped outer envelope before sending. Oversize fails with `SNAPSHOT_TOO_LARGE`.
+- **Atomic preflight:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions are measured before their transaction/floor state commits. Oversized candidates roll back. RECONNECT/RESYNC and room-resume failure paths surface explicit errors. Lifecycle-v1 snapshots are restricted to connected durable room members.
+- **Inbound frame guard:** text frames above 16 MiB UTF-8 are rejected before JSON parsing. Android cap is unchanged.
+- **Replay:** full snapshots contain the newest 200 events in ascending sequence order; older LifeLink proof/evidence rows remain in SQLite. Regression keeps all 515 stored rows while RESYNC sends 200.
+- **Backend:** `npm test` — all schema/routing/protocol guards and **380 Vitest tests / 6 files passed**. `npm run build` / TypeScript passes. `server/tsconfig.json` uses `noEmit:true` to avoid generated JS in the source tree.
+- **Real Durable Object:** Workers + Durable Object SQLite integration — **17/17 passed**.
+- **Android:** `gradlew.bat test assembleDebug --no-daemon --console=plain` — **BUILD SUCCESSFUL**, 57 tasks; 11 core JUnit XML reports / **159 tests / 0 failures / 0 errors / 0 skipped**.
+- **Debug APK:** `android/build/outputs/apk/debug/android-debug.apk`; 36,949,480 bytes; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`.
+- **SDK environment:** process-local `ANDROID_HOME` and `ANDROID_SDK_ROOT` used `C:\\Users\\Magd\\AppData\\Local\\Android\\Sdk`; no global environment or `local.properties` changed.
+- **Maximum-collection fixture:** 100×100 cells, 512 mobs, 10,000 heaps/traps/plants/visited/mapped positions, four players, 2,060 stored events and 200 transmitted replay events. Inner level JSON **13,631,699 bytes**, complete LEVEL_DATA **14,613,062 bytes**, complete SNAPSHOT **15,664,067 bytes**; 588,861 bytes below server cap and 1,113,149 bytes below Android cap.
+- **Byte boundary regressions:** exact 15.5 MiB accepted and one-byte-over rejected; oversized nested JSON rejected before serialization; JSON/UTF-8 parity verified for Arabic, accents, emoji, lone surrogates and escaped controls.
+- **Evidence boundary:** no production Worker, hosted live room/session, emulator UI or physical two-device match is claimed.
 
 ## 2. Backend package
 

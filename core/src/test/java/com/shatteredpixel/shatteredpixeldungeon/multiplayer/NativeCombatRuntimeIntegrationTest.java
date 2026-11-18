@@ -1214,11 +1214,16 @@ public class NativeCombatRuntimeIntegrationTest {
                 + " visited=10000 mapped=10000 coopPlayers=4 storedEventRows=" + eventCount + " replayEvents=" + replayEventCount
                 + " snapshotUtf8Bytes=" + snapshotBytes + " levelDataWireUtf8Bytes=" + wireBytes
                 + " resyncWireUtf8Bytes=" + resyncBytes
-                + " limitBytes=" + WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
+                + " serverSnapshotLimitBytes=" + (WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD - 512 * 1024)
+                + " androidLimitBytes=" + WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
         Assert.assertTrue("The complete escaped LEVEL_DATA WebSocket message must fit the configured limit; "
                         + "wireBytes=" + wireBytes,
                 wireBytes <= WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
-        Assert.assertTrue("The complete escaped SNAPSHOT with four players and retained events must fit; "
+        int serverSnapshotBudget = WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD - 512 * 1024;
+        Assert.assertTrue("The complete escaped SNAPSHOT must fit the server's 15.5 MiB ceiling; "
+                        + "resyncBytes=" + resyncBytes + ", serverBudgetBytes=" + serverSnapshotBudget,
+                resyncBytes <= serverSnapshotBudget);
+        Assert.assertTrue("The complete escaped SNAPSHOT must also fit Android's configured frame limit; "
                         + "resyncBytes=" + resyncBytes,
                 resyncBytes <= WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
         Assert.assertTrue("Both complete server-shaped envelopes must remain below the configured limit",

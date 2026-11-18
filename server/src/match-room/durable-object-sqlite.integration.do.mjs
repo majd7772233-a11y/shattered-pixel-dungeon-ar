@@ -1013,6 +1013,28 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(sql.exec("SELECT COUNT(*) AS count FROM level_tiles WHERE depth=1").toArray()[0].count).toBe(1024);
       expect(sql.exec("SELECT hp FROM mobs WHERE mob_id=71 AND depth=1").toArray()[0].hp).toBe(17);
       expect(instance.currentSequence).toBe(0);
+
+      // An oversized authoritative result must be rejected inside the same transaction,
+      // not after the new level, tiles, mobs or hero state have become durable.
+      const oversizedSnapshot = makeSnapshot(777777, 12, 3);
+      const oversizedEnvelope = JSON.stringify({
+        protocolVersion: "1.0.0", messageType: "LEVEL_DATA", requestId: "phase12-level-data-oversize-request",
+        payloadJson: JSON.stringify(oversizedSnapshot)
+      });
+      instance.buildSnapshotMessage = () => { throw new Error("SNAPSHOT_TOO_LARGE"); };
+      sent.length = 0;
+      await instance.webSocketMessage(socket, oversizedEnvelope);
+      expect(sent).toHaveLength(1);
+      const oversized = JSON.parse(sent[0]);
+      expect(oversized).toMatchObject({
+        messageType: "ERROR", requestId: "phase12-level-data-oversize-request", sequence: 0
+      });
+      expect(JSON.parse(oversized.payloadJson).error).toBe("SNAPSHOT_TOO_LARGE");
+      expect(JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "levelSnapshot:1").toArray()[0].value).seed).toBe(654321);
+      expect(sql.exec("SELECT seed FROM levels WHERE depth=1").toArray()[0].seed).toBe(654321);
+      expect(sql.exec("SELECT COUNT(*) AS count FROM level_tiles WHERE depth=1").toArray()[0].count).toBe(1024);
+      expect(sql.exec("SELECT hp FROM mobs WHERE mob_id=71 AND depth=1").toArray()[0].hp).toBe(17);
+      expect(instance.currentSequence).toBe(0);
     });
   });
 
@@ -1133,6 +1155,7 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       const sql = state.storage.sql;
       const roomBroadcasts = [];
       instance.broadcastToRoomMembers = message => roomBroadcasts.push(message);
+      instance.broadcastSerializedToRoomMembers = serialized => roomBroadcasts.push(JSON.parse(serialized));
 
       sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "roomLifecycleVersion", "1");
       const clients = new Map();
@@ -1198,7 +1221,10 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       const fourthJoin = await send("phase13-fourth", "JOIN_ROOM", {});
       expect(fourthJoin.some(message => message.messageType === "ACK")).toBe(true);
       expect(memberCount()).toBe(4);
-      expect(roomBroadcasts.some(message => message.messageType === "SNAPSHOT")).toBe(true);
+      const roomSnapshot = roomBroadcasts.find(message => message.messageType === "SNAPSHOT");
+      expect(roomSnapshot).toBeDefined();
+      expect(JSON.parse(roomSnapshot.payloadJson).players.map(player => player.player_id))
+        .not.toContain("phase13-pending");
       const rosterFor = playerId => clients.get(playerId).sent.map(value => JSON.parse(value)).filter(message => message.messageType === "PLAYER_JOINED").map(message => message.senderId);
       expect(rosterFor("phase13-guest")).toEqual(expect.arrayContaining(["phase13-host", "phase13-guest"]));
       expect(rosterFor("phase13-third")).toEqual(expect.arrayContaining(["phase13-host", "phase13-guest", "phase13-third"]));
@@ -1377,29 +1403,4 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(sql.exec("SELECT value FROM room_meta WHERE key='roomOwnerId'").toArray()[0].value).toBe(successorId);
       expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisher'").toArray()[0].value).toBe(successorId);
       expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherTerm'").toArray()[0].value).toBe("5");
-      expect(sql.exec("SELECT value FROM room_meta WHERE key='levelPublisherReadyTerm'").toArray()[0].value).toBe("5");
-
-      for (const playerId of [ownerId, successorId, observerId]) {
-        const row = sql.exec("SELECT ready FROM players WHERE player_id=?", playerId).toArray()[0];
-        expect(row.ready).toBe(0);
-        const readiness = JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key=?", "roomReady:" + playerId).toArray()[0].value);
-        expect(readiness).toEqual({ ready: false, seed, sequence: 0 });
-      }
-
-      const ownerHandoff = successorMessages.find(message =>
-        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
-      );
-      expect(ownerHandoff).toBeTruthy();
-      expect(JSON.parse(ownerHandoff.payloadJson)).toMatchObject({
-        ownerId: successorId, memberCount: 3, allReady: false, roomStatus: "LOBBY"
-      });
-      expect(JSON.parse(ownerHandoff.payloadJson).members).toEqual(expect.arrayContaining([
-        expect.objectContaining({ playerId: ownerId, connected: false, ready: false }),
-        expect.objectContaining({ playerId: successorId, connected: true, ready: false }),
-        expect.objectContaining({ playerId: observerId, connected: true, ready: false })
-      ]));
-      expect(observerMessages.some(message =>
-        message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
-      )).toBe(true);
-    });
-  });});
+      expect(sql.exec("SELECT value FROM room_meta WHERE key='

@@ -138,6 +138,10 @@ class MemoryMatchRoomSql {
       const row = this.processedActions.get(String(args[0]));
       return this.cursor(row ? [row] : []);
     }
+    if (query === "SELECT depth,width,height,entrance_pos,exit_pos,seed FROM levels WHERE depth = ?") {
+      // This focused SQL double has no levels table; full snapshots correctly carry level: null.
+      return this.cursor([]);
+    }
     if (query.startsWith("SELECT width,height FROM levels WHERE depth = ?")
         || query.startsWith("SELECT width, height FROM levels WHERE depth = ?")) {
       return this.cursor([{ width: 32, height: 32 }]);
@@ -199,13 +203,15 @@ class MemoryMatchRoomSql {
         .sort((a,b) => Number(a.sequence) - Number(b.sequence));
       return this.cursor(rows);
     }
-    if (query === "SELECT player_id, class_name, pos, hp, ht, ready, state FROM players") {
+    if (query === "SELECT player_id, class_name, pos, hp, ht, ready, state FROM players"
+        || query === "SELECT player_id,class_name,pos,hp,ht,ready,state FROM players") {
       return this.cursor(Array.from(this.players.values()).map(player => ({
         player_id: player.player_id, class_name: player.class_name, pos: player.pos,
         hp: player.hp, ht: player.ht, ready: player.ready, state: player.state
       })));
     }
-    if (query === "SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?") {
+    if (query === "SELECT mob_id, name, pos, hp, ht FROM mobs WHERE depth = ?"
+        || query === "SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?") {
       return this.cursor(Array.from(this.mobs.values())
         .filter(mob => Number(mob.depth) === Number(args[0]))
         .map(mob => ({ mob_id: mob.mob_id, name: mob.name, pos: mob.pos, hp: mob.hp, ht: mob.ht })));
@@ -747,6 +753,36 @@ function acceptedMessage(ws: any, index: number): Row {
 }
 
 describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
+  it("rolls back an ACTION when its resulting complete SNAPSHOT exceeds the server byte budget", async () => {
+    const fixture = makeNonlethalPoisonFixture();
+    const sequenceBefore = fixture.room.currentSequence;
+    const worldTimeBefore = fixture.room.worldTime;
+    const gameStatusBefore = fixture.room.gameStatus;
+
+    fixture.room.handleActionInTransaction = vi.fn(() => {
+      fixture.sql.roomMeta.set("snapshot-size-rollback-probe", "must-not-commit");
+      fixture.room.currentSequence++;
+      fixture.room.worldTime++;
+      fixture.room.gameStatus = "ENDED";
+    });
+    fixture.room.buildSnapshotMessage = vi.fn(() => {
+      throw new Error("SNAPSHOT_TOO_LARGE");
+    });
+
+    await expect(fixture.room.handleAction(
+      fixture.ws,
+      actionMessage("snapshot-too-large-action-001", { action: "MOVE", data: { to: 10 } }),
+      fixture.session
+    )).rejects.toThrowError("SNAPSHOT_TOO_LARGE");
+
+    expect(fixture.sql.roomMeta.has("snapshot-size-rollback-probe")).toBe(false);
+    expect(fixture.room.currentSequence).toBe(sequenceBefore);
+    expect(fixture.room.worldTime).toBe(worldTimeBefore);
+    expect(fixture.room.gameStatus).toBe(gameStatusBefore);
+    expect(fixture.room.buildSnapshotMessage).toHaveBeenCalledTimes(1);
+    expect(fixture.ws.send).not.toHaveBeenCalled();
+  });
+
   it("forwards the exact trusted SnipersMark SpiritArrow intent to the level publisher", async () => {
     const fixture = makeSpiritArrowForwardFixture();
     expect(hasCompleteNativeLevelSnapshot(fixture.levelSnapshot)).toBe(true);
@@ -2440,6 +2476,20 @@ describe("Phase 11-A event ordering and replay characterization", () => {
     const snapshot = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
     expect(snapshot.messageType).toBe("SNAPSHOT");
     expect(snapshot.sequence).toBe(3);
+  });
+
+  it("returns SNAPSHOT_TOO_LARGE when reconnect fallback cannot fit the bounded wire budget", async () => {
+    const fixture = makeReconnectFixture(51, []);
+    fixture.room.buildSnapshotMessage = vi.fn(() => {
+      throw new Error("SNAPSHOT_TOO_LARGE");
+    });
+
+    await (fixture.room as any).handleReconnect(fixture.ws, fixture.reconnectMessage, fixture.session);
+
+    expect(fixture.ws.send).toHaveBeenCalledTimes(1);
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("SNAPSHOT_TOO_LARGE");
   });
 
   it("characterizes RESYNC as a full SNAPSHOT response rather than incremental EVENT_BATCH", async () => {
