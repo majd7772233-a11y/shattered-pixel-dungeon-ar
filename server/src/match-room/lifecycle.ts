@@ -601,9 +601,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     const mobs = this.sql.exec(
       "SELECT mob_id,name,pos,hp,ht FROM mobs WHERE depth = ?", this.currentDepth
     ).toArray();
-    const events = this.sql.exec(
-      "SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC"
-    ).toArray();
+    const events = this.replayWindowEvents();
     this.broadcastToRoomMembers({
       protocolVersion: "1.0.0",
       messageType: "SNAPSHOT",

@@ -5,7 +5,7 @@ import { MatchRoomCombat } from "./combat";
 
 export class MatchRoomSnapshots extends MatchRoomCombat {
   protected broadcastCurrentSnapshot(excludePlayerId: string | null = null) {
-    const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
+    const events = this.replayWindowEvents();
     const connectedPlayerIds = this.connectedPlayerIds();
     const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray()
       .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {

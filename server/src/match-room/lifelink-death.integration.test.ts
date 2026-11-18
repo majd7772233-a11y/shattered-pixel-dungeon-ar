@@ -184,6 +184,12 @@ class MemoryMatchRoomSql {
         .sort((a,b) => Number(b.sequence) - Number(a.sequence))[0];
       return this.cursor(row ? [{ sequence: row.sequence }] : []);
     }
+    if (query === "SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence DESC LIMIT ?") {
+      const rows = this.events.slice()
+        .sort((a,b) => Number(b.sequence) - Number(a.sequence))
+        .slice(0, Number(args[0]));
+      return this.cursor(rows);
+    }
     if (query === "SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence ASC") {
       return this.cursor(this.events.slice().sort((a,b) => Number(a.sequence) - Number(b.sequence)));
     }
@@ -2460,6 +2466,37 @@ describe("Phase 11-A event ordering and replay characterization", () => {
     expect(payload.events.map((event: Row) => event.sequence)).toEqual([1, 2]);
   });
 
+  it("keeps LifeLink proof history in SQLite but limits full SNAPSHOT replay to the newest 200 rows", async () => {
+    const rows = Array.from({ length: 515 }, (_, index) => ({
+      sequence: index + 1,
+      sender_id: "publisher-player-002",
+      event_type: index < 2 ? (index === 0 ? "HERO_BUFF_TICKED" : "PLAYER_DAMAGED") : "CHAR_DAMAGED",
+      payload: JSON.stringify({ evidenceIndex: index })
+    }));
+    const fixture = makeReconnectFixture(rows.length, rows);
+    const ws = {
+      send: fixture.ws.send,
+      deserializeAttachment: () => fixture.session
+    };
+
+    await (fixture.room as any).webSocketMessage(ws, JSON.stringify({
+      protocolVersion: "1.0.0",
+      messageType: "RESYNC",
+      requestId: "phase14a-replay-window-001",
+      payloadJson: "{}"
+    }));
+
+    expect(fixture.ws.send).toHaveBeenCalledTimes(1);
+    const response = JSON.parse(String(fixture.ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("SNAPSHOT");
+    const payload = JSON.parse(String(response.payloadJson));
+    expect(payload.events).toHaveLength(200);
+    expect(payload.events.map((event: Row) => event.sequence)).toEqual(
+      Array.from({ length: 200 }, (_, index) => index + 316)
+    );
+    expect(payload.events.every((event: Row) => event.event_type === "CHAR_DAMAGED")).toBe(true);
+    expect(fixture.sql.events).toHaveLength(515);
+  });
   it("rejects same-player requestId reuse with a different action or payload", () => {
     const fixture = makeNonlethalPoisonFixture();
     const requestId = "phase11a-reused-request-001";

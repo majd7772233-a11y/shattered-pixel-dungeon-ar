@@ -1073,6 +1073,158 @@ public class NativeCombatRuntimeIntegrationTest {
 
 
     @Test
+    public void nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings() throws Exception {
+        // MatchRoom accepts at most 100x100 cells, 512 mobs, and up to one heap/trap/plant
+        // per cell. Exercise those collection ceilings with ordinary native Bundle payloads.
+        level = new TestLevel(100, 100);
+        Dungeon.level = level;
+        hero.pos = 50 * level.width() + 50;
+        Arrays.fill(level.heroFOV, false);
+        Arrays.fill(level.visited, true);
+        Arrays.fill(level.mapped, true);
+
+        for (int i = 0; i < 512; i++) addRat(i, 20 + i % 5);
+        for (int i = 0; i < 10000; i++) {
+            Heap heap = new Heap();
+            heap.pos = i;
+            heap.items.addLast(new Ankh());
+            level.heaps.put(heap.pos, heap);
+
+            FrostTrap trap = new FrostTrap();
+            trap.pos = i;
+            level.traps.put(trap.pos, trap);
+
+            Firebloom plant = new Firebloom();
+            plant.pos = i;
+            level.plants.put(plant.pos, plant);
+        }
+        level.blobs.put(Fire.class, new Fire());
+        level.blobs.put(ToxicGas.class, new ToxicGas());
+        for (int i = 0; i < 20; i++) hero.belongings.backpack.items.add(new Ankh());
+        Buff.prolong(hero, Haste.class, 10f);
+        Poison snapshotPoison = Buff.affect(hero, Poison.class);
+        snapshotPoison.set(3f);
+
+        String levelJson = SPDLevelSnapshot.currentLevelJson();
+        Assert.assertNotNull(levelJson);
+        JsonValue levelData = new JsonReader().parse(levelJson);
+        Assert.assertEquals(100, levelData.getInt("width", -1));
+        Assert.assertEquals(100, levelData.getInt("height", -1));
+        Assert.assertEquals(10000, levelData.get("tiles").size);
+        Assert.assertEquals(512, levelData.get("mobs").size);
+        Assert.assertEquals(10000, levelData.get("heaps").size);
+        Assert.assertEquals(10000, levelData.get("traps").size);
+        Assert.assertEquals(10000, levelData.get("plants").size);
+        Assert.assertEquals(10000, levelData.get("visitedPositions").size);
+        Assert.assertEquals(10000, levelData.get("mappedPositions").size);
+
+        NetworkMessage message = new NetworkMessage();
+        message.messageType = MessageType.LEVEL_DATA;
+        message.senderId = "snapshot-size-publisher";
+        message.sequence = 1L;
+        message.payloadJson = levelJson;
+
+        Json payloadEncoder = new Json();
+        JsonValue sampleMob = levelData.get("mobs").child;
+        String sampleMobBundle = sampleMob.getString("serializedBundle", "");
+        String sampleMobEntityId = sampleMob.getString("entityId", "snapshot-mob-00000001");
+        if (sampleMobEntityId == null || sampleMobEntityId.length() < 8) {
+            sampleMobEntityId = "snapshot-mob-00000001";
+        }
+        String heroStateJson = SPDLevelSnapshot.currentHeroStateJson();
+        StringBuilder playersJson = new StringBuilder("[");
+        for (int i = 0; i < 4; i++) {
+            if (i > 0) playersJson.append(',');
+            String playerId = "snapshot-size-peer-" + i;
+            playersJson.append("{\"player_id\":").append(payloadEncoder.toJson(playerId))
+                    .append(",\"class_name\":\"WARRIOR\",\"pos\":").append(hero.pos)
+                    .append(",\"hp\":").append(hero.HP).append(",\"ht\":").append(hero.HT)
+                    .append(",\"ready\":true,\"state\":\"ALIVE\",\"hero_state_json\":")
+                    .append(new Json().toJson(heroStateJson)).append('}');
+        }
+        playersJson.append(']');
+
+        // Match MatchRoomBase.persistEventLogState(): validation proof rows are retained in
+        // SQLite, but only the newest 200 rows are serialized into a client SNAPSHOT.
+        java.util.List<String> retainedEventRows = new java.util.ArrayList<>();
+        int eventCount = 0;
+        long eventSequence = 1L;
+        for (int player = 0; player < 4; player++) {
+            String playerId = "snapshot-size-peer-" + player;
+            for (String boundaryType : new String[] {"HERO_BUFF_TICKED", "PLAYER_DAMAGED"}) {
+                String payload = "{\"heroStateJson\":" + payloadEncoder.toJson(heroStateJson) + "}";
+                retainedEventRows.add("{\"sequence\":" + eventSequence++
+                        + ",\"sender_id\":" + payloadEncoder.toJson(playerId)
+                        + ",\"event_type\":" + payloadEncoder.toJson(boundaryType)
+                        + ",\"payload\":" + payloadEncoder.toJson(payload) + "}");
+                eventCount++;
+            }
+            for (int event = 0; event < 513; event++) {
+                String payload = "{\"targetId\":" + payloadEncoder.toJson(sampleMobEntityId)
+                        + ",\"targetType\":\"MOB\",\"targetHpBefore\":20,\"targetHtBefore\":20"
+                        + ",\"targetPosBefore\":" + (event % 10000) + ",\"targetShieldBefore\":0"
+                        + ",\"targetHp\":19,\"targetHt\":20,\"targetPosAfter\":" + (event % 10000)
+                        + ",\"targetShieldAfter\":0,\"targetBuffsBefore\":\"[]\",\"targetBuffs\":\"[]\""
+                        + ",\"targetMobBundleAfter\":" + payloadEncoder.toJson(sampleMobBundle)
+                        + ",\"sourceType\":\"ENVIRONMENT\",\"sourceClass\":\"com.shatteredpixel.shatteredpixeldungeon.actors.buffs.LifeLink\""
+                        + ",\"nativeActorId\":" + sampleMob.getInt("mobId", 1)
+                        + ",\"nativeMobBundleBefore\":" + payloadEncoder.toJson(sampleMobBundle)
+                        + ",\"nativeMobBundleAfterEvidence\":" + payloadEncoder.toJson(sampleMobBundle)
+                        + ",\"nativeMobRewardClassName\":" + payloadEncoder.toJson(sampleMob.getString("rewardClassName", "com.shatteredpixel.shatteredpixeldungeon.actors.mobs.Rat"))
+                        + ",\"nativeMobRewardEligible\":true,\"nativeMobRewardExp\":" + sampleMob.getInt("rewardExp", 1)
+                        + ",\"nativeMobRewardMaxLevel\":" + sampleMob.getInt("rewardMaxLevel", 1)
+                        + ",\"nativeMobRewardSpawningWeight\":" + sampleMob.getFloat("rewardSpawningWeight", 1f)
+                        + ",\"nativeMobRewardMonkEnergy\":" + sampleMob.getInt("rewardMonkEnergy", 0) + "}";
+                retainedEventRows.add("{\"sequence\":" + eventSequence++
+                        + ",\"sender_id\":" + payloadEncoder.toJson(playerId)
+                        + ",\"event_type\":\"CHAR_DAMAGED\",\"payload\":"
+                        + payloadEncoder.toJson(payload) + "}");
+                eventCount++;
+            }
+        }
+        Assert.assertEquals("The synthetic server database keeps all per-player proof rows", 2060, eventCount);
+        Assert.assertEquals(eventCount, retainedEventRows.size());
+
+        StringBuilder eventsJson = new StringBuilder("[");
+        int replayStart = Math.max(0, retainedEventRows.size() - 200);
+        for (int i = replayStart; i < retainedEventRows.size(); i++) {
+            if (i > replayStart) eventsJson.append(',');
+            eventsJson.append(retainedEventRows.get(i));
+        }
+        eventsJson.append(']');
+        int replayEventCount = retainedEventRows.size() - replayStart;
+        Assert.assertEquals("A full client snapshot includes only the bounded replay window", 200, replayEventCount);
+
+        String fullSnapshotPayload = "{\"sequence\":1,\"seed\":" + Dungeon.seedCurDepth()
+                + ",\"depth\":" + Dungeon.depth + ",\"gameMode\":\"COOP_DUNGEON\",\"players\":"
+                + playersJson + ",\"mobs\":"
+                + levelData.get("mobs").toJson(com.badlogic.gdx.utils.JsonWriter.OutputType.json)
+                + ",\"events\":" + eventsJson + ",\"worldTime\":0,\"level\":" + levelJson + "}";
+        NetworkMessage resyncMessage = new NetworkMessage();
+        resyncMessage.messageType = MessageType.SNAPSHOT;
+        resyncMessage.senderId = "SERVER";
+        resyncMessage.sequence = eventSequence;
+        resyncMessage.payloadJson = fullSnapshotPayload;
+
+        int snapshotBytes = WebSocketFrameCodec.encodeUtf8(levelJson).length;
+        int wireBytes = WebSocketFrameCodec.encodeUtf8(message.toJson()).length;
+        int resyncBytes = WebSocketFrameCodec.encodeUtf8(resyncMessage.toJson()).length;
+        int largestWireBytes = Math.max(wireBytes, resyncBytes);
+        System.out.println("PHASE14A_LEVEL_DATA_SIZE cells=10000 mobs=512 heaps=10000 traps=10000 plants=10000"
+                + " visited=10000 mapped=10000 coopPlayers=4 storedEventRows=" + eventCount + " replayEvents=" + replayEventCount
+                + " snapshotUtf8Bytes=" + snapshotBytes + " levelDataWireUtf8Bytes=" + wireBytes
+                + " resyncWireUtf8Bytes=" + resyncBytes
+                + " limitBytes=" + WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
+        Assert.assertTrue("The complete escaped LEVEL_DATA WebSocket message must fit the configured limit; "
+                        + "wireBytes=" + wireBytes,
+                wireBytes <= WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
+        Assert.assertTrue("The complete escaped SNAPSHOT with four players and retained events must fit; "
+                        + "resyncBytes=" + resyncBytes,
+                resyncBytes <= WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
+        Assert.assertTrue("Both complete server-shaped envelopes must remain below the configured limit",
+                largestWireBytes <= WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD);
+    }
+    @Test
     public void nativeLevelSnapshotIncludesRemoteHeroAndRemoteBuffActorIds() {
         MultiplayerManager manager = MultiplayerManager.getInstance();
         manager.startSession("remote-hero-actor-ids", "client-publisher", new TestTransport());
@@ -4251,10 +4403,13 @@ public class NativeCombatRuntimeIntegrationTest {
         }
 
         private TestLevel() {
-            // Use the game's standard 32x32 pathfinding dimensions. Native combat publication
-            // invokes Level.distance after the real attack; the smaller ad-hoc map left the
-            // static PathFinder distance table at a different size under headless libGDX.
-            setSize(32, 32);
+            this(32, 32);
+        }
+
+        private TestLevel(int width, int height) {
+            // Keep default tests at the standard 32x32 pathfinding size. Snapshot-budget
+            // coverage also constructs 100x100 dimensions accepted by the Worker validator.
+            setSize(width, height);
             transitions = new ArrayList<>();
             mobs = new HashSet<>();
             heaps = new SparseArray<Heap>();

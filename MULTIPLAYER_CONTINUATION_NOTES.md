@@ -2,7 +2,7 @@
 
 Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
-Phase 14-A source/evidence HEAD: `11955c577eec4ebbb09075a7f60263fa72d6d12a`; Phase 13 closeout parent: `ff97f45133e52ccc709ec71266a243e8e62484e4`.
+Current pushed HEAD before the pending payload-test/doc slice: `3c460a44963bac9677dc837a253e0de43f1c1815`; Phase 13 closeout parent: `ff97f45133e52ccc709ec71266a243e8e62484e4`.
 WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
 
 Phase 12 is CLOSED. Phase 13 implementation and local automated acceptance now cover the in-game WndMultiplayerLobby, validated roster, render-thread state routing, native gameplay gate, fail-closed reconnect, abrupt owner socket loss, atomic owner/publisher transfer, all-member READY reset and former-owner authenticated reconnect with token rotation and full roster restoration.
@@ -14,20 +14,21 @@ Phase 13 implementation, automated acceptance, commit/push and exact-head CI are
 
 Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for the detailed boundary. Do not begin Phases 14-16. No Worker production deployment or physical two-device match is claimed.
 
-## Phase 14-A — Internet/WebSocket wire transport (2026-11-18; local automated acceptance PASS, CI pending)
+## Phase 14-A — Internet/WebSocket wire transport (2026-11-18; local full suites and maximum-collection payload regression PASS; final exact-head CI pending)
 
-- **Only working branch:** `multiplayer-framework-core-14118577486727081892`; no new branches, PRs, merges or main/master work.
-- **Phase 13 parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`.
-- **Current source/evidence HEAD:** `11955c577eec4ebbb09075a7f60263fa72d6d12a`. Commit chain: `7fd0bfe3e7d542ebed5493647b3ea3a53bafcc81` (transport foundation), `3d9e111e55d7fd334adc048d3a6e619e6bbc1e59` (HTTP status/credential hardening), `11955c577eec4ebbb09075a7f60263fa72d6d12a` (corrected CRLF test fixtures). Local branch was reset only after confirming its source differed from the GitHub tree by the CRLF escape issue plus a blank line; final local tree is clean and equals origin.
-- **14-A scope:** Worker path `/room/{roomCode}/websocket`, `lifecycle=1`, optional playerId query, Bearer only in Authorization; strict 101/Upgrade/Connection/Sec-WebSocket-Accept validation; canonical 16-byte client key; TLS host verification, explicit connect/upgrade timeouts, credentials rejected on ws://; bounded RFC 6455 frames, fragmentation, strict UTF-8, masks, Ping/Pong and Close.
-- **Security correction:** preserve HTTP 401/403/409 in the rejection error so MultiplayerManager's credential-rejection handling does not retry expired credentials as transient socket loss. Also reject malformed Authorization/header injection and invalid/noncanonical Sec-WebSocket-Key.
-- **Local tests/build:** `:core:test --tests ...InternetTransportProtocolTest` PASS, 17/17; full `gradlew.bat test assembleDebug --no-daemon --console=plain` PASS on HEAD 11955: 57 Gradle tasks (6 executed / 51 up-to-date); 11 core JUnit reports / 158 tests / zero failures, errors or skips. Final Debug APK: 36,949,486 bytes; SHA-256 `A83DCAC35975C328E12423D4A2967C1B870370D72B1992B6B0AB9970A3EDE329`. Android SDK variables and IPv4 Gradle loopback flag were set for this process only; no global environment or `local.properties` was changed.
-- **Docs/test updates:** ROADMAP.md is being updated with the verified local evidence and the remaining exact-head CI gate; TEST_MATRIX.md and BUILD_TEST_AND_CI.md must record 17 transport tests and 158 total core tests.
-- **Remaining 14-A gates:** exact-head GitHub Actions on the final source+documentation SHA; measure the 16 MiB frame/message ceiling against the largest supported serialized native level/run snapshot.
-- **14-B NOT STARTED:** manager/callback/reconnect thread safety, render-thread scene/UI, Android network/background/screen-off lifecycle and live Worker lifecycle/service smoke tests. Do not begin without explicit user authorization.
-- **WebGPT task:** `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` remains RUNNING/open; never submit or terminate it.
-- **No emulator, production Worker deployment, live service room test or physical-device match is claimed.** Keep emulator available; Phases 20-21 remain the visual and RTL/touch acceptance gates.
-
+- **Only working branch:** `multiplayer-framework-core-14118577486727081892`; do not create branches, PRs, merge, or touch main/master.
+- **Current pushed base HEAD:** `3c460a44963bac9677dc837a253e0de43f1c1815`. Exact-head CI [run 1278 / 44313332223](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44313332223) passed Backend, Android and Durable Object SQLite. npm 11.21.2 corrected the npm 10 Arborist `edgesOut` install exception. Final source/docs changes still need their own exact-head run.
+- **Implementation chain:** `7fd0bfe3e7d542ebed5493647b3ea3a53bafcc81` (transport foundation), `3d9e111e55d7fd334adc048d3a6e619e6bbc1e59` (HTTP status/credential hardening), `11955c577eec4ebbb09075a7f60263fa72d6d12a` (CRLF fixture correction), `3c460a44963bac9677dc837a253e0de43f1c1815` (npm 11 CI runner install).
+- **14-A scope:** Worker path `/room/{roomCode}/websocket`, `lifecycle=1`, optional playerId query, Bearer only in Authorization; strict 101/Upgrade/Connection/Sec-WebSocket-Accept validation; canonical 16-byte client key; TLS hostname verification, connect/upgrade timeouts, credentials rejected on ws://; bounded RFC 6455 frames, fragmentation, strict UTF-8, masks, Ping/Pong and Close.
+- **Security corrections:** preserve HTTP 401/403/409 rejection status so expired credentials are not retried as transient socket loss; reject malformed Authorization/header injection and invalid/noncanonical Sec-WebSocket-Key; enforce 8 KiB handshake header-line boundary.
+- **Actual SNAPSHOT overflow fix:** full snapshot builders previously copied every row in the events table, including validation-only LifeLink `CHAR_DAMAGED` evidence. Central `MatchRoomBase.replayWindowEvents()` now returns only the newest 200 rows, ordered ascending, for the four client full-snapshot paths (`actions.ts`, `lifecycle.ts`, `messages.ts`, `snapshots.ts`). This never deletes SQLite evidence rows. `lifelink-death.integration.test.ts` adds a RESYNC regression: a 515-row DB yields a 200-row SNAPSHOT event window and still retains all 515 rows in SQLite.
+- **Stress test:** `NativeCombatRuntimeIntegrationTest.nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings` passes 1/1. It covers 100×100 cells, 512 mobs, 10,000 heaps, 10,000 traps, 10,000 plants, 10,000 visited/mapped positions, 4 co-op players, 2,060 retained DB rows, and 200 transmitted replay events. UTF-8 sizes: inner native level JSON **13,631,699** bytes; full escaped `LEVEL_DATA` **14,613,062** bytes; full escaped recovery `SNAPSHOT` **15,664,067** bytes; client cap **16,777,216** bytes; headroom **1,113,149** bytes (~6.64%).
+- **Local verification:** Android `gradlew.bat test assembleDebug --no-daemon --console=plain` — BUILD SUCCESSFUL, 57 tasks, 11 JUnit reports / 159 tests / 0 failures/errors/skips. Debug APK 36,949,480 bytes; SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`. Backend `npm test` — 373 passed across 5 files; `npm run build` / tsc passed.
+- **Measurement boundary:** fixture reaches maximum server-accepted dimensions and collection counts but uses representative native Bundles; it does not maximize each individual Bundle or all heap item arrays. No aggregate byte ceiling covers every legal combination. Tested fixture compatibility is PASS; universal worst-case size guarantee remains NOT PROVEN. Do not raise the Android 16 MiB cap as a shortcut; keep aggregate-cap/chunking policy open.
+- **Next action:** complete diff audit, commit test/server fix/docs together on this branch, push and verify all three CI jobs on the exact new SHA. Run 1278 only covers pushed base `3c460a4`.
+- **14-B NOT STARTED:** manager/callback/reconnect thread safety, render-thread UI, Android network/background/screen-off lifecycle and live Worker service smoke tests. Do not start without explicit authorization.
+- **WebGPT task:** `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` must remain RUNNING/open; never submit/terminate unless explicitly asked.
+- **No production Worker deployment, live service room test, emulator test or physical-device match is claimed.**
 
 ---
 

@@ -106,9 +106,9 @@ This is a focused fail-closed regression suite for native pickup callbacks that 
 
 ### InternetTransportProtocolTest.java — Phase 14-A suite (17 tests; PASS)
 
-Local execution on source/evidence HEAD `11955c577eec4ebbb09075a7f60263fa72d6d12a`:
+Local execution on the working tree based on pushed base `3c460a44963bac9677dc837a253e0de43f1c1815` (payload-size regression included):
 - Focused Gradle `:core:test --tests ...InternetTransportProtocolTest`: BUILD SUCCESSFUL, 17 tests, zero failures/errors/skips.
-- Full Gradle `test assembleDebug`: BUILD SUCCESSFUL; 11 core JUnit XML reports / 158 tests / zero failures/errors/skips.
+- Full Gradle `test assembleDebug`: BUILD SUCCESSFUL; 11 core JUnit XML reports / 159 tests / zero failures/errors/skips.
 
 Coverage:
 - RFC 6455 sample Sec-WebSocket-Accept digest and complete Authorization/upgrade request shape;
@@ -121,9 +121,13 @@ Coverage:
 - text fragmentation with interleaved PING, invalid continuation/binary messages, strict UTF-8/UTF-16, client masking and CLOSE code/reason rules;
 - localhost mock peer that exercises HTTP 101 upgrade, two PING/PONG exchanges, fragmented SESSION delivery and graceful CLOSE echo.
 
-**Evidence boundary:** the local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head Actions on the final source+documentation SHA remain pending; no live Worker deployment/service smoke test is claimed.
+**Native payload budget regression — additional method in this class:** `nativeLevelSnapshotFitsWebSocketBudgetAtServerValidationCeilings` stresses a 100×100 (10,000-cell) level with 512 mobs, 10,000 heaps/traps/plants, all visited/mapped positions, four co-op players, 2,060 retained DB event rows and the newest 200 transmitted replay rows. It measures the real escaped UTF-8 `NetworkMessage.toJson()` envelopes against `MAX_MESSAGE_PAYLOAD` (16 MiB). Local result: **13,631,699-byte** inner level JSON; **14,613,062-byte** `LEVEL_DATA`; **15,664,067-byte** complete `SNAPSHOT`; **1,113,149-byte** remaining headroom; 1 test / 0 failures. This proves the tested maximum-dimension/collection fixture fits, not the absolute theoretical maximum of every legal native Bundle/item combination: there is no aggregate serialized-byte cap for all allowed per-entity values.
 
-### NativeCombatRuntimeIntegrationTest.java — 46 tests
+**Server replay-window regression:** `server/src/match-room/lifelink-death.integration.test.ts` now checks RESYNC with 515 stored rows: the full SNAPSHOT exposes only the newest 200 in ascending order, while all 515 remain in SQLite for LifeLink validation. The same helper is used by all four event-bearing server full-snapshot builders. Focused suite PASS (48 tests); full Backend `npm test` PASS (373 tests across 5 files) and `npm run build` / tsc PASS.
+
+**Evidence boundary:** The local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head Actions run 1278 passes the pushed base 3c460a44963bac9677dc837a253e0de43f1c1815; CI for the pending source/test/docs commit remains required. No live Worker deployment/service smoke test is claimed.
+
+### NativeCombatRuntimeIntegrationTest.java — 79 tests
 
 Coverage includes:
 - Hero Buff tick capture and audited flavour expiry;
@@ -165,11 +169,11 @@ The test method names and exact current methods are in core/src/test/java/com/sh
 | NativeCombatAuthorityPolicyTest.java | 3 | Local attacker, target-owner delegated authority, invalid/inactive authority |
 | NativeItemNpcInteractionPolicyTest.java | 5 | Shopkeeper path, ring knowledge side effects, potion preflight, compound pickup rejection, NPC reward/transform rejection |
 
-Total across these six multiplayer test classes: 65 source test methods.
+Total across these six multiplayer test classes: 98 source test methods (79 native runtime + 19 identity/metadata/policy).
 
 ## 5. Mapping tests to roadmap phases
 
-- **Phase 14-A:** `InternetTransportProtocolTest.java` (17 tests; PASS locally): handshake/status/credential rules, RFC 6455 framing, masking, fragmentation, UTF-8, control frames and localhost mock peer. Full local core total at the Phase 14-A checkpoint: 158/158 across 11 JUnit reports. CI proof remains exact-SHA-specific.
+- **Phase 14-A:** `InternetTransportProtocolTest.java` (17 tests; PASS locally): handshake/status/credential rules, RFC 6455 framing, masking, fragmentation, UTF-8, control frames and localhost mock peer. The new payload-budget method is included in the full 159-test baseline across 11 JUnit reports; its focused execution also passes 1/1. CI proof remains exact-SHA-specific.
 
 - Phase 14-A: `InternetTransportProtocolTest.java` (strict HTTP upgrade, RFC 6455 frame/fragment/control behavior and localhost mock peer). It complements, but does not replace, a live Worker service smoke test, which remains in Phase 14-B.
 

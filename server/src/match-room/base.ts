@@ -54,6 +54,18 @@ export class MatchRoomBase {
         AND sequence NOT IN (SELECT sequence FROM protected_events)
     `, MAX_RETAINED_LIFELINK_DAMAGE_EVENTS_PER_PLAYER, MAX_REPLAY_WINDOW_EVENTS);
   }
+  /**
+   * Returns only the bounded client replay window. Older protected LifeLink evidence remains
+   * in SQLite for server-side validation, but is not replay history and must not inflate SNAPSHOT.
+   */
+  protected replayWindowEvents(): any[] {
+    const newestFirst = this.sql.exec(
+      "SELECT sequence, sender_id, event_type, payload FROM events ORDER BY sequence DESC LIMIT ?",
+      MAX_REPLAY_WINDOW_EVENTS
+    ).toArray();
+    return newestFirst.reverse();
+  }
+
   constructor(state: DurableObjectState) {
     this.state = state;
     this.sql = state.storage.sql;

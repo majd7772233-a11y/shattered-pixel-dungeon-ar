@@ -927,7 +927,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         const initialRoomSnapshot = this.isRoomLifecycleEnabled() && this.gameStatus === "LOBBY" && !isNativeWorldTurn && !isNativeWorldMutation && !isPublisherRebase && !initialRoomSnapshotMarker && hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot());
         if (isNativeWorldTurn || isNativeWorldMutation || initialRoomSnapshot) {
           // Broadcast the complete server-committed world to peers, not a guessed delta.
-          const events = this.sql.exec("SELECT sequence,sender_id,event_type,payload FROM events ORDER BY sequence ASC").toArray();
+          const events = this.replayWindowEvents();
           const connectedPlayerIds = this.connectedPlayerIds();
           const players = this.sql.exec("SELECT player_id,class_name,pos,hp,ht,ready,state FROM players").toArray()
             .filter((player: any) => connectedPlayerIds.has(String(player.player_id))).map((player: any) => {
