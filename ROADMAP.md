@@ -762,7 +762,7 @@ Acceptance for 14-A:
 - [x] Verify local backend (380/380), real Durable Object SQLite (17/17), Android/JVM (159/159) and Debug APK build.
 
 ### Phase 14-B - Session lifecycle, Android threading and network transitions
-**Status:** IN PROGRESS - 14-B1 (callback/transport generation safety) is implemented and locally verified. Phase 14-B remains OPEN; render-thread dispatch, Android lifecycle/network transitions and live Worker smoke are still outstanding.
+**Status:** IN PROGRESS - 14-B1 (callback/transport generation safety) is implemented and locally verified; exact-head CI run 44391529189 passed all 3 jobs on d9bff9e0aa8b5b3be7b34c2e7f9bb7a201c8d609. Phase 14-B remains OPEN; render-thread dispatch, Android lifecycle/network transitions and live Worker smoke are still outstanding.
 Scope:
 - [x] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe (14-B1).
 - [x] Add deterministic manager/callback regressions for session replacement, stale SESSION delivery and cancellation during HTTP Upgrade (14-B1).

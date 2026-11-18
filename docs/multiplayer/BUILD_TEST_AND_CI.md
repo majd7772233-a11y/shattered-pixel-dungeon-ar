@@ -343,3 +343,11 @@ This record supersedes the previous lobby checkpoint for current local verificat
 - git diff --check: PASS after final documentation and source review. TypeScript-generated .js mirrors were removed from the worktree after testing; .ts sources and .mjs Durable Object test remain the maintained source files.
 - Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] completed SUCCESS on fbf46ef15a1ec4554710a43894cfa4969c3176a7: Backend typecheck/tests, Android JVM tests + Debug APK compile, and Durable Object SQLite rollback/eviction all passed.
 - Manual emulator UI/touch/layout acceptance: NOT_RUN by explicit user request; emulator remains available. Move visible lobby flow to Phase 20 and RTL/touch/layout checks to Phase 21. No production Worker deployment or physical two-device test is claimed.
+
+
+## Phase 14-B1 exact-head CI - 2026-11-18
+
+- Commit: `d9bff9e0aa8b5b3be7b34c2e7f9bb7a201c8d609` — Harden WebSocket session lifecycle for Phase 14-B1.
+- GitHub Actions run [44391529189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44391529189) completed with **3/3 jobs successful**: Backend typecheck/tests, Android debug APK compile and Durable Object SQLite rollback/eviction.
+- This exact-head CI result complements the forced local Android run (57 tasks; 161 JUnit tests; zero failures/errors/skips; APK 35,210,270 bytes, SHA-256 `C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18`).
+- CI does not deploy the Worker or prove a hosted room smoke, Android background/network transition, emulator UI or physical-device match; those remain open.
