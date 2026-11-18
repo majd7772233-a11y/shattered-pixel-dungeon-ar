@@ -2,7 +2,7 @@
 
 Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
-Phase 14-A starting parent: `ff97f45133e52ccc709ec71266a243e8e62484e4` (verified local/origin HEAD before this slice).
+Phase 14-A source/evidence HEAD: `11955c577eec4ebbb09075a7f60263fa72d6d12a`; Phase 13 closeout parent: `ff97f45133e52ccc709ec71266a243e8e62484e4`.
 WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
 
 Phase 12 is CLOSED. Phase 13 implementation and local automated acceptance now cover the in-game WndMultiplayerLobby, validated roster, render-thread state routing, native gameplay gate, fail-closed reconnect, abrupt owner socket loss, atomic owner/publisher transfer, all-member READY reset and former-owner authenticated reconnect with token rotation and full roster restoration.
@@ -14,17 +14,19 @@ Phase 13 implementation, automated acceptance, commit/push and exact-head CI are
 
 Read `docs/multiplayer/PHASE13_ROOM_SESSION_LIFECYCLE.md` for the detailed boundary. Do not begin Phases 14-16. No Worker production deployment or physical two-device match is claimed.
 
-## Phase 14-A — Internet/WebSocket wire transport (2026-11-18; IN PROGRESS)
+## Phase 14-A — Internet/WebSocket wire transport (2026-11-18; local automated acceptance PASS, CI pending)
 
-- **Only working branch:** `multiplayer-framework-core-14118577486727081892`; do not create branches, PRs or merges and do not work on main/master.
-- **Parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`.
-- **Phase split:** 14-A = Worker endpoint/upgrade contract, secure TLS and timeout setup, RFC 6455 frame/mask/fragmentation/UTF-8/control-frame validation and deterministic localhost tests. 14-B = session-manager/callback/reconnect concurrency, render-thread UI, Android network/background/screen-off and service-level Worker smoke tests. Do not begin 14-B without explicit user authorization.
-- **Implementation sources prepared:** `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/WebSocketHandshake.java`, `WebSocketFrameCodec.java`, and updated `InternetTransport.java`; planned test file: `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java`.
-- **Recovery note:** the interrupted local write left the local `InternetTransport.java` incomplete. The full intended source was saved as Git blob `15c76906d8c1e5cccc7a17f9d3fce205e046cc3f`; the full handshake and frame codec blobs are `c2093bbe4cd9f728128a904ad3a021c5d28d1639` and `e7c3798144c4e8c7aad11a2a215fc39c0f5c9cb7`. The local handshake and frame codec have since been restored and verified at 7,200 and 9,678 bytes respectively. The local InternetTransport file still needs restoration from the full blob before testing.
-- **Test blob prepared:** `8339dd91e675dfb90464c0153b0ab47fd03c3319` (20,518 bytes); includes handshake digest/header rejection, frame-length boundaries, strict framing/UTF-8/close checks, client masking and a localhost mock WebSocket peer for upgrade/PING/PONG/fragmented text/CLOSE.
-- **Current evidence:** no Phase 14-A tests or Gradle build have yet run; do not report them as passed. No Phase 14 commit/push or exact-head CI is claimed at this checkpoint.
-- **WebGPT task:** `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` remains RUNNING/open. Do not call submit_result or terminate it.
-- **No emulator use:** Phase 20/21 emulator checks remain deferred. No production Worker deployment or physical-device multiplayer session is claimed.
+- **Only working branch:** `multiplayer-framework-core-14118577486727081892`; no new branches, PRs, merges or main/master work.
+- **Phase 13 parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`.
+- **Current source/evidence HEAD:** `11955c577eec4ebbb09075a7f60263fa72d6d12a`. Commit chain: `7fd0bfe3e7d542ebed5493647b3ea3a53bafcc81` (transport foundation), `3d9e111e55d7fd334adc048d3a6e619e6bbc1e59` (HTTP status/credential hardening), `11955c577eec4ebbb09075a7f60263fa72d6d12a` (corrected CRLF test fixtures). Local branch was reset only after confirming its source differed from the GitHub tree by the CRLF escape issue plus a blank line; final local tree is clean and equals origin.
+- **14-A scope:** Worker path `/room/{roomCode}/websocket`, `lifecycle=1`, optional playerId query, Bearer only in Authorization; strict 101/Upgrade/Connection/Sec-WebSocket-Accept validation; canonical 16-byte client key; TLS host verification, explicit connect/upgrade timeouts, credentials rejected on ws://; bounded RFC 6455 frames, fragmentation, strict UTF-8, masks, Ping/Pong and Close.
+- **Security correction:** preserve HTTP 401/403/409 in the rejection error so MultiplayerManager's credential-rejection handling does not retry expired credentials as transient socket loss. Also reject malformed Authorization/header injection and invalid/noncanonical Sec-WebSocket-Key.
+- **Local tests/build:** `:core:test --tests ...InternetTransportProtocolTest` PASS, 17/17; full `gradlew.bat test assembleDebug --no-daemon --console=plain` PASS on HEAD 11955: 57 Gradle tasks (6 executed / 51 up-to-date); 11 core JUnit reports / 158 tests / zero failures, errors or skips. Final Debug APK: 36,949,486 bytes; SHA-256 `A83DCAC35975C328E12423D4A2967C1B870370D72B1992B6B0AB9970A3EDE329`. Android SDK variables and IPv4 Gradle loopback flag were set for this process only; no global environment or `local.properties` was changed.
+- **Docs/test updates:** ROADMAP.md is being updated with the verified local evidence and the remaining exact-head CI gate; TEST_MATRIX.md and BUILD_TEST_AND_CI.md must record 17 transport tests and 158 total core tests.
+- **Remaining 14-A gates:** exact-head GitHub Actions on the final source+documentation SHA; measure the 16 MiB frame/message ceiling against the largest supported serialized native level/run snapshot.
+- **14-B NOT STARTED:** manager/callback/reconnect thread safety, render-thread scene/UI, Android network/background/screen-off lifecycle and live Worker lifecycle/service smoke tests. Do not begin without explicit user authorization.
+- **WebGPT task:** `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` remains RUNNING/open; never submit or terminate it.
+- **No emulator, production Worker deployment, live service room test or physical-device match is claimed.** Keep emulator available; Phases 20-21 remain the visual and RTL/touch acceptance gates.
 
 
 ---

@@ -104,17 +104,24 @@ This is a focused fail-closed regression suite for native pickup callbacks that 
 
 ## 4. Core JVM test files
 
-### InternetTransportProtocolTest.java — Phase 14-A suite (15 authored tests; execution pending)
+### InternetTransportProtocolTest.java — Phase 14-A suite (17 tests; PASS)
 
-Coverage planned in source:
+Local execution on source/evidence HEAD `11955c577eec4ebbb09075a7f60263fa72d6d12a`:
+- Focused Gradle `:core:test --tests ...InternetTransportProtocolTest`: BUILD SUCCESSFUL, 17 tests, zero failures/errors/skips.
+- Full Gradle `test assembleDebug`: BUILD SUCCESSFUL; 11 core JUnit XML reports / 158 tests / zero failures/errors/skips.
+
+Coverage:
 - RFC 6455 sample Sec-WebSocket-Accept digest and complete Authorization/upgrade request shape;
 - positive upgrade response and rejection of wrong status, missing tokens, mismatched/duplicate accept, malformed/folded/oversized headers and unrequested extensions/subprotocols;
-- endpoint path/query preservation and Bearer credential validation;
+- HTTP 401/403/409 response status preservation so expired/rejected sessions remain distinguishable from transient transport failure;
+- canonical Base64 Sec-WebSocket-Key validation and Authorization header-injection rejection;
+- refusal to send a session credential through an insecure `ws://` endpoint;
+- endpoint path/query preservation and confirmation that Bearer session credentials are not included in the URL;
 - server frame payload lengths at 125/126/65,535/65,536 boundaries and rejection of masked, reserved, RSV, non-canonical, oversized and invalid control frames;
 - text fragmentation with interleaved PING, invalid continuation/binary messages, strict UTF-8/UTF-16, client masking and CLOSE code/reason rules;
 - localhost mock peer that exercises HTTP 101 upgrade, two PING/PONG exchanges, fragmented SESSION delivery and graceful CLOSE echo.
 
-**Evidence boundary:** these 15 test methods are authored but were not executed when this checkpoint was written. Do not add them to verified test totals until focused and full Gradle runs report PASS. A localhost mock proves deterministic client protocol behavior, not production Worker availability, Android network lifecycle or physical-device connectivity.
+**Evidence boundary:** the local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head Actions on the final source+documentation SHA remain pending; no live Worker deployment/service smoke test is claimed.
 
 ### NativeCombatRuntimeIntegrationTest.java — 46 tests
 
@@ -161,6 +168,8 @@ The test method names and exact current methods are in core/src/test/java/com/sh
 Total across these six multiplayer test classes: 65 source test methods.
 
 ## 5. Mapping tests to roadmap phases
+
+- **Phase 14-A:** `InternetTransportProtocolTest.java` (17 tests; PASS locally): handshake/status/credential rules, RFC 6455 framing, masking, fragmentation, UTF-8, control frames and localhost mock peer. Full local core total at the Phase 14-A checkpoint: 158/158 across 11 JUnit reports. CI proof remains exact-SHA-specific.
 
 - Phase 14-A: `InternetTransportProtocolTest.java` (strict HTTP upgrade, RFC 6455 frame/fragment/control behavior and localhost mock peer). It complements, but does not replace, a live Worker service smoke test, which remains in Phase 14-B.
 

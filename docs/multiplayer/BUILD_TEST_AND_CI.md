@@ -4,6 +4,19 @@
 
 This document records commands and workflow configuration inspected at the documentation audit HEAD. It distinguishes local source checks, backend compilation/tests, Android JVM tests/debug APK compilation, live Cloudflare Worker deployment/smoke test, and physical two-device playtest. These are different evidence levels.
 
+## Current Phase 14-A Local Verification — 2026-11-18
+
+This section supersedes older test totals below only for the Phase 14-A transport slice; historical Phase 12/13 evidence remains tied to its original commit and APK SHA.
+
+- **Source/evidence HEAD:** `11955c577eec4ebbb09075a7f60263fa72d6d12a` on `multiplayer-framework-core-14118577486727081892`.
+- **Focused transport command:** `gradlew.bat :core:test --tests com.shatteredpixel.shatteredpixeldungeon.multiplayer.InternetTransportProtocolTest --no-daemon --console=plain` — BUILD SUCCESSFUL; 17 tests, 0 failures/errors/skips.
+- **Full local command:** `gradlew.bat test assembleDebug --no-daemon --console=plain` — **BUILD SUCCESSFUL in 2m 15s**, 57 actionable Gradle tasks (6 executed, 51 up-to-date).
+- **Core JUnit:** 11 XML reports / **158 tests / 0 failures / 0 errors / 0 skipped**. Android `:testDebugUnitTest` is NO-SOURCE; the Java/libGDX JVM tests execute under `:core:test`.
+- **Debug APK:** `android/build/outputs/apk/debug/android-debug.apk`; 36,949,486 bytes; SHA-256 `A83DCAC35975C328E12423D4A2967C1B870370D72B1992B6B0AB9970A3EDE329`.
+- **Environment:** Android SDK was provided to the Gradle process through `ANDROID_HOME` and `ANDROID_SDK_ROOT` = `C:\\Users\\Magd\\AppData\\Local\\Android\\Sdk`; `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true` was process-only to avoid the known local Gradle loopback listener issue. No global Windows variable or repository `local.properties` was changed.
+- **CI boundary:** exact-head branch Actions for this current source/docs SHA are still pending. Local tests do not replace the Backend, Android and Durable Object SQLite jobs on the eventual documentation commit. No production Worker deployment, live service room smoke test, emulator test or physical two-device session is claimed.
+- **Open technical measurement:** compare the configured 16 MiB frame/message ceiling against the largest supported serialized native level/run snapshot before considering that ceiling compatibility-proven.
+
 ## 2. Backend package
 
 Working directory: server/

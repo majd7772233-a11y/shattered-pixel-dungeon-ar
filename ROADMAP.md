@@ -101,14 +101,17 @@ The historical documentation batches established the technical references now in
 - **Boundary:** 25 canonical message values and 23 action values remain unchanged; no protocol schema expansion or native SPD gameplay formula change is claimed. No production Worker deployment or physical two-device session is claimed.
 - **Phase status:** Phases 1-13 are CLOSED for implementation and automated acceptance within their documented support boundaries. Phase 13 delivered lifecycle-v1 room authority, in-game lobby, validated server roster, render-thread message routing, native gameplay gate, abrupt owner-loss handoff, all-member readiness-proof invalidation and authenticated former-owner resume with credential rotation and roster replacement. Local evidence: backend 372 unique TypeScript source scenarios / 744 reported Vitest executions; Durable Object SQLite 17/17; Android core JVM 141/141; full Debug APK build PASS. Exact-head GitHub Actions run 1272 [https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44149425355] passed Backend, Android and Durable Object SQLite on fbf46ef15a1ec4554710a43894cfa4969c3176a7. Emulator-visible host/join/lobby acceptance is deferred to Phase 20 and RTL/touch/layout review to Phase 21. Production Worker deployment remains Phase 22; physical-device playtesting remains Phase 23.
 
-### Current Phase 14-A checkpoint — 2026-11-18 (IN PROGRESS)
+### Current Phase 14-A checkpoint — 2026-11-18 (IN PROGRESS; local acceptance passed)
 
 - **Repository / only working branch:** majd7772233-a11y/shattered-pixel-dungeon-ar / `multiplayer-framework-core-14118577486727081892`.
-- **Starting parent:** `ff97f45133e52ccc709ec71266a243e8e62484e4`; Phases 1–13 remain closed within their prior documented acceptance boundaries.
-- **Authorized slice:** Phase 14-A only. It covers the Internet endpoint/upgrade contract, TLS hostname verification and connection/handshake timeouts, RFC 6455 frame validation/masking/fragmentation/control frames/UTF-8 and bounded payloads, with local deterministic tests.
+- **Phase 14-A source/evidence HEAD:** `11955c577eec4ebbb09075a7f60263fa72d6d12a` (source implementation plus corrected 17-test regression suite). Phase 13 remains closed at its prior documented boundary.
+- **Local verification on the synchronized branch tree:** `gradlew.bat test assembleDebug --no-daemon --console=plain` — **BUILD SUCCESSFUL**, 57 Gradle tasks (6 executed, 51 up-to-date); 11 core JUnit XML files / **158 tests / 0 failures / 0 errors / 0 skipped**. Focused `InternetTransportProtocolTest`: **17/17 PASS**.
+- **Debug APK:** `android/build/outputs/apk/debug/android-debug.apk`, 36,949,486 bytes; SHA-256 `A83DCAC35975C328E12423D4A2967C1B870370D72B1992B6B0AB9970A3EDE329`.
+- **Source security findings fixed:** preserve HTTP 401/403/409 status text for MultiplayerManager's rejected-session path (prevent retrying an expired/rejected token as a transient outage); require canonical Base64 for a 16-byte Sec-WebSocket-Key; reject malformed/injected Authorization values; reject session credentials on insecure `ws://`; enforce the 8 KiB header-line boundary.
+- **Current commit chain:** foundation `7fd0bfe3e7d542ebed5493647b3ea3a53bafcc81`; handshake/status hardening `3d9e111e55d7fd334adc048d3a6e619e6bbc1e59`; corrected CRLF test fixture `11955c577eec4ebbb09075a7f60263fa72d6d12a`.
+- **Remaining 14-A gates:** exact-head GitHub Actions on the final source-and-documentation SHA; measure the 16 MiB cap against the largest supported serialized native level/run snapshot before treating the cap as compatibility-proven.
 - **Explicitly deferred to 14-B:** manager/callback/reconnect thread safety, render-thread scene/UI integration, Android connectivity/background/screen-off handling and service-level Worker lifecycle smoke tests.
-- **Current implementation checkpoint:** strict handshake and frame-codec helper sources, the InternetTransport integration and a localhost transport protocol test suite have been prepared. Local execution, compile/test results, commit SHA and exact-head CI are still pending at this checkpoint; do not mark 14-A complete until those results are recorded.
-- No production Worker deployment, live service smoke test, emulator test or physical-device match is claimed.
+- **Not claimed:** production Worker deployment/live room smoke test, emulator test, or physical-device multiplayer match.
 
 
 ### Historical Phase 10-C continuation checkpoint — 2026-11-14 (superseded by Phase 10-D/10-E and formal Phase 10 closeout)
@@ -726,22 +729,24 @@ This phase is deliberately split at the transport boundary so the wire protocol 
 
 ### Phase 14-A — WebSocket wire transport and protocol correctness
 
-**Status:** IN PROGRESS — implementation and deterministic test suite are being added; local execution and exact-head CI evidence are pending.
+**Status:** IN PROGRESS — implementation and local automated acceptance PASS; exact-head branch CI and the snapshot-size compatibility measurement remain pending.
 
 Scope:
-- [ ] Verify the client endpoint mapping against Worker source: `/room/{roomCode}/websocket`, `lifecycle=1`, optional player identity assertion, and Bearer session credential only in the Authorization header (never in the URL).
-- [ ] Validate the complete RFC 6455 HTTP/1.1 upgrade: status 101, Upgrade/Connection tokens, request key and exact Sec-WebSocket-Accept; reject malformed/duplicate headers, unrequested extensions and protocols.
-- [ ] Harden TCP/TLS setup: explicit connect and upgrade-handshake timeouts, HTTPS hostname verification, and secure-scheme requirement whenever a session token is present.
-- [ ] Implement bounded server-frame parsing and masked client-frame writing, including canonical 7/16/64-bit lengths, RSV/opcode/mask checks, fragmented text assembly, strict UTF-8, interleaved control frames, PING/PONG, CLOSE validation and bounded payload memory.
-- [ ] Add deterministic JUnit tests for the handshake/frame codec and an ephemeral localhost WebSocket peer that exercises the full upgrade, PING/PONG, fragmented message and CLOSE exchange.
-- [ ] Run the focused core JVM suite and full Android test/debug build; verify backend/Worker contract parity and exact-head CI.
+- [x] Verify the client endpoint mapping against Worker source: `/room/{roomCode}/websocket`, `lifecycle=1`, optional player identity assertion, and Bearer session credential only in the Authorization header (never in the URL).
+- [x] Validate the complete RFC 6455 HTTP/1.1 upgrade: status 101, Upgrade/Connection tokens, canonical 16-byte request key and exact Sec-WebSocket-Accept; preserve non-101 HTTP status codes for session rejection handling; reject malformed/duplicate headers, unrequested extensions and protocols.
+- [x] Harden TCP/TLS setup: explicit connect and upgrade-handshake timeouts, HTTPS hostname verification, and secure-scheme requirement whenever a session token is present; localhost tests verify that credentials are refused on `ws://`.
+- [x] Implement bounded server-frame parsing and masked client-frame writing, including canonical 7/16/64-bit lengths, RSV/opcode/mask checks, fragmented text assembly, strict UTF-8, interleaved control frames, PING/PONG, CLOSE validation and bounded payload memory.
+- [x] Add deterministic JUnit tests for the handshake/frame codec and an ephemeral localhost WebSocket peer that exercises the full upgrade, PING/PONG, fragmented message and CLOSE exchange (17/17 PASS).
+- [x] Run focused transport tests and the full Android test/debug build; verify the client endpoint, lifecycle query and Bearer-header admission contract against Worker source.
+- [ ] Verify exact-head GitHub Actions on the final documented source-and-evidence SHA.
 
 Acceptance for 14-A:
-- [ ] A valid local compliant endpoint completes the handshake; invalid/non-101 responses, bad accept values, malformed frames and unsupported data frames fail closed.
-- [ ] Every client frame is masked; server frames are unmasked; fragmentation and interleaved control frames preserve message boundaries.
-- [ ] Frame/message size, UTF-8 and close-code failures are bounded and deterministic; no attacker-controlled length can overflow an allocation.
-- [ ] Bearer credentials never appear in the request URL and are rejected on insecure endpoints.
-- [ ] Local/mock transport tests and exact-head CI pass. A live production Worker smoke test is not claimed by localhost tests.
+- [x] A valid local compliant endpoint completes the handshake; invalid/non-101 responses, bad accept values, malformed frames and unsupported data frames fail closed.
+- [x] Every client frame is masked; server frames are unmasked; fragmentation and interleaved control frames preserve message boundaries.
+- [x] Frame/message size, UTF-8 and close-code failures are bounded and deterministic; no attacker-controlled length can overflow an allocation.
+- [x] Bearer credentials never appear in the request URL and are rejected on insecure endpoints.
+- [ ] Local/mock transport tests and exact-head CI pass. The local/mock test requirement is PASS; exact-head CI is pending. A live production Worker smoke test is not claimed by localhost tests.
+- [ ] Confirm the 16 MiB frame/message ceiling is above the largest supported serialized native level/run snapshot.
 
 ### Phase 14-B — Session lifecycle, Android threading and network transitions
 

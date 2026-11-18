@@ -119,7 +119,7 @@ These files are outside the multiplayer package but part of the feature.
 
 ## 5. Test-file map
 
-- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A handshake/frame boundary suite plus localhost mock WebSocket exchange; 15 authored tests are pending first local execution at this checkpoint.
+- `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/InternetTransportProtocolTest.java` — Phase 14-A strict upgrade/status/credential and frame-boundary suite plus localhost mock WebSocket exchange; 17 tests PASS locally (17/17). Full core test run: 158/158 across 11 JUnit XML reports.
 
 ### Core JVM tests
 

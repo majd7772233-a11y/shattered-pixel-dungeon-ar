@@ -52,11 +52,16 @@ Phase 12 remains closed. Phase 13 is CLOSED for implementation and automated acc
 
 ## Current continuation checkpoint — 2026-11-18 — Phase 14-A IN PROGRESS
 
-Phase 13 remains CLOSED for implementation and automated acceptance at the previous documented boundary. Phase 14 has been divided into two independently accepted slices:
-- **14-A — WebSocket wire transport:** Worker endpoint/upgrade contract, TLS hostname verification and timeouts, strict RFC 6455 frame parsing/writing, masking, fragmentation, UTF-8, control frames and deterministic localhost tests.
-- **14-B — Android/session lifecycle:** manager/callback/retry thread safety, render-thread UI, Android connectivity/background/screen-off handling and service-level Worker lifecycle smoke tests. This slice is not started.
+Phase 13 remains CLOSED for implementation and automated acceptance at its previous documented boundary. Phase 14 is split into two independently accepted slices:
 
-The new transport sources and the 15-test `InternetTransportProtocolTest.java` suite have been prepared. The test suite and Gradle builds have not yet been executed at this checkpoint; consult ROADMAP.md, GPT.md and MULTIPLAYER_CONTINUATION_NOTES.md for the exact working state. Do not mark Phase 14-A complete or claim deployed Worker/physical-device validation until exact test and CI evidence is recorded.
+- **14-A — WebSocket wire transport:** endpoint/Worker source-contract verification, secure upgrade and status handling, TLS hostname verification and timeouts, RFC 6455 frame parsing/writing, masking, fragmentation, UTF-8, control frames and deterministic localhost tests.
+- **14-B — Android/session lifecycle:** manager/callback/retry thread safety, render-thread UI, Android connectivity/background/screen-off handling and live Worker room lifecycle smoke tests. This slice is NOT STARTED.
+
+**14-A local evidence at HEAD `11955c577eec4ebbb09075a7f60263fa72d6d12a`:** 17/17 `InternetTransportProtocolTest` tests passed; full Gradle `test assembleDebug` completed BUILD SUCCESSFUL (57 tasks, 6 executed / 51 up-to-date); 11 JUnit XML reports / 158 core tests / 0 failures / 0 errors / 0 skipped. Debug APK: 36,949,486 bytes; SHA-256 `A83DCAC35975C328E12423D4A2967C1B870370D72B1992B6B0AB9970A3EDE329`.
+
+The client preserves 401/403/409 HTTP status lines for rejected-session handling, validates the canonical 16-byte Sec-WebSocket-Key and Bearer header syntax, and refuses session credentials on insecure `ws://`. Exact-head Actions for the final source+documentation commit are still pending; the 16 MiB payload cap still needs a compatibility comparison against the largest supported serialized native level/run snapshot.
+
+A localhost mock verifies the WebSocket wire path, but it does not establish production Worker availability or a live service smoke test. No production deployment or physical-device connection is claimed. Phase 14-B and emulator visual acceptance remain separate gates.
 
 ## Source-of-truth hierarchy
 
