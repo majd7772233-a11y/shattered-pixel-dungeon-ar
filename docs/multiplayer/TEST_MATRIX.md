@@ -125,7 +125,7 @@ Coverage:
 
 **Server replay-window regression:** `server/src/match-room/lifelink-death.integration.test.ts` now checks RESYNC with 515 stored rows: the full SNAPSHOT exposes only the newest 200 in ascending order, while all 515 remain in SQLite for LifeLink validation. The same helper is used by all four event-bearing server full-snapshot builders. Focused suite PASS (48 tests); full Backend `npm test` PASS (373 tests across 5 files) and `npm run build` / tsc PASS.
 
-**Evidence boundary:** The local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head Actions run 1278 passes the pushed base 3c460a44963bac9677dc837a253e0de43f1c1815; CI for the pending source/test/docs commit remains required. No live Worker deployment/service smoke test is claimed.
+**Evidence boundary:** The local mock proves deterministic client protocol behavior and status/credential regressions; it does not prove production Worker availability, Android network lifecycle, callback-thread safety or physical-device connectivity. Exact-head GitHub Actions [run 1279 / 44329234387](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44329234387) passed all three jobs on `907426a127151dc1acc7517496bd5415a5183526`. No live Worker deployment/service smoke test is claimed. The universal aggregate serialized-size bound remains open.
 
 ### NativeCombatRuntimeIntegrationTest.java — 79 tests
 
