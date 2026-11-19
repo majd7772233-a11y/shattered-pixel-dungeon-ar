@@ -182,7 +182,7 @@ public class MultiplayerSetupScene extends PixelScene {
             transport = bt;
         } else {
             transport = new InternetTransport();
-            endpoint = "https://spd-multiplayer.majd7772233.workers.dev/room/" + roomName + "/websocket";
+            endpoint = InternetTransport.buildRoomEndpoint(roomName);
         }
 
         String playerId = UUID.randomUUID().toString();

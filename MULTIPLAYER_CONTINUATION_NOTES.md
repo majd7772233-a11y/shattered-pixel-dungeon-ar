@@ -1,38 +1,32 @@
-# Current continuation checkpoint - 2026-11-19 (Phase 13 CLOSED; Phase 14-A CLOSED; Phase 14-B2 IN PROGRESS)
+# Current continuation checkpoint - 2026-11-19 (Phase 14-B3 implementation in progress)
 
-Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
-Branch: `multiplayer-framework-core-14118577486727081892`
-WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
+**Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
+**Only working branch:** `multiplayer-framework-core-14118577486727081892`
+**Last commit:** `9fbad79cbecf69c75413e7f01d187fff25befc3c` (branch matched origin before this continuation).
+**WebGPT task:** keep token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open.
 
-Phase 14-A is CLOSED for implementation and automated acceptance. Phase 14-B1 has exact-head CI acceptance (Actions 44391529189). Phase 14-B2 render-thread dispatch is closed on commit `11b5c79d207e21798ff7e441744cb422a43e4d8c`; exact-head Actions run 44487454618 passed 3/3 jobs. Phase 14-B and parent Phase 14 remain OPEN for the next Android network/background/Worker smoke slice (14-B3).
+Phase 14-A is CLOSED. Phase 14-B1 callback/transport lifecycle safety and 14-B2 generation-safe render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 is in progress; parent Phase 14 and 14-B remain OPEN.
 
-## Phase 14-A closeout — 2026-11-18
+## Phase 14-B3 current implementation and local evidence
 
-- **Wire limit:** Android remains at 16 MiB / 16,777,216 bytes. Server full-SNAPSHOT maximum is 15.5 MiB / 16,252,928 UTF-8 bytes, leaving 512 KiB. Nested payload JSON is counted before serialization; final escaped envelope is measured before send.
-- **Atomicity:** LEVEL_DATA, ACTION, JOIN_ROOM, READY, MATCH_START and projected floor transitions preflight their full resulting snapshot before their SQLite transaction or authoritative floor commit. Handshake/reconnect admission also preflights before token rotation or accepting the new connection (HTTP 413 on oversize). Oversize returns SNAPSHOT_TOO_LARGE; no silent truncation or partial commit.
-- **All routes:** LEVEL_DATA peer broadcast, RECONNECT, RESYNC, lifecycle broadcasts and general full snapshots use the canonical builder. Lifecycle-v1 snapshots include connected room members only. Inbound text >16 MiB UTF-8 is rejected before parsing.
-- **Replay:** newest 200 events are sent in ascending order; all SQLite evidence remains. Regression: 515 rows survive while RESYNC sends 200.
-- **Local evidence:** npm test 380/380 (6 files); TypeScript build PASS; real Workers Durable Object SQLite 17/17; Android build PASS with 159/159 core JVM tests (11 reports; zero failures/errors/skips; 57 Gradle tasks). APK SHA-256 `A05D0A2B1FE4A0C8AD36402935594E548222CCF533939DE7DF9355836BE5190C`.
-- **Stress payload:** 100×100 map, 512 mobs, 10,000 heaps/traps/plants/visited/mapped positions, 4 players, 2,060 stored events and 200 transmitted; full SNAPSHOT 15,664,067 bytes, 588,861 below server ceiling and 1,113,149 below Android ceiling.
-- **Size regressions:** exact 15.5 MiB boundary, next-byte rejection, pre-serialization nested payload rejection, JSON/UTF-8 parity for Arabic, accents, emoji, lone surrogates and escaped controls; ACTION rollback and explicit reconnect oversize errors.
-- **Exact-head CI:** final code/test HEAD `0f0d84e24ecbdc3253ae17d6a2d613c4513cac28` passed all three jobs in [Actions run 1285 / 44353955443](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44353955443). The reconnect overflow regression keeps the injected size failure and upgrade request within the same live Durable Object instance.
-- **Not claimed:** no production Worker, hosted live room smoke, emulator UI acceptance or physical-device match.
+- Android minSdk is 21. `AndroidPlatformSupport` watches the active Internet-capable network via `registerNetworkCallback` on API 21–23 and `registerDefaultNetworkCallback` on API 24+. API 23+ additionally requires `NET_CAPABILITY_VALIDATED`; the existing manifest already grants `ACCESS_NETWORK_STATE`.
+- `AndroidLauncher` starts connectivity monitoring during creation, refreshes state on resume, notifies the manager on pause/resume, and unregisters the network callback during destruction.
+- `MultiplayerManager` tracks network availability and app foreground state. Temporary network loss preserves an authenticated session/token, closes the old transport, pauses retries while offline/backgrounded and restarts backoff after recovery. Initial SESSION handshakes have separate pending state and pause their timeout in the background; end/failure/SESSION success clears it.
+- `InternetTransport` sends heartbeat probes on a 15-second cadence, times out after 45 seconds without inbound traffic, and isolates writes from the timeout scheduler. A backpressured socket cannot block `disconnect()`; generation invalidation and socket close are immediate.
+- Room endpoint creation now uses the `spd-multiplayer-backend` Worker configured in `server/wrangler.jsonc`, with the observed account subdomain `magd`. Room codes are trimmed and validated (`[A-Za-z0-9_-]{3,32}`).
+- Added regressions for endSession during the initial handshake, network loss/recovery, background pause/resume, initial-handshake timeout pause, offline session start rejection, room endpoint validation, and disconnect during a backpressured application write.
+- Local Android/JVM evidence: 11 JUnit reports / 172 tests / zero failures, errors or skips. Debug APK 36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
+- Backend was not changed: `npm test` 380 Vitest tests / 6 files PASS; `npm run build` TypeScript PASS.
 
-## Phase 14-B1 - callback and transport lifecycle safety (2026-11-18)
+## Hosted Worker blocker and next acceptance
 
-- Start HEAD: 45dd579c3f7f5638f30f75ebd4e7bc43ff881a42 on the sole permitted branch multiplayer-framework-core-14118577486727081892.
-- Manager: callback transport identity and sessionGeneration are checked and dispatched atomically under the manager monitor. onConnected, onDisconnected, onMessageReceived and onError are synchronized with session transitions. isMultiplayerActive, localPlayerId and sessionToken are volatile for cross-thread readers.
-- Internet transport: each asynchronous TCP/TLS/HTTP Upgrade worker is tagged with a transport generation. Disconnect invalidates even a pre-upgrade attempt, closes the pending TCP/TLS socket, and prevents stale workers from taking ownership of socket/stream fields or delivering late notifications. PONG/CLOSE control frames are generation-scoped. External callbacks run outside the transport monitor to avoid reverse lock ordering with the manager.
-- New tests: MultiplayerReconnectLifecycleTest.transportCallbackWaitsForSessionReplacementAndCannotReviveTheOldSession; InternetTransportProtocolTest.disconnectCancelsAnInFlightHttpUpgradeWithoutLateCallbacks.
-- Verification: forced root test assembleDebug --rerun-tasks --no-daemon --console=plain PASS (57 tasks executed; 11 JUnit XML / 161 tests / zero failures, errors or skips). APK: 35,210,270 bytes; SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
-- Exact-head Actions 44391529189 passed all three jobs on commit d9bff9e0aa8b5b3be7b34c2e7f9bb7a201c8d609. No B1 render-thread migration, network/background/screen-off lifecycle, hosted Worker smoke, emulator UI or physical-device match was claimed at that commit.
-- Phase 14-B2 commit `11b5c79d207e21798ff7e441744cb422a43e4d8c` (2026-11-19): inbound transport messages and disconnect/error callbacks are queued to the libGDX render thread and recheck transport identity/session generation at execution. MessageRouter deferred native/scene actions also recheck generation. The stale queued SESSION regression is included in the 163-test local suite. Full root `test assembleDebug` passed: 57 tasks, 163 tests, zero failures/errors/skips; APK 36,956,011 bytes, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`. Nested render callbacks now inherit the active generation guard through Game.runWithRenderThreadGuard; two B2 race regressions are in the 81-test native integration suite. Exact-head CI run 44487454618 passed all 3 jobs (Backend, Android Debug APK, Durable Object SQLite). B2 is closed; proceed to 14-B3. Keep the task RUNNING/open.
+Cloudflare account subdomain is `magd`; the intended script name from `server/wrangler.jsonc` is `spd-multiplayer-backend`. Before this deployment attempt, the account had no such script; `spd-multiplayer` was a stock Hello World Worker and the configured host returned HTTP 404. The deploy workflow is now wired to the allowed working branch and uses GitHub Actions Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `MAGD_JWT_SECRET`; it runs TypeScript build and backend tests before deploying. The deployment triggered by the unified commit is pending. No live room creation, join, authenticated resume or hosted WebSocket smoke is claimed; those tests are intentionally deferred per the current user instruction.
 
-## Handoff to Phase 14-B2
+Next: get the intended backend deployed through the approved project workflow, run hosted create/join/resume/failure tests, then push the final code+docs SHA and verify exact-head CI. Do not close B3 or parent Phase 14 before those checks pass. No emulator UI, physical-device screen-off test or two-device match was performed; preserve their planned later gates.
 
-Phase 14-B remains IN PROGRESS. The next bounded continuation is 14-B2 (generation-safe render-thread dispatch). Keep the WebGPT task RUNNING/open.
+See `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md` for the maintained detailed evidence.
+
 ---
-
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
@@ -85,9 +79,9 @@ Historical handoff text retained from the Phase 11-A checkpoint; its Phase 12-no
 
 The entries below preserve the evidence and decisions at the time each bounded slice was completed. Statements that Phase 10 remained open or PLAYER_JOINED still used the default route are historical and superseded by the Phase 10-E closeout above.
 
-**Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar  
-**Only working branch:** multiplayer-framework-core-14118577486727081892  
-**Latest implementation/test SHA:** `cc61c68625f587576ca530aef3354bfaffe9e140`  
+**Repository:** majd7772233-a11y/shattered-pixel-dungeon-ar
+**Only working branch:** multiplayer-framework-core-14118577486727081892
+**Latest implementation/test SHA:** `cc61c68625f587576ca530aef3354bfaffe9e140`
 **Exact-HEAD CI:** [43522055301 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43522055301)
 
 ## 2026-11-14 — Phase 9 revalidation and documentation reconciliation

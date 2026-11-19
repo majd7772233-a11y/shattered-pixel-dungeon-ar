@@ -576,3 +576,13 @@ This closes only the 14-B1 manager/callback and InternetTransport-attempt safety
 - `Game.runWithRenderThreadGuard` propagates the validity predicate into nested `Game.runOnRenderThread` callbacks through a thread-local context; the snapshot and remote-sprite nested callbacks inherit the fence without editing `WorldSnapshot.java`.
 - Android connectivity/background/screen-off behavior, live Worker room smoke, emulator UI, and physical-device gameplay remain outside this B2 slice.
 - Exact-head Actions run [44487454618](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44487454618) passed all 3 jobs on `11b5c79d207e21798ff7e441744cb422a43e4d8c`. The CI SQLite suite is not a deployment or live Worker room smoke.
+## Phase 14-B3 — network/background and transport recovery regressions
+
+The current B3 local working tree adds these targeted JVM cases:
+
+- `MultiplayerReconnectLifecycleTest.endSessionClearsAnInFlightInitialHandshake` verifies explicit session end clears initial SESSION-handshake ownership and later foreground transitions cannot revive it.
+- `networkLossPreservesInternetSessionAndDoesNotConsumeRetryBudget`, `backgroundedInternetSessionPausesRetriesUntilForegrounded`, `backgroundedInitialHandshakeTimeoutPausesUntilForegrounded` and `cannotStartInternetSessionWhileNetworkIsKnownOffline` cover offline/background gates, token retention, retry-budget preservation and initial-handshake timer suspension.
+- `InternetTransportProtocolTest.buildsRoomEndpointsFromTheConfiguredWorkerAndNormalizedRoomCode` and `rejectsInvalidRoomCodesBeforeBuildingAWorkerEndpoint` cover the configured host/room contract.
+- `disconnectInterruptsABackpressuredApplicationWrite` stalls a localhost peer during a large application frame and verifies immediate disconnect, blocked-sender release and suppression of a stale write error.
+
+Current local aggregate: 11 JUnit XML reports / 172 tests / 0 failures / 0 errors / 0 skipped. Backend unchanged: 380 Vitest tests across 6 files and TypeScript build passed. These checks do not exercise a deployed room service or an actual Android framework network handoff.

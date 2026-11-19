@@ -762,20 +762,32 @@ Acceptance for 14-A:
 - [x] Verify local backend (380/380), real Durable Object SQLite (17/17), Android/JVM (159/159) and Debug APK build.
 
 ### Phase 14-B - Session lifecycle, Android threading and network transitions
-**Status:** IN PROGRESS - 14-B1 (callback/transport generation safety) is closed with exact-head CI. 14-B2 render-thread dispatch is CLOSED with local verification (163 JVM tests and root `test assembleDebug`) plus exact-head Actions run 44487454618 passing 3/3 jobs on `11b5c79d207e21798ff7e441744cb422a43e4d8c`. Phase 14-B remains OPEN; Android lifecycle/network transitions and live Worker smoke are the next slice.
+**Status:** IN PROGRESS - 14-B1 callback/transport generation safety and 14-B2 render-thread dispatch are CLOSED with exact-head CI. 14-B3 Android network/background recovery and project endpoint wiring are implemented and locally verified (172 JVM tests, root `test assembleDebug`, backend 380 Vitest/TypeScript PASS); hosted Worker smoke and real Android network/background runtime validation remain OPEN. Parent Phase 14-B and Phase 14 remain OPEN.
 Scope:
 - [x] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe (14-B1).
 - [x] Add deterministic manager/callback regressions for session replacement, stale SESSION delivery and cancellation during HTTP Upgrade (14-B1).
 - [x] Queue inbound transport messages and disconnect/error callbacks onto the libGDX render thread; recheck transport identity/session generation when the queued callback executes (14-B2).
 - [x] Guard deferred MessageRouter native/scene actions with the session generation captured when queued; stale work is discarded after endSession/session replacement (14-B2).
 - [x] Marshal callback-caused SESSION/Dungeon.seed, typed MessageRouter native/scene mutations, and disconnect/error state callbacks onto the libGDX render thread with execution-time generation fencing (14-B2).
-- [ ] Handle network changes, temporary offline state, screen-off/background behavior, Android process/activity lifecycle and slow or half-open sockets on supported Android versions.
+- [x] Wire Android connectivity monitoring for API 21+ and Activity create/resume/pause/destroy lifecycle; use default-network callbacks on API 24+ and INTERNET request callbacks on API 21–23.
+- [x] Implement manager offline/background state: preserve authenticated sessions on transient network loss, pause retry/handshake timers, and resume retries after network/foreground recovery; add JVM regressions for offline and background transitions.
+- [x] Add heartbeat timeout isolation from blocked socket writes and immediate generation-invalidating disconnect; cover with a backpressured localhost peer test.
+- [x] Centralize room URL generation on the configured Worker name/account subdomain and validate room codes before connection.
+- [ ] Validate connectivity callback behavior during actual Android network handoff, screen-off and activity recreation on a supported device/runtime.
 - [ ] Add service-level smoke checks for actual Worker room creation/join, authenticated resume and failure visibility.
 Acceptance for 14-B:
 - [x] An old socket/callback cannot change the state of a newer session or revive a closed session (manager callback generation/identity gate; JVM race regression).
 - [x] No callback-caused scene/UI mutation occurs off the render thread; nested runnables inherit the session generation guard.
-- [ ] Network loss/recovery and background transitions preserve or explicitly fail the session without corrupting gameplay authority or replay state.
-- [ ] Service-level tests prove room creation/join and authenticated resume against the intended Worker deployment before physical-device acceptance.
+- [x] JVM manager regressions show network loss/recovery and background transitions preserve the authenticated session/token and pause retries without corrupting session/replay state.
+- [ ] Verify Android framework connectivity callbacks and lifecycle through an actual supported Android runtime network/background cycle.
+- [x] Configure `.github/workflows/deploy-server.yml` to deploy the intended `spd-multiplayer-backend` on pushes to the permitted multiplayer branch, passing Cloudflare account/token and `MAGD_JWT_SECRET` from GitHub Actions Secrets. Verify the resulting deployment run before marking the service deployed.
+- [ ] Service-level tests prove room creation/join and authenticated resume against that intended Worker deployment before physical-device acceptance.
+
+#### 14-B3 — Android network/background recovery and hosted-service wiring (in progress)
+
+Local implementation/evidence: `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`. The current uncommitted working tree passed 172 Android/JVM tests (11 XML reports, zero failures/errors/skips), built the Debug APK (36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`), and retained the unchanged backend result (380 Vitest tests/6 files plus TypeScript build). No exact-head CI exists for this working tree yet.
+
+The expected account host is `spd-multiplayer-backend.magd.workers.dev`, derived from Wrangler's script name and the account's `magd` Workers subdomain. Before this change the script inventory omitted `spd-multiplayer-backend`; `spd-multiplayer` was stock Hello World and the configured host returned HTTP 404. The branch deployment workflow is now configured to publish this script using repository Secrets; the run result is pending. Per the user instruction, hosted create/join/resume smoke is intentionally **deferred** and cannot be counted as accepted. Actual Android framework network/background runtime verification is also not run; current evidence is source wiring and JVM state-machine tests only.
 
 ### Parent Phase 14 acceptance
 - Internet sessions either establish the requested room or report a specific visible failure.

@@ -25,6 +25,10 @@ import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Rect;
 import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkInfo;
+import android.net.NetworkRequest;
 import android.os.Build;
 import android.view.DisplayCutout;
 import android.view.View;
@@ -37,6 +41,7 @@ import com.badlogic.gdx.graphics.g2d.PixmapPacker;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.watabou.noosa.Game;
 import com.watabou.utils.PlatformSupport;
 import com.watabou.utils.RectF;
@@ -46,6 +51,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AndroidPlatformSupport extends PlatformSupport {
+
+    private volatile ConnectivityManager connectivityManager;
+    private ConnectivityManager.NetworkCallback networkCallback;
+    private volatile boolean connectivityMonitoringActive;
 	
 	public void updateDisplaySize(){
 		AndroidLauncher.instance.setRequestedOrientation( SPDSettings.landscape() ?
@@ -184,10 +193,98 @@ public class AndroidPlatformSupport extends PlatformSupport {
 		
 	}
 	
+	public synchronized void startConnectivityMonitoring() {
+        if (AndroidLauncher.instance == null) return;
+        connectivityManager = (ConnectivityManager) AndroidLauncher.instance.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager == null) {
+            connectivityMonitoringActive = false;
+            MultiplayerManager.getInstance().onNetworkAvailabilityChanged(false);
+            return;
+        }
+        if (networkCallback == null) {
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onAvailable(Network network) {
+                    publishConnectivityState();
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    publishConnectivityState();
+                }
+
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                    publishConnectivityState();
+                }
+            };
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    connectivityManager.registerDefaultNetworkCallback(networkCallback);
+                } else {
+                    NetworkRequest request = new NetworkRequest.Builder()
+                            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                            .build();
+                    connectivityManager.registerNetworkCallback(request, networkCallback);
+                }
+            } catch (RuntimeException registrationFailure) {
+                networkCallback = null;
+            }
+        }
+        connectivityMonitoringActive = true;
+        publishConnectivityState();
+    }
+
+    public synchronized void stopConnectivityMonitoring() {
+        connectivityMonitoringActive = false;
+        ConnectivityManager manager = connectivityManager;
+        ConnectivityManager.NetworkCallback callback = networkCallback;
+        networkCallback = null;
+        if (manager != null && callback != null) {
+            try {
+                manager.unregisterNetworkCallback(callback);
+            } catch (RuntimeException ignored) {
+                // The system may already have removed callbacks during activity/process teardown.
+            }
+        }
+        connectivityManager = null;
+    }
+
+    public void refreshConnectivityState() {
+        publishConnectivityState();
+    }
+
+    private void publishConnectivityState() {
+        if (!connectivityMonitoringActive) return;
+        boolean available = isInternetAvailable();
+        if (connectivityMonitoringActive) {
+            MultiplayerManager.getInstance().onNetworkAvailabilityChanged(available);
+        }
+    }
+
+    private boolean isInternetAvailable() {
+        ConnectivityManager manager = connectivityManager;
+        if (manager == null) return false;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network activeNetwork = manager.getActiveNetwork();
+                if (activeNetwork == null) return false;
+                NetworkCapabilities capabilities = manager.getNetworkCapabilities(activeNetwork);
+                return capabilities != null
+                        && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            }
+            NetworkInfo activeNetworkInfo = manager.getActiveNetworkInfo();
+            return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+        } catch (SecurityException permissionFailure) {
+            return false;
+        }
+    }
 	@Override
 	public boolean connectedToUnmeteredNetwork() {
 		//Returns true if using unmetered connection
-		return !((ConnectivityManager) AndroidLauncher.instance.getSystemService(Context.CONNECTIVITY_SERVICE)).isActiveNetworkMetered();
+		ConnectivityManager manager = (ConnectivityManager) AndroidLauncher.instance.getSystemService(Context.CONNECTIVITY_SERVICE);
+		return manager != null && manager.getActiveNetworkInfo() != null && !manager.isActiveNetworkMetered();
 	}
 
 	@Override

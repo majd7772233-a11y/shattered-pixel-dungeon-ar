@@ -42,6 +42,7 @@ import com.badlogic.gdx.graphics.g2d.freetype.FreeType;
 import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.News;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.NewsImpl;
 import com.shatteredpixel.shatteredpixeldungeon.services.updates.UpdateImpl;
@@ -142,6 +143,7 @@ public class AndroidLauncher extends AndroidApplication {
 		else                 support.reloadGenerators();
 		
 		support.updateSystemUI();
+		support.startConnectivityMonitoring();
 
 		Button.longClick = ViewConfiguration.getLongPressTimeout()/1000f;
 		
@@ -161,8 +163,23 @@ public class AndroidLauncher extends AndroidApplication {
 			finishAndRemoveTask();
 		}
 		super.onResume();
+        if (instance == this) {
+            if (support != null) support.refreshConnectivityState();
+            MultiplayerManager.getInstance().onAppForegrounded();
+        }
 	}
 
+	@Override
+	protected void onPause() {
+		if (instance == this) MultiplayerManager.getInstance().onAppBackgrounded();
+		super.onPause();
+	}
+
+	@Override
+	protected void onDestroy() {
+		if (instance == this && support != null) support.stopConnectivityMonitoring();
+		super.onDestroy();
+	}
 	@SuppressLint("GestureBackNavigation")
 	@Override
 	public void onBackPressed() {

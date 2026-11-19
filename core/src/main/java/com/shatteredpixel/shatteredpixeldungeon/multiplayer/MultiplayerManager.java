@@ -44,6 +44,7 @@ public class MultiplayerManager implements TransportCallback {
    private volatile String localPlayerId;
    private volatile String sessionToken;
    private volatile boolean reconnectHandshakePending = false;
+   private volatile boolean initialSessionHandshakePending = false;
    private volatile long lastSequence = 0L;
    private volatile long lastResyncRequestedSequence = -1L;
    private String lastPublishedLevelKey;
@@ -83,6 +84,8 @@ public class MultiplayerManager implements TransportCallback {
    private volatile long roomOperationTimeoutMs = DEFAULT_ROOM_OPERATION_TIMEOUT_MS;
    private volatile long reconnectBaseDelayMs = DEFAULT_RECONNECT_BASE_DELAY_MS;
    private volatile int maxReconnectAttempts = DEFAULT_MAX_RECONNECT_ATTEMPTS;
+   private volatile boolean networkAvailable = true;
+   private volatile boolean appInForeground = true;
    private final Map<String, RemotePlayer> remotePlayers;
    private final Map<String, NetworkMessage> pendingActions;
    private final Map<Integer, String> actorToServerEntityId;
@@ -159,7 +162,8 @@ public class MultiplayerManager implements TransportCallback {
    private synchronized void onSessionHandshakeTimeout(long generation, NetworkTransport transport, boolean reconnecting) {
       if (generation != sessionGeneration || activeTransport != transport) return;
       sessionHandshakeTimeoutTask = null;
-      if (reconnecting) {
+      if (!networkAvailable || !appInForeground) return;
+       if (reconnecting) {
          if (!reconnectHandshakePending || sessionToken == null) return;
          reconnectHandshakePending = false;
          scheduleReconnectRetry("RECONNECT_HANDSHAKE_TIMEOUT");
@@ -171,6 +175,15 @@ public class MultiplayerManager implements TransportCallback {
    }
 
    private synchronized void scheduleReconnectRetry(String reason) {
+      if (!networkAvailable || !appInForeground) {
+         cancelReconnectRetry();
+         reconnectHandshakePending = false;
+         cancelSessionHandshakeTimeout();
+         sessionState = SessionState.RECONNECTING;
+         sessionError = networkAvailable ? "APP_BACKGROUND" : "NETWORK_UNAVAILABLE";
+        notifyRoomLobbyStateChanged();
+         return;
+      }
       if (!isMultiplayerActive || sessionToken == null || sessionGeneration <= 0L) return;
       if (reconnectRetryTask != null && !reconnectRetryTask.isDone()) return;
       if (reconnectAttemptCount >= maxReconnectAttempts) {
@@ -180,7 +193,7 @@ public class MultiplayerManager implements TransportCallback {
          isMultiplayerActive = false;
          sessionState = SessionState.FAILED;
          sessionError = "RECONNECT_ATTEMPTS_EXHAUSTED";
-          RoomLobbyState.touch();
+         notifyRoomLobbyStateChanged();
          NetworkTransport failed = activeTransport;
          activeTransport = null;
          if (failed != null) {
@@ -194,7 +207,7 @@ public class MultiplayerManager implements TransportCallback {
       final long delay = Math.min(reconnectBaseDelayMs * multiplier, 4000L);
       reconnectHandshakePending = false;
       sessionState = SessionState.RECONNECTING;
-       RoomLobbyState.touch();
+       notifyRoomLobbyStateChanged();
       reconnectRetryTask = SESSION_SCHEDULER.schedule(() -> {
          synchronized (MultiplayerManager.this) {
             if (generation != sessionGeneration || !isMultiplayerActive
@@ -214,6 +227,100 @@ public class MultiplayerManager implements TransportCallback {
    long getSessionGeneration() { return sessionGeneration; }
    long getSessionGenerationForTests() { return getSessionGeneration(); }
 
+   private void notifyRoomLobbyStateChanged() {
+      final long generation = sessionGeneration;
+      if (com.badlogic.gdx.Gdx.app == null) {
+         RoomLobbyState.touch();
+      } else {
+         com.watabou.noosa.Game.runOnRenderThread(() -> com.watabou.noosa.Game.runWithRenderThreadGuard(
+                 () -> generation == sessionGeneration, RoomLobbyState::touch));
+      }
+   }
+
+   public void onNetworkAvailabilityChanged(boolean available) {
+      NetworkTransport disconnect = null;
+      synchronized (this) {
+         if (networkAvailable == available) return;
+         networkAvailable = available;
+         if (!available) {
+            if (activeTransport instanceof InternetTransport && sessionToken != null && isMultiplayerActive) {
+               cancelReconnectRetry();
+               cancelSessionHandshakeTimeout();
+               reconnectHandshakePending = false;
+               sessionState = SessionState.RECONNECTING;
+               sessionError = "NETWORK_UNAVAILABLE";
+               disconnect = activeTransport;
+       notifyRoomLobbyStateChanged();
+            } else if (activeTransport instanceof InternetTransport && sessionToken == null
+                    && (sessionState == SessionState.CONNECTING || sessionState == SessionState.TRANSPORT_CONNECTED)) {
+               failInitialSession("NETWORK_UNAVAILABLE");
+            }
+         } else if (sessionToken != null && isMultiplayerActive && activeTransport instanceof InternetTransport
+                 && !activeTransport.isConnected() && appInForeground) {
+            reconnectAttemptCount = 0;
+            scheduleReconnectRetry("NETWORK_AVAILABLE");
+         }
+      }
+      if (disconnect != null) {
+         try { disconnect.disconnect(); } catch (RuntimeException ignored) {}
+      }
+   }
+
+   public synchronized void onAppBackgrounded() {
+      if (!appInForeground) return;
+      appInForeground = false;
+      cancelReconnectRetry();
+      if (reconnectHandshakePending || initialSessionHandshakePending) cancelSessionHandshakeTimeout();
+   }
+
+   public void onAppForegrounded() {
+      NetworkTransport transport;
+      boolean retry;
+      boolean resumeHandshake;
+      synchronized (this) {
+         if (appInForeground) return;
+         appInForeground = true;
+         if (!networkAvailable || !(activeTransport instanceof InternetTransport)) return;
+         transport = activeTransport;
+         if (initialSessionHandshakePending && !transport.isConnected()) {
+            failInitialSession("NETWORK_UNAVAILABLE");
+            return;
+         }
+         if (sessionToken == null && !initialSessionHandshakePending) return;
+         if (!isMultiplayerActive && !initialSessionHandshakePending) return;
+         resumeHandshake = (reconnectHandshakePending || initialSessionHandshakePending) && transport.isConnected();
+         if (reconnectHandshakePending && !transport.isConnected()) {
+            cancelSessionHandshakeTimeout();
+            reconnectHandshakePending = false;
+         }
+         retry = !reconnectHandshakePending && !initialSessionHandshakePending
+                 && (!transport.isConnected() || sessionState == SessionState.RECONNECTING);
+         if (retry) reconnectAttemptCount = 0;
+         if (resumeHandshake) scheduleSessionHandshakeTimeout(sessionGeneration, transport, reconnectHandshakePending);
+      }
+      if (resumeHandshake) {
+         ((InternetTransport) transport).probeNow();
+         return;
+      }
+      if (retry) {
+         if (transport.isConnected()) {
+            try { transport.disconnect(); } catch (RuntimeException ignored) {}
+         }
+         synchronized (this) {
+            if (activeTransport == transport && sessionToken != null && isMultiplayerActive
+                    && networkAvailable && appInForeground && !reconnectHandshakePending) {
+               scheduleReconnectRetry("APP_FOREGROUND");
+            }
+         }
+      } else if (transport.isConnected()) {
+         ((InternetTransport) transport).probeNow();
+      }
+   }
+
+   boolean isNetworkAvailableForTests() { return networkAvailable; }
+   boolean isAppInForegroundForTests() { return appInForeground; }
+   boolean isInitialSessionHandshakePendingForTests() { return initialSessionHandshakePending; }
+   int getReconnectAttemptCountForTests() { return reconnectAttemptCount; }
    synchronized boolean isSessionGenerationCurrent(long generation) {
       return isMultiplayerActive && activeTransport != null && sessionGeneration == generation;
    }
@@ -295,6 +402,9 @@ public class MultiplayerManager implements TransportCallback {
 
    public synchronized void startSession(String roomCode, String initialPlayerId, NetworkTransport transport, boolean createRoom) {
       if (transport == null) throw new IllegalArgumentException("TRANSPORT_REQUIRED");
+      if (transport instanceof InternetTransport && !networkAvailable) {
+         throw new IllegalStateException("NETWORK_UNAVAILABLE");
+      }
       if (roomCode == null || roomCode.trim().isEmpty()) throw new IllegalArgumentException("ROOM_ENDPOINT_REQUIRED");
       if (initialPlayerId == null || initialPlayerId.trim().isEmpty()) throw new IllegalArgumentException("PLAYER_ID_REQUIRED");
       if (sessionState != SessionState.DISCONNECTED && sessionState != SessionState.FAILED) {
@@ -316,6 +426,7 @@ public class MultiplayerManager implements TransportCallback {
       this.roomCode = internet ? buildRoomLifecycleEndpoint(roomCode.trim()) : roomCode.trim();
       this.localPlayerId = initialPlayerId.trim();
       this.sessionToken = null;
+      this.initialSessionHandshakePending = false;
       this.reconnectHandshakePending = false;
       this.levelPublisher = false;
       this.levelPublisherId = null;
@@ -348,6 +459,7 @@ public class MultiplayerManager implements TransportCallback {
       this.roomSeed = 0L;
       this.isMultiplayerActive = !internet;
       this.sessionState = SessionState.CONNECTING;
+      this.initialSessionHandshakePending = internet;
       if (internet) scheduleSessionHandshakeTimeout(sessionGeneration, transport, false);
 
       try {
@@ -357,7 +469,7 @@ public class MultiplayerManager implements TransportCallback {
       }
    }
    public synchronized boolean reconnectInternetSession() {
-      if (!isMultiplayerActive || reconnectHandshakePending || localPlayerId == null || localPlayerId.isEmpty()
+      if (!networkAvailable || !appInForeground || !isMultiplayerActive || reconnectHandshakePending || localPlayerId == null || localPlayerId.isEmpty()
               || sessionToken == null || sessionToken.isEmpty() || roomCode == null
               || !(activeTransport instanceof InternetTransport)) return false;
       String endpoint = buildReconnectEndpoint(roomCode, localPlayerId);
@@ -441,6 +553,7 @@ public class MultiplayerManager implements TransportCallback {
       actorToServerEntityId.clear();
       serverEntityIdToActor.clear();
       sessionToken = null;
+      initialSessionHandshakePending = false;
       reconnectHandshakePending = false;
       reconnectAttemptCount = 0;
       levelPublisher = false;
@@ -638,7 +751,7 @@ public class MultiplayerManager implements TransportCallback {
          pendingRoomOperationTimeouts.remove(requestId);
          if (expired != null) {
             roomLifecycleError = "ROOM_OPERATION_TIMEOUT:" + expired.name();
-            RoomLobbyState.touch();
+         notifyRoomLobbyStateChanged();
          }
       }, roomOperationTimeoutMs, TimeUnit.MILLISECONDS);
       ScheduledFuture<?> previous = pendingRoomOperationTimeouts.put(requestId, timeout);
@@ -655,7 +768,7 @@ public class MultiplayerManager implements TransportCallback {
       message.requestId = UUID.randomUUID().toString();
       message.payloadJson = payload;
       this.pendingRoomOperations.put(message.requestId, type);
-      RoomLobbyState.touch();
+       notifyRoomLobbyStateChanged();
       this.scheduleRoomOperationTimeout(message.requestId, this.sessionGeneration);
       try {
          transport.send(message);
@@ -664,7 +777,7 @@ public class MultiplayerManager implements TransportCallback {
          this.pendingRoomOperations.remove(message.requestId);
          this.cancelRoomOperationTimeout(message.requestId);
          this.roomLifecycleError = failure.getMessage() == null ? "ROOM_OPERATION_SEND_FAILED" : failure.getMessage();
-         RoomLobbyState.touch();
+        notifyRoomLobbyStateChanged();
          return false;
       }
    }
@@ -721,13 +834,13 @@ public class MultiplayerManager implements TransportCallback {
               && this.sessionState != MultiplayerManager.SessionState.PLAYING) {
          if (this.authoritativeSeed != null && this.roomSeed != this.authoritativeSeed) {
             this.roomLifecycleError = "ROOM_SEED_MISMATCH";
-            RoomLobbyState.touch();
+         notifyRoomLobbyStateChanged();
          } else if (this.roomSequence == this.lastSequence) {
             this.roomSnapshotReady = true;
             this.sessionState = this.localRoomReady
                     ? MultiplayerManager.SessionState.READY
                     : MultiplayerManager.SessionState.WORLD_SYNCED;
-            RoomLobbyState.touch();
+         notifyRoomLobbyStateChanged();
          }
       }
    }
@@ -803,7 +916,7 @@ public class MultiplayerManager implements TransportCallback {
             } else if (game != null && game.isString() && "PLAYING".equals(game.asString())) {
                this.roomStatus = "PLAYING";
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
-                RoomLobbyState.touch();
+             notifyRoomLobbyStateChanged();
             } else if (!this.roomMembership) {
                this.sessionState = MultiplayerManager.SessionState.SESSION_BOUND;
             } else if (this.localRoomReady) {
@@ -828,11 +941,11 @@ public class MultiplayerManager implements TransportCallback {
             if (status != null && status.isString() && "PLAYING".equals(status.asString())) {
                this.roomStatus = "PLAYING";
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
-               RoomLobbyState.touch();
+            notifyRoomLobbyStateChanged();
             }
          } catch (RuntimeException var4) {
             this.roomLifecycleError = "INVALID_MATCH_START";
-             RoomLobbyState.touch();
+          notifyRoomLobbyStateChanged();
          }
 
       }
@@ -1290,7 +1403,7 @@ public class MultiplayerManager implements TransportCallback {
                      } else {
                         this.roomLifecycleError = null;
                      }
-                     RoomLobbyState.touch();
+                  notifyRoomLobbyStateChanged();
                   }
                }
 
@@ -1400,7 +1513,8 @@ public class MultiplayerManager implements TransportCallback {
                         Dungeon.seed = this.authoritativeSeed;
                      }
 
-                     this.reconnectHandshakePending = false;
+                     this.initialSessionHandshakePending = false;
+                      this.reconnectHandshakePending = false;
                      this.cancelSessionHandshakeTimeout();
                      this.cancelReconnectRetry();
                      this.reconnectAttemptCount = 0;
@@ -1436,6 +1550,7 @@ public class MultiplayerManager implements TransportCallback {
    }
 
    private synchronized void failInitialSession(String errorCode) {
+      initialSessionHandshakePending = false;
       cancelSessionHandshakeTimeout();
       cancelReconnectRetry();
       clearPendingRoomOperations();

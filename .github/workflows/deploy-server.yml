@@ -5,10 +5,14 @@ on:
     branches:
       - master
       - main
+      - multiplayer-framework-core-14118577486727081892
     paths:
       - 'server/**'
       - '.github/workflows/deploy-server.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
@@ -24,15 +28,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Tests
+      - name: TypeScript build
+        run: npm run build
+
+      - name: Run backend tests
         run: npm test
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server
+          secrets: |
+            MAGD_JWT_SECRET
+        env:
+          MAGD_JWT_SECRET: ${{ secrets.MAGD_JWT_SECRET }}

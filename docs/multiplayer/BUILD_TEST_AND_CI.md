@@ -362,3 +362,17 @@ This record supersedes the previous lobby checkpoint for current local verificat
 - `Game.runWithRenderThreadGuard` propagates session validity into nested `Game.runOnRenderThread` callbacks; the guard uses a project-local interface rather than `java.util.function` to avoid a minSdk API-level dependency.
 - `git diff --check` must be run with CRLF-aware whitespace handling on this Windows worktree; final source/docs review and exact-head Actions are still pending.
 - This is local Android/JVM/APK evidence only. It does not prove deployed Worker room smoke, Android background/network/screen-off behavior, emulator UI, or physical two-device gameplay.
+## Phase 14-B3 local verification and service boundary — 2026-11-19
+
+- Android command: `gradlew.bat test assembleDebug --no-daemon --console=plain`, using process-local `ANDROID_HOME` and `ANDROID_SDK_ROOT` at `C:\Users\Magd\AppData\Local\Android\Sdk`. Current JUnit reports: **11 / 172 tests / 0 failures / 0 errors / 0 skipped**.
+- Debug APK: `android/build/outputs/apk/debug/android-debug.apk`, **36,960,212 bytes**, SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
+- Backend unchanged: `npm test` **380 Vitest tests / 6 files PASS**; `npm run build` TypeScript PASS.
+- Working-tree `git diff --check` passes with CRLF-aware handling. These are local results; there is no exact-head CI result until the final source+documentation commit is pushed.
+- Cloudflare account subdomain is `magd`; configured script name is `spd-multiplayer-backend`. The account script inventory currently lacks that script. The separate `spd-multiplayer` script is the stock Hello World Worker; the configured backend hostname resolves but currently returns HTTP 404. No deployment/remote mutation was performed.
+- Consequently live create-room, join-room, authenticated resume/token rotation and room WebSocket smoke are **NOT RUN**. Source/JVM coverage does not substitute for a hosted Worker test. Actual Android framework network handoff/screen-off/Activity recreation is also not physically tested.
+
+## GitHub Actions Cloudflare deployment credentials
+
+`.github/workflows/deploy-server.yml` accepts pushes to `multiplayer-framework-core-14118577486727081892` and retains production branch/manual dispatch triggers. It maps the repository Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` into Wrangler Action inputs and provisions `MAGD_JWT_SECRET` as a Worker Secret via the action `secrets` input. Secret values never enter source or command-line text. The workflow runs backend `npm ci`, `npm run build` and `npm test` before deploying the script in `server/wrangler.jsonc`.
+
+Current authentication uses an opaque random session token stored/rotated by the Durable Object; `MAGD_JWT_SECRET` is currently not consumed by application code, so provisioning it does not mean JWT signing has been implemented. Hosted room create/join/reconnect smoke is intentionally deferred per the current task instruction.

@@ -24,12 +24,136 @@ public class MultiplayerReconnectLifecycleTest {
     public void setUp() {
         manager = MultiplayerManager.getInstance();
         manager.endSession();
+        manager.onNetworkAvailabilityChanged(true);
+        manager.onAppForegrounded();
     }
 
     @After
     public void tearDown() {
         manager.endSession();
+        manager.onNetworkAvailabilityChanged(true);
+        manager.onAppForegrounded();
         manager.setInternetTransportFactoryForTests(null);
+    }
+
+    @Test
+    public void endSessionClearsAnInFlightInitialHandshake() {
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/end-initial/websocket", "end-initial-player", initial, false);
+        Assert.assertTrue(manager.isInitialSessionHandshakePendingForTests());
+
+        manager.endSession();
+
+        Assert.assertFalse("Ending a session must clear its initial handshake state",
+                manager.isInitialSessionHandshakePendingForTests());
+        manager.onAppBackgrounded();
+        manager.onAppForegrounded();
+        Assert.assertEquals(MultiplayerManager.SessionState.DISCONNECTED, manager.getSessionState());
+        Assert.assertNull(manager.getSessionToken());
+    }
+
+    @Test
+    public void networkLossPreservesInternetSessionAndDoesNotConsumeRetryBudget() throws Exception {
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        RecordingInternetTransport reconnect = new RecordingInternetTransport();
+        manager.setSessionTimingForTests(5000L, 5000L, 5000L, 3);
+        manager.setInternetTransportFactoryForTests(() -> reconnect);
+        manager.startSession("https://example.invalid/room/offline-room/websocket", "offline-player", initial, false);
+        initial.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"offline-player\",\"sessionToken\":\"offline-session-token-0001\","
+                        + "\"sequence\":1,\"seed\":12345}"));
+
+        manager.onNetworkAvailabilityChanged(false);
+
+        Assert.assertFalse(manager.isNetworkAvailableForTests());
+        Assert.assertTrue("Temporary network loss must not end the authenticated session", manager.isMultiplayerActive());
+        Assert.assertEquals("offline-session-token-0001", manager.getSessionToken());
+        Assert.assertEquals(MultiplayerManager.SessionState.RECONNECTING, manager.getSessionState());
+        Assert.assertFalse(initial.isConnected());
+        Thread.sleep(50L);
+        Assert.assertEquals("Offline time must not consume reconnect attempts", 0,
+                manager.getReconnectAttemptCountForTests());
+        Assert.assertFalse("Reconnect must wait for a network-available event", reconnect.isConnected());
+
+        manager.onNetworkAvailabilityChanged(true);
+
+        Assert.assertTrue(manager.isNetworkAvailableForTests());
+        Assert.assertEquals("Network recovery should schedule one fresh attempt", 1,
+                manager.getReconnectAttemptCountForTests());
+        Assert.assertFalse("Reconnect delay should remain cancellable before the attempt starts", reconnect.isConnected());
+    }
+
+    @Test
+    public void backgroundedInternetSessionPausesRetriesUntilForegrounded() throws Exception {
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        RecordingInternetTransport reconnect = new RecordingInternetTransport();
+        manager.setSessionTimingForTests(5000L, 5000L, 5000L, 3);
+        manager.setInternetTransportFactoryForTests(() -> reconnect);
+        manager.startSession("https://example.invalid/room/background-room/websocket", "background-player", initial, false);
+        initial.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"background-player\",\"sessionToken\":\"background-session-token-0001\","
+                        + "\"sequence\":1,\"seed\":12345}"));
+
+        manager.onAppBackgrounded();
+        initial.simulateDisconnect();
+
+        Assert.assertFalse(manager.isAppInForegroundForTests());
+        Assert.assertTrue("Background disconnect must preserve the session", manager.isMultiplayerActive());
+        Assert.assertEquals("background-session-token-0001", manager.getSessionToken());
+        Thread.sleep(50L);
+        Assert.assertEquals("Background time must not consume reconnect attempts", 0,
+                manager.getReconnectAttemptCountForTests());
+        Assert.assertFalse(reconnect.isConnected());
+
+        manager.onAppForegrounded();
+
+        Assert.assertTrue(manager.isAppInForegroundForTests());
+        Assert.assertEquals("Foreground recovery should schedule one fresh attempt", 1,
+                manager.getReconnectAttemptCountForTests());
+    }
+
+    @Test
+    public void backgroundedInitialHandshakeTimeoutPausesUntilForegrounded() throws Exception {
+        manager.setSessionTimingForTests(100L, 5000L, 5000L, 3);
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/background-initial/websocket", "background-initial-player",
+                initial, false);
+        Assert.assertTrue(manager.isInitialSessionHandshakePendingForTests());
+        Assert.assertEquals(MultiplayerManager.SessionState.TRANSPORT_CONNECTED, manager.getSessionState());
+
+        manager.onAppBackgrounded();
+        Thread.sleep(200L);
+
+        Assert.assertFalse(manager.isAppInForegroundForTests());
+        Assert.assertTrue("Background must pause, not fail, an in-flight initial SESSION handshake",
+                manager.isInitialSessionHandshakePendingForTests());
+        Assert.assertEquals(MultiplayerManager.SessionState.TRANSPORT_CONNECTED, manager.getSessionState());
+
+        manager.onAppForegrounded();
+        Assert.assertTrue(manager.isAppInForegroundForTests());
+        Assert.assertTrue(manager.isInitialSessionHandshakePendingForTests());
+        initial.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"background-initial-player\",\"sessionToken\":\"background-initial-token-0001\","
+                        + "\"sequence\":1,\"seed\":12345}"));
+
+        Assert.assertFalse(manager.isInitialSessionHandshakePendingForTests());
+        Assert.assertEquals("background-initial-token-0001", manager.getSessionToken());
+        Assert.assertTrue(manager.isMultiplayerActive());
+    }
+
+    @Test
+    public void cannotStartInternetSessionWhileNetworkIsKnownOffline() {
+        manager.onNetworkAvailabilityChanged(false);
+        RecordingInternetTransport initial = new RecordingInternetTransport();
+        try {
+            manager.startSession("https://example.invalid/room/offline-start/websocket", "offline-start-player",
+                    initial, false);
+            Assert.fail("Internet session must not start while network is unavailable");
+        } catch (IllegalStateException expected) {
+            Assert.assertEquals("NETWORK_UNAVAILABLE", expected.getMessage());
+        }
+        Assert.assertNull(initial.callback);
+        Assert.assertEquals(MultiplayerManager.SessionState.DISCONNECTED, manager.getSessionState());
     }
 
     @Test
@@ -114,6 +238,7 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertFalse(manager.isLocalRoomOwner());
         Assert.assertFalse(manager.areAllRoomMembersReady());
     }
+
     @Test
     public void internetDisconnectAndErrorStartAuthenticatedReconnectWithoutRetryLoops() throws Exception {
         RecordingInternetTransport initial = new RecordingInternetTransport();
@@ -244,6 +369,7 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertEquals(1, guest.sent.size());
         Assert.assertEquals(MessageType.JOIN_ROOM, guest.sent.get(0).messageType);
     }
+
     @Test
     public void roomStateKeepsServerSnapshotAvailabilitySeparateFromLocalSyncAndAllowsUnreadyAgain() {
         RecordingInternetTransport transport = new RecordingInternetTransport();
@@ -283,6 +409,7 @@ public class MultiplayerReconnectLifecycleTest {
         Assert.assertTrue(manager.isRoomGameplayAllowed());
         Assert.assertEquals(MultiplayerManager.SessionState.PLAYING, manager.getSessionState());
     }
+
     @Test
     public void failedInternetLifecycleSessionRemainsBlockedUntilExplicitEndSession() {
         RecordingInternetTransport transport = new RecordingInternetTransport();
@@ -361,6 +488,7 @@ public class MultiplayerReconnectLifecycleTest {
             Dungeon.seed = previousDungeonSeed;
         }
     }
+
     @Test
     public void initialSessionHandshakeTimeoutFailsCleanlyAndLateCallbacksStayIgnored() throws Exception {
         RecordingInternetTransport initial = new RecordingInternetTransport();
@@ -525,6 +653,7 @@ public class MultiplayerReconnectLifecycleTest {
         }
 
         void simulateDisconnect() {
+            connected = false;
             if (callback != null) callback.onDisconnected("simulated network disconnect");
         }
 

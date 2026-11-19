@@ -484,3 +484,14 @@ Phase 11-B baseline inventory: NativeCombatRuntimeIntegrationTest.java had 74 @T
 - The lifecycle-required Internet flag survives handshake/reconnect failure and is cleared only by explicit endSession. Retry exhaustion clears pending room requests and allows local exit instead of trapping the user behind an unacknowledgeable Leave.
 - MultiplayerReconnectLifecycleTest now contains 12 cases. The former-owner reconnect regression retains the player identity, rotates the session token, updates the owner ID to the successor, and applies the complete SESSION_RESUMED roster with connected and offline members. Readiness remains false and gameplay remains blocked until PLAYING.
 - No Android instrumentation or manual emulator rendering/touch test is claimed. By user direction these visible UI checks are deferred to Phases 20-21 and are not Phase 13 blockers.
+
+### Phase 14-B3 — Android connectivity and Activity lifecycle
+
+- `AndroidPlatformSupport.startConnectivityMonitoring()` runs from `AndroidLauncher.onCreate`. It uses `registerDefaultNetworkCallback` on API 24+ and `registerNetworkCallback` with `NET_CAPABILITY_INTERNET` on API 21–23. `isInternetAvailable()` requires both INTERNET and VALIDATED on API 23+; API 21–22 uses the connected active `NetworkInfo` fallback. The project minSdk is 21 and the manifest already includes `ACCESS_NETWORK_STATE`.
+- `AndroidLauncher.onResume()` refreshes active connectivity then calls `MultiplayerManager.onAppForegrounded`; `onPause()` calls `onAppBackgrounded`; `onDestroy()` unregisters the network callback. `stopConnectivityMonitoring()` clears the callback/manager references and tolerates framework teardown races.
+- `MultiplayerManager` pauses reconnect attempts and in-flight SESSION timeout tasks in the background. A temporary network loss after authentication retains `sessionToken` and session state, transitions to RECONNECTING, closes the old socket, and resumes bounded retry after availability returns. The initial pre-SESSION handshake is tracked separately and cleared on end/failure/success.
+- Platform evidence is source/build/JVM-level only. No Android emulator/device network toggle, screen-off or Activity recreation session was run in this slice.
+
+### Phase 14-B3 — Half-open and backpressured sockets
+
+`InternetTransport` heartbeats every 15 seconds and treats 45 seconds without inbound frames as timeout. The scheduler delegates writes to a separate executor, with one pending heartbeat send per transport; it never blocks on socket output. `disconnect()` increments the connection generation, detaches and closes the socket without waiting to enqueue/write a graceful CLOSE frame behind a blocked application write. `InternetTransportProtocolTest.disconnectInterruptsABackpressuredApplicationWrite` uses a localhost peer that stops reading a 15 MiB application frame and proves disconnect returns promptly, releases the sender and suppresses stale send errors.

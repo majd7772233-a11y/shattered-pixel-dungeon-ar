@@ -8,6 +8,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
@@ -24,6 +25,17 @@ public class InternetTransportProtocolTest {
 
     private static final String RFC_SAMPLE_KEY = "dGhlIHNhbXBsZSBub25jZQ==";
     private static final String RFC_SAMPLE_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+
+    @Test
+    public void buildsRoomEndpointsFromTheConfiguredWorkerAndNormalizedRoomCode() {
+        Assert.assertEquals("https://spd-multiplayer-backend.magd.workers.dev/room/ABC_123/websocket",
+                InternetTransport.buildRoomEndpoint(" ABC_123 "));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsInvalidRoomCodesBeforeBuildingAWorkerEndpoint() {
+        InternetTransport.buildRoomEndpoint("BAD ROOM");
+    }
 
     @Test
     public void computesTheRfc6455AcceptDigest() throws Exception {
@@ -367,6 +379,197 @@ public class InternetTransportProtocolTest {
         Assert.assertNull("Mock peer/client failed: " + serverFailure.get(), serverFailure.get());
     }
 
+    @Test
+    public void heartbeatSendsApplicationPingAndClosesHalfOpenConnection() throws Exception {
+        final ServerSocket server = new ServerSocket(0);
+        server.setSoTimeout(5000);
+        final CountDownLatch connected = new CountDownLatch(1);
+        final CountDownLatch pingReceived = new CountDownLatch(1);
+        final CountDownLatch pongReceived = new CountDownLatch(1);
+        final CountDownLatch disconnected = new CountDownLatch(1);
+        final CountDownLatch peerClosed = new CountDownLatch(1);
+        final AtomicReference<Throwable> serverFailure = new AtomicReference<>();
+        final AtomicReference<Throwable> callbackError = new AtomicReference<>();
+
+        Thread peerThread = new Thread(() -> {
+            try (Socket peer = server.accept()) {
+                peer.setSoTimeout(5000);
+                BufferedReader requestReader = new BufferedReader(
+                        new InputStreamReader(peer.getInputStream(), StandardCharsets.US_ASCII));
+                String requestLine = requestReader.readLine();
+                Assert.assertNotNull(requestLine);
+                String key = null;
+                String header;
+                while ((header = requestReader.readLine()) != null && !header.isEmpty()) {
+                    if (header.regionMatches(true, 0, "Sec-WebSocket-Key:", 0, 18)) {
+                        key = header.substring(header.indexOf(':') + 1).trim();
+                    }
+                }
+                Assert.assertNotNull("Client must send Sec-WebSocket-Key", key);
+                DataOutputStream output = new DataOutputStream(peer.getOutputStream());
+                output.write(("HTTP/1.1 101 Switching Protocols\r\n"
+                        + "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                        + "Sec-WebSocket-Accept: " + WebSocketHandshake.expectedAccept(key) + "\r\n\r\n")
+                        .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+
+                DataInputStream peerInput = new DataInputStream(peer.getInputStream());
+                while (true) {
+                    final ClientFrame pingFrame;
+                    try {
+                        pingFrame = readClientFrame(peerInput);
+                    } catch (EOFException closed) {
+                        break;
+                    }
+                    Assert.assertEquals(WebSocketFrameCodec.TEXT, pingFrame.opcode);
+                    NetworkMessage ping = NetworkMessage.parseJson(new String(pingFrame.payload, StandardCharsets.UTF_8));
+                    Assert.assertEquals(MessageType.PING, ping.messageType);
+                    Assert.assertEquals("{}", ping.payloadJson);
+                    pingReceived.countDown();
+                    if (pongReceived.getCount() > 0) {
+                        NetworkMessage pong = new NetworkMessage(MessageType.PING, "{\"pong\":true}");
+                        writeServerTextFrame(output, pong.toJson());
+                    }
+                }
+            } catch (Throwable failure) {
+                serverFailure.set(failure);
+            } finally {
+                peerClosed.countDown();
+                try { server.close(); } catch (IOException ignored) {}
+            }
+        }, "spd-half-open-websocket-peer");
+        peerThread.setDaemon(true);
+        peerThread.start();
+
+        InternetTransport transport = new InternetTransport();
+        transport.setHeartbeatTimingForTests(100L, 1200L);
+        transport.connect("ws://127.0.0.1:" + server.getLocalPort() + "/room/HEARTBEAT/websocket",
+                new TransportCallback() {
+                    @Override public void onConnected() { connected.countDown(); }
+                    @Override public void onDisconnected(String reason) {
+                        Assert.assertTrue("Disconnect reason must identify heartbeat timeout", reason.contains("heartbeat"));
+                        disconnected.countDown();
+                    }
+                    @Override public void onMessageReceived(NetworkMessage message) {
+                        if (message != null && message.messageType == MessageType.PING
+                                && message.payloadJson != null && message.payloadJson.contains("pong")) {
+                            pongReceived.countDown();
+                        }
+                    }
+                    @Override public void onError(Throwable error) { callbackError.set(error); }
+                });
+
+        Assert.assertTrue("WebSocket handshake did not complete", connected.await(5, TimeUnit.SECONDS));
+        Assert.assertTrue("Client did not send its application heartbeat", pingReceived.await(5, TimeUnit.SECONDS));
+        Assert.assertTrue("Client did not receive the server heartbeat response (serverFailure=" + serverFailure.get() + ", callbackError=" + callbackError.get() + ", heartbeatRuns=" + transport.getHeartbeatRunCountForTests() + ", lastIdleMs=" + transport.getLastHeartbeatIdleMsForTests() + ", heartbeatFailure=" + transport.getLastHeartbeatFailureForTests() + ")", pongReceived.await(5, TimeUnit.SECONDS));
+        Assert.assertFalse("A valid PONG must reset the heartbeat idle timer", disconnected.await(75, TimeUnit.MILLISECONDS));
+        Assert.assertTrue("Half-open connection was not detected (runs=" + transport.getHeartbeatRunCountForTests() + ", idleMs=" + transport.getLastHeartbeatIdleMsForTests() + ", timeoutMs=" + transport.getHeartbeatTimeoutForTests() + ", current=" + transport.isLastHeartbeatCurrentForTests() + ", error=" + transport.getLastHeartbeatFailureForTests() + ")", disconnected.await(5, TimeUnit.SECONDS));
+        Assert.assertTrue("Server did not observe the closed socket", peerClosed.await(5, TimeUnit.SECONDS));
+        peerThread.join(2000L);
+        Assert.assertFalse("Half-open peer did not terminate", peerThread.isAlive());
+        Assert.assertNull("Mock peer failed: " + serverFailure.get(), serverFailure.get());
+        Assert.assertNull("Heartbeat should close via disconnect, not an unclassified error", callbackError.get());
+        Assert.assertFalse(transport.isConnected());
+    }
+    @Test
+    public void disconnectInterruptsABackpressuredApplicationWrite() throws Exception {
+        final ServerSocket server = new ServerSocket(0);
+        server.setReceiveBufferSize(1024);
+        server.setSoTimeout(5000);
+        final CountDownLatch connected = new CountDownLatch(1);
+        final CountDownLatch frameStarted = new CountDownLatch(1);
+        final CountDownLatch allowPeerClose = new CountDownLatch(1);
+        final CountDownLatch disconnected = new CountDownLatch(1);
+        final AtomicReference<Throwable> serverFailure = new AtomicReference<>();
+        final AtomicReference<Throwable> callbackError = new AtomicReference<>();
+
+        Thread peerThread = new Thread(() -> {
+            try (Socket peer = server.accept()) {
+                peer.setReceiveBufferSize(1024);
+                BufferedReader requestReader = new BufferedReader(
+                        new InputStreamReader(peer.getInputStream(), StandardCharsets.US_ASCII));
+                Assert.assertNotNull(requestReader.readLine());
+                String key = null;
+                String header;
+                while ((header = requestReader.readLine()) != null && !header.isEmpty()) {
+                    if (header.regionMatches(true, 0, "Sec-WebSocket-Key:", 0, 18)) {
+                        key = header.substring(header.indexOf(':') + 1).trim();
+                    }
+                }
+                Assert.assertNotNull("Client must send Sec-WebSocket-Key", key);
+                DataOutputStream output = new DataOutputStream(peer.getOutputStream());
+                output.write(("HTTP/1.1 101 Switching Protocols\r\n"
+                        + "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                        + "Sec-WebSocket-Accept: " + WebSocketHandshake.expectedAccept(key) + "\r\n\r\n")
+                        .getBytes(StandardCharsets.US_ASCII));
+                output.flush();
+                int firstFrameByte = peer.getInputStream().read();
+                Assert.assertTrue("Client did not begin the large application frame", firstFrameByte >= 0);
+                frameStarted.countDown();
+                allowPeerClose.await(5, TimeUnit.SECONDS);
+            } catch (Throwable failure) {
+                serverFailure.set(failure);
+            } finally {
+                try { server.close(); } catch (IOException ignored) {}
+            }
+        }, "spd-backpressured-websocket-peer");
+        peerThread.setDaemon(true);
+        peerThread.start();
+
+        InternetTransport transport = new InternetTransport();
+        transport.connect("ws://127.0.0.1:" + server.getLocalPort() + "/room/BACKPRESSURE/websocket",
+                new TransportCallback() {
+                    @Override public void onConnected() { connected.countDown(); }
+                    @Override public void onDisconnected(String reason) { disconnected.countDown(); }
+                    @Override public void onMessageReceived(NetworkMessage message) {}
+                    @Override public void onError(Throwable error) { callbackError.set(error); }
+                });
+
+        Assert.assertTrue("WebSocket handshake did not complete", connected.await(5, TimeUnit.SECONDS));
+        final AtomicReference<Throwable> sendFailure = new AtomicReference<>();
+        final String largePayload = "\"" + new String(new char[15 * 1024 * 1024]).replace('\0', 'x') + "\"";
+        Thread sender = new Thread(() -> {
+            try {
+                transport.send(new NetworkMessage(MessageType.CHAT, largePayload));
+            } catch (Throwable failure) {
+                sendFailure.set(failure);
+            }
+        }, "spd-backpressured-application-sender");
+        sender.setDaemon(true);
+        sender.start();
+
+        Assert.assertTrue("Large client frame did not reach the peer", frameStarted.await(5, TimeUnit.SECONDS));
+        Thread.sleep(250L);
+        Assert.assertTrue("Peer backpressure should keep the application write pending", sender.isAlive());
+
+        long disconnectStarted = System.nanoTime();
+        transport.disconnect();
+        long disconnectDurationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - disconnectStarted);
+        allowPeerClose.countDown();
+        sender.join(3000L);
+        peerThread.join(3000L);
+
+        Assert.assertTrue("disconnect() must not wait behind a blocked socket write: "
+                + disconnectDurationMs + "ms", disconnectDurationMs < 1000L);
+        Assert.assertFalse("Closing the socket must release the blocked sender", sender.isAlive());
+        Assert.assertTrue("Disconnect callback must be delivered", disconnected.await(2, TimeUnit.SECONDS));
+        Assert.assertNull("The send was cancelled by disconnect, not an application exception", sendFailure.get());
+        Assert.assertNull("A stale blocked write must not report an active-session error", callbackError.get());
+        Assert.assertFalse(transport.isConnected());
+        Assert.assertNull("Mock peer failed: " + serverFailure.get(), serverFailure.get());
+    }
+    private static void writeServerTextFrame(DataOutputStream output, String text) throws IOException {
+        byte[] payload = text.getBytes(StandardCharsets.UTF_8);
+        output.writeByte(0x81);
+        if (payload.length < 126) {
+            output.writeByte(payload.length);
+        } else {
+            output.writeByte(126);
+            output.writeShort(payload.length);
+        }
+        output.write(payload);
+        output.flush();
+    }
     private static void assertHandshakeRejectedWithStatus(String response, String expectedStatus) {
         try {
             InternetTransport.validateUpgradeResponse(

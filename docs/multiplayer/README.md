@@ -21,16 +21,18 @@ All engineering pages in this set are written in English for consistency with so
 9. SESSION_RECOVERY_AND_SECURITY.md — session token, replay, authority, reconnect, locks, FOV and risk notes.
 10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
+12. PHASE14-B3_ANDROID_NETWORK_RECOVERY.md — current Android network/background lifecycle, heartbeat, endpoint and hosted-service gate evidence.
 
-## Current continuation checkpoint - 2026-11-19 - Phase 14-B2 closed; 14-B3 next
+## Current continuation checkpoint - 2026-11-19 - Phase 14-B3 in progress; hosted Worker smoke blocked
 
-- Phase 14-A is CLOSED for implementation and automated acceptance at its recorded exact-head CI.
-- Phase 14-B1 is closed with exact-head Actions run 44391529189 on d9bff9e0aa8b5b3be7b34c2e7f9bb7a201c8d609. 14-B2 is committed and pushed as `11b5c79d207e21798ff7e441744cb422a43e4d8c` on the same permitted branch; exact-head Actions is pending.
-- Manager safety: transport identity and session generation are validated and dispatched atomically under the manager monitor. Session callback entrypoints share that lock; active/player/token fields read cross-thread are volatile.
-- Internet transport safety: every TCP/TLS/HTTP Upgrade worker is generation-owned. Disconnect invalidates pending and established attempts, closes the active socket, prevents stale workers from installing streams, and suppresses their callbacks. PONG/CLOSE frames are generation-scoped. Callbacks run outside the transport monitor.
-- Local Android verification: forced full test assembleDebug --rerun-tasks completed successfully; 11 JUnit XML reports, 161 tests, zero failures/errors/skips; APK 35,210,270 bytes, SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
-- Not claimed: exact-head CI for 14-B2, Android connectivity/background/screen-off handling, hosted Worker smoke, emulator UI or physical-device multiplayer.
-- Phase 14-B2 closeout: inbound transport messages and disconnect/error callbacks are queued to the libGDX render thread with transport identity + session-generation checks at execution; MessageRouter deferred native/scene actions recheck the generation when they run. A headless regression queues SESSION behind a blocked render thread, ends/replaces the session, and verifies the stale task cannot mutate the replacement. Local full `test assembleDebug` passed after nested guard propagation: 57 actionable tasks (13 executed, 44 up-to-date), 163 JVM tests / zero failures/errors/skips; Debug APK 36,956,011 bytes, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`. Exact-head CI passed: run 44487454618, 3/3 jobs.
+- Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with their documented exact-head CI runs.
+- Phase 14-B3 now contains Android connectivity monitoring, Activity lifecycle hooks, network/background-aware reconnect and handshake handling, half-open/backpressured WebSocket recovery, and a validated project Worker endpoint builder. The parent 14-B and Phase 14 remain OPEN.
+- Android supports API 21+ (`minSdk=21`). Connectivity monitoring uses default-network callbacks on API 24+ and request callbacks on API 21–23; `ACCESS_NETWORK_STATE` was already declared.
+- Local Android/JVM: 11 JUnit XML reports / **172 tests / 0 failures / 0 errors / 0 skipped**; `test assembleDebug` produced a 36,960,212-byte Debug APK (SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`).
+- Backend remains unchanged: `npm test` 380/380 across 6 Vitest files and `npm run build` TypeScript PASS.
+- The pre-deployment inventory lacked `spd-multiplayer-backend`; `spd-multiplayer` was a stock Hello World script and the expected hostname returned 404. `.github/workflows/deploy-server.yml` now targets the allowed working branch and supplies the three GitHub Actions Secrets to Wrangler. The deploy run triggered by the unified commit is pending; live room tests remain deferred by instruction.
+- Detailed B3 evidence and remaining acceptance gates: `PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`.
+- Do not claim live room create/join/resume or close B3 until the intended backend is deployed and hosted smoke passes. Physical-device gameplay remains Phase 23; visual lobby and RTL checks remain Phases 20–21.
 ## Current source-refactor state
 
 The three-stage source refactor is complete for implementation and automated acceptance. Exact-HEAD CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/full tests and Android JVM/debug-APK jobs both succeeded.

@@ -13,13 +13,33 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Internet transport using a strictly validated RFC 6455 WebSocket connection. */
 public class InternetTransport implements NetworkTransport {
     static final int CONNECT_TIMEOUT_MS = 10000;
     static final int HANDSHAKE_TIMEOUT_MS = 10000;
+    private static final ScheduledExecutorService HEARTBEAT_EXECUTOR =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "spd-websocket-heartbeat");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private static final ExecutorService HEARTBEAT_SENDER = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "spd-websocket-heartbeat-send");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final long DEFAULT_HEARTBEAT_INTERVAL_MS = 15000L;
+    private static final long DEFAULT_HEARTBEAT_TIMEOUT_MS = 45000L;
+    public static final String DEFAULT_SERVER_HOST = "spd-multiplayer-backend.magd.workers.dev";
     private static final String DEFAULT_ENDPOINT =
-            "wss://spd-multiplayer.majd7772233.workers.dev/room/DEFAULT_ROOM/websocket";
+            "wss://" + DEFAULT_SERVER_HOST + "/room/DEFAULT_ROOM/websocket";
 
     private Socket socket;
     private DataInputStream in;
@@ -29,6 +49,30 @@ public class InternetTransport implements NetworkTransport {
     /** Incremented whenever an attempt is started or cancelled; stale workers cannot own state. */
     private long connectionGeneration;
     private boolean connectionAttemptActive;
+    private volatile long lastInboundNanos;
+    private volatile int heartbeatRunCount;
+    private volatile long lastHeartbeatIdleMs;
+    private volatile boolean lastHeartbeatCurrent;
+    private volatile String lastHeartbeatFailure;
+    private long heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
+    private long heartbeatTimeoutMs = DEFAULT_HEARTBEAT_TIMEOUT_MS;
+    private ScheduledFuture<?> heartbeatTask;
+    private final AtomicBoolean heartbeatSendPending = new AtomicBoolean(false);
+    private final Object outboundWriteLock = new Object();
+
+    public static String buildRoomEndpoint(String roomCode) {
+        String normalizedRoomCode = roomCode == null ? "" : roomCode.trim();
+        if (!normalizedRoomCode.matches("[A-Za-z0-9_-]{3,32}")) {
+            throw new IllegalArgumentException("INVALID_ROOM_CODE");
+        }
+        return "https://" + DEFAULT_SERVER_HOST + "/room/" + normalizedRoomCode + "/websocket";
+    }
+
+    synchronized void setHeartbeatTimingForTests(long intervalMs, long timeoutMs) {
+        if (connectionAttemptActive) throw new IllegalStateException("Cannot change heartbeat timing while connected");
+        heartbeatIntervalMs = Math.max(10L, intervalMs);
+        heartbeatTimeoutMs = Math.max(heartbeatIntervalMs, timeoutMs);
+    }
 
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
@@ -130,6 +174,7 @@ public class InternetTransport implements NetworkTransport {
                 isConnected = true;
                 connectedCallback = callback;
             }
+            startHeartbeat(generation);
             if (connectedCallback != null) connectedCallback.onConnected();
             listen(generation, connectionIn);
         } catch (Exception failure) {
@@ -146,6 +191,7 @@ public class InternetTransport implements NetworkTransport {
             while (isCurrentConnection(generation)) {
                 WebSocketFrameCodec.Frame frame = WebSocketFrameCodec.readServerFrame(connectionIn);
                 if (!isCurrentConnection(generation)) return;
+                lastInboundNanos = System.nanoTime();
                 if (frame.opcode == WebSocketFrameCodec.PING) {
                     sendControlFrame(generation, WebSocketFrameCodec.PONG, frame.payload);
                     continue;
@@ -177,6 +223,86 @@ public class InternetTransport implements NetworkTransport {
         }
     }
 
+    public void probeNow() {
+        final long generation;
+        synchronized (this) {
+            if (!isConnected || !connectionAttemptActive) return;
+            generation = connectionGeneration;
+        }
+        runHeartbeat(generation);
+    }
+    private void startHeartbeat(long generation) {
+        synchronized (this) {
+            if (!isCurrentAttemptLocked(generation) || !isConnected) return;
+            cancelHeartbeatLocked();
+            lastInboundNanos = System.nanoTime();
+            heartbeatTask = HEARTBEAT_EXECUTOR.scheduleAtFixedRate(
+                    () -> runHeartbeat(generation), heartbeatIntervalMs, heartbeatIntervalMs,
+                    TimeUnit.MILLISECONDS);
+        }
+    }
+
+    private void runHeartbeat(long generation) {
+        heartbeatRunCount++;
+        lastHeartbeatCurrent = isCurrentConnection(generation);
+        if (!lastHeartbeatCurrent) return;
+
+        long idleNanos = System.nanoTime() - lastInboundNanos;
+        lastHeartbeatIdleMs = TimeUnit.NANOSECONDS.toMillis(idleNanos);
+        if (idleNanos >= TimeUnit.MILLISECONDS.toNanos(heartbeatTimeoutMs)) {
+            closeSocketAndNotify(generation, "WebSocket heartbeat timeout");
+            return;
+        }
+
+        // Never perform socket writes on the scheduler thread. A half-open or back-pressured
+        // socket must not block the timer that detects the timeout.
+        if (heartbeatSendPending.compareAndSet(false, true)) {
+            HEARTBEAT_SENDER.execute(() -> {
+                try {
+                    sendHeartbeat(generation);
+                } finally {
+                    heartbeatSendPending.set(false);
+                }
+            });
+        }
+    }
+
+    private void sendHeartbeat(long generation) {
+        try {
+            byte[] payload = WebSocketFrameCodec.encodeUtf8(
+                    new NetworkMessage(MessageType.PING, "{}").toJson());
+            writeFrame(generation, WebSocketFrameCodec.TEXT, payload);
+        } catch (Exception failure) {
+            lastHeartbeatFailure = failure.getClass().getSimpleName() + ": " + failure.getMessage();
+            closeSocketAndNotify(generation, "WebSocket heartbeat send failed");
+        }
+    }
+
+    private boolean writeFrame(long generation, int opcode, byte[] payload) throws IOException {
+        synchronized (outboundWriteLock) {
+            DataOutputStream target;
+            synchronized (this) {
+                if (!isCurrentAttemptLocked(generation) || !isConnected || out == null) return false;
+                target = out;
+            }
+            // Do not hold the transport monitor during I/O: disconnect/timeout must be able
+            // to invalidate the generation and close the socket even if a peer stops reading.
+            WebSocketFrameCodec.writeClientFrame(target, opcode, payload);
+            return true;
+        }
+    }
+
+    int getHeartbeatRunCountForTests() { return heartbeatRunCount; }
+    long getLastHeartbeatIdleMsForTests() { return lastHeartbeatIdleMs; }
+    long getHeartbeatTimeoutForTests() { return heartbeatTimeoutMs; }
+    boolean isLastHeartbeatCurrentForTests() { return lastHeartbeatCurrent; }
+    String getLastHeartbeatFailureForTests() { return lastHeartbeatFailure; }
+
+    private void cancelHeartbeatLocked() {
+        ScheduledFuture<?> pending = heartbeatTask;
+        heartbeatTask = null;
+        if (pending != null) pending.cancel(false);
+    }
     private boolean isCurrentAttempt(long generation) {
         synchronized (this) {
             return isCurrentAttemptLocked(generation);
@@ -236,6 +362,7 @@ public class InternetTransport implements NetworkTransport {
             if (!isCurrentAttemptLocked(generation)) return;
             connectionAttemptActive = false;
             isConnected = false;
+            cancelHeartbeatLocked();
             closeSocketResources();
         }
     }
@@ -245,49 +372,55 @@ public class InternetTransport implements NetworkTransport {
         try { value.close(); } catch (IOException ignored) {}
     }
 
-    private synchronized void sendControlFrame(long generation, int opcode, byte[] payload) throws IOException {
-        if (!isCurrentAttemptLocked(generation) || !isConnected || out == null) return;
-        WebSocketFrameCodec.writeClientFrame(out, opcode, payload);
+    private void sendControlFrame(long generation, int opcode, byte[] payload) throws IOException {
+        writeFrame(generation, opcode, payload);
     }
 
     @Override
     public void send(NetworkMessage message) {
+        final long generation;
+        synchronized (this) {
+            if (!isConnected || !connectionAttemptActive) return;
+            generation = connectionGeneration;
+        }
+
         TransportCallback notify = null;
         Exception sendFailure = null;
-        synchronized (this) {
-            if (!isConnected || out == null) return;
-            try {
-                if (message == null) throw new IllegalArgumentException("Network message is required");
-                byte[] payload = WebSocketFrameCodec.encodeUtf8(message.toJson());
-                if (payload.length > WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD) {
-                    throw new IOException("Outgoing WebSocket message exceeds the 16 MiB limit");
-                }
-                WebSocketFrameCodec.writeClientFrame(out, WebSocketFrameCodec.TEXT, payload);
-            } catch (Exception failure) {
-                sendFailure = failure;
-                notify = callback;
+        try {
+            if (message == null) throw new IllegalArgumentException("Network message is required");
+            byte[] payload = WebSocketFrameCodec.encodeUtf8(message.toJson());
+            if (payload.length > WebSocketFrameCodec.MAX_MESSAGE_PAYLOAD) {
+                throw new IOException("Outgoing WebSocket message exceeds the 16 MiB limit");
             }
+            writeFrame(generation, WebSocketFrameCodec.TEXT, payload);
+        } catch (Exception failure) {
+            sendFailure = failure;
+            notify = callbackIfConnected(generation);
         }
         if (notify != null) notify.onError(sendFailure);
     }
 
     @Override
     public void disconnect() {
-        TransportCallback notify = null;
-        Socket closingSocket;
-        boolean wasConnected;
+        final long generation;
+        final boolean wasConnected;
         synchronized (this) {
+            generation = connectionGeneration;
             wasConnected = isConnected;
-            if (wasConnected && out != null) {
-                try {
-                    WebSocketFrameCodec.writeClientFrame(out, WebSocketFrameCodec.CLOSE,
-                            WebSocketFrameCodec.closePayload(1000, ""));
-                } catch (Exception ignored) {}
-            }
-            // Invalidate the pending TCP/TLS/upgrade worker even when no WebSocket is connected yet.
+        }
+
+        // Do not wait for a graceful CLOSE write: it can queue behind a stalled data/heartbeat
+        // write. Invalidating the generation and closing the socket must always be immediate.
+
+        TransportCallback notify;
+        Socket closingSocket;
+        synchronized (this) {
+            // A newer attempt may have started while disconnect was preparing to invalidate this attempt.
+            if (connectionGeneration != generation) return;
             connectionGeneration++;
             connectionAttemptActive = false;
             isConnected = false;
+            cancelHeartbeatLocked();
             notify = wasConnected ? callback : null;
             closingSocket = socket;
             in = null;
@@ -295,8 +428,7 @@ public class InternetTransport implements NetworkTransport {
             socket = null;
         }
         closeQuietly(closingSocket);
-        // External callbacks must never execute while holding the transport monitor. Manager
-        // reconnect/close operations acquire locks in the opposite order.
+        // External callbacks must never execute while holding the transport monitor.
         if (notify != null) notify.onDisconnected("Disconnected from internet match server");
     }
 
@@ -309,6 +441,7 @@ public class InternetTransport implements NetworkTransport {
             wasConnected = isConnected;
             isConnected = false;
             connectionAttemptActive = false;
+            cancelHeartbeatLocked();
             notify = wasConnected ? callback : null;
             closingSocket = socket;
             in = null;
