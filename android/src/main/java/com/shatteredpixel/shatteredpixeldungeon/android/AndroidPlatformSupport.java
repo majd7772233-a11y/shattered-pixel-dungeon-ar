@@ -30,6 +30,7 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkRequest;
 import android.os.Build;
+import android.util.Log;
 import android.view.DisplayCutout;
 import android.view.View;
 import android.view.WindowInsets;
@@ -47,14 +48,22 @@ import com.watabou.utils.PlatformSupport;
 import com.watabou.utils.RectF;
 
 import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AndroidPlatformSupport extends PlatformSupport {
 
+    private static final String NETWORK_TAG = "SPD_MULTIPLAYER_NETWORK";
+
     private volatile ConnectivityManager connectivityManager;
     private ConnectivityManager.NetworkCallback networkCallback;
     private volatile boolean connectivityMonitoringActive;
+    private volatile long connectivityMonitorGeneration;
+    private volatile Network defaultNetwork;
+    private volatile boolean defaultNetworkValidated;
+    private final Map<Network, Boolean> validatedInternetNetworks = new ConcurrentHashMap<>();
 	
 	public void updateDisplaySize(){
 		AndroidLauncher.instance.setRequestedOrientation( SPDSettings.landscape() ?
@@ -192,8 +201,7 @@ public class AndroidPlatformSupport extends PlatformSupport {
 		});
 		
 	}
-	
-	public synchronized void startConnectivityMonitoring() {
+    public synchronized void startConnectivityMonitoring() {
         if (AndroidLauncher.instance == null) return;
         connectivityManager = (ConnectivityManager) AndroidLauncher.instance.getSystemService(Context.CONNECTIVITY_SERVICE);
         if (connectivityManager == null) {
@@ -202,40 +210,89 @@ public class AndroidPlatformSupport extends PlatformSupport {
             return;
         }
         if (networkCallback == null) {
+            final long callbackGeneration = ++connectivityMonitorGeneration;
             networkCallback = new ConnectivityManager.NetworkCallback() {
+                private boolean isCurrentCallback() {
+                    return callbackGeneration == connectivityMonitorGeneration && networkCallback == this;
+                }
+
                 @Override
                 public void onAvailable(Network network) {
-                    publishConnectivityState();
+                    synchronized (AndroidPlatformSupport.this) {
+                        if (!isCurrentCallback()) return;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            // Track the exact default network; an old active network may remain visible during handoff.
+                            defaultNetwork = network;
+                            defaultNetworkValidated = false;
+                        } else {
+                            validatedInternetNetworks.put(network, false);
+                        }
+                    }
+                    if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Callback: onAvailable");
+                    publishConnectivityState(callbackGeneration);
                 }
 
                 @Override
                 public void onLost(Network network) {
-                    publishConnectivityState();
+                    synchronized (AndroidPlatformSupport.this) {
+                        if (!isCurrentCallback()) return;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            // A late loss for the previous default must not clear its replacement.
+                            if (network.equals(defaultNetwork)) {
+                                defaultNetwork = null;
+                                defaultNetworkValidated = false;
+                            }
+                        } else {
+                            validatedInternetNetworks.remove(network);
+                        }
+                    }
+                    if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Callback: onLost");
+                    publishConnectivityState(callbackGeneration);
                 }
 
                 @Override
                 public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
-                    publishConnectivityState();
+                    boolean validated = hasValidatedInternet(capabilities);
+                    synchronized (AndroidPlatformSupport.this) {
+                        if (!isCurrentCallback()) return;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            if (network.equals(defaultNetwork)) defaultNetworkValidated = validated;
+                        } else {
+                            validatedInternetNetworks.put(network, validated);
+                        }
+                    }
+                    if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Callback: onCapabilitiesChanged");
+                    publishConnectivityState(callbackGeneration);
                 }
             };
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     connectivityManager.registerDefaultNetworkCallback(networkCallback);
+                    if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Registered default network callback");
                 } else {
                     NetworkRequest request = new NetworkRequest.Builder()
                             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                             .build();
                     connectivityManager.registerNetworkCallback(request, networkCallback);
+                    if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Registered INTERNET network callback");
                 }
             } catch (RuntimeException registrationFailure) {
+                if (BuildConfig.DEBUG) Log.e(NETWORK_TAG, "Network callback registration failed", registrationFailure);
+                connectivityMonitorGeneration++;
                 networkCallback = null;
+                defaultNetwork = null;
+                defaultNetworkValidated = false;
+                validatedInternetNetworks.clear();
             }
         }
         connectivityMonitoringActive = true;
-        publishConnectivityState();
+        if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Connectivity monitoring started; API=" + Build.VERSION.SDK_INT);
+        publishConnectivityState(connectivityMonitorGeneration);
     }
 
     public synchronized void stopConnectivityMonitoring() {
+        // Invalidate queued callbacks before unregistering; Activity recreation must not reuse old state.
+        connectivityMonitorGeneration++;
         connectivityMonitoringActive = false;
         ConnectivityManager manager = connectivityManager;
         ConnectivityManager.NetworkCallback callback = networkCallback;
@@ -248,16 +305,21 @@ public class AndroidPlatformSupport extends PlatformSupport {
             }
         }
         connectivityManager = null;
+        defaultNetwork = null;
+        defaultNetworkValidated = false;
+        validatedInternetNetworks.clear();
+        if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Connectivity monitoring stopped");
     }
 
     public void refreshConnectivityState() {
-        publishConnectivityState();
+        publishConnectivityState(connectivityMonitorGeneration);
     }
 
-    private void publishConnectivityState() {
-        if (!connectivityMonitoringActive) return;
+    private synchronized void publishConnectivityState(long generation) {
+        if (!connectivityMonitoringActive || generation != connectivityMonitorGeneration) return;
         boolean available = isInternetAvailable();
-        if (connectivityMonitoringActive) {
+        if (connectivityMonitoringActive && generation == connectivityMonitorGeneration) {
+            if (BuildConfig.DEBUG) Log.d(NETWORK_TAG, "Internet availability=" + available);
             MultiplayerManager.getInstance().onNetworkAvailabilityChanged(available);
         }
     }
@@ -265,20 +327,26 @@ public class AndroidPlatformSupport extends PlatformSupport {
     private boolean isInternetAvailable() {
         ConnectivityManager manager = connectivityManager;
         if (manager == null) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            return defaultNetwork != null && defaultNetworkValidated;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Network activeNetwork = manager.getActiveNetwork();
+            return activeNetwork != null && Boolean.TRUE.equals(validatedInternetNetworks.get(activeNetwork));
+        }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Network activeNetwork = manager.getActiveNetwork();
-                if (activeNetwork == null) return false;
-                NetworkCapabilities capabilities = manager.getNetworkCapabilities(activeNetwork);
-                return capabilities != null
-                        && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                        && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
-            }
             NetworkInfo activeNetworkInfo = manager.getActiveNetworkInfo();
             return activeNetworkInfo != null && activeNetworkInfo.isConnected();
         } catch (SecurityException permissionFailure) {
             return false;
         }
+    }
+
+    private boolean hasValidatedInternet(NetworkCapabilities capabilities) {
+        return capabilities != null
+                && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && (Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                    || capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
     }
 	@Override
 	public boolean connectedToUnmeteredNetwork() {

@@ -17,6 +17,9 @@
 
 This repository is the Arabic Shattered Pixel Dungeon codebase with a multiplayer implementation under active development. It is not the Mineclonia project and does not share Mineclonia's architecture, translation process, scripts, or progress state.
 
+## Current continuation checkpoint — 2026-11-19
+
+Phase 14-A, 14-B1 and 14-B2 are closed. Phase 14-B3 Android connectivity/session code is locally verified, including a monitor-generation fence across Activity monitor teardown/restart. Latest forced Android build/test result: 172/172 JVM tests, 11 JUnit reports, zero failures/errors/skips, and Debug APK compilation SUCCESS. B3 and parent Phase 14 remain open until hosted Worker room-flow acceptance and an actual Android network/background runtime cycle are authorized and passed. No Emulator/ADB app run or hosted room test is claimed by this checkpoint. See `PHASE14-B3_ANDROID_NETWORK_RECOVERY.md` for the evidence and exact APK hash.
 ## 2. Product goal
 
 Deliver genuine multiplayer Shattered Pixel Dungeon gameplay on two or more devices. Participants should enter the same match and experience one coherent native SPD run rather than separate local games that merely exchange player coordinates.

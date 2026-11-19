@@ -19,6 +19,9 @@ Conceptual dependency flow:
 
 Phase 10-E closed the agreed client outer-message route migration: MessageRouter has one explicit route decision for all 25 canonical MessageType values and no generic forwarding fallback to RemotePlayerActionReceiver. PLAYER_JOINED, PLAYER_LEFT and READY have typed render-thread handlers; EVENT_BATCH and SNAPSHOT retain their typed reconciliation paths; PING is transport-only; CHAT is deliberately non-routed on Android without a chat surface. Declared client-to-Worker/placeholder values are explicit non-inbound decisions. This route closure does not mean every message/action enum value is a fully implemented gameplay feature.
 
+## Current Android connectivity boundary — Phase 14-B3 follow-on (2026-11-19)
+
+`AndroidPlatformSupport` owns an Activity-scoped `ConnectivityManager.NetworkCallback`. API 24+ uses the default-network callback and binds validation to the exact reported default Network; API 21–23 register an INTERNET request and track qualifying networks. Every callback captures a monitor generation and verifies both that generation and callback identity before state mutation. Teardown invalidates the generation before unregistering and clearing state. State publication is synchronized with monitor lifecycle, preventing a stopped monitor from issuing a late availability notification. This source/build/JVM evidence is not an Android framework runtime test: the Emulator smoke job was removed from default CI and the manual helper remains gated/deferred.
 ## 2. Build-time module graph
 
 The inspected settings.gradle includes:

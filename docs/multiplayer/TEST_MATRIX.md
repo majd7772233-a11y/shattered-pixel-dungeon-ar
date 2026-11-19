@@ -586,3 +586,11 @@ The current B3 local working tree adds these targeted JVM cases:
 - `disconnectInterruptsABackpressuredApplicationWrite` stalls a localhost peer during a large application frame and verifies immediate disconnect, blocked-sender release and suppression of a stale write error.
 
 Current local aggregate: 11 JUnit XML reports / 172 tests / 0 failures / 0 errors / 0 skipped. Backend unchanged: 380 Vitest tests across 6 files and TypeScript build passed. These checks do not exercise a deployed room service or an actual Android framework network handoff.
+
+## Phase 14-B3 follow-on — Android callback-generation fence (2026-11-19)
+
+- This follow-on changes Android platform adapter code, not the common protocol/Worker contracts. Local forced command `gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain` completed **BUILD SUCCESSFUL** with 58/58 Gradle tasks executed.
+- Current core JVM suite: **11 JUnit XML files / 172 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,219,222 bytes; SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`.
+- Source-level callback fence: callbacks reject stale monitor generation/identity; teardown invalidates the generation before unregister; state publication is serialized with monitor start/stop. Existing `MultiplayerReconnectLifecycleTest` exercises manager offline/background semantics, but the Android framework callback implementation itself has NOT been runtime-exercised in this follow-on.
+- The Emulator smoke helper remains manual and guarded by `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1`; it was NOT run. No app launch, ADB, network handoff, screen-off, Activity recreation, hosted Worker room flow or physical-device match is claimed. These runtime/service acceptance gates remain open.
+- Base exact-head validation before the follow-on is [run 44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) on parent `9904aa120b60f195a2df76b48f901862254ce65f`; rerun exact-head CI after pushing the current source+documentation commit.

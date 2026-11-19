@@ -25,3 +25,6 @@ local.properties
 *.iml
 *.idea
 shattered-pixel-dungeon-ar.zip
+
+# Deferred Android runtime smoke output
+android-network-lifecycle.log

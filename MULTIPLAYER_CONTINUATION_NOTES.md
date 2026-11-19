@@ -1,28 +1,29 @@
-# Current continuation checkpoint - 2026-11-19 (Phase 14-B3 backend deployed; live room tests deferred)
+# Current continuation checkpoint — 2026-11-19 (Phase 14-B3 callback fencing; app/runtime tests deferred)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`
-**Current HEAD:** `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`
+**Follow-up start parent:** `9904aa120b60f195a2df76b48f901862254ce65f`
 **WebGPT task:** keep token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open.
 
-Phase 14-A, 14-B1 and 14-B2 are closed. 14-B3 code and Worker deployment are in place; parent Phase 14 and 14-B3 acceptance remain open pending hosted room flow tests and Android framework runtime validation.
+Phase 14-A, 14-B1 and 14-B2 are closed. Phase 14-B3 Android/session source, local tests/build and backend deployment are in place, but hosted room acceptance and actual Android framework network/background runtime acceptance remain open. Parent Phase 14 remains OPEN.
 
-## Deployment result
+## Android follow-up
 
-- GitHub Actions deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) completed SUCCESS on current HEAD.
-- Deployed URL: `https://spd-multiplayer-backend.magd.workers.dev`
-- Worker: `spd-multiplayer-backend`; Cloudflare script inventory confirms it exists and its modified timestamp is `2026-11-19T14:58:11Z`.
-- Durable Object binding `MATCH_ROOM` is listed in Wrangler deployment output.
-- Version ID: `0285e269-b4fb-415b-bf78-03587851ba6c`.
-- GitHub Actions used `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and uploaded `MAGD_JWT_SECRET` from repository secrets. No secret value was printed.
-- Important authentication distinction: current code does not consume `MAGD_JWT_SECRET`; sessions still use opaque random tokens from `crypto.randomUUID()`, stored and rotated by Durable Object logic. JWT signing/verification is not implemented by this deployment.
-- Deploy pipeline passed TypeScript build and **380 Vitest tests across 6 files** before deploying. Local Android/JVM suite passed **172/172** and built APK with SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
-- Local production dependency audit: 0 vulnerabilities; install audit still reports 6 dev-dependency vulnerabilities (2 moderate, 2 high, 2 critical).
+- `AndroidPlatformSupport` tracks the exact default network on API 24+ and per-network INTERNET callback state on API 21–23; API 23+ also requires VALIDATED capability.
+- Each registered callback captures a monitor generation and checks both generation and callback identity. `stopConnectivityMonitoring()` invalidates the generation before unregistering, clears network state, and synchronized publication serializes with teardown. Stale callbacks from an old Activity monitor cannot publish a late state change.
+- `AndroidLauncher` has DEBUG-only Activity lifecycle logs; `AndroidPlatformSupport` has DEBUG-only callback/availability logs. BuildConfig generation is explicitly enabled in `android/build.gradle`.
+- Current forced local verification: 58/58 Gradle tasks executed; BUILD SUCCESSFUL; 11 JUnit XML reports / **172 tests / 0 failures / 0 errors / 0 skipped**. APK 35,219,222 bytes; SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`.
+- Default branch CI no longer runs the Android app in an Emulator. The deferred script `scripts/ci/android-network-lifecycle-smoke.sh` requires `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1`; it has NOT been run. Do not enable it before explicit user approval in the later phase.
 
-## Deferred acceptance (by user instruction)
+## Worker deployment result (unchanged)
 
-Do not run live room creation, second-client join, authenticated resume/token rotation, WebSocket gameplay, or failure-path service tests yet. Physical Android network-handoff/background/screen-off validation is also still outstanding. These remain explicit acceptance gates; deployment success is not a gameplay smoke-test result.
+- Deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded for Worker `spd-multiplayer-backend` at `https://spd-multiplayer-backend.magd.workers.dev` with Durable Object binding `MATCH_ROOM`, version `0285e269-b4fb-415b-bf78-03587851ba6c`.
+- TypeScript build and 380 Vitest tests passed in that deploy workflow. The configured `MAGD_JWT_SECRET` is not consumed by current code; sessions remain opaque random tokens, not JWT.
+- Base branch CI at follow-up start: [44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) passed Backend, Durable Object SQLite and Android APK jobs on `9904aa120b60f195a2df76b48f901862254ce65f`. It does not include this follow-up's local changes.
 
+## Deferred by user instruction
+
+No emulator/app launch, ADB, Android network toggle, screen-off/runtime lifecycle check, hosted room create/join/resume, WebSocket gameplay or live failure-path smoke was run. Deployment is not equivalent to hosted room acceptance. Phase 14-B3 and parent Phase 14 remain OPEN until their service and Android runtime gates are explicitly authorized and passed.
 ---
 
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)

@@ -23,16 +23,15 @@ All engineering pages in this set are written in English for consistency with so
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
 12. PHASE14-B3_ANDROID_NETWORK_RECOVERY.md — current Android network/background lifecycle, heartbeat, endpoint and hosted-service gate evidence.
 
-## Current continuation checkpoint - 2026-11-19 - Phase 14-B3 in progress; hosted Worker smoke blocked
+## Current continuation checkpoint — 2026-11-19 — Phase 14-B3 local follow-on; runtime gates deferred
 
-- Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with their documented exact-head CI runs.
-- Phase 14-B3 now contains Android connectivity monitoring, Activity lifecycle hooks, network/background-aware reconnect and handshake handling, half-open/backpressured WebSocket recovery, and a validated project Worker endpoint builder. The parent 14-B and Phase 14 remain OPEN.
-- Android supports API 21+ (`minSdk=21`). Connectivity monitoring uses default-network callbacks on API 24+ and request callbacks on API 21–23; `ACCESS_NETWORK_STATE` was already declared.
-- Local Android/JVM: 11 JUnit XML reports / **172 tests / 0 failures / 0 errors / 0 skipped**; `test assembleDebug` produced a 36,960,212-byte Debug APK (SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`).
-- Backend remains unchanged: `npm test` 380/380 across 6 Vitest files and `npm run build` TypeScript PASS.
-- Worker `spd-multiplayer-backend` is deployed at `https://spd-multiplayer-backend.magd.workers.dev`; exact deployment run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded and bound `MATCH_ROOM`. `MAGD_JWT_SECRET` was provisioned as a Worker Secret, but current authentication still uses opaque random session tokens (no JWT implementation). Live room create/join/resume tests remain intentionally deferred by user instruction.
-- Detailed B3 evidence and remaining acceptance gates: `PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`.
-- Do not claim live room create/join/resume or close B3 until the intended backend is deployed and hosted smoke passes. Physical-device gameplay remains Phase 23; visual lobby and RTL checks remain Phases 20–21.
+- Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 implementation and local automated verification are current; parent 14-B and Phase 14 remain OPEN.
+- Android API 21+ connectivity monitoring is integrated with Activity create/resume/pause/destroy. API 24+ tracks the exact default network and API 21–23 use an INTERNET request. Callback identity + monitor-generation fencing prevents callbacks from a stopped/recreated Activity monitor from publishing late state. Start/stop and state publication share the monitor lock.
+- Current forced local Android/JVM: **58/58 Gradle tasks executed; BUILD SUCCESSFUL; 11 JUnit XML reports / 172 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,219,222 bytes; SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`.
+- The regular multiplayer CI workflow runs Backend, Durable Object SQLite and Android JVM/debug-APK validation only; the Android Emulator job was removed. A later manual runtime helper is kept behind `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1`, but it has NOT been run and must remain disabled until the user authorizes that later phase.
+- Worker `spd-multiplayer-backend` remains deployed at `https://spd-multiplayer-backend.magd.workers.dev`; deployment run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) bound `MATCH_ROOM`. `MAGD_JWT_SECRET` was provisioned but current session auth is still opaque random tokens, not JWT.
+- No Android app/Emulator/ADB runtime test and no hosted room create/join/resume/WebSocket/failure smoke has been run in this follow-on. These service/platform gates remain open; emulator-visible host/join/lobby work remains Phase 20, RTL/touch/layout remains Phase 21, and physical multi-device gameplay remains Phase 23.
+- Base exact-head CI before this follow-on: [run 44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) passed three jobs on `9904aa120b60f195a2df76b48f901862254ce65f`; it predates these local changes. Re-verify exact-head CI after pushing the follow-on commit.
 ## Current source-refactor state
 
 The three-stage source refactor is complete for implementation and automated acceptance. Exact-HEAD CI [run 42486485451](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/42486485451) passed on `a513327caf7e500d8416befae8c04a984a4bbc18`: Backend typecheck/full tests and Android JVM/debug-APK jobs both succeeded.

@@ -1,6 +1,6 @@
 # Phase 14-B3 — Android Network and Background Recovery
 
-**Status:** IN PROGRESS. Local implementation/build/tests pass; hosted Worker room smoke and Android framework runtime validation remain open.
+**Status:** IN PROGRESS. Android connectivity/recovery implementation, monitor-generation fencing and local JVM/build verification pass. Hosted Worker room smoke and Android framework runtime validation remain open.
 **Repository/branch:** `majd7772233-a11y/shattered-pixel-dungeon-ar` / `multiplayer-framework-core-14118577486727081892`.
 **Start HEAD:** `9fbad79cbecf69c75413e7f01d187fff25befc3c`.
 
@@ -17,9 +17,19 @@
 
 - `MultiplayerReconnectLifecycleTest`: ending a session during the initial handshake clears its pending state; temporary network loss preserves the authenticated session/token and does not consume retries; background transitions pause retries and resume them in foreground; initial SESSION handshake timeout is paused in the background; a known-offline state prevents a new Internet session.
 - `InternetTransportProtocolTest`: validates the configured Worker room URL and rejects invalid room codes; a localhost peer deliberately stops reading during a large client application frame and proves `disconnect()` returns promptly, closes the blocked sender and does not deliver a stale send error.
-- Full local `gradlew.bat test assembleDebug`: **172 tests / 0 failures / 0 errors / 0 skipped** across 11 JUnit XML reports. Debug APK: 36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
+- Full local `gradlew.bat test assembleDebug`: **172 tests / 0 failures / 0 errors / 0 skipped** across 11 JUnit XML reports. Debug APK from the first B3 baseline: 36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
 - Backend was unchanged by B3: `npm test` passed 380 Vitest tests across 6 files; `npm run build` passed TypeScript.
 
+
+## 2026-11-19 follow-on — Android callback fencing and deferred runtime harness
+
+- `AndroidPlatformSupport` now captures `connectivityMonitorGeneration` in each registered `NetworkCallback` and verifies both generation and callback identity before applying `onAvailable`, `onLost` or `onCapabilitiesChanged` state. `stopConnectivityMonitoring()` advances the generation before unregistering, clears the tracked default/per-network state, and prevents callbacks queued by an old Activity monitor from becoming current again.
+- State publication is synchronized with monitor start/stop as well as callback state updates, so teardown cannot interleave between the final generation check and `MultiplayerManager.onNetworkAvailabilityChanged(...)`.
+- API 24+ uses only the exact default network announced by `registerDefaultNetworkCallback`, and requires INTERNET + VALIDATED capabilities. API 21–23 use an INTERNET `NetworkRequest`; API 23+ checks that the currently active Network itself is VALIDATED. API 21–22 retains the connected active-NetworkInfo fallback.
+- `AndroidLauncher` and the platform adapter add DEBUG-only Activity/network diagnostic tags. `android/build.gradle` explicitly generates `BuildConfig`; release logging remains disabled by `BuildConfig.DEBUG`.
+- Forced local command: `gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain`. Result: **BUILD SUCCESSFUL; 58/58 actionable tasks executed; 11 JUnit XML reports / 172 tests / 0 failures / 0 errors / 0 skipped**. Current Debug APK: 35,219,222 bytes; SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`.
+- The default multiplayer CI workflow no longer contains an Android Emulator runtime job. The script `scripts/ci/android-network-lifecycle-smoke.sh` is kept as a later manual acceptance helper and exits unless `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1` is explicitly provided. It has NOT been run; no app launch, ADB use, network toggle, screen-off or Activity runtime result is claimed. The generated `android-network-lifecycle.log` is ignored by Git.
+- Base exact-head CI before this follow-on: [run 44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) passed Backend, Durable Object SQLite and Android APK jobs on parent `9904aa120b60f195a2df76b48f901862254ce65f`. It does not verify the follow-on changes; exact-head CI must run after the code+documentation commit is pushed.
 ## Hosted Worker deployment — SUCCESS
 
 - GitHub Actions deployment run: [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) — SUCCESS on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`.

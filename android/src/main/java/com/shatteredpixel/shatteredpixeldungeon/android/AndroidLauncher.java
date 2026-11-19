@@ -27,6 +27,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.ViewConfiguration;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
@@ -53,6 +54,8 @@ import com.watabou.noosa.Game;
 import com.watabou.utils.FileUtils;
 
 public class AndroidLauncher extends AndroidApplication {
+
+	private static final String LIFECYCLE_TAG = "SPD_MULTIPLAYER_LIFECYCLE";
 	
 	public static AndroidApplication instance;
 	
@@ -62,6 +65,7 @@ public class AndroidLauncher extends AndroidApplication {
 	@Override
 	protected void onCreate (Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		if (BuildConfig.DEBUG) Log.d(LIFECYCLE_TAG, "Activity onCreate");
 
 		try {
 			GdxNativesLoader.load();
@@ -163,6 +167,7 @@ public class AndroidLauncher extends AndroidApplication {
 			finishAndRemoveTask();
 		}
 		super.onResume();
+		if (BuildConfig.DEBUG) Log.d(LIFECYCLE_TAG, "Activity onResume");
         if (instance == this) {
             if (support != null) support.refreshConnectivityState();
             MultiplayerManager.getInstance().onAppForegrounded();
@@ -171,12 +176,14 @@ public class AndroidLauncher extends AndroidApplication {
 
 	@Override
 	protected void onPause() {
+		if (BuildConfig.DEBUG) Log.d(LIFECYCLE_TAG, "Activity onPause");
 		if (instance == this) MultiplayerManager.getInstance().onAppBackgrounded();
 		super.onPause();
 	}
 
 	@Override
 	protected void onDestroy() {
+		if (BuildConfig.DEBUG) Log.d(LIFECYCLE_TAG, "Activity onDestroy");
 		if (instance == this && support != null) support.stopConnectivityMonitoring();
 		super.onDestroy();
 	}

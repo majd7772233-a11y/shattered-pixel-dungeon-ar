@@ -74,6 +74,8 @@ These files are outside the multiplayer package but part of the feature.
 | core/.../windows/WndMultiplayerLobby.java | In-game room modal: roster/readiness, host Start/readiness reset, Leave, connection errors and retry/exit state. | Keep every action bound to manager requests and authoritative roster state; do not make client display state authoritative. |
 | core/.../scenes/InterlevelScene.java | Completes a multiplayer unblessed-Ankh revival continuation in the inspected flow. | Death/revive and scene transition correctness. |
 | android/.../multiplayer/AndroidBluetoothProvider.java | Android Bluetooth server/client socket adapter for core provider interface. | Permission flow, lifecycle, threading and provider registration must be checked together. |
+| android/.../android/AndroidLauncher.java | Android Activity lifecycle owner; creates platform support, starts monitoring, refreshes on resume, backgrounds the manager on pause and unregisters monitoring on destroy. | Keep Activity ownership and manager foreground/background transitions in the same lifecycle review. |
+| android/.../android/AndroidPlatformSupport.java | Android connectivity monitor; API 24+ default-network callback, API 21–23 INTERNET request callback, VALIDATED state, Activity monitor generation and stale-callback fence. | Recheck callback identity/generation, default Network replacement, unregister/teardown and API-specific connectivity semantics; Android framework runtime acceptance remains a separate gate. |
 
 ## 4. Backend, protocol, build and CI map
 
