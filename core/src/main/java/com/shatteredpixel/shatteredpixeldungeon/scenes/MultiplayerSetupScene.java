@@ -6,17 +6,19 @@ import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.InternetTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.LANTransport;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerErrorMessages;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.NetworkTransport;
 import com.shatteredpixel.shatteredpixeldungeon.ui.Icons;
 import com.shatteredpixel.shatteredpixeldungeon.ui.StyledButton;
+import com.shatteredpixel.shatteredpixeldungeon.windows.WndError;
 import com.shatteredpixel.shatteredpixeldungeon.windows.WndTextInput;
 import com.watabou.noosa.BitmapText;
 import com.watabou.noosa.Camera;
 import com.watabou.noosa.Game;
 
-import java.util.UUID;
 import java.util.Locale;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 public class MultiplayerSetupScene extends PixelScene {
@@ -154,39 +156,47 @@ public class MultiplayerSetupScene extends PixelScene {
     private void refreshRoomCodeLabel() {
         if (btnRoomCode != null) btnRoomCode.text(Messages.get("room_name") + " " + roomName);
     }
+    private void showConnectionStartFailure(Throwable failure) {
+        add(new WndError(Messages.get(MultiplayerErrorMessages.messageKey(failure == null ? null : failure.getMessage()))));
+    }
     private void startMultiplayerSession() {
-        NetworkTransport transport;
-        String endpoint;
+        try {
+            NetworkTransport transport;
+            String endpoint;
 
-        if ("LAN".equalsIgnoreCase(selectedTransportType)) {
-            LANTransport lan = new LANTransport();
-            if (isHost) {
-                try {
-                    lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", null);
-                } catch (Exception ignored) {}
-                endpoint = "127.0.0.1:" + LANTransport.DEFAULT_TCP_PORT;
+            if ("LAN".equalsIgnoreCase(selectedTransportType)) {
+                LANTransport lan = new LANTransport();
+                if (isHost) {
+                    try {
+                        lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", null);
+                    } catch (Exception ignored) {}
+                    endpoint = "127.0.0.1:" + LANTransport.DEFAULT_TCP_PORT;
+                } else {
+                    endpoint = (isValidIPv4(targetIp) ? targetIp : "127.0.0.1") + ":" + LANTransport.DEFAULT_TCP_PORT;
+                }
+                transport = lan;
+            } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
+                BluetoothTransport bt = new BluetoothTransport();
+                if (isHost) {
+                    try {
+                        bt.startBluetoothServer(null);
+                    } catch (Exception ignored) {}
+                    endpoint = "SERVER";
+                } else {
+                    endpoint = targetIp;
+                }
+                transport = bt;
             } else {
-                endpoint = (isValidIPv4(targetIp) ? targetIp : "127.0.0.1") + ":" + LANTransport.DEFAULT_TCP_PORT;
+                transport = new InternetTransport();
+                endpoint = InternetTransport.buildRoomEndpoint(roomName);
             }
-            transport = lan;
-        } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
-            BluetoothTransport bt = new BluetoothTransport();
-            if (isHost) {
-                try {
-                    bt.startBluetoothServer(null);
-                } catch (Exception ignored) {}
-                endpoint = "SERVER";
-            } else {
-                endpoint = targetIp;
-            }
-            transport = bt;
-        } else {
-            transport = new InternetTransport();
-            endpoint = InternetTransport.buildRoomEndpoint(roomName);
+
+            String playerId = UUID.randomUUID().toString();
+            MultiplayerManager.getInstance().startSession(endpoint, playerId, transport, isHost);
+        } catch (RuntimeException startupFailure) {
+            showConnectionStartFailure(startupFailure);
+            return;
         }
-
-        String playerId = UUID.randomUUID().toString();
-        MultiplayerManager.getInstance().startSession(endpoint, playerId, transport, isHost);
 
         ShatteredPixelDungeon.switchNoFade(HeroSelectScene.class);
     }

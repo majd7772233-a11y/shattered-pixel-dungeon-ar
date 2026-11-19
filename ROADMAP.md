@@ -762,7 +762,7 @@ Acceptance for 14-A:
 - [x] Verify local backend (380/380), real Durable Object SQLite (17/17), Android/JVM (159/159) and Debug APK build.
 
 ### Phase 14-B - Session lifecycle, Android threading and network transitions
-**Status:** IN PROGRESS — 14-B1 callback/transport generation safety and 14-B2 render-thread dispatch are CLOSED with exact-head CI. 14-B3 Android network/background recovery, project endpoint wiring and monitor-generation fencing are implemented and locally verified. Latest forced Android run: 11 JUnit reports / 172 tests / 0 failures / 0 errors / 0 skipped; `test assembleDebug` succeeded with all 58 Gradle tasks executed. Hosted Worker room smoke and actual Android framework network/background runtime acceptance remain OPEN. Parent Phase 14-B and Phase 14 remain OPEN.
+**Status:** IN PROGRESS — 14-B1 callback/transport generation safety and 14-B2 render-thread dispatch are CLOSED with exact-head CI. 14-B3 Android network/background recovery, project endpoint wiring, monitor-generation fencing and safe localized connection-failure feedback are locally verified. Latest forced Android run after the failure-feedback follow-on: 12 JUnit reports / 176 tests / 0 failures / 0 errors / 0 skipped; Debug APK 35,220,632 bytes (SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`). Exact-head CI for this follow-on is pending until its source+documentation commit is pushed. Hosted Worker room smoke and actual Android framework network/background runtime acceptance remain OPEN. Parent Phase 14-B and Phase 14 remain OPEN.
 Scope:
 - [x] Make connection callbacks, manager state transitions, reconnect/retry paths and cancellation/generation fencing thread-safe (14-B1).
 - [x] Add deterministic manager/callback regressions for session replacement, stale SESSION delivery and cancellation during HTTP Upgrade (14-B1).
@@ -789,6 +789,14 @@ Acceptance for 14-B:
 Local implementation/evidence: `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`. Latest forced Android/JVM run: 11 reports / 172 tests / zero failures, errors or skips; 58 Gradle tasks executed successfully. Debug APK 35,219,222 bytes (SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`). Default CI no longer launches an Android Emulator; the retained lifecycle smoke script is guarded and NOT RUN. Backend deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32` passed TypeScript + 380/380 Vitest and deployed Worker `spd-multiplayer-backend` with Durable Object binding `MATCH_ROOM`; version `0285e269-b4fb-415b-bf78-03587851ba6c`.
 Exact-head CI for source commit 33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e passed 3/3 jobs in run 44576949868 (Backend, Durable Object SQLite, Android JVM/debug APK).
 
+#### 14-B3 follow-on — honest setup and lobby failure feedback (2026-11-19)
+
+- `MultiplayerErrorMessages` maps internal manager/transport error codes to safe localized resource keys for offline/background state, session handshake timeout, room-operation timeout/rejection, closed/invalid rooms, rejected/replaced session credentials and unavailable server cases. Unknown/null errors use a generic localized fallback; raw exception/HTTP text is not rendered.
+- `MultiplayerSetupScene` catches synchronous `startSession` failures, keeps the player on setup and shows a localized `WndError`; it does not advance to hero selection after failed startup.
+- `WndMultiplayerLobby` now uses the same classifier for room/session/lobby errors rather than appending raw `roomLifecycleError`, `sessionError` or `RoomLobbyState` strings.
+- English and Arabic bundles contain the same 10 `connection_*` keys. `MultiplayerErrorMessagesTest` adds four JVM cases covering offline/background, session/room timeout, rejected room/session credentials, unreachable server, unknown and empty errors.
+- This is failure-message correctness only, not a UI redesign or evidence of a working live room. Phase 20 remains the complete host/join/lobby flow and Phase 21 remains RTL/layout/navigation/cleanup. No emulator or hosted-service smoke ran.
+
 The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed. GitHub Actions run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded; Cloudflare confirms script `spd-multiplayer-backend`, Durable Object binding `MATCH_ROOM`, version `0285e269-b4fb-415b-bf78-03587851ba6c`. `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `MAGD_JWT_SECRET` were read from GitHub Actions Secrets; current code still does not use `MAGD_JWT_SECRET` because the protocol remains opaque random session tokens, not JWT. Per user instruction, hosted create/join/resume/WebSocket smoke is intentionally **deferred** and is not counted as accepted. Actual Android framework network/background runtime verification is also not run.
 
 ### Parent Phase 14 acceptance
@@ -798,6 +806,8 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - Phase 14 is not CLOSED until both 14-A and 14-B satisfy their own evidence gates.
 
 ## Phase 15 — LAN Transport
+
+**Preflight:** `docs/multiplayer/PHASE15_LAN_PREFLIGHT.md` records the source-only readiness audit. Phase 15 implementation has NOT started; all LAN work items below remain open.
 
 **Priority:** P0/P1 · **Dependencies:** Phase 13.
 

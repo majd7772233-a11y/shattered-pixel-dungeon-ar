@@ -22,8 +22,17 @@ All engineering pages in this set are written in English for consistency with so
 10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
 12. PHASE14-B3_ANDROID_NETWORK_RECOVERY.md — current Android network/background lifecycle, heartbeat, endpoint and hosted-service gate evidence.
+13. PHASE15_LAN_PREFLIGHT.md — source-only LAN/Bluetooth readiness audit; not implementation evidence.
 
-## Current continuation checkpoint — 2026-11-19 — Phase 14-B3 local follow-on; runtime gates deferred
+## Current continuation checkpoint — 2026-11-19 — Phase 14-B3 failure feedback; Phase 15 preflight only
+
+- Current follow-on adds shared safe error-key mapping for `MultiplayerSetupScene` and `WndMultiplayerLobby`; unknown internal strings never get printed as raw UI text. English and Arabic message bundles each contain the same ten connection error keys.
+- Four JVM regressions cover offline/background, session/room timeout, rejected room/session, unavailable server, and unknown/null fallback. Final local full suite: **12 JUnit reports / 176 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,220,632 bytes; SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`. Exact-head CI on the source+documentation commit is pending.
+- The Phase 15 source-only audit is `PHASE15_LAN_PREFLIGHT.md`. It records concrete LAN host-bind/discovery/client-cleanup defects and Bluetooth fabricated-success/provider-reachability risks. Phase 15 implementation has NOT started; Phase 16 remains separate.
+- **UI delivery remains Phase 20 + Phase 21:** Phase 20 rebuilds the complete host/join/setup/lobby and every connection state/action. Phase 21 completes Arabic/English, RTL/LTR, responsive layout, navigation, touch/accessibility and cleanup. A small error-message fix is not UI completion. Visual emulator acceptance is later, after source/UI work; physical play remains Phase 23.
+- No emulator/app/ADB, live Worker room flow, real LAN socket/discovery, Bluetooth device or physical match was run in this follow-on.
+
+## Historical checkpoint — Phase 14-B3 local follow-on; runtime gates deferred
 
 - Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 implementation and local automated verification are current; parent 14-B and Phase 14 remain OPEN.
 - Android API 21+ connectivity monitoring is integrated with Activity create/resume/pause/destroy. API 24+ tracks the exact default network and API 21–23 use an INTERNET request. Callback identity + monitor-generation fencing prevents callbacks from a stopped/recreated Activity monitor from publishing late state. Start/stop and state publication share the monitor lock.

@@ -1,3 +1,18 @@
+## ACTIVE PROJECT CHECKPOINT — 2026-11-19 (PHASE 14-B3 FAILURE FEEDBACK FOLLOW-ON; EXACT-HEAD CI PENDING)
+
+- Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`; only permitted branch: `multiplayer-framework-core-14118577486727081892`. No alternate branch, `main` or merge.
+- Source parent: `cb2364dab2dcf24d63844acbac4a44d847219276` (`Record exact Phase 14-B3 CI acceptance`). Working tree changes are the localized setup/lobby failure-feedback slice plus test/docs. The follow-on has not yet been committed/pushed; exact-head Actions is therefore still pending.
+- Added `MultiplayerErrorMessages` to map internal offline/background, session/room timeout, room rejection/closure, rejected credentials, replaced sessions, unavailable hosts and reconnect exhaustion to safe localized resource keys. Unknown/null/blank errors use a generic fallback. Both Arabic and English bundles contain the same 10 connection keys.
+- `MultiplayerSetupScene` now catches synchronous startup failures, shows localized `WndError`, and does not switch to hero selection on a failed start. `WndMultiplayerLobby` renders the same safe localized error instead of exposing raw manager/lobby/HTTP/exception text.
+- New `MultiplayerErrorMessagesTest` has four JVM methods for offline/background, timeout, room/session rejection, unavailable server and safe fallback.
+- Final local artifact currently present: `android/build/outputs/apk/debug/android-debug.apk`, **35,220,632 bytes**, SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`. JUnit XML: **12 reports / 176 tests / 0 failures / 0 errors / 0 skipped**. Final forced Gradle confirmation after the last source edit: `test assembleDebug --rerun-tasks --no-daemon` — BUILD SUCCESSFUL in 3m 7s; 58/58 actionable tasks executed.
+- Phase 14-B3 and parent Phase 14 remain OPEN. Hosted Worker create/join/resume/failure smoke and actual Android framework network/background runtime acceptance have NOT run. The previous exact-head CI runs 44576949868 and 44550669826 predate this follow-on and do not cover these edits.
+- Added `docs/multiplayer/PHASE15_LAN_PREFLIGHT.md` from source inspection only. It records asynchronous bind/false-success risk, host loopback topology, UDP lifecycle/discovery timeout/threading defects, client I/O bounds/cleanup, and the separate Bluetooth provider/fabricated-success risks. **Phase 15 implementation has NOT started**; do not drift into it during this follow-on.
+- UI plan for the user: **Phase 20** is the complete end-to-end host/join/setup/lobby UI and connection-state flow; **Phase 21** completes localization, Arabic RTL/English LTR, responsive layouts, navigation, touch/accessibility and cleanup. Current error-message correction does not count as completion of either phase. Emulator visual acceptance remains later; Phase 23 is physical-device gameplay.
+- No app launch, emulator/ADB, live Worker room, real LAN socket/UDP discovery, Bluetooth adapter/device or physical match was run.
+- Next: commit and push only `multiplayer-framework-core-14118577486727081892`, then verify exact-HEAD GitHub Actions (Backend, Durable Object SQLite, Android JVM/debug APK). Keep WebGPT task token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open; never submit/terminate unless the user explicitly requests it.
+
+---
 ## ACTIVE PROJECT CHECKPOINT — 2026-11-19 (PHASE 14-B3 FOLLOW-UP; SERVICE/ANDROID RUNTIME GATES DEFERRED)
 
 - Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`; only permitted branch: `multiplayer-framework-core-14118577486727081892`. Never create a branch or touch `main`.

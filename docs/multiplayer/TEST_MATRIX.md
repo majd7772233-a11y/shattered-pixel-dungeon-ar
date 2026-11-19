@@ -595,3 +595,15 @@ Current local aggregate: 11 JUnit XML reports / 172 tests / 0 failures / 0 error
 - Source-level callback fence: callbacks reject stale monitor generation/identity; teardown invalidates the generation before unregister; state publication is serialized with monitor start/stop. Existing `MultiplayerReconnectLifecycleTest` exercises manager offline/background semantics, but the Android framework callback implementation itself has NOT been runtime-exercised in this follow-on.
 - The Emulator smoke helper remains manual and guarded by `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1`; it was NOT run. No app launch, ADB, network handoff, screen-off, Activity recreation, hosted Worker room flow or physical-device match is claimed. These runtime/service acceptance gates remain open.
 - Base exact-head validation before the follow-on is [run 44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) on parent `9904aa120b60f195a2df76b48f901862254ce65f`; rerun exact-head CI after pushing the current source+documentation commit.
+## Phase 14-B3 follow-on — connection failure localization (2026-11-19)
+
+`core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerErrorMessagesTest.java` contains four JVM test methods:
+
+1. `mapsOfflineAndBackgroundStatesToLocalizedMessages` — NETWORK_UNAVAILABLE and APP_BACKGROUND.
+2. `mapsHandshakeAndRoomTimeoutsToLocalizedMessages` — SESSION_HANDSHAKE_TIMEOUT and ROOM_OPERATION_TIMEOUT.
+3. `mapsRejectedRoomsAndSessionCredentialsToLocalizedMessages` — ROOM_OPERATION_REJECTED, ROOM_CLOSED, HTTP 401 and SESSION_REPLACED.
+4. `mapsUnavailableServerAndUnknownErrorsSafely` — socket timeout, unknown host, HTTP 404, exhausted reconnects, and safe null/blank/unknown fallbacks.
+
+`MultiplayerSetupScene` uses this classifier for synchronous startup exceptions. `WndMultiplayerLobby` uses the same classifier instead of exposing raw manager/lobby error strings. The English and Arabic `multiplayer.properties` bundles have identical sets of ten `connection_*` keys.
+
+Local verification for the final source state: forced `test assembleDebug` — **BUILD SUCCESSFUL**, 12 JUnit XML reports / **176 tests / 0 failures / 0 errors / 0 skipped**; Debug APK 35,220,632 bytes, SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`. This is a source/JVM/build result only: no app launch, emulator/ADB run, live Worker room smoke or physical-device test is implied. Exact-head CI must be checked on the commit containing this source and documentation.

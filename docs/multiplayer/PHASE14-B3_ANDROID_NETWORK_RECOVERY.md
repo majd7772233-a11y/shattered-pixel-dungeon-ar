@@ -54,3 +54,12 @@ No live room creation, second-client join, authenticated resume/token rotation, 
 - [x] Push code commit 33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e and verify exact-head CI run 44576949868 (3/3 jobs). Android runtime and hosted room acceptance remain deferred.
 
 Phase 14-B3 and parent Phase 14 remain OPEN until the relevant service/platform acceptance gates pass. Emulator-visible lobby/RTL checks remain Phases 20–21; physical two-device gameplay remains Phase 23.
+
+## 2026-11-19 follow-on — honest localized startup and lobby failures
+
+- Added `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerErrorMessages.java` as the shared classifier from internal error codes to stable localized resource keys. It covers `NETWORK_UNAVAILABLE`, `APP_BACKGROUND`, `SESSION_HANDSHAKE_TIMEOUT`, `ROOM_OPERATION_TIMEOUT`, room rejection/closure/invalid state, HTTP 401/403/409 session rejection, `SESSION_REPLACED`, server/host/connect/socket failures, HTTP 404/5xx and exhausted reconnect attempts. Null/blank/unknown strings use a generic fallback.
+- `MultiplayerSetupScene.startMultiplayerSession()` catches synchronous startup `RuntimeException`, presents a `WndError` using the global message bundle and returns without switching to `HeroSelectScene` on failure.
+- `WndMultiplayerLobby` uses the same error classifier to show a localized explanation rather than rendering raw internal error/HTTP/exception strings. No room operation is reported successful by this rendering change.
+- Added matching `connection_*` resource keys to `core/src/main/assets/messages/ui/multiplayer.properties` and `multiplayer_ar.properties`. A parity check confirmed all 10 keys exist in both bundles.
+- Added `MultiplayerErrorMessagesTest.java` (4 JVM test methods). Final local forced aggregate: 12 JUnit XML reports / 176 tests / 0 failures / 0 errors / 0 skipped; `test assembleDebug` succeeded. APK: 35,220,632 bytes; SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`.
+- This follow-on addresses only failure honesty and localization. It does not complete or redesign the UI. Phase 20 owns the full host/join/lobby/connection-state flow; Phase 21 owns Arabic RTL/LTR/layout/navigation/accessibility/cleanup. Hosted room smoke and Android framework runtime verification remain intentionally deferred.

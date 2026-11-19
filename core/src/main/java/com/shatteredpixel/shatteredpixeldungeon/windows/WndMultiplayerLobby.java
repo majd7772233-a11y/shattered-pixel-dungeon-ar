@@ -2,6 +2,7 @@ package com.shatteredpixel.shatteredpixeldungeon.windows;
 
 import com.shatteredpixel.shatteredpixeldungeon.messages.Messages;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerErrorMessages;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.RoomMemberInfo;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.RoomLobbyState;
 import com.shatteredpixel.shatteredpixeldungeon.scenes.GameScene;
@@ -108,15 +109,11 @@ public class WndMultiplayerLobby extends WndOptions {
         if (manager.isRoomMember() && !manager.areAllRoomMembersReady()) {
             body.append('\n').append(Messages.get("multiplayer_lobby_waiting_players"));
         }
-        if (manager.getRoomLifecycleError() != null) {
-            body.append('\n').append(Messages.get("multiplayer_lobby_error"))
-                    .append(": ").append(manager.getRoomLifecycleError());
-        } else if (manager.getSessionError() != null) {
-            body.append('\n').append(Messages.get("multiplayer_lobby_error"))
-                    .append(": ").append(manager.getSessionError());
-        } else if (RoomLobbyState.getError() != null) {
-            body.append('\n').append(Messages.get("multiplayer_lobby_error"))
-                    .append(": ").append(RoomLobbyState.getError());
+        String error = manager.getRoomLifecycleError() != null ? manager.getRoomLifecycleError()
+                : manager.getSessionError() != null ? manager.getSessionError() : RoomLobbyState.getError();
+        if (error != null) {
+            body.append('\n').append(Messages.get("multiplayer_lobby_error")).append(": ")
+                    .append(Messages.get(MultiplayerErrorMessages.messageKey(error)));
         }
         return body.toString();
     }
