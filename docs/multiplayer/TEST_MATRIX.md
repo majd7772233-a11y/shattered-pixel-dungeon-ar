@@ -559,3 +559,20 @@ Commit `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8` passed exact-head workflow [43
 ### Boundary
 
 This closes only the 14-B1 manager/callback and InternetTransport-attempt safety slice. Render-thread dispatch, Android network/background/screen-off behavior, deployed Worker room smoke, emulator UI and physical-device play remain unverified and open.
+
+## Phase 14-B2 - generation-safe render-thread dispatch (2026-11-19)
+
+### Android/JVM regression
+
+- `NativeCombatRuntimeIntegrationTest.queuedSessionCallbackCannotMutateReplacementSessionAfterEndSession` blocks the headless libGDX render queue, delivers a SESSION through the captured transport callback, ends the old session, starts a replacement session, then releases the render queue. The queued old callback must not install its player/token/sequence or overwrite `Dungeon.seed` in the replacement session.
+- The test transport deliberately remains logically connected after `disconnect()` so the regression exercises session-generation/transport-identity fencing rather than only an `isConnected()` check.
+- `NativeCombatRuntimeIntegrationTest.nestedRenderCallbacksInheritSessionGenerationGuard` queues a nested render callback under a live session guard, invalidates the session while the outer callback is held, and proves the nested callback is discarded.
+- Full local `test assembleDebug`: 11 JUnit XML reports / 163 tests / 0 failures / 0 errors / 0 skipped; Debug APK 36,956,011 bytes, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`.
+
+### Implementation boundary
+
+- `MultiplayerManager` queues transport-delivered messages and disconnect/error callbacks to the render thread and rechecks the captured transport identity and session generation inside the queued runnable.
+- `MessageRouter` captures the active session generation for every deferred native/scene action and discards work whose session has ended or been replaced before execution.
+- `Game.runWithRenderThreadGuard` propagates the validity predicate into nested `Game.runOnRenderThread` callbacks through a thread-local context; the snapshot and remote-sprite nested callbacks inherit the fence without editing `WorldSnapshot.java`.
+- Android connectivity/background/screen-off behavior, live Worker room smoke, emulator UI, and physical-device gameplay remain outside this B2 slice.
+- Exact-head GitHub Actions for the B2 worktree has not yet run; do not treat the local build as CI or deployment evidence.

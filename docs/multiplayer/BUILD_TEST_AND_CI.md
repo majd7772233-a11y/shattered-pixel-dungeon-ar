@@ -351,3 +351,14 @@ This record supersedes the previous lobby checkpoint for current local verificat
 - GitHub Actions run [44391529189](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44391529189) completed with **3/3 jobs successful**: Backend typecheck/tests, Android debug APK compile and Durable Object SQLite rollback/eviction.
 - This exact-head CI result complements the forced local Android run (57 tasks; 161 JUnit tests; zero failures/errors/skips; APK 35,210,270 bytes, SHA-256 `C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18`).
 - CI does not deploy the Worker or prove a hosted room smoke, Android background/network transition, emulator UI or physical-device match; those remain open.
+
+## Phase 14-B2 local verification - 2026-11-19 (worktree; exact-head CI pending)
+
+- Command: `gradlew.bat test assembleDebug --no-daemon --console=plain`.
+- Environment: process-local `ANDROID_HOME` and `ANDROID_SDK_ROOT` set to `C:\Users\Magd\AppData\Local\Android\Sdk`; no repository `local.properties` or machine-wide environment variable was written. An initial invocation without the SDK variables failed during Android task dependency discovery; the corrected process-local invocation passed.
+- Result: **BUILD SUCCESSFUL**, 57 actionable Gradle tasks (13 executed, 44 up-to-date). Core JUnit: 11 XML reports / **163 tests / 0 failures / 0 errors / 0 skipped**.
+- Debug APK: `android/build/outputs/apk/debug/android-debug.apk`, **36,956,011 bytes**, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`.
+- The B2 regressions `queuedSessionCallbackCannotMutateReplacementSessionAfterEndSession` and `nestedRenderCallbacksInheritSessionGenerationGuard` are included in the 81-test `NativeCombatRuntimeIntegrationTest` class. They exercise stale SESSION delivery and inherited nested render-queue fencing.
+- `Game.runWithRenderThreadGuard` propagates session validity into nested `Game.runOnRenderThread` callbacks; the guard uses a project-local interface rather than `java.util.function` to avoid a minSdk API-level dependency.
+- `git diff --check` must be run with CRLF-aware whitespace handling on this Windows worktree; final source/docs review and exact-head Actions are still pending.
+- This is local Android/JVM/APK evidence only. It does not prove deployed Worker room smoke, Android background/network/screen-off behavior, emulator UI, or physical two-device gameplay.

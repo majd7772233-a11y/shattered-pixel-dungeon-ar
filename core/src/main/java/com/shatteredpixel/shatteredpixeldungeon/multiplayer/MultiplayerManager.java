@@ -211,18 +211,63 @@ public class MultiplayerManager implements TransportCallback {
       reconnectBaseDelayMs = Math.max(1L, reconnectDelayMs);
       maxReconnectAttempts = Math.max(0, retries);
    }
+   long getSessionGeneration() { return sessionGeneration; }
+   long getSessionGenerationForTests() { return getSessionGeneration(); }
 
-   long getSessionGenerationForTests() { return sessionGeneration; }
+   synchronized boolean isSessionGenerationCurrent(long generation) {
+      return isMultiplayerActive && activeTransport != null && sessionGeneration == generation;
+   }
+
    boolean isReconnectHandshakePendingForTests() { return reconnectHandshakePending; }
    boolean isCurrentTransportForTests(NetworkTransport transport) { return activeTransport == transport; }
    boolean isRejectedCredentialForTests(Throwable error) { return isRejectedSessionCredential(error); }
-   private void dispatchTransportCallback(NetworkTransport transport, long generation, Runnable action) {
+
+   private void dispatchTransportMessage(final NetworkTransport transport, final long generation,
+                                         final NetworkMessage message) {
       synchronized (this) {
-         if (this.activeTransport != transport || this.sessionGeneration != generation) return;
-         action.run();
+         if (activeTransport != transport || sessionGeneration != generation) return;
+      }
+      Runnable applyMessage = () -> {
+         synchronized (MultiplayerManager.this) {
+            if (activeTransport != transport || sessionGeneration != generation) return;
+            if (!(transport instanceof InternetTransport) || transport.isConnected()) {
+               MultiplayerManager.this.onMessageReceived(message);
+            }
+         }
+      };
+      if (com.badlogic.gdx.Gdx.app == null) {
+         // Pure JVM lifecycle tests have no LibGDX application; production always dispatches.
+         applyMessage.run();
+      } else {
+         com.watabou.noosa.Game.runOnRenderThread(applyMessage::run);
       }
    }
 
+   private void dispatchTransportStateCallback(final NetworkTransport transport, final long generation,
+                                               final Runnable action) {
+      synchronized (this) {
+         if (activeTransport != transport || sessionGeneration != generation) return;
+      }
+      Runnable applyCallback = () -> {
+         synchronized (MultiplayerManager.this) {
+            if (activeTransport != transport || sessionGeneration != generation) return;
+            action.run();
+         }
+      };
+      if (com.badlogic.gdx.Gdx.app == null) {
+         // Pure JVM lifecycle tests have no LibGDX application; production always dispatches.
+         applyCallback.run();
+      } else {
+         com.watabou.noosa.Game.runOnRenderThread(applyCallback::run);
+      }
+   }
+
+   private void dispatchTransportCallback(NetworkTransport transport, long generation, Runnable action) {
+      synchronized (this) {
+         if (activeTransport != transport || sessionGeneration != generation) return;
+         action.run();
+      }
+   }
    private TransportCallback callbackFor(final NetworkTransport transport, final long generation) {
       return new TransportCallback() {
          public void onConnected() {
@@ -232,17 +277,15 @@ public class MultiplayerManager implements TransportCallback {
          }
 
          public void onDisconnected(String reason) {
-            dispatchTransportCallback(transport, generation, () -> MultiplayerManager.this.onDisconnected(reason));
+            dispatchTransportStateCallback(transport, generation, () -> MultiplayerManager.this.onDisconnected(reason));
          }
 
          public void onMessageReceived(NetworkMessage message) {
-            dispatchTransportCallback(transport, generation, () -> {
-               if (!(transport instanceof InternetTransport) || transport.isConnected()) MultiplayerManager.this.onMessageReceived(message);
-            });
+            dispatchTransportMessage(transport, generation, message);
          }
 
          public void onError(Throwable error) {
-            dispatchTransportCallback(transport, generation, () -> MultiplayerManager.this.onError(error));
+            dispatchTransportStateCallback(transport, generation, () -> MultiplayerManager.this.onError(error));
          }
       };
    }

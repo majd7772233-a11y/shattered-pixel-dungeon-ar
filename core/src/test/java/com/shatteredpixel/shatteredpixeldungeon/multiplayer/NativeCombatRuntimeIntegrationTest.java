@@ -119,6 +119,106 @@ public class NativeCombatRuntimeIntegrationTest {
         seedHeadlessTexture(com.shatteredpixel.shatteredpixeldungeon.Assets.Effects.TEXT_ICONS, 7, 8);
     }
 
+    @Test
+    public void queuedSessionCallbackCannotMutateReplacementSessionAfterEndSession() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        long originalSeed = Dungeon.seed;
+        CountDownLatch renderBlocked = new CountDownLatch(1);
+        CountDownLatch releaseRender = new CountDownLatch(1);
+        CountDownLatch renderDrained = new CountDownLatch(1);
+        com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+            renderBlocked.countDown();
+            try {
+                if (!releaseRender.await(5, TimeUnit.SECONDS)) throw new AssertionError("Render blocker timed out");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        });
+        Assert.assertTrue("Render thread did not enter the blocker", renderBlocked.await(5, TimeUnit.SECONDS));
+
+        QueuedInternetTestTransport staleTransport = new QueuedInternetTestTransport();
+        manager.startSession("https://example.invalid/room/stale-render/websocket", "old-render-player",
+                staleTransport, false);
+        staleTransport.callback.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"old-render-player\",\"sessionToken\":\"stale-render-session-token-0001\","
+                        + "\"sequence\":99,\"seed\":99999}"));
+        Assert.assertEquals("SESSION must wait for the render thread", originalSeed, Dungeon.seed);
+
+        manager.endSession();
+        QueuedInternetTestTransport replacement = new QueuedInternetTestTransport();
+        manager.startSession("https://example.invalid/room/new-render/websocket", "new-render-player",
+                replacement, false);
+
+        releaseRender.countDown();
+        com.badlogic.gdx.Gdx.app.postRunnable(renderDrained::countDown);
+        try {
+            Assert.assertTrue("Queued render callbacks did not drain", renderDrained.await(5, TimeUnit.SECONDS));
+            Assert.assertEquals("Stale SESSION must not replace the new player", "new-render-player", manager.getLocalPlayerId());
+            Assert.assertNull("Stale SESSION must not install its token", manager.getSessionToken());
+            Assert.assertEquals("Stale SESSION must not replace Dungeon.seed", originalSeed, Dungeon.seed);
+        } finally {
+            releaseRender.countDown();
+            manager.endSession();
+        }
+    }
+    @Test
+    public void nestedRenderCallbacksInheritSessionGenerationGuard() throws Exception {
+        MultiplayerManager manager = MultiplayerManager.getInstance();
+        manager.endSession();
+        QueuedInternetTestTransport transport = new QueuedInternetTestTransport();
+        manager.startSession("https://example.invalid/room/nested-render/websocket", "nested-render-player",
+                transport, false);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"nested-render-player\",\"sessionToken\":\"nested-render-session-token-0001\","
+                        + "\"sequence\":1,\"seed\":12345}"));
+        final long generation = manager.getSessionGeneration();
+
+        CountDownLatch renderBlocked = new CountDownLatch(1);
+        CountDownLatch releaseRender = new CountDownLatch(1);
+        CountDownLatch nestedQueued = new CountDownLatch(1);
+        CountDownLatch releaseOuter = new CountDownLatch(1);
+        CountDownLatch renderDrained = new CountDownLatch(1);
+        CountDownLatch nestedMutation = new CountDownLatch(1);
+        com.badlogic.gdx.Gdx.app.postRunnable(() -> {
+            renderBlocked.countDown();
+            try {
+                if (!releaseRender.await(5, TimeUnit.SECONDS)) throw new AssertionError("Render blocker timed out");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        });
+        Assert.assertTrue("Render thread did not enter the blocker", renderBlocked.await(5, TimeUnit.SECONDS));
+
+        com.watabou.noosa.Game.runOnRenderThread(() ->
+                com.watabou.noosa.Game.runWithRenderThreadGuard(
+                        () -> manager.isSessionGenerationCurrent(generation), () -> {
+                            com.watabou.noosa.Game.runOnRenderThread(nestedMutation::countDown);
+                            nestedQueued.countDown();
+                            try {
+                                if (!releaseOuter.await(5, TimeUnit.SECONDS)) throw new AssertionError("Outer render callback timed out");
+                            } catch (InterruptedException interrupted) {
+                                Thread.currentThread().interrupt();
+                                throw new AssertionError(interrupted);
+                            }
+                        }));
+
+        releaseRender.countDown();
+        try {
+            Assert.assertTrue("Outer callback did not queue its nested callback", nestedQueued.await(5, TimeUnit.SECONDS));
+            manager.endSession();
+            releaseOuter.countDown();
+            com.badlogic.gdx.Gdx.app.postRunnable(renderDrained::countDown);
+            Assert.assertTrue("Nested render queue did not drain", renderDrained.await(5, TimeUnit.SECONDS));
+            Assert.assertFalse("Nested callback must inherit and recheck the invalidated session guard",
+                    nestedMutation.await(100, TimeUnit.MILLISECONDS));
+        } finally {
+            releaseRender.countDown();
+            releaseOuter.countDown();
+            manager.endSession();
+        }
+    }
     private static void seedHeadlessTexture(Object key, int width, int height) {
         if (!com.watabou.gltextures.TextureCache.contains(key)) {
             com.watabou.gltextures.TextureCache.create(key, width, height);
@@ -4248,6 +4348,22 @@ public class NativeCombatRuntimeIntegrationTest {
         }
     }
 
+    private static final class QueuedInternetTestTransport implements NetworkTransport {
+        private volatile boolean connected;
+        private TransportCallback callback;
+
+        @Override public void connect(String endpoint, TransportCallback callback) {
+            this.callback = callback;
+            connected = true;
+            if (callback != null) callback.onConnected();
+        }
+        @Override public void send(NetworkMessage message) { }
+        // Keep the old transport logically connected so the regression specifically exercises
+        // the session-generation fence, not only the transport's connected flag.
+        @Override public void disconnect() { }
+        @Override public boolean isConnected() { return connected; }
+        @Override public String getTransportType() { return "INTERNET"; }
+    }
     private static final class TestTransport implements NetworkTransport {
         private boolean connected;
         final java.util.List<NetworkMessage> sent = new ArrayList<>();

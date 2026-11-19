@@ -20,6 +20,11 @@ public final class MessageRouter {
 
     private MessageRouter() {}
 
+    private static void runOnCurrentSessionRenderThread(MultiplayerManager manager, Runnable action) {
+        final long generation = manager.getSessionGeneration();
+        Game.runOnRenderThread(() -> Game.runWithRenderThreadGuard(
+                () -> manager.isSessionGenerationCurrent(generation), action::run));
+    }
     public static void routeMessage(NetworkMessage message) {
         if (message == null || message.messageType == null) return;
         MultiplayerManager manager = MultiplayerManager.getInstance();
@@ -27,10 +32,10 @@ public final class MessageRouter {
 
         switch (message.messageType) {
             case ROOM_STATE:
-                Game.runOnRenderThread(() -> manager.applyRoomState(message));
+                runOnCurrentSessionRenderThread(manager, () -> manager.applyRoomState(message));
                 break;
             case MATCH_START:
-                Game.runOnRenderThread(() -> manager.applyMatchStart(message));
+                runOnCurrentSessionRenderThread(manager, () -> manager.applyMatchStart(message));
                 break;
             case SESSION:
                 // The session baseline is installed by MultiplayerManager before routing.
@@ -39,24 +44,24 @@ public final class MessageRouter {
                 handleSnapshotMessage(message);
                 break;
             case LEVEL_PUBLISHER_CHANGED:
-                Game.runOnRenderThread(() -> handleLevelPublisherChanged(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleLevelPublisherChanged(message));
                 break;
             case EVENT_BATCH:
                 // Event batches update native actors, hero state, sprites and loot. Transport
                 // callbacks may run off-thread, so serialize their application with game turns.
-                Game.runOnRenderThread(() -> handleEventBatchMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleEventBatchMessage(message));
                 break;
             case COMBAT_REQUEST:
                 handleCombatRequest(message);
                 break;
             case ACTION_ACCEPTED:
-                Game.runOnRenderThread(() -> handleAcceptedActionMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleAcceptedActionMessage(message));
                 break;
             case ACK:
-                Game.runOnRenderThread(() -> handleServerAckMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleServerAckMessage(message));
                 break;
             case MATCH_END:
-                Game.runOnRenderThread(() -> handleSequencedMatchEnd(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleSequencedMatchEnd(message));
                 break;
             case ERROR:
                 handleErrorMessage(message);
@@ -64,14 +69,14 @@ public final class MessageRouter {
             case PLAYER_JOINED:
                 // The server-authored join envelope has one typed owner; never infer a Hero
                 // update from arbitrary JSON keys or from the sender of an unrelated message.
-                Game.runOnRenderThread(() -> handlePlayerJoinedMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handlePlayerJoinedMessage(message));
                 break;
             case PLAYER_LEFT:
                 // Disconnect cleanup mutates native Actors, Buffs, Mob targets and sprites.
-                Game.runOnRenderThread(() -> handlePlayerLeftMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handlePlayerLeftMessage(message));
                 break;
             case READY:
-                Game.runOnRenderThread(() -> handleReadyMessage(message));
+                runOnCurrentSessionRenderThread(manager, () -> handleReadyMessage(message));
                 break;
             case PING:
                 // PING is transport liveness only. The Worker returns {pong:true}; it has no
@@ -256,9 +261,10 @@ public final class MessageRouter {
 
     private static void handleCombatRequest(NetworkMessage message) {
         if (message == null || message.payloadJson == null) return;
+        MultiplayerManager manager = MultiplayerManager.getInstance();
         // Network transports deliver callbacks on their own thread. Native SPD combat touches
         // Actor scheduling, Dungeon state, sprites and inventory; run it only on the game thread.
-        Game.runOnRenderThread(() -> handleCombatRequestOnRenderThread(message));
+        runOnCurrentSessionRenderThread(manager, () -> handleCombatRequestOnRenderThread(message));
     }
 
     private static void handleCombatRequestOnRenderThread(NetworkMessage message) {
@@ -970,7 +976,7 @@ public final class MessageRouter {
 
             // All live-world mutations must run on the game/render thread. Parsing and
             // structural preflight above are safe on the transport thread.
-            Game.runOnRenderThread(() -> {
+            runOnCurrentSessionRenderThread(manager, () -> {
                 try {
                     if (WorldSnapshot.restoreWorld(snapshot)) {
                         applySnapshotPlayerReadiness(root.get("players"));

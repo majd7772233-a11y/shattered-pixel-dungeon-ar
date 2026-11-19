@@ -44,6 +44,12 @@ import java.io.StringWriter;
 
 public class Game implements ApplicationListener {
 
+    public interface RenderThreadGuard {
+        boolean isValid();
+    }
+
+    private static final ThreadLocal<RenderThreadGuard> renderThreadGuard = new ThreadLocal<>();
+
 	public static Game instance;
 	
 	// Size of the EGL surface view
@@ -303,11 +309,25 @@ public class Game implements ApplicationListener {
 		Gdx.app.error("GAME", sw.toString());
 	}
 	
+	public static void runWithRenderThreadGuard(RenderThreadGuard guard, Callback c) {
+		RenderThreadGuard previous = renderThreadGuard.get();
+		if (guard != null && !guard.isValid()) return;
+		if (guard != null) renderThreadGuard.set(guard);
+		try {
+			c.call();
+		} finally {
+			if (previous == null) renderThreadGuard.remove();
+			else renderThreadGuard.set(previous);
+		}
+	}
+
 	public static void runOnRenderThread(Callback c){
+		final RenderThreadGuard inheritedGuard = renderThreadGuard.get();
 		Gdx.app.postRunnable(new Runnable() {
 			@Override
 			public void run() {
-				c.call();
+				if (inheritedGuard == null) c.call();
+				else runWithRenderThreadGuard(inheritedGuard, c);
 			}
 		});
 	}
