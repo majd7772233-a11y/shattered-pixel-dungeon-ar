@@ -352,7 +352,7 @@ This record supersedes the previous lobby checkpoint for current local verificat
 - This exact-head CI result complements the forced local Android run (57 tasks; 161 JUnit tests; zero failures/errors/skips; APK 35,210,270 bytes, SHA-256 `C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18`).
 - CI does not deploy the Worker or prove a hosted room smoke, Android background/network transition, emulator UI or physical-device match; those remain open.
 
-## Phase 14-B2 local verification - 2026-11-19 (worktree; exact-head CI pending)
+## Phase 14-B2 closeout - 2026-11-19 (commit `11b5c79d207e21798ff7e441744cb422a43e4d8c`; local and exact-head CI passed)
 
 - Command: `gradlew.bat test assembleDebug --no-daemon --console=plain`.
 - Environment: process-local `ANDROID_HOME` and `ANDROID_SDK_ROOT` set to `C:\Users\Magd\AppData\Local\Android\Sdk`; no repository `local.properties` or machine-wide environment variable was written. An initial invocation without the SDK variables failed during Android task dependency discovery; the corrected process-local invocation passed.

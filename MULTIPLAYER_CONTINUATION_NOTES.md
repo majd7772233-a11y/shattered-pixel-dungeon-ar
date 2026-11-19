@@ -4,7 +4,7 @@ Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`
 Branch: `multiplayer-framework-core-14118577486727081892`
 WebGPT token remains RUNNING/open: `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be`.
 
-Phase 14-A is CLOSED for implementation and automated acceptance. Phase 14-B1 has exact-head CI acceptance (Actions 44391529189). Phase 14-B2 render-thread dispatch is implemented and locally verified on the current worktree; Phase 14-B and parent Phase 14 remain OPEN pending exact-head CI and later Android network/background/Worker smoke slices.
+Phase 14-A is CLOSED for implementation and automated acceptance. Phase 14-B1 has exact-head CI acceptance (Actions 44391529189). Phase 14-B2 render-thread dispatch is closed on commit `11b5c79d207e21798ff7e441744cb422a43e4d8c`; exact-head Actions run 44487454618 passed 3/3 jobs. Phase 14-B and parent Phase 14 remain OPEN for the next Android network/background/Worker smoke slice (14-B3).
 
 ## Phase 14-A closeout — 2026-11-18
 
@@ -26,7 +26,7 @@ Phase 14-A is CLOSED for implementation and automated acceptance. Phase 14-B1 ha
 - New tests: MultiplayerReconnectLifecycleTest.transportCallbackWaitsForSessionReplacementAndCannotReviveTheOldSession; InternetTransportProtocolTest.disconnectCancelsAnInFlightHttpUpgradeWithoutLateCallbacks.
 - Verification: forced root test assembleDebug --rerun-tasks --no-daemon --console=plain PASS (57 tasks executed; 11 JUnit XML / 161 tests / zero failures, errors or skips). APK: 35,210,270 bytes; SHA-256 C1789E2DC63CD543ECFDF461A202D96B5BD5A59D580B9E90B3320BAC44F59D18.
 - Exact-head Actions 44391529189 passed all three jobs on commit d9bff9e0aa8b5b3be7b34c2e7f9bb7a201c8d609. No B1 render-thread migration, network/background/screen-off lifecycle, hosted Worker smoke, emulator UI or physical-device match was claimed at that commit.
-- Phase 14-B2 commit `17a214a2e77b5bbf96d3686629f0c35953188021` (2026-11-19): inbound transport messages and disconnect/error callbacks are queued to the libGDX render thread and recheck transport identity/session generation at execution. MessageRouter deferred native/scene actions also recheck generation. The stale queued SESSION regression is included in the 163-test local suite. Full root `test assembleDebug` passed: 57 tasks, 163 tests, zero failures/errors/skips; APK 36,956,011 bytes, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`. Nested render callbacks now inherit the active generation guard through Game.runWithRenderThreadGuard; two B2 race regressions are in the 81-test native integration suite. Exact-head CI is pending. Keep the task RUNNING/open.
+- Phase 14-B2 commit `11b5c79d207e21798ff7e441744cb422a43e4d8c` (2026-11-19): inbound transport messages and disconnect/error callbacks are queued to the libGDX render thread and recheck transport identity/session generation at execution. MessageRouter deferred native/scene actions also recheck generation. The stale queued SESSION regression is included in the 163-test local suite. Full root `test assembleDebug` passed: 57 tasks, 163 tests, zero failures/errors/skips; APK 36,956,011 bytes, SHA-256 `2950A2140658B544C129E1B4B30354E42240E30EF0D03BA98B0E7B023508AD35`. Nested render callbacks now inherit the active generation guard through Game.runWithRenderThreadGuard; two B2 race regressions are in the 81-test native integration suite. Exact-head CI run 44487454618 passed all 3 jobs (Backend, Android Debug APK, Durable Object SQLite). B2 is closed; proceed to 14-B3. Keep the task RUNNING/open.
 
 ## Handoff to Phase 14-B2
 

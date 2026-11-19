@@ -575,4 +575,4 @@ This closes only the 14-B1 manager/callback and InternetTransport-attempt safety
 - `MessageRouter` captures the active session generation for every deferred native/scene action and discards work whose session has ended or been replaced before execution.
 - `Game.runWithRenderThreadGuard` propagates the validity predicate into nested `Game.runOnRenderThread` callbacks through a thread-local context; the snapshot and remote-sprite nested callbacks inherit the fence without editing `WorldSnapshot.java`.
 - Android connectivity/background/screen-off behavior, live Worker room smoke, emulator UI, and physical-device gameplay remain outside this B2 slice.
-- Exact-head GitHub Actions for the B2 worktree has not yet run; do not treat the local build as CI or deployment evidence.
+- Exact-head Actions run [44487454618](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44487454618) passed all 3 jobs on `11b5c79d207e21798ff7e441744cb422a43e4d8c`. The CI SQLite suite is not a deployment or live Worker room smoke.
