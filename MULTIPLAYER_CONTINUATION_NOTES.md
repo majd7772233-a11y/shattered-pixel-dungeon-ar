@@ -20,6 +20,7 @@ Phase 14-A, 14-B1 and 14-B2 are closed. Phase 14-B3 Android/session source, loca
 - Deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded for Worker `spd-multiplayer-backend` at `https://spd-multiplayer-backend.magd.workers.dev` with Durable Object binding `MATCH_ROOM`, version `0285e269-b4fb-415b-bf78-03587851ba6c`.
 - TypeScript build and 380 Vitest tests passed in that deploy workflow. The configured `MAGD_JWT_SECRET` is not consumed by current code; sessions remain opaque random tokens, not JWT.
 - Base branch CI at follow-up start: [44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) passed Backend, Durable Object SQLite and Android APK jobs on `9904aa120b60f195a2df76b48f901862254ce65f`. It does not include this follow-up's local changes.
+- Exact-head CI after the source follow-on commit: [44576949868](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44576949868) passed all 3 jobs on `33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e`: Backend, Durable Object SQLite and Android JVM/debug APK; no Emulator runtime job is included.
 
 ## Deferred by user instruction
 

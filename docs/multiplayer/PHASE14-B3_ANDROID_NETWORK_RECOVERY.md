@@ -30,6 +30,7 @@
 - Forced local command: `gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain`. Result: **BUILD SUCCESSFUL; 58/58 actionable tasks executed; 11 JUnit XML reports / 172 tests / 0 failures / 0 errors / 0 skipped**. Current Debug APK: 35,219,222 bytes; SHA-256 `F31514F7D57573CAEEBD9633848AF9201DFA364AFD1E2A3CD67E5FD532D8951A`.
 - The default multiplayer CI workflow no longer contains an Android Emulator runtime job. The script `scripts/ci/android-network-lifecycle-smoke.sh` is kept as a later manual acceptance helper and exits unless `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1` is explicitly provided. It has NOT been run; no app launch, ADB use, network toggle, screen-off or Activity runtime result is claimed. The generated `android-network-lifecycle.log` is ignored by Git.
 - Base exact-head CI before this follow-on: [run 44550669826](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44550669826) passed Backend, Durable Object SQLite and Android APK jobs on parent `9904aa120b60f195a2df76b48f901862254ce65f`. It does not verify the follow-on changes; exact-head CI must run after the code+documentation commit is pushed.
+- Exact-head CI after push: run 44576949868 — PASS, 3/3 jobs (Backend, Durable Object SQLite, Android JVM/debug APK) on source commit 33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e.
 ## Hosted Worker deployment — SUCCESS
 
 - GitHub Actions deployment run: [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) — SUCCESS on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`.
@@ -50,6 +51,6 @@ No live room creation, second-client join, authenticated resume/token rotation, 
 - [x] Verify the intended `spd-multiplayer-backend` is deployed from this repository's `server/wrangler.jsonc`; Cloudflare inventory confirms the script exists and deployment output confirms the `MATCH_ROOM` Durable Object binding.
 - [ ] Run hosted room create, second-client join, authenticated resume/token rotation, room WebSocket and explicit failure cases against the deployed Worker (intentionally deferred until requested by the user).
 - [ ] Validate actual Android framework network callback behavior through a real API 21+ network handoff/background/screen-off cycle; current evidence is source wiring plus JVM manager tests and APK compilation, not a physical Android run.
-- [ ] Push the final code+documentation commit and verify exact-head Backend, Android and Durable Object SQLite CI.
+- [x] Push code commit 33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e and verify exact-head CI run 44576949868 (3/3 jobs). Android runtime and hosted room acceptance remain deferred.
 
 Phase 14-B3 and parent Phase 14 remain OPEN until the relevant service/platform acceptance gates pass. Emulator-visible lobby/RTL checks remain Phases 20–21; physical two-device gameplay remains Phase 23.

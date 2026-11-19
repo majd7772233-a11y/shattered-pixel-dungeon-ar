@@ -1,3 +1,4 @@
+- Follow-on exact-head CI: run 44576949868 passed 3/3 jobs on commit 33513defbabf4bd3e64e0ee9ae9e2e90f2f4a48e (Backend TypeScript/Vitest, Durable Object SQLite, Android JVM/debug APK).
 # Multiplayer Automated Test Matrix
 
 > Gameplay/test baseline: bc6c46b03fee040ff20311adb473b19ff78e9bb7; exact gameplay/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588).
