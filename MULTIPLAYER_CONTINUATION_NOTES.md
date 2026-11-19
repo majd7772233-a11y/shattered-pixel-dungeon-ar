@@ -1,32 +1,30 @@
-# Current continuation checkpoint - 2026-11-19 (Phase 14-B3 implementation in progress)
+# Current continuation checkpoint - 2026-11-19 (Phase 14-B3 backend deployed; live room tests deferred)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`
 **Only working branch:** `multiplayer-framework-core-14118577486727081892`
-**Last commit:** `9fbad79cbecf69c75413e7f01d187fff25befc3c` (branch matched origin before this continuation).
+**Current HEAD:** `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`
 **WebGPT task:** keep token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING/open.
 
-Phase 14-A is CLOSED. Phase 14-B1 callback/transport lifecycle safety and 14-B2 generation-safe render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 is in progress; parent Phase 14 and 14-B remain OPEN.
+Phase 14-A, 14-B1 and 14-B2 are closed. 14-B3 code and Worker deployment are in place; parent Phase 14 and 14-B3 acceptance remain open pending hosted room flow tests and Android framework runtime validation.
 
-## Phase 14-B3 current implementation and local evidence
+## Deployment result
 
-- Android minSdk is 21. `AndroidPlatformSupport` watches the active Internet-capable network via `registerNetworkCallback` on API 21–23 and `registerDefaultNetworkCallback` on API 24+. API 23+ additionally requires `NET_CAPABILITY_VALIDATED`; the existing manifest already grants `ACCESS_NETWORK_STATE`.
-- `AndroidLauncher` starts connectivity monitoring during creation, refreshes state on resume, notifies the manager on pause/resume, and unregisters the network callback during destruction.
-- `MultiplayerManager` tracks network availability and app foreground state. Temporary network loss preserves an authenticated session/token, closes the old transport, pauses retries while offline/backgrounded and restarts backoff after recovery. Initial SESSION handshakes have separate pending state and pause their timeout in the background; end/failure/SESSION success clears it.
-- `InternetTransport` sends heartbeat probes on a 15-second cadence, times out after 45 seconds without inbound traffic, and isolates writes from the timeout scheduler. A backpressured socket cannot block `disconnect()`; generation invalidation and socket close are immediate.
-- Room endpoint creation now uses the `spd-multiplayer-backend` Worker configured in `server/wrangler.jsonc`, with the observed account subdomain `magd`. Room codes are trimmed and validated (`[A-Za-z0-9_-]{3,32}`).
-- Added regressions for endSession during the initial handshake, network loss/recovery, background pause/resume, initial-handshake timeout pause, offline session start rejection, room endpoint validation, and disconnect during a backpressured application write.
-- Local Android/JVM evidence: 11 JUnit reports / 172 tests / zero failures, errors or skips. Debug APK 36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
-- Backend was not changed: `npm test` 380 Vitest tests / 6 files PASS; `npm run build` TypeScript PASS.
+- GitHub Actions deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) completed SUCCESS on current HEAD.
+- Deployed URL: `https://spd-multiplayer-backend.magd.workers.dev`
+- Worker: `spd-multiplayer-backend`; Cloudflare script inventory confirms it exists and its modified timestamp is `2026-11-19T14:58:11Z`.
+- Durable Object binding `MATCH_ROOM` is listed in Wrangler deployment output.
+- Version ID: `0285e269-b4fb-415b-bf78-03587851ba6c`.
+- GitHub Actions used `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and uploaded `MAGD_JWT_SECRET` from repository secrets. No secret value was printed.
+- Important authentication distinction: current code does not consume `MAGD_JWT_SECRET`; sessions still use opaque random tokens from `crypto.randomUUID()`, stored and rotated by Durable Object logic. JWT signing/verification is not implemented by this deployment.
+- Deploy pipeline passed TypeScript build and **380 Vitest tests across 6 files** before deploying. Local Android/JVM suite passed **172/172** and built APK with SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
+- Local production dependency audit: 0 vulnerabilities; install audit still reports 6 dev-dependency vulnerabilities (2 moderate, 2 high, 2 critical).
 
-## Hosted Worker blocker and next acceptance
+## Deferred acceptance (by user instruction)
 
-Cloudflare account subdomain is `magd`; the intended script name from `server/wrangler.jsonc` is `spd-multiplayer-backend`. Before this deployment attempt, the account had no such script; `spd-multiplayer` was a stock Hello World Worker and the configured host returned HTTP 404. The deploy workflow is now wired to the allowed working branch and uses GitHub Actions Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `MAGD_JWT_SECRET`; it runs TypeScript build and backend tests before deploying. The deployment triggered by the unified commit is pending. No live room creation, join, authenticated resume or hosted WebSocket smoke is claimed; those tests are intentionally deferred per the current user instruction.
-
-Next: get the intended backend deployed through the approved project workflow, run hosted create/join/resume/failure tests, then push the final code+docs SHA and verify exact-head CI. Do not close B3 or parent Phase 14 before those checks pass. No emulator UI, physical-device screen-off test or two-device match was performed; preserve their planned later gates.
-
-See `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md` for the maintained detailed evidence.
+Do not run live room creation, second-client join, authenticated resume/token rotation, WebSocket gameplay, or failure-path service tests yet. Physical Android network-handoff/background/screen-off validation is also still outstanding. These remain explicit acceptance gates; deployment success is not a gameplay smoke-test result.
 
 ---
+
 # Multiplayer Continuation Notes — Phase 12 CLOSED; Phase 13 next (2026-11-16)
 
 **Repository:** `majd7772233-a11y/shattered-pixel-dungeon-ar`

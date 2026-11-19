@@ -774,20 +774,20 @@ Scope:
 - [x] Add heartbeat timeout isolation from blocked socket writes and immediate generation-invalidating disconnect; cover with a backpressured localhost peer test.
 - [x] Centralize room URL generation on the configured Worker name/account subdomain and validate room codes before connection.
 - [ ] Validate connectivity callback behavior during actual Android network handoff, screen-off and activity recreation on a supported device/runtime.
-- [ ] Add service-level smoke checks for actual Worker room creation/join, authenticated resume and failure visibility.
+- [ ] Run hosted Worker room creation/join, authenticated resume/token rotation and failure-visibility smoke tests when explicitly requested by the user (currently intentionally deferred).
 Acceptance for 14-B:
 - [x] An old socket/callback cannot change the state of a newer session or revive a closed session (manager callback generation/identity gate; JVM race regression).
 - [x] No callback-caused scene/UI mutation occurs off the render thread; nested runnables inherit the session generation guard.
 - [x] JVM manager regressions show network loss/recovery and background transitions preserve the authenticated session/token and pause retries without corrupting session/replay state.
 - [ ] Verify Android framework connectivity callbacks and lifecycle through an actual supported Android runtime network/background cycle.
-- [x] Configure `.github/workflows/deploy-server.yml` to deploy the intended `spd-multiplayer-backend` on pushes to the permitted multiplayer branch, passing Cloudflare account/token and `MAGD_JWT_SECRET` from GitHub Actions Secrets. Verify the resulting deployment run before marking the service deployed.
-- [ ] Service-level tests prove room creation/join and authenticated resume against that intended Worker deployment before physical-device acceptance.
+- [x] Deploy `spd-multiplayer-backend` through `.github/workflows/deploy-server.yml` using GitHub Actions Secrets; exact successful run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) deployed version `0285e269-b4fb-415b-bf78-03587851ba6c` with `MATCH_ROOM`.
+- [ ] Service-level tests prove room creation/join, authenticated resume and failure visibility against the deployed Worker before physical-device acceptance (intentionally deferred by user instruction).
 
 #### 14-B3 — Android network/background recovery and hosted-service wiring (in progress)
 
-Local implementation/evidence: `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`. The current uncommitted working tree passed 172 Android/JVM tests (11 XML reports, zero failures/errors/skips), built the Debug APK (36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`), and retained the unchanged backend result (380 Vitest tests/6 files plus TypeScript build). No exact-head CI exists for this working tree yet.
+Local implementation/evidence: `docs/multiplayer/PHASE14-B3_ANDROID_NETWORK_RECOVERY.md`. Android/JVM: 172 tests / zero failures/errors/skips; Debug APK 36,960,212 bytes (SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`). Backend deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32` passed TypeScript + 380/380 Vitest and deployed Worker `spd-multiplayer-backend` with Durable Object binding `MATCH_ROOM`; version `0285e269-b4fb-415b-bf78-03587851ba6c`.
 
-The expected account host is `spd-multiplayer-backend.magd.workers.dev`, derived from Wrangler's script name and the account's `magd` Workers subdomain. Before this change the script inventory omitted `spd-multiplayer-backend`; `spd-multiplayer` was stock Hello World and the configured host returned HTTP 404. The branch deployment workflow is now configured to publish this script using repository Secrets; the run result is pending. Per the user instruction, hosted create/join/resume smoke is intentionally **deferred** and cannot be counted as accepted. Actual Android framework network/background runtime verification is also not run; current evidence is source wiring and JVM state-machine tests only.
+The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed. GitHub Actions run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded; Cloudflare confirms script `spd-multiplayer-backend`, Durable Object binding `MATCH_ROOM`, version `0285e269-b4fb-415b-bf78-03587851ba6c`. `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and `MAGD_JWT_SECRET` were read from GitHub Actions Secrets; current code still does not use `MAGD_JWT_SECRET` because the protocol remains opaque random session tokens, not JWT. Per user instruction, hosted create/join/resume/WebSocket smoke is intentionally **deferred** and is not counted as accepted. Actual Android framework network/background runtime verification is also not run.
 
 ### Parent Phase 14 acceptance
 - Internet sessions either establish the requested room or report a specific visible failure.

@@ -376,3 +376,9 @@ This record supersedes the previous lobby checkpoint for current local verificat
 `.github/workflows/deploy-server.yml` accepts pushes to `multiplayer-framework-core-14118577486727081892` and retains production branch/manual dispatch triggers. It runs pinned `wrangler@4.165.0` from `server/` with explicit `--config wrangler.jsonc` for both secret provisioning and deployment. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are environment variables sourced from GitHub Actions Secrets. `MAGD_JWT_SECRET` is JSON-encoded by Node and piped to `wrangler secret bulk --name spd-multiplayer-backend --config wrangler.jsonc`; its value never enters a command argument, file or log. The workflow runs backend `npm ci`, `npm run build` and `npm test` before either remote operation.
 
 Current authentication uses an opaque random session token stored/rotated by the Durable Object; `MAGD_JWT_SECRET` is currently not consumed by application code, so provisioning it does not mean JWT signing has been implemented. Hosted room create/join/reconnect smoke is intentionally deferred per the current task instruction.
+
+## Successful Worker deployment — 2026-11-19
+
+GitHub Actions deploy run [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) succeeded on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`. Deployed URL: `https://spd-multiplayer-backend.magd.workers.dev`; script `spd-multiplayer-backend`; Durable Object binding `MATCH_ROOM`; deployment version `0285e269-b4fb-415b-bf78-03587851ba6c`. `MAGD_JWT_SECRET` was uploaded from GitHub Actions Secrets. The server code currently does not consume that secret; session auth remains opaque random-token based, not JWT.
+
+The deployment pipeline passed TypeScript build and 380/380 Vitest tests. Per user instruction, hosted room creation, join, authenticated resume and live WebSocket failure tests were not run and remain deferred.

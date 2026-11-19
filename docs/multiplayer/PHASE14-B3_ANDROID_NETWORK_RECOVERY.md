@@ -20,17 +20,26 @@
 - Full local `gradlew.bat test assembleDebug`: **172 tests / 0 failures / 0 errors / 0 skipped** across 11 JUnit XML reports. Debug APK: 36,960,212 bytes; SHA-256 `758AB119002EE2E79D1DDFE1EBBA169570C5405FEA5DFA3194A7D15477613F56`.
 - Backend was unchanged by B3: `npm test` passed 380 Vitest tests across 6 files; `npm run build` passed TypeScript.
 
-## Hosted Worker blocker
+## Hosted Worker deployment — SUCCESS
 
-The connected Cloudflare account reports Workers subdomain `magd`. Its script inventory contains no `spd-multiplayer-backend`. The similarly named deployed `spd-multiplayer` script is the stock Cloudflare Hello World template and returns `Hello World!`. The configured hostname `spd-multiplayer-backend.magd.workers.dev` resolves but the root currently returns HTTP 404. Therefore the intended `MatchRoom` Worker is not presently deployed under the project-configured name. No Cloudflare script, secret, domain, subdomain or deployment was changed from this task.
+- GitHub Actions deployment run: [44549387460](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44549387460) — SUCCESS on `7a4b95c9f260d6cf820b96a78cc771c116fa3f32`.
+- Deployed URL: `https://spd-multiplayer-backend.magd.workers.dev`.
+- Deployed Worker: `spd-multiplayer-backend`; Cloudflare script inventory confirms it exists and was modified at `2026-11-19T14:58:11Z`.
+- Durable Object binding: `MATCH_ROOM` (`MatchRoom` class).
+- Wrangler deployment version: `0285e269-b4fb-415b-bf78-03587851ba6c`.
+- Secret provisioning succeeded: `MAGD_JWT_SECRET` was uploaded from GitHub Actions Secrets. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` were used only as environment secrets. No secret values were printed or committed.
+- The successful workflow ran `npm ci`, TypeScript build and **380/380 Vitest tests across 6 files** before provisioning the secret and deploying.
+- **Authentication caveat:** the current application does not consume `MAGD_JWT_SECRET`. Session credentials remain opaque `crypto.randomUUID()` tokens persisted in the Durable Object and rotated on reconnect. JWT signing/verification is not implemented by this deployment.
 
-The client endpoint now matches the repository's Worker name/account subdomain, but successful URL construction is not proof of a live server. Do not claim hosted room creation, join, authenticated resume or service smoke until this Worker is deployed through the approved project deployment workflow and those operations pass against it.
+## Deferred live tests — per user instruction
+
+No live room creation, second-client join, authenticated resume/token rotation, game WebSocket session, or hosted failure-path smoke was run. Deployment success and Worker inventory do not prove those flows. They are intentionally deferred until the user asks. Actual Android network handoff/background/screen-off/Activity recreation remains untested on a physical Android runtime.
 
 ## Remaining acceptance
 
-- [ ] Verify the intended `spd-multiplayer-backend` is deployed from this repository's `server/wrangler.jsonc` and that root/room requests route to the project handler rather than a placeholder/404.
-- [ ] Run hosted room create, second-client join, authenticated resume/token rotation, and explicit failure cases against the deployed Worker.
-- [ ] Validate actual Android framework network callback behavior through a real API 21+ network handoff/background/screen-off cycle; the current evidence is source wiring plus JVM manager tests and APK compilation, not a physical Android run.
+- [x] Verify the intended `spd-multiplayer-backend` is deployed from this repository's `server/wrangler.jsonc`; Cloudflare inventory confirms the script exists and deployment output confirms the `MATCH_ROOM` Durable Object binding.
+- [ ] Run hosted room create, second-client join, authenticated resume/token rotation, room WebSocket and explicit failure cases against the deployed Worker (intentionally deferred until requested by the user).
+- [ ] Validate actual Android framework network callback behavior through a real API 21+ network handoff/background/screen-off cycle; current evidence is source wiring plus JVM manager tests and APK compilation, not a physical Android run.
 - [ ] Push the final code+documentation commit and verify exact-head Backend, Android and Durable Object SQLite CI.
 
 Phase 14-B3 and parent Phase 14 remain OPEN until the relevant service/platform acceptance gates pass. Emulator-visible lobby/RTL checks remain Phases 20–21; physical two-device gameplay remains Phase 23.
