@@ -840,7 +840,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 
 **Priority:** P1 · **Dependencies:** Phase 13.
 
-### 16A — RFCOMM transport foundation (in progress)
+### 16A — RFCOMM transport foundation (complete — local automated acceptance and exact-head CI green)
 
 - [x] Remove the null-provider fabricated-success path. Missing Android provider now fails as `BLUETOOTH_UNAVAILABLE`; a listening RFCOMM server is not reported as a connected peer.
 - [x] Register the Android RFCOMM provider from `AndroidLauncher`; declare Bluetooth as an optional device feature and add legacy API<=30 permissions plus `BLUETOOTH_CONNECT` for API 31+.

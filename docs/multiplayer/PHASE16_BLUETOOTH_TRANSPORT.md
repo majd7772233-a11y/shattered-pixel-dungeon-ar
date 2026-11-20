@@ -6,7 +6,7 @@
 
 ### 16A — RFCOMM transport foundation
 
-**Implemented locally; full forced build and JVM acceptance are green. Exact-head CI remains a closeout gate.**
+**16A implementation complete; full forced build, JVM acceptance and exact-head CI are green. Parent Phase16 remains open for 16B.**
 
 1. Android app startup registers an application-context `AndroidBluetoothProvider` with the core `BluetoothTransport`; a missing provider fails closed instead of simulating connection.
 2. Classic Bluetooth RFCOMM server and client use the same stable SPD multiplayer service UUID. The host starts a listening server socket but remains `CONNECTING`; `onConnected` is raised only after a peer is accepted and input/output streams are acquired. The client address is validated as a Bluetooth MAC before the platform call.

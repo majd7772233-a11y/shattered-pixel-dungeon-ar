@@ -25,7 +25,7 @@ All engineering pages in this set are written in English for consistency with so
 13. PHASE15_LAN_PREFLIGHT.md — Phase 15 TCP/UDP implementation and network acceptance boundaries.
 14. PHASE16_BLUETOOTH_TRANSPORT.md — 16A RFCOMM implementation/tests, 16B discovery/permission/device UX scope and deferred hardware acceptance.
 
-## Current continuation checkpoint — 2026-11-20 — Phase 16A in progress; device tests deferred
+## Current continuation checkpoint — 2026-11-20 — Phase 16A complete; Phase 16B not started; device tests deferred
 
 - Phase 15 implementation and automated validation are complete. 15A TCP host/guest transport and 15B UDP advertisement/discovery are recorded in the prior checkpoint; source SHA `13f495b615d58fbecaad21c479aa9aff4201e6dd` passed exact-head CI [run 44712869490](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44712869490), and docs SHA `7a1b06999ad31b7c20526f5567febc517139640a4` passed [run 44713185649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44713185649). Both have 3/3 jobs green. Real Wi-Fi testing is deferred until after Phase 22.
 - Phase 16 is split into **16A RFCOMM transport foundation** and **16B device discovery/pairing/runtime consent/UI**. Parent Phase 16 remains OPEN.
