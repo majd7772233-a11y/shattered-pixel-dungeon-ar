@@ -46,7 +46,7 @@ allReady is proof-backed. A ready flag with a stale seed or sequence does not ma
 - server/src/match-room/actions.ts and base.ts - committed-rebase lifecycle hook and notification.
 - core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RoomLobbyState.java - strict room/game state invariants.
 - core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java - recovery states, stale-message guard and gameplay gate.
-- server/src/match-room/lifelink-death.integration.test.ts - proof-backed projection and publisher handoff regressions.
+- server/src/match-room/lifelink-death.integration.test.ts - proof-backed projection and publisher handoff regressions, including rejection of an orphaned levelPublisher key even when its term matches.
 - core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerReconnectLifecycleTest.java - delayed-start/snapshot and invalid-state regressions.
 
 ## Local automated verification

@@ -1088,6 +1088,13 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
     expect((room as any).roomStatePayload("test-ready").roomStatus).toBe("READY");
 
+    // A matching publisher term is not enough when the stored publisher is no longer a room member.
+    sql.roomMeta.set("levelPublisher", "removed-room-member");
+    const missingPublisherState = (room as any).roomStatePayload("publisher-not-a-member");
+    expect(missingPublisherState.roomStatus).toBe("LOBBY");
+    expect(missingPublisherState.allReady).toBe(true);
+    sql.roomMeta.set("levelPublisher", PUBLISHER_ID);
+
     sql.roomMeta.set("roomReady:" + PUBLISHER_ID, JSON.stringify({
       ready: true, seed: levelSnapshot.seed, sequence: room.currentSequence - 1
     }));

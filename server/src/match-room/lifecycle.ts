@@ -128,7 +128,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         roomStatus = "PLAYING";
       }
     } else if (mode === "COOP_DUNGEON" && this.gameStatus === "LOBBY") {
-      roomStatus = enoughPlayers && allReady && snapshotReady && publisherReady
+      roomStatus = enoughPlayers && allReady && snapshotReady && publisherPresent && publisherReady
         ? "READY" : "LOBBY";
     }
     return {
