@@ -63,6 +63,7 @@ public final class AndroidBluetoothProvider implements BluetoothTransport.Native
         BluetoothServerSocket listener = null;
         try {
             BluetoothAdapter adapter = requireEnabledAdapter();
+            cancelDiscoveryBeforeConnect(adapter);
             listener = adapter.listenUsingRfcommWithServiceRecord("SPD_MULTIPLAYER", serviceUuid);
             synchronized (stateLock) {
                 if (!isCurrentLocked(attempt)) {
@@ -90,6 +91,7 @@ public final class AndroidBluetoothProvider implements BluetoothTransport.Native
         BluetoothSocket socket = null;
         try {
             BluetoothAdapter adapter = requireEnabledAdapter();
+            cancelDiscoveryBeforeConnect(adapter);
             BluetoothDevice device = adapter.getRemoteDevice(deviceAddress.trim());
             socket = device.createRfcommSocketToServiceRecord(serviceUuid);
             synchronized (stateLock) {
@@ -105,7 +107,8 @@ public final class AndroidBluetoothProvider implements BluetoothTransport.Native
                         CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
             }
             final BluetoothSocket targetSocket = socket;
-            startDaemon("SPD-Bluetooth-Connect", () -> connectPeer(attempt, targetSocket));
+            final BluetoothDevice targetDevice = device;
+            startDaemon("SPD-Bluetooth-Connect", () -> connectPeer(attempt, targetSocket, targetDevice));
         } catch (Exception failure) {
             closeQuietly(socket);
             rollbackStart(attempt);
@@ -123,6 +126,13 @@ public final class AndroidBluetoothProvider implements BluetoothTransport.Native
         }
     }
 
+    private void cancelDiscoveryBeforeConnect(BluetoothAdapter adapter) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN)
+                != PackageManager.PERMISSION_GRANTED) return;
+        try { adapter.cancelDiscovery(); }
+        catch (SecurityException ignored) { }
+    }
     private BluetoothAdapter requireEnabledAdapter() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 && appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT)
@@ -157,16 +167,20 @@ public final class AndroidBluetoothProvider implements BluetoothTransport.Native
         }
     }
 
-    private void connectPeer(long attempt, BluetoothSocket socket) {
+    private void connectPeer(long attempt, BluetoothSocket socket, BluetoothDevice device) {
         try {
             socket.connect();
             if (activateConnection(attempt, socket)) readLoop(attempt, socket);
-            else closeQuietly(socket);
         } catch (Exception failure) {
-            failOperation(attempt, socket, failure);
+            Throwable reported = failure;
+            try {
+                if (device != null && device.getBondState() == BluetoothDevice.BOND_NONE) {
+                    reported = new IOException("BLUETOOTH_PAIRING_CANCELLED_OR_PEER_UNAVAILABLE", failure);
+                }
+            } catch (SecurityException ignored) { }
+            failOperation(attempt, socket, reported);
         }
     }
-
     private boolean activateConnection(long attempt, BluetoothSocket socket) throws IOException {
         InputStream input = new BufferedInputStream(socket.getInputStream());
         OutputStream output = new BufferedOutputStream(socket.getOutputStream());

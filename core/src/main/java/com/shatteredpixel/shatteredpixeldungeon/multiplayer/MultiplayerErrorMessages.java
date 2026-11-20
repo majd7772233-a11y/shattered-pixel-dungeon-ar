@@ -5,15 +5,27 @@ import java.util.Locale;
 /** Converts internal transport/session error codes into safe, localized UI message keys. */
 public final class MultiplayerErrorMessages {
 
-    private MultiplayerErrorMessages() {
-    }
+    private MultiplayerErrorMessages() { }
 
     public static String messageKey(String error) {
         if (error == null || error.trim().isEmpty()) return "connection_start_failed";
         String code = error.toUpperCase(Locale.ROOT);
 
         if (code.contains("NETWORK_UNAVAILABLE")) return "connection_network_unavailable";
+        if (code.contains("BLUETOOTH_PAIRING_CANCELLED_OR_PEER_UNAVAILABLE")) return "bt_pairing_failed";
+        if (code.contains("BLUETOOTH_PERMISSION_REQUEST_FAILED")) return "bt_permission_denied";
         if (code.contains("BLUETOOTH_PERMISSION_REQUIRED")) return "bluetooth_permission_required";
+        if (code.contains("BLUETOOTH_PERMISSION_PERMANENTLY_DENIED")) return "bt_permission_permanent";
+        if (code.contains("BLUETOOTH_PERMISSION_DENIED")) return "bt_permission_denied";
+        if (code.contains("BLUETOOTH_DISCOVERABILITY_CANCELLED")
+                || code.contains("BLUETOOTH_ENABLE_CANCELLED")
+                || code.contains("BLUETOOTH_HOST_PREPARATION_CANCELLED")) return "bt_user_cancelled";
+        if (code.contains("BLUETOOTH_DEVICE_NOT_FOUND")) return "bt_device_lost";
+        if (code.contains("BLUETOOTH_ACTION_PENDING")) return "bt_action_pending";
+        if (code.contains("BLUETOOTH_DISCOVERABILITY_REQUEST_FAILED")) return "bt_host_visibility_failed";
+        if (code.contains("BLUETOOTH_ENABLE_REQUEST_FAILED")) return "bt_enable_failed";
+        if (code.contains("BLUETOOTH_DISCOVERY") || code.contains("BLUETOOTH_DEVICE_LIST_FAILED")) return "bt_discovery_failed";
+        if (code.contains("BLUETOOTH_LOCATION_REQUIRED")) return "bt_location_required";
         if (code.contains("BLUETOOTH_DISABLED")) return "bluetooth_disabled";
         if (code.contains("BLUETOOTH_UNSUPPORTED") || code.contains("BLUETOOTH_UNAVAILABLE")) return "bluetooth_unavailable";
         if (code.contains("BLUETOOTH_DEVICE_REQUIRED") || code.contains("BLUETOOTH_DEVICE_ADDRESS_INVALID")) return "bluetooth_device_required";

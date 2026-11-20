@@ -46,6 +46,8 @@ import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothTransport;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.AndroidBluetoothProvider;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.AndroidBluetoothDeviceManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothDeviceAccessRegistry;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.News;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.NewsImpl;
 import com.shatteredpixel.shatteredpixeldungeon.services.updates.UpdateImpl;
@@ -56,6 +58,8 @@ import com.watabou.noosa.Game;
 import com.watabou.utils.FileUtils;
 
 public class AndroidLauncher extends AndroidApplication {
+
+	private AndroidBluetoothDeviceManager bluetoothDeviceManager;
 
 	private static final String LIFECYCLE_TAG = "SPD_MULTIPLAYER_LIFECYCLE";
 	
@@ -145,6 +149,9 @@ public class AndroidLauncher extends AndroidApplication {
 		config.useCompass = false;
 		config.useAccelerometer = false;
 		
+		bluetoothDeviceManager = new AndroidBluetoothDeviceManager(this);
+		BluetoothDeviceAccessRegistry.set(bluetoothDeviceManager);
+
 		if (BluetoothTransport.getNativeProvider() == null) {
 			BluetoothTransport.setNativeProvider(new AndroidBluetoothProvider(getApplicationContext()));
 		}
@@ -188,9 +195,28 @@ public class AndroidLauncher extends AndroidApplication {
 	}
 
 	@Override
+	public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+		super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+		if (bluetoothDeviceManager != null) bluetoothDeviceManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+	}
+
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		if (bluetoothDeviceManager != null) bluetoothDeviceManager.onActivityResult(requestCode, resultCode, data);
+	}
+
+	@Override
 	protected void onDestroy() {
 		if (BuildConfig.DEBUG) Log.d(LIFECYCLE_TAG, "Activity onDestroy");
 		if (instance == this && support != null) support.stopConnectivityMonitoring();
+		if (bluetoothDeviceManager != null) {
+			bluetoothDeviceManager.dispose();
+			if (BluetoothDeviceAccessRegistry.get() == bluetoothDeviceManager) {
+				BluetoothDeviceAccessRegistry.set(null);
+			}
+			bluetoothDeviceManager = null;
+		}
 		super.onDestroy();
 	}
 	@SuppressLint("GestureBackNavigation")

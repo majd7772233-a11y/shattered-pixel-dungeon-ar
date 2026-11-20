@@ -23,7 +23,7 @@ Observed client-side path:
 7. GameScene.create() calls publishCurrentLevel() and sendLevelReady() when multiplayer is active.
 8. The server handles room state/readiness, then publishes accepted room/snapshot/event state through its Durable Object.
 
-Important boundary: `MultiplayerSetupScene` still transitions to `HeroSelectScene` without waiting for a confirmed server SESSION/ROOM_STATE. The in-game lobby now appears from GameScene after native-level publication; GameScene separately blocks native turns and cell selection until authoritative PLAYING. Bluetooth listener-start failures are now propagated rather than swallowed; however, setup still lacks paired-device selection and a visible pending/connected/authoritative-room gate. Device discovery and runtime consent are Phase16B; complete setup/lobby UX is Phase20/21.
+Important boundary: `MultiplayerSetupScene` still transitions to `HeroSelectScene` without waiting for a confirmed server SESSION/ROOM_STATE. The in-game lobby now appears from GameScene after native-level publication; GameScene separately blocks native turns and cell selection until authoritative PLAYING. Bluetooth listener-start failures are now propagated rather than swallowed. Phase16B adds paired/nearby Classic peer selection and runtime/host-visibility consent; setup still lacks a visible pending/connected/authoritative-room gate. Complete connection-state and lobby UX is Phase20/21.
 
 Relevant files: TitleScene.java, MultiplayerTransportScene.java, MultiplayerSetupScene.java, MultiplayerManager.java, HeroSelectScene.java, GameScene.java, selected transport, MatchRoom.fetch()/webSocketMessage(), and protocol definitions.
 

@@ -24,7 +24,28 @@ public class MultiplayerErrorMessagesTest {
         Assert.assertEquals("bluetooth_connection_failed",
                 MultiplayerErrorMessages.messageKey("BLUETOOTH_TRANSPORT_FAILED"));
         Assert.assertEquals("bluetooth_connection_failed",
-                MultiplayerErrorMessages.messageKey("BLUETOOTH_FRAME_INVALID_UTF8"));
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_FRAME_INVALID_UTF8"));        Assert.assertEquals("bt_action_pending",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_ACTION_PENDING"));
+        Assert.assertEquals("bt_host_visibility_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DISCOVERABILITY_REQUEST_FAILED"));
+        Assert.assertEquals("bt_enable_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_ENABLE_REQUEST_FAILED"));
+        Assert.assertEquals("bt_location_required",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_LOCATION_REQUIRED"));
+        Assert.assertEquals("bt_permission_denied",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_PERMISSION_DENIED"));
+        Assert.assertEquals("bt_permission_permanent",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_PERMISSION_PERMANENTLY_DENIED"));
+        Assert.assertEquals("bt_user_cancelled",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DISCOVERABILITY_CANCELLED"));
+        Assert.assertEquals("bt_user_cancelled",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_HOST_PREPARATION_CANCELLED"));
+        Assert.assertEquals("bt_device_lost",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DEVICE_NOT_FOUND"));
+        Assert.assertEquals("bt_discovery_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DISCOVERY_START_FAILED"));
+        Assert.assertEquals("bt_pairing_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_PAIRING_CANCELLED_OR_PEER_UNAVAILABLE"));
     }
     @Test
     public void mapsOfflineAndBackgroundStatesToLocalizedMessages() {

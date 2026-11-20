@@ -683,3 +683,33 @@ Codec coverage includes strict UTF-8, Arabic/emoji payload, LF/CRLF, clean EOF v
 - The Android RFCOMM provider and merged manifest compiled and packaged successfully. This does not launch the app or prove runtime permissions or hardware transport.
 - Exact-head CI: commit `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile.
 - No Android app launch, emulator/ADB, physical Bluetooth adapter, real Wi-Fi peer or two-device session was run. Per user instruction, hardware/network acceptance is deferred until after Phase22; physical gameplay remains Phase23.
+## Phase 16B — Bluetooth runtime consent and device discovery (2026-11-20)
+
+### Bluetooth-specific JVM coverage
+
+| Test class | Methods | Result |
+|---|---:|---|
+| `BluetoothDeviceDiscoveryControllerTest` | 8 | PASS |
+| `BluetoothDeviceInfoTest` | 2 | PASS |
+| `BluetoothHostPreparationControllerTest` | 5 | PASS |
+| `BluetoothFrameCodecTest` | 7 | PASS |
+| `BluetoothTransportTest` | 12 | PASS |
+| `MultiplayerErrorMessagesTest` | 5 | PASS |
+| **Total Bluetooth-focused classes** | **39** | **0 failures / 0 errors / 0 skipped** |
+
+New controller tests exercise permission-preparation rejection/cancellation, stale discovery callbacks after cancel/restart, paired/discovered duplicate merge, paired metadata precedence, selected-peer removal, search failure, and the 32-entry catalogue cap. Device metadata tests cover canonical MAC formatting, invalid MAC rejection and safe display names. Host-preparation tests prove that permission denial or Android discoverability denial does not report a ready host; the requested duration is bounded to 60–300 seconds; a missing platform provider fails closed; and a setup scene destroyed while the permission prompt is open cannot trigger a later discoverability prompt. Error-mapper assertions cover normal/permanent denial, legacy Location-services requirement, host cancellation/visibility errors, adapter enable errors, discovery failure, device loss and pairing/peer-unavailable failure.
+
+### Full local Android/JVM verification
+
+Command: `gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain`, with `ANDROID_HOME`/`ANDROID_SDK_ROOT` set to `C:\Users\Magd\AppData\Local\Android\Sdk` and `JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true`.
+
+- **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks executed.**
+- **24 JUnit XML reports / 244 tests / 0 failures / 0 errors / 0 skipped.**
+- Debug APK: **35,261,178 bytes**; SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
+- `git diff --check` passed; English/Arabic multiplayer message bundles each contain the same 75 unique keys.
+
+### Android behavior exercised by source/build, but not hardware-tested
+
+The Android adapter compiles with permission-specific request handling, adapter enable intent, host discoverability result, paired-device enumeration, Classic/Dual filtering, bounded receiver registration, receiver teardown, discovery timeout radio cancellation and Activity callback forwarding. Android 13+ receiver registration is `RECEIVER_EXPORTED` to receive broadcasts from the privileged Bluetooth companion application. The Core/controller tests do not prove that an OEM Bluetooth stack delivers those broadcasts, displays its permission/pairing sheets as expected, or establishes a physical RFCOMM connection.
+
+Exact-head CI for the current Phase16B follow-up implementation/documentation SHA is **PENDING** and must be verified after push. No Android app launch, emulator/ADB, runtime permission UI, pairing prompt, physical Bluetooth, physical Wi-Fi peer, two-device session or gameplay test was run. Per user instruction, hardware/network acceptance remains deferred until after Phase 22; physical gameplay remains Phase 23.

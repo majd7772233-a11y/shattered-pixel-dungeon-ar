@@ -852,20 +852,26 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: 58/58 Gradle tasks; 21 JUnit reports / 229 tests / 0 failures / 0 errors / 0 skipped; APK 35,241,088 bytes, SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
 - [x] Exact-head CI for `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
-### 16B — Device discovery, pairing consent and user experience (not started)
+### 16B — Device discovery, pairing consent and user experience (implemented; local automated acceptance green; exact-head CI pending)
 
-- [ ] Implement paired-device enumeration, explicit device selection, bounded/cancellable discovery and host discoverability where required by the Android API.
-- [ ] Add Android-version-specific runtime permission request flow for `BLUETOOTH_CONNECT` and scan/discovery permissions; handle allow/deny/permanent-denial/cancel without ghost sessions.
-- [ ] Handle pairing consent, device disappearance, adapter state changes, retry/cancel and lifecycle teardown with explicit localized errors.
-- [ ] Integrate the selected peer/device state into the later setup UI work (Phase 20) and Arabic/English RTL/touch/accessibility pass (Phase 21); never reuse the LAN IP field as a Bluetooth MAC picker.
-- [ ] Add automated tests for permission cancellation, pairing cancellation, device disappearance, discovery cancellation and socket loss.
+- [x] Add platform-neutral paired/discovered peer model, validated MAC/name sanitization, stable paired/discovered merge, selected-peer state, deterministic ordering and a bounded 32-device catalogue.
+- [x] Implement Android Classic Bluetooth discovery with a 20-second bound, cancellation, timeout/error radio stop, receiver unregister, adapter-state handling, stale-generation rejection and scene lifecycle cleanup. Expose only RFCOMM-capable Classic/Dual peers; BLE-only peers are excluded.
+- [x] Add Android-version-specific consent: API 31+ CONNECT + SCAN for guests and CONNECT + ADVERTISE for hosts; API 23–30 fine-location runtime permission plus enabled Location services for discovery; API 21–22 legacy permission path. Keep hardware optional and legacy manifest permissions capped at API 30.
+- [x] Handle first denial, permanent denial, request failure, user cancellation, Bluetooth enable consent, host discoverability consent, discoverability denial and return/retry with explicit localized errors.
+- [x] Require successful Android host discoverability consent before host transport startup; clamp the requested visibility window to 60–300 seconds. Fence the continuation between permission success and the discoverability prompt so a destroyed/replaced scene cannot open a late system dialog.
+- [x] Add guest Search/Stop, Choose Device, selected-device state and a six-entry paginated picker. Bluetooth MAC state is separate from LAN IPv4/port fields.
+- [x] Handle bond removal, clear a removed selected peer, normalize pairing/peer-unavailable failures, cancel Bluetooth discovery before RFCOMM guest connect when SCAN permission is available, and keep transport callbacks fenced by controller/scene generations.
+- [x] Add bilingual messages for device search, empty results, selection, pairing/system consent, permission denial/permanent denial, legacy Location services, adapter enable, host visibility, cancellation and peer loss.
+- [x] Add JVM tests for permission-preparation cancellation, stale discovery callbacks, paired/discovered merge, selected-device removal, bounded device catalogue, malformed MAC/display names, host visibility grant/denial and host-scene destruction before discoverability.
+- [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks; 24 JUnit reports / 244 tests / 0 failures / 0 errors / 0 skipped**. Bluetooth-focused classes: 39 tests / 0 failures / 0 errors / 0 skipped. Debug APK: **35,261,178 bytes**; SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
+- [ ] Push the Phase16B implementation + documentation commit and verify exact-head CI for that SHA. Do not reuse Phase16A CI as evidence for 16B.
 
 ### Phase 16 acceptance criteria
 
-- Bluetooth is never reported connected before a real RFCOMM peer socket and streams exist; missing adapter/provider, disabled adapter, permission denial, timeout and disconnect are truthful and recoverable.
-- Framing is bounded, strict UTF-8 and compatible with the canonical network message envelope.
-- Transport connection is not conflated with room membership or authoritative native gameplay.
-- All automatic tests and exact-head CI are green. Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
+- [x] Bluetooth is never reported connected before a real RFCOMM peer socket and streams exist; missing adapter/provider, disabled adapter, permission denial, timeout, cancellation and disconnect are truthful and recoverable.
+- [x] Framing is bounded, strict UTF-8 and compatible with the canonical network message envelope.
+- [x] Transport connection is not conflated with room membership or authoritative native gameplay.
+- [ ] Exact-head CI passes for the implementation and final documentation commits. Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 — Co-op Rules and Shared Match Lifecycle
 
 **Priority:** P1 · **Dependencies:** phases 12–16.

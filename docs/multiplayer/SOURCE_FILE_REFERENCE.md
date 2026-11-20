@@ -85,12 +85,17 @@ The temporary rollout tracker is retained while Batch 3 is pending; it must be d
 
 Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
 
-The package has 35 Java files at the Phase16A working checkpoint:
+The package has 49 Java files at the Phase16B local-acceptance checkpoint:
 
 | File | Main responsibility |
 |---|---|
 | BluetoothTransport.java | Core Bluetooth facade with injected provider, validated endpoint and generation-fenced state |
 | BluetoothFrameCodec.java | Strict UTF-8 newline frame codec with a 16 MiB bound |
+| BluetoothDeviceAccess.java | Platform boundary for Android Bluetooth permissions, paired peers, search and host visibility |
+| BluetoothDeviceAccessRegistry.java | Application-level access point for the active Android device manager |
+| BluetoothDeviceInfo.java | Validated MAC and sanitized device metadata shared by discovery and setup |
+| BluetoothDeviceDiscoveryController.java | Generation-fenced paired/nearby catalogue, 20-second search lifecycle, selection and removal |
+| BluetoothHostPreparationController.java | Permission/adapter readiness + lifecycle-gated host discoverability before startup |
 | CoopMode.java | Co-op rule descriptor |
 | DeathmatchMode.java | Deathmatch rule descriptor |
 | EmbeddedMatchAuthority.java | Small embedded/local authority helper; not a Worker replacement |
@@ -158,7 +163,7 @@ These are automated JVM tests. They do not prove a production Worker deployment 
 | Dungeon.java | Run seed, generation, depth and floor lifecycle; seed is injected before generation through HeroSelectScene |
 | scenes/TitleScene.java | Multiplayer entry point |
 | scenes/MultiplayerTransportScene.java | Transport selection |
-| scenes/MultiplayerSetupScene.java | Host/client and endpoint setup/session start |
+| scenes/MultiplayerSetupScene.java | Host/client, LAN endpoint and Bluetooth peer search/selection/visibility setup/session start |
 | scenes/HeroSelectScene.java | Applies the authoritative seed before native game creation |
 | scenes/GameScene.java | Publishes current native level, ticks the lobby and gates native turns/cell input until PLAYING |
 | windows/WndMultiplayerLobby.java | In-game lifecycle lobby: authoritative roster/readiness, owner Start/readiness reset, Leave and reconnect/failure exit |
@@ -168,12 +173,13 @@ These are automated JVM tests. They do not prove a production Worker deployment 
 
 | Path | Role / current finding |
 |---|---|
-| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java | Android startup; registers the application-context AndroidBluetoothProvider before initializing the game |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java | Android startup; registers the RFCOMM provider and Activity-owned Bluetooth device manager; forwards permission/system-activity results and disposes the manager |
 | android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidPlatformSupport.java | Platform support utilities; no Bluetooth provider registration was found |
-| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java | Classic RFCOMM provider; server/client socket ownership, bounded connect timeout, strict frame reader, serialized writes and generation-fenced cleanup |
-| android/src/main/AndroidManifest.xml | Bluetooth hardware is optional; legacy BLUETOOTH/ADMIN through API30 and BLUETOOTH_CONNECT for API31+ |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java | Classic RFCOMM provider; server/client socket ownership, bounded connect timeout, pre-connect discovery cancellation, pairing failure reporting, strict frame reader, serialized writes and generation-fenced cleanup |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothDeviceManager.java | Activity-bound runtime permission/adapter consent, paired peer enumeration, bounded Classic discovery receiver, host discoverability result and receiver lifecycle |
+| android/src/main/AndroidManifest.xml | Bluetooth hardware optional; legacy BLUETOOTH/ADMIN through API30, BLUETOOTH_CONNECT/SCAN/ADVERTISE for API31+, ACCESS_FINE_LOCATION capped at API30 |
 
-The provider is registered and the API31+ permission guard/declarations are implemented in 16A. Runtime consent, scan/discovery, pairing and device selection remain Phase16B. See ANDROID_NATIVE_INTEGRATION.md and PHASE16_BLUETOOTH_TRANSPORT.md.
+Phase16B adds the paired/discovered Classic peer catalogue, platform runtime consent/adapter enabling, host visibility consent, separate Bluetooth MAC selection, paginated picker, bilingual error handling and scene/controller generation fences. API33+ registers the discovery receiver as EXPORTED for Bluetooth privileged-companion broadcasts; timeout and failure stop adapter discovery and unregister the receiver. See ANDROID_NATIVE_INTEGRATION.md and PHASE16_BLUETOOTH_TRANSPORT.md.
 
 ## 7. Backend file inventory after the three-stage source refactor
 
@@ -357,3 +363,16 @@ No Android or protocol-schema source changed for the final Phase 12-B closeout. 
 - `server/src/match-room/durable-object-sqlite.integration.do.mjs`: real SQLite race, cancel/reset, successful-start, late-join and post-start-cancel acceptance.
 
 No Android instrumentation/UI automation currently proves rendered layout or touch behavior; manual emulator acceptance remains open.
+### Phase 16B source and test ownership
+
+| Path | Responsibility / current evidence |
+|---|---|
+| `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothDeviceAccess.java` | Platform-neutral access contract for permission preparation, paired peers, discovery cancellation and discoverability |
+| `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothDeviceDiscoveryController.java` | Generation-fenced discovery state machine, paired/discovered merge, 32-peer bound, selection and selected-peer removal |
+| `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothHostPreparationController.java` | Testable host permission/adapter + visibility sequence, guarded against a destroyed/replaced setup scene |
+| `android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothDeviceManager.java` | Runtime permission request/result state, legacy Location services gate, adapter enable consent, Classic peer enumeration, bounded receiver and system visibility result |
+| `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothDeviceDiscoveryControllerTest.java` | 8 tests: cancellation, stale callbacks, paired merge, removal, failure and device bound |
+| `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothDeviceInfoTest.java` | 2 tests: MAC canonicalization, name sanitization and invalid MAC rejection |
+| `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothHostPreparationControllerTest.java` | 5 tests: permission/visibility success and denial, bounded duration, missing provider and destroyed-scene cancellation |
+
+The latest full local Android/JVM acceptance is 24 XML reports / 244 tests / 0 failures / 0 errors / 0 skipped with all 58 Gradle tasks executed. The Bluetooth-focused class inventory is 39 methods. This is JVM/build evidence only; Android system permission/broadcast/pairing sheets and physical RFCOMM remain deferred until after Phase 22.
