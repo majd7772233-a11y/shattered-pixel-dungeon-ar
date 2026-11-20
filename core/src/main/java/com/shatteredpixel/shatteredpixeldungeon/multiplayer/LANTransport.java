@@ -1,272 +1,613 @@
 package com.shatteredpixel.shatteredpixeldungeon.multiplayer;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.JsonReader;
+import com.badlogic.gdx.utils.JsonValue;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+/** Direct TCP LAN session transport. UDP discovery and announcements are handled in Phase 15B. */
 public class LANTransport implements NetworkTransport {
     public static final int DEFAULT_TCP_PORT = 8990;
     public static final int DEFAULT_UDP_PORT = 8991;
+    public static final int DEFAULT_CONNECT_TIMEOUT_MS = 5000;
+    public static final int DEFAULT_HANDSHAKE_TIMEOUT_MS = 5000;
+    public static final int MAX_PLAYERS = 4;
+    public static final String LOCAL_HOST_ENDPOINT = "LAN_HOST";
 
-    private ServerSocket serverSocket;
-    private DatagramSocket udpSocket;
-    private final List<ClientHandler> connectedClients = new ArrayList<>();
-    private Socket clientSocket;
-    private PrintWriter out;
-    private BufferedReader in;
-    private boolean isServer = false;
-    private boolean isConnected = false;
-    private TransportCallback callback;
-    private EmbeddedMatchAuthority hostAuthority;
+    private final Object stateLock = new Object();
+    private final ConcurrentMap<String, ClientHandler> connectedClients = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Socket, Boolean> pendingPeers = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Socket> pendingPlayerIds = new ConcurrentHashMap<>();
+    private volatile ServerSocket serverSocket;
+    private volatile Socket clientSocket;
+    private volatile OutputStream clientOutput;
+    private volatile boolean isServer;
+    private volatile boolean isConnected;
+    private volatile TransportCallback callback;
+    private volatile String localPlayerId;
+    private volatile String remoteHostId;
+    private long lifecycleGeneration;
 
     public interface LANDiscoveryCallback {
         void onHostDiscovered(String hostName, String hostIp, int port);
     }
 
+    /** Compatibility overload; MultiplayerManager supplies the stable host identity at session start. */
     public void startServer(int tcpPort, String hostName, TransportCallback callback) throws Exception {
-        this.callback = callback;
-        this.isServer = true;
-        this.isConnected = true;
-        this.hostAuthority = new EmbeddedMatchAuthority(this);
-        this.hostAuthority.start();
+        startServer(tcpPort, hostName, null, callback);
+    }
 
-        new Thread(() -> {
-            try {
-                serverSocket = new ServerSocket(tcpPort);
-                if (callback != null) callback.onConnected();
+    /** Binds synchronously. A successful return proves that the TCP listener is bound and accepting. */
+    public void startServer(int tcpPort, String hostName, String hostPlayerId,
+                            TransportCallback callback) throws Exception {
+        if (tcpPort < 0 || tcpPort > 65535) throw new IllegalArgumentException("LAN_ENDPOINT_INVALID");
+        if (hostPlayerId != null && !isValidPlayerId(hostPlayerId)) {
+            throw new IllegalArgumentException("LAN_PLAYER_ID_INVALID");
+        }
 
-                startUDPAnnouncer(hostName, tcpPort);
-
-                while (isConnected && !serverSocket.isClosed()) {
-                    Socket socket = serverSocket.accept();
-                    ClientHandler handler = new ClientHandler(socket);
-                    synchronized (connectedClients) {
-                        connectedClients.add(handler);
-                    }
-                    new Thread(handler).start();
-                }
-            } catch (Exception e) {
-                if (callback != null && isConnected) callback.onError(e);
+        final long generation;
+        synchronized (stateLock) {
+            if (isServer || clientSocket != null || isConnected) {
+                throw new IllegalStateException("LAN_ALREADY_STARTED");
             }
-        }).start();
+            generation = ++lifecycleGeneration;
+            this.callback = callback;
+            this.localPlayerId = hostPlayerId;
+            this.remoteHostId = null;
+        }
+
+        ServerSocket listener = new ServerSocket();
+        try {
+            listener.setReuseAddress(false);
+            listener.bind(new InetSocketAddress(tcpPort), MAX_PLAYERS - 1);
+        } catch (Exception bindFailure) {
+            closeQuietly(listener);
+            throw new IOException("LAN_SERVER_BIND_FAILED", bindFailure);
+        }
+
+        synchronized (stateLock) {
+            if (generation != lifecycleGeneration) {
+                closeQuietly(listener);
+                throw new IOException("LAN_START_CANCELLED");
+            }
+            serverSocket = listener;
+            isServer = true;
+            isConnected = true;
+            Thread acceptThread = new Thread(() -> acceptLoop(generation), "SPD-LAN-Accept");
+            acceptThread.setDaemon(true);
+            try {
+                acceptThread.start();
+            } catch (RuntimeException startFailure) {
+                serverSocket = null;
+                isServer = false;
+                isConnected = false;
+                closeQuietly(listener);
+                throw new IOException("LAN_ACCEPT_START_FAILED", startFailure);
+            }
+        }
     }
 
-    private void startUDPAnnouncer(String hostName, int tcpPort) {
-        new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket()) {
-                socket.setBroadcast(true);
-                String announceMsg = "SPD_HOST:" + hostName + ":" + tcpPort;
-                byte[] buffer = announceMsg.getBytes("UTF-8");
-
-                while (isConnected) {
-                    DatagramPacket packet = new DatagramPacket(
-                            buffer,
-                            buffer.length,
-                            InetAddress.getByName("255.255.255.255"),
-                            DEFAULT_UDP_PORT
-                    );
-                    socket.send(packet);
-                    Thread.sleep(2000);
-                }
-            } catch (Exception ignored) {}
-        }).start();
+    public void setLocalPlayerId(String playerId) {
+        if (!isValidPlayerId(playerId)) throw new IllegalArgumentException("LAN_PLAYER_ID_INVALID");
+        synchronized (stateLock) {
+            if (!connectedClients.isEmpty() && !playerId.equals(localPlayerId)) {
+                throw new IllegalStateException("LAN_HOST_ID_ALREADY_IN_USE");
+            }
+            localPlayerId = playerId;
+        }
     }
 
-    public static void discoverHosts(LANDiscoveryCallback discoveryCallback) {
-        new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket(DEFAULT_UDP_PORT)) {
-                socket.setSoTimeout(3000);
-                byte[] buffer = new byte[512];
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+    public boolean isHosting() {
+        return isServer && serverSocket != null && serverSocket.isBound() && !serverSocket.isClosed();
+    }
 
-                long startTime = System.currentTimeMillis();
-                while (System.currentTimeMillis() - startTime < 5000) {
-                    try {
-                        socket.receive(packet);
-                        String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
-                        if (msg.startsWith("SPD_HOST:")) {
-                            String[] parts = msg.split(":");
-                            String hostName = parts.length > 1 ? parts[1] : "Host";
-                            int port = parts.length > 2 ? Integer.parseInt(parts[2]) : DEFAULT_TCP_PORT;
-                            String ip = packet.getAddress().getHostAddress();
+    int getPendingPeerCountForTests() {
+        return pendingPeers.size();
+    }
 
-                            if (discoveryCallback != null) {
-                                discoveryCallback.onHostDiscovered(hostName, ip, port);
-                            }
-                        }
-                    } catch (Exception timeoutOrErr) {
-                        break;
-                    }
-                }
-            } catch (Exception ignored) {}
-        }).start();
+    public int getLocalPort() {
+        ServerSocket listener = serverSocket;
+        return listener == null || listener.isClosed() ? -1 : listener.getLocalPort();
+    }
+
+    /** Returns a stable snapshot of peer identities that completed the LAN handshake. */
+    public Set<String> getConnectedPlayerIds() {
+        return Collections.unmodifiableSet(new LinkedHashSet<>(connectedClients.keySet()));
+    }
+
+    public String getRemoteHostId() {
+        return remoteHostId;
     }
 
     @Override
     public void connect(String endpoint, TransportCallback callback) throws Exception {
-        this.callback = callback;
-        if (this.isServer) {
+        if (endpoint != null && LOCAL_HOST_ENDPOINT.equalsIgnoreCase(endpoint.trim())) {
+            synchronized (stateLock) {
+                if (!isHosting() || !isConnected) throw new IllegalStateException("LAN_HOST_NOT_READY");
+                this.callback = callback;
+            }
             if (callback != null) callback.onConnected();
             return;
         }
 
-        String host = endpoint;
-        int port = DEFAULT_TCP_PORT;
-        if (endpoint.contains(":")) {
-            String[] parts = endpoint.split(":");
-            host = parts[0];
-            port = Integer.parseInt(parts[1]);
-        }
-
-        final String finalHost = host;
-        final int finalPort = port;
-
-        new Thread(() -> {
-            try {
-                clientSocket = new Socket(finalHost, finalPort);
-                setupStreams();
-                listen();
-            } catch (Exception e) {
-                if (callback != null) callback.onError(e);
+        final LanEndpoint target = LanEndpoint.parse(endpoint, DEFAULT_TCP_PORT);
+        final long generation;
+        final Socket socket = new Socket();
+        final String playerId;
+        synchronized (stateLock) {
+            if (isConnected || clientSocket != null || isServer) {
+                throw new IllegalStateException("LAN_ALREADY_STARTED");
             }
-        }).start();
-    }
+            if (!isValidPlayerId(localPlayerId)) throw new IllegalStateException("LAN_PLAYER_ID_REQUIRED");
+            generation = ++lifecycleGeneration;
+            playerId = localPlayerId;
+            this.callback = callback;
+            clientSocket = socket; // Publish the pending socket so disconnect() can cancel connect().
+            isConnected = false;
+        }
 
-    private void setupStreams() throws Exception {
-        out = new PrintWriter(clientSocket.getOutputStream(), true);
-        in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-        isConnected = true;
-        if (callback != null) callback.onConnected();
-    }
-
-    private void listen() {
+        Thread clientThread = new Thread(() -> connectAndListen(generation, socket, target, playerId),
+                "SPD-LAN-Client");
+        clientThread.setDaemon(true);
         try {
-            String inputLine;
-            while (isConnected && (inputLine = in.readLine()) != null) {
-                if (callback != null) {
-                    NetworkMessage msg = parseMessage(inputLine);
-                    callback.onMessageReceived(msg);
-                }
+            clientThread.start();
+        } catch (RuntimeException startFailure) {
+            synchronized (stateLock) {
+                if (generation == lifecycleGeneration && clientSocket == socket) clientSocket = null;
             }
-        } catch (Exception e) {
-            if (callback != null) callback.onError(e);
-        } finally {
-            disconnect();
+            closeQuietly(socket);
+            throw new IOException("LAN_CLIENT_START_FAILED", startFailure);
         }
     }
 
-    public void sendAuthorityEvent(NetworkMessage eventMsg) {
-        final String jsonStr;
+    private void connectAndListen(long generation, Socket socket, LanEndpoint target, String playerId) {
+        boolean sessionEstablished = false;
         try {
-            jsonStr = serializeMessage(eventMsg);
-        } catch (RuntimeException invalidMessage) {
-            if (callback != null) callback.onError(invalidMessage);
-            return;
-        }
-        broadcastToClients(jsonStr);
-        if (callback != null) callback.onMessageReceived(eventMsg);
-    }
+            socket.connect(new InetSocketAddress(target.host, target.port), DEFAULT_CONNECT_TIMEOUT_MS);
+            socket.setTcpNoDelay(true);
+            socket.setSoTimeout(DEFAULT_HANDSHAKE_TIMEOUT_MS);
+            InputStream input = new BufferedInputStream(socket.getInputStream());
+            OutputStream output = new BufferedOutputStream(socket.getOutputStream());
 
-    @Override
-    public void send(NetworkMessage message) {
-        final String jsonStr;
-        try {
-            jsonStr = serializeMessage(message);
-        } catch (RuntimeException invalidMessage) {
-            if (callback != null) callback.onError(invalidMessage);
-            return;
-        }
-        if (isServer) {
-            if (hostAuthority != null && message.messageType == MessageType.ACTION) {
-                Optional<NetworkActionType> actionType = parseActionType(message.payloadJson);
-                if (actionType.isPresent()) {
-                    int pos = parsePositionFromAction(message.payloadJson);
-                    hostAuthority.processAction(message.senderId, actionType.get(), pos);
-                } else if (callback != null) {
-                    callback.onError(new IllegalArgumentException("Unsupported LAN action payload"));
+            NetworkMessage hello = new NetworkMessage(MessageType.HELLO, "{}");
+            hello.senderId = playerId;
+            synchronized (output) {
+                LanFrameCodec.writeFrame(output, hello.toJson());
+            }
+
+            String responseFrame = LanFrameCodec.readFrame(input);
+            if (responseFrame == null) throw new IOException("LAN_SESSION_REJECTED");
+            NetworkMessage session = NetworkMessage.parseLanJson(responseFrame);
+            if (session.messageType != MessageType.SESSION || !isValidPlayerId(session.senderId)
+                    || !sessionMatchesPlayer(session.payloadJson, playerId)) {
+                throw new IOException("LAN_SESSION_REJECTED");
+            }
+            if (!isCurrentGeneration(generation)) return;
+
+            synchronized (stateLock) {
+                if (generation != lifecycleGeneration || clientSocket != socket) return;
+                clientOutput = output;
+                remoteHostId = session.senderId;
+                isConnected = true;
+            }
+            socket.setSoTimeout(0);
+            sessionEstablished = true;
+
+            TransportCallback current = callback;
+            if (current != null) {
+                current.onConnected();
+                current.onMessageReceived(session);
+            }
+
+            while (isCurrentGeneration(generation) && isConnected) {
+                String frame = LanFrameCodec.readFrame(input);
+                if (frame == null) break;
+                NetworkMessage message = NetworkMessage.parseLanJson(frame);
+                if (message.messageType == MessageType.ERROR) {
+                    throw new IOException("LAN_REMOTE_REJECTED_MESSAGE");
                 }
+                if (message.messageType == null || !isValidServerMessage(message.messageType)
+                        || message.senderId != null && !isValidPlayerId(message.senderId)) {
+                    throw new IOException("LAN_INVALID_SERVER_MESSAGE");
+                }
+                TransportCallback currentCallback = callback;
+                if (currentCallback != null) currentCallback.onMessageReceived(message);
+            }
+            finishClientConnection(generation, socket, "LAN_CONNECTION_CLOSED", true);
+        } catch (Exception failure) {
+            if (isCurrentGeneration(generation)) {
+                TransportCallback current = callback;
+                if (current != null) current.onError(failure);
+                finishClientConnection(generation, socket,
+                        sessionEstablished ? "LAN_CONNECTION_FAILED" : "LAN_CONNECT_FAILED", false);
             } else {
-                broadcastToClients(jsonStr);
-                if (callback != null) callback.onMessageReceived(message);
+                closeQuietly(socket);
             }
-        } else if (out != null && isConnected) {
-            out.println(jsonStr);
         }
     }
 
-    private int parsePositionFromAction(String json) {
-        if (json == null) return -1;
+    private void acceptLoop(long generation) {
+        while (isCurrentHost(generation)) {
+            try {
+                Socket socket = serverSocket.accept();
+                socket.setTcpNoDelay(true);
+                if (!trackPendingPeer(socket, generation)) {
+                    if (isCurrentHost(generation)) {
+                        rejectPeer(new BufferedOutputStream(socket.getOutputStream()), "LAN_ROOM_FULL");
+                    }
+                    closeQuietly(socket);
+                    continue;
+                }
+                Thread handler = new Thread(new ClientHandler(generation, socket), "SPD-LAN-Peer");
+                handler.setDaemon(true);
+                try {
+                    handler.start();
+                } catch (RuntimeException startFailure) {
+                    synchronized (stateLock) {
+                        pendingPeers.remove(socket);
+                    }
+                    closeQuietly(socket);
+                    notifyHostError(startFailure);
+                }
+            } catch (SocketException closed) {
+                if (isCurrentHost(generation)) notifyHostError(closed);
+                return;
+            } catch (Exception failure) {
+                if (isCurrentHost(generation)) notifyHostError(failure);
+                return;
+            }
+        }
+    }
+
+    /** Reserves one of the three guest slots before creating a handshake worker. */
+    private boolean trackPendingPeer(Socket socket, long generation) {
+        synchronized (stateLock) {
+            if (!isServer || !isConnected || generation != lifecycleGeneration
+                    || serverSocket == null || serverSocket.isClosed()
+                    || connectedClients.size() + pendingPeers.size() >= MAX_PLAYERS - 1) {
+                return false;
+            }
+            pendingPeers.put(socket, Boolean.TRUE);
+            return true;
+        }
+    }
+
+    private final class ClientHandler implements Runnable {
+        private final long generation;
+        private final Socket socket;
+        private String playerId;
+        private OutputStream output;
+        private boolean registered;
+
+        ClientHandler(long generation, Socket socket) {
+            this.generation = generation;
+            this.socket = socket;
+        }
+
+        @Override
+        public void run() {
+            try {
+                if (!isCurrentHost(generation)) return;
+                socket.setSoTimeout(DEFAULT_HANDSHAKE_TIMEOUT_MS);
+                InputStream input = new BufferedInputStream(socket.getInputStream());
+                output = new BufferedOutputStream(socket.getOutputStream());
+                String firstFrame = LanFrameCodec.readFrame(input);
+                NetworkMessage hello = firstFrame == null ? null : NetworkMessage.parseLanJson(firstFrame);
+                if (hello == null || hello.messageType != MessageType.HELLO
+                        || !isValidPlayerId(hello.senderId) || hello.senderId.equals(localPlayerId)) {
+                    rejectPeer(output, "LAN_IDENTITY_REJECTED");
+                    return;
+                }
+
+                playerId = hello.senderId;
+                if (!reservePlayerIdentity(this)) {
+                    rejectPeer(output, connectedClients.containsKey(playerId)
+                            || pendingPlayerIds.containsKey(playerId)
+                            ? "LAN_DUPLICATE_PLAYER" : "LAN_ROOM_FULL");
+                    return;
+                }
+
+                // The peer is not visible to host broadcasts until its SESSION frame is fully written.
+                send(buildSessionMessage(playerId).toJson());
+                socket.setSoTimeout(0);
+                if (!completePeerRegistration(this)) return;
+                registered = true;
+
+                while (isCurrentHost(generation) && !socket.isClosed()) {
+                    String frame = LanFrameCodec.readFrame(input);
+                    if (frame == null) break;
+                    NetworkMessage message = NetworkMessage.parseLanJson(frame);
+                    if (message.messageType == null || message.messageType == MessageType.ERROR
+                            || !playerId.equals(message.senderId) || !isAllowedClientMessage(message.messageType)) {
+                        rejectPeer(output, "LAN_MESSAGE_REJECTED");
+                        break;
+                    }
+                    if (message.messageType == MessageType.LEAVE) break;
+                    TransportCallback current = callback;
+                    if (current != null) current.onMessageReceived(message);
+                }
+            } catch (Exception ignored) {
+                // An invalid or disconnected peer is isolated; it must not tear down the host listener.
+            } finally {
+                synchronized (stateLock) {
+                    pendingPeers.remove(socket);
+                    if (playerId != null) pendingPlayerIds.remove(playerId, socket);
+                    if (registered) connectedClients.remove(playerId, this);
+                }
+                if (registered) notifyPeerLeft(playerId, generation);
+                closeQuietly(socket);
+            }
+        }
+
+        synchronized void send(String frame) throws IOException {
+            OutputStream target = output;
+            if (target == null || socket.isClosed()) throw new IOException("LAN_PEER_NOT_READY");
+            synchronized (target) {
+                LanFrameCodec.writeFrame(target, frame);
+            }
+        }
+
+        void close() {
+            closeQuietly(socket);
+        }
+    }
+
+    /** Reserves the claimed identity while the SESSION response is being written. */
+    private boolean reservePlayerIdentity(ClientHandler peer) {
+        synchronized (stateLock) {
+            if (!isServer || !isConnected || peer.generation != lifecycleGeneration
+                    || !pendingPeers.containsKey(peer.socket) || peer.playerId.equals(localPlayerId)
+                    || connectedClients.containsKey(peer.playerId) || pendingPlayerIds.containsKey(peer.playerId)) {
+                return false;
+            }
+            pendingPlayerIds.put(peer.playerId, peer.socket);
+            return true;
+        }
+    }
+
+    /** Publishes a peer only after its SESSION handshake has been flushed to the socket. */
+    private boolean completePeerRegistration(ClientHandler peer) {
+        synchronized (stateLock) {
+            if (!isServer || !isConnected || peer.generation != lifecycleGeneration
+                    || !pendingPeers.containsKey(peer.socket)
+                    || pendingPlayerIds.get(peer.playerId) != peer.socket) {
+                return false;
+            }
+            pendingPeers.remove(peer.socket);
+            pendingPlayerIds.remove(peer.playerId, peer.socket);
+            return connectedClients.putIfAbsent(peer.playerId, peer) == null;
+        }
+    }
+
+    private void notifyPeerLeft(String playerId, long generation) {
+        if (playerId == null || !isCurrentHost(generation)) return;
+        NetworkMessage left = new NetworkMessage(MessageType.PLAYER_LEFT,
+                "{\"playerId\":" + new Json().toJson(playerId) + "}");
+        left.senderId = playerId;
+        String frame = left.toJson();
+        for (ClientHandler peer : new ArrayList<>(connectedClients.values())) {
+            try {
+                peer.send(frame);
+            } catch (IOException failedPeer) {
+                peer.close();
+            }
+        }
+        TransportCallback current = callback;
+        if (current != null) current.onMessageReceived(left);
+    }
+
+    private NetworkMessage buildSessionMessage(String playerId) {
+        String hostId = localPlayerId;
+        if (!isValidPlayerId(hostId)) throw new IllegalStateException("LAN_HOST_ID_REQUIRED");
+        Json json = new Json();
+        NetworkMessage session = new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":" + json.toJson(playerId) + "}");
+        session.senderId = hostId;
+        return session;
+    }
+
+    private static boolean sessionMatchesPlayer(String payloadJson, String playerId) {
         try {
-            com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
-            com.badlogic.gdx.utils.JsonValue data = root.get("data");
-            if (data == null) data = root;
-            com.badlogic.gdx.utils.JsonValue value = data.get("to");
-            if (value == null) value = data.get("targetPos");
-            if (value == null) value = data.get("itemPos");
-            if (value == null) value = data.get("pos");
-            return value == null ? -1 : value.asInt();
-        } catch (RuntimeException ignored) {
-            return -1;
+            JsonValue payload = new JsonReader().parse(payloadJson);
+            JsonValue id = payload == null ? null : payload.get("playerId");
+            return payload != null && payload.isObject() && id != null && id.isString()
+                    && playerId.equals(id.asString());
+        } catch (RuntimeException malformed) {
+            return false;
         }
     }
 
-    static Optional<NetworkActionType> parseActionType(String json) {
+    /** Parses the legacy action shape for protocol-parity tests; it does not execute gameplay. */
+    public static Optional<NetworkActionType> parseActionType(String json) {
         if (json == null || json.trim().isEmpty()) return Optional.empty();
         try {
-            com.badlogic.gdx.utils.JsonValue root = new com.badlogic.gdx.utils.JsonReader().parse(json);
+            JsonValue root = new JsonReader().parse(json);
             if (root == null || !root.isObject()) return Optional.empty();
-            com.badlogic.gdx.utils.JsonValue action = root.get("action");
-            if (action == null && root.get("data") != null && root.get("data").isObject()) {
-                action = root.get("data").get("action");
+            JsonValue action = root.get("action");
+            JsonValue data = root.get("data");
+            if ((action == null || !action.isString()) && data != null && data.isObject()) {
+                action = data.get("action");
             }
-            if (action == null || !action.isString() || action.asString().isEmpty()) return Optional.empty();
+            if (action == null || !action.isString()) return Optional.empty();
             return Optional.of(NetworkActionType.valueOf(action.asString()));
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException invalidAction) {
             return Optional.empty();
         }
     }
 
-    private synchronized void broadcastToClients(String jsonStr) {
-        synchronized (connectedClients) {
-            for (ClientHandler client : connectedClients) {
-                client.send(jsonStr);
-            }
+    private static boolean isValidPlayerId(String value) {
+        return value != null && value.matches("[A-Za-z0-9._~-]{1,80}");
+    }
+
+    private static boolean isAllowedClientMessage(MessageType type) {
+        return type == MessageType.ACTION || type == MessageType.LEVEL_DATA
+                || type == MessageType.LEVEL_READY || type == MessageType.RESYNC
+                || type == MessageType.RECONNECT || type == MessageType.READY
+                || type == MessageType.PING || type == MessageType.CHAT
+                || type == MessageType.COMBAT_REQUEST || type == MessageType.LEAVE;
+    }
+
+    private static boolean isValidServerMessage(MessageType type) {
+        switch (type) {
+            case ROOM_STATE:
+            case PLAYER_JOINED:
+            case PLAYER_LEFT:
+            case READY:
+            case MATCH_START:
+            case LEVEL_PUBLISHER_CHANGED:
+            case ACTION_ACCEPTED:
+            case EVENT_BATCH:
+            case SNAPSHOT:
+            case ACK:
+            case MATCH_END:
+            case PING:
+            case CHAT:
+                return true;
+            default:
+                return false;
         }
     }
 
-    private String serializeMessage(NetworkMessage msg) {
-        return msg.toJson();
+    private static void rejectPeer(OutputStream output, String code) {
+        try {
+            NetworkMessage error = new NetworkMessage(MessageType.ERROR,
+                    "{\"error\":" + new Json().toJson(code) + "}");
+            synchronized (output) {
+                LanFrameCodec.writeFrame(output, error.toJson());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
-    private NetworkMessage parseMessage(String jsonStr) {
-        return NetworkMessage.parseLanJson(jsonStr);
+    private void notifyHostError(Throwable failure) {
+        TransportCallback current = callback;
+        if (current != null) current.onError(failure);
+    }
+
+    private boolean isCurrentGeneration(long generation) {
+        synchronized (stateLock) {
+            return generation == lifecycleGeneration;
+        }
+    }
+
+    private boolean isCurrentHost(long generation) {
+        synchronized (stateLock) {
+            return isServer && isConnected && generation == lifecycleGeneration
+                    && serverSocket != null && !serverSocket.isClosed();
+        }
+    }
+
+    private void finishClientConnection(long generation, Socket socket, String reason, boolean notify) {
+        TransportCallback current = null;
+        synchronized (stateLock) {
+            if (generation != lifecycleGeneration || clientSocket != socket) {
+                closeQuietly(socket);
+                return;
+            }
+            isConnected = false;
+            clientSocket = null;
+            clientOutput = null;
+            if (notify) current = callback;
+        }
+        closeQuietly(socket);
+        if (current != null) current.onDisconnected(reason);
+    }
+
+    @Override
+    public void send(NetworkMessage message) {
+        if (message == null) return;
+        final String frame;
+        try {
+            frame = message.toJson();
+        } catch (RuntimeException invalidMessage) {
+            TransportCallback current = callback;
+            if (current != null) current.onError(invalidMessage);
+            return;
+        }
+
+        if (isServer) {
+            for (ClientHandler peer : new ArrayList<>(connectedClients.values())) {
+                try {
+                    peer.send(frame);
+                } catch (IOException failedPeer) {
+                    peer.close();
+                }
+            }
+            return;
+        }
+
+        OutputStream output = clientOutput;
+        if (!isConnected || output == null) {
+            TransportCallback current = callback;
+            if (current != null) current.onError(new IOException("LAN_NOT_CONNECTED"));
+            return;
+        }
+        try {
+            synchronized (output) {
+                LanFrameCodec.writeFrame(output, frame);
+            }
+        } catch (IOException failure) {
+            TransportCallback current = callback;
+            if (current != null) current.onError(failure);
+        }
+    }
+
+    /** Compatibility bridge for the retired embedded helper; it uses the ordinary TCP broadcast. */
+    public void sendAuthorityEvent(NetworkMessage message) {
+        send(message);
     }
 
     @Override
     public void disconnect() {
-        isConnected = false;
-        try {
-            if (in != null) in.close();
-            if (out != null) out.close();
-            if (clientSocket != null) clientSocket.close();
-            if (serverSocket != null) serverSocket.close();
-            if (udpSocket != null) udpSocket.close();
-            synchronized (connectedClients) {
-                for (ClientHandler client : connectedClients) {
-                    client.close();
-                }
-                connectedClients.clear();
-            }
-        } catch (Exception ignored) {}
-        if (callback != null) callback.onDisconnected("LAN Disconnected");
+        final ServerSocket closingServer;
+        final Socket closingClient;
+        final List<ClientHandler> closingPeers;
+        final List<Socket> closingPendingPeers;
+        final TransportCallback notify;
+        final boolean wasActive;
+        synchronized (stateLock) {
+            wasActive = isConnected || clientSocket != null || serverSocket != null;
+            if (!wasActive && !isServer) return;
+            lifecycleGeneration++;
+            closingServer = serverSocket;
+            closingClient = clientSocket;
+            closingPeers = new ArrayList<>(connectedClients.values());
+            closingPendingPeers = new ArrayList<>(pendingPeers.keySet());
+            notify = callback;
+            serverSocket = null;
+            clientSocket = null;
+            clientOutput = null;
+            connectedClients.clear();
+            pendingPeers.clear();
+            pendingPlayerIds.clear();
+            isServer = false;
+            isConnected = false;
+            remoteHostId = null;
+        }
+        for (ClientHandler peer : closingPeers) peer.close();
+        for (Socket pending : closingPendingPeers) closeQuietly(pending);
+        closeQuietly(closingClient);
+        closeQuietly(closingServer);
+        if (wasActive && notify != null) notify.onDisconnected("LAN_DISCONNECTED");
     }
 
     @Override
@@ -279,52 +620,44 @@ public class LANTransport implements NetworkTransport {
         return "LAN";
     }
 
-    private class ClientHandler implements Runnable {
-        private final Socket socket;
-        private PrintWriter writer;
+    private static void closeQuietly(Socket socket) {
+        if (socket != null) try { socket.close(); } catch (IOException ignored) { }
+    }
 
-        public ClientHandler(Socket socket) {
-            this.socket = socket;
-        }
+    private static void closeQuietly(ServerSocket socket) {
+        if (socket != null) try { socket.close(); } catch (IOException ignored) { }
+    }
 
-        @Override
-        public void run() {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                writer = new PrintWriter(socket.getOutputStream(), true);
-                String line;
-                while (isConnected && (line = reader.readLine()) != null) {
-                    NetworkMessage msg = parseMessage(line);
-                    if (msg.messageType == MessageType.ERROR) {
-                        // Invalid or unknown envelopes are never relayed to the room.
-                        continue;
-                    }
-                    if (isServer && hostAuthority != null && msg.messageType == MessageType.ACTION) {
-                        Optional<NetworkActionType> actionType = parseActionType(msg.payloadJson);
-                        if (actionType.isPresent()) {
-                            int pos = parsePositionFromAction(msg.payloadJson);
-                            hostAuthority.processAction(msg.senderId, actionType.get(), pos);
+    // The UDP search/advertisement pair is deliberately completed in Phase 15B.
+    public static void discoverHosts(LANDiscoveryCallback discoveryCallback) {
+        new Thread(() -> {
+            try (DatagramSocket socket = new DatagramSocket(DEFAULT_UDP_PORT)) {
+                socket.setSoTimeout(1000);
+                byte[] buffer = new byte[512];
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                long deadline = System.currentTimeMillis() + 5000L;
+                while (System.currentTimeMillis() < deadline) {
+                    try {
+                        packet.setLength(buffer.length);
+                        socket.receive(packet);
+                        String message = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                        if (!message.startsWith("SPD_HOST:")) continue;
+                        String[] parts = message.split(":", -1);
+                        if (parts.length != 3 || parts[1].isEmpty()) continue;
+                        int port;
+                        try { port = Integer.parseInt(parts[2]); }
+                        catch (NumberFormatException invalidPort) { continue; }
+                        if (port < 1 || port > 65535) continue;
+                        if (discoveryCallback != null) {
+                            discoveryCallback.onHostDiscovered(parts[1],
+                                    packet.getAddress().getHostAddress(), port);
                         }
-                        // Never relay an unvalidated client intent as if it were an authoritative event.
-                    } else {
-                        broadcastToClients(line);
+                    } catch (java.net.SocketTimeoutException timeout) {
+                        // Keep the bounded search window alive; Phase 15B owns UI dispatch/cancellation.
                     }
                 }
             } catch (Exception ignored) {
-            } finally {
-                close();
             }
-        }
-
-        public void send(String msg) {
-            if (writer != null) {
-                writer.println(msg);
-            }
-        }
-
-        public void close() {
-            try {
-                if (socket != null && !socket.isClosed()) socket.close();
-            } catch (Exception ignored) {}
-        }
+        }, "SPD-LAN-Discovery").start();
     }
 }

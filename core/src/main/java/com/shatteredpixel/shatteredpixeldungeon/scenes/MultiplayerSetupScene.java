@@ -160,23 +160,24 @@ public class MultiplayerSetupScene extends PixelScene {
         add(new WndError(Messages.get(MultiplayerErrorMessages.messageKey(failure == null ? null : failure.getMessage()))));
     }
     private void startMultiplayerSession() {
+        NetworkTransport transport = null;
         try {
-            NetworkTransport transport;
             String endpoint;
+            String playerId = UUID.randomUUID().toString();
 
             if ("LAN".equalsIgnoreCase(selectedTransportType)) {
                 LANTransport lan = new LANTransport();
-                if (isHost) {
-                    try {
-                        lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", null);
-                    } catch (Exception ignored) {}
-                    endpoint = "127.0.0.1:" + LANTransport.DEFAULT_TCP_PORT;
-                } else {
-                    endpoint = (isValidIPv4(targetIp) ? targetIp : "127.0.0.1") + ":" + LANTransport.DEFAULT_TCP_PORT;
-                }
                 transport = lan;
+                if (isHost) {
+                    lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", playerId, null);
+                    endpoint = LANTransport.LOCAL_HOST_ENDPOINT;
+                } else {
+                    if (!isValidIPv4(targetIp)) throw new IllegalArgumentException("LAN_ENDPOINT_INVALID");
+                    endpoint = targetIp + ":" + LANTransport.DEFAULT_TCP_PORT;
+                }
             } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
                 BluetoothTransport bt = new BluetoothTransport();
+                transport = bt;
                 if (isHost) {
                     try {
                         bt.startBluetoothServer(null);
@@ -185,15 +186,16 @@ public class MultiplayerSetupScene extends PixelScene {
                 } else {
                     endpoint = targetIp;
                 }
-                transport = bt;
             } else {
                 transport = new InternetTransport();
                 endpoint = InternetTransport.buildRoomEndpoint(roomName);
             }
 
-            String playerId = UUID.randomUUID().toString();
             MultiplayerManager.getInstance().startSession(endpoint, playerId, transport, isHost);
-        } catch (RuntimeException startupFailure) {
+        } catch (Exception startupFailure) {
+            if (transport instanceof LANTransport) {
+                try { transport.disconnect(); } catch (RuntimeException ignored) { }
+            }
             showConnectionStartFailure(startupFailure);
             return;
         }

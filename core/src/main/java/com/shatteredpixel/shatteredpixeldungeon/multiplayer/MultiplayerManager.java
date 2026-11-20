@@ -443,6 +443,7 @@ public class MultiplayerManager implements TransportCallback {
       this.clearPendingUnblessedAnkhRevival();
       WorldSnapshot.clearAppliedSnapshot();
       this.activeTransport = transport;
+      if (transport instanceof LANTransport) ((LANTransport) transport).setLocalPlayerId(this.localPlayerId);
       this.createRoomOnConnect = createRoom;
       this.sessionError = null;
       this.roomLifecycleError = null;
@@ -1348,12 +1349,14 @@ public class MultiplayerManager implements TransportCallback {
          this.sendReconnect();
       } else if (this.activeTransport != null && "INTERNET".equalsIgnoreCase(this.activeTransport.getTransportType())) {
          this.sessionState = MultiplayerManager.SessionState.TRANSPORT_CONNECTED;
+      } else if (this.activeTransport instanceof LANTransport
+              && !((LANTransport) this.activeTransport).isHosting()) {
+         this.sessionState = MultiplayerManager.SessionState.TRANSPORT_CONNECTED;
       } else {
          this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
       }
 
    }
-
    public synchronized void onDisconnected(String reason) {
       if (sessionToken != null) {
          cancelSessionHandshakeTimeout();
@@ -1542,6 +1545,11 @@ public class MultiplayerManager implements TransportCallback {
                      if (resumingExistingSession) this.endSession();
                      else if (initialHandshakePending) this.failInitialSession("INVALID_SESSION_RESPONSE");
                   }
+               }
+               if (message.messageType == MessageType.SESSION && this.activeTransport instanceof LANTransport) {
+                  this.isMultiplayerActive = true;
+                  this.sessionError = null;
+                  this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
                }
                MessageRouter.routeMessage(message);
             }

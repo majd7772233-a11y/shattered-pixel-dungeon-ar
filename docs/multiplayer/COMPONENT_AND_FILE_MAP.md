@@ -10,7 +10,7 @@ All paths are repository-relative. Reopen each source file at the active branch 
 
 Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
 
-The audited tree contains 36 Java files after the Phase 14-A transport split:
+The audited tree contains 38 Java files after the Phase 15A transport split:
 
 | File | Responsibility observed in source | Related components / change impact |
 |---|---|---|
@@ -22,7 +22,9 @@ The audited tree contains 36 Java files after the Phase 14-A transport split:
 | InternetTransport.java | TCP/TLS WebSocket client implementing NetworkTransport; performs bounded connect/upgrade, verifies TLS hostname, validates the upgrade, reads/writes RFC 6455 frames and dispatches typed messages. | Worker endpoint and TransportCallback; 14-A covers wire correctness, while manager callback/retry/thread lifecycle stays in 14-B. |
 | WebSocketHandshake.java | Strict HTTP/1.1 WebSocket upgrade request/response helper, request-target construction, Bearer header validation and Sec-WebSocket-Accept calculation. | InternetTransport, Worker `fetch()` room path and session-token admission; test positive and negative upgrade responses. |
 | WebSocketFrameCodec.java | Bounded RFC 6455 server-frame parser, text-fragment assembler, strict UTF-8/close validation and masked client-frame writer. | InternetTransport; tests must cover lengths, masking, RSV/opcodes, fragmentation, interleaved controls, ping/pong and close. |
-| LANTransport.java | TCP server/client and UDP host discovery; sends network messages and exposes connected state. | Setup scene, host/client topology, socket lifecycle, discovery, peer compatibility and multi-device tests. |
+| LANTransport.java | Phase 15A TCP host/guest transport: synchronous bind, HELLO/SESSION identity, bounded peer admission, framed message exchange and socket lifecycle. UDP advertisement/discovery is a Phase 15B boundary and is not currently started by the host path. | Setup scene, MultiplayerManager, peer identities, transport callbacks and LAN tests; do not mistake TCP readiness for a playable authoritative match. |
+| LanEndpoint.java | Strict host/port endpoint parser, including bracketed IPv6 and validated numeric ports. | LANTransport direct-address connections and endpoint parser tests. |
+| LanFrameCodec.java | Strict UTF-8 newline framing with truncated/malformed input rejection and a 16 MiB message bound shared with the Internet transport. | LANTransport streams; framing tests and payload-size compatibility. |
 | LootClaimManager.java | In-memory claim/release/clear helper scoped by depth/branch and heap/item/player. | Server durable claims and pickup/drop logic; not a substitute for durable Worker claims. |
 | MessageRouter.java | Exhaustive 25-value client message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING handlers, render-thread ROOM_STATE and MATCH_START delivery, explicit non-inbound decisions |
 | MessageType.java | Java message-type enum. | NetworkMessage, MessageRouter, Worker and protocol schema; additions/removals require cross-layer parity audit. |

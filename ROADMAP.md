@@ -807,22 +807,35 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 
 ## Phase 15 — LAN Transport
 
-**Preflight:** `docs/multiplayer/PHASE15_LAN_PREFLIGHT.md` records the source-only readiness audit. Phase 15 implementation has NOT started; all LAN work items below remain open.
+**Priority:** P0/P1 · **Dependencies:** Phase 13. Phase 15 is split into two ordered slices. Bluetooth remains Phase 16.
 
-**Priority:** P0/P1 · **Dependencies:** Phase 13.
+### Phase 15A — TCP host/guest session transport
 
-### Work items
-- [ ] Correct host startup so the host owns the local authority and never accidentally connects to itself via the ordinary client path.
-- [ ] Validate bind address, port, host/guest roles, discovery, local network interface selection and join-by-address behavior.
-- [ ] Implement deterministic startup/shutdown and cleanup when discovery, bind or connection fails.
-- [ ] Reuse the common session, protocol and recovery path; do not create a second gameplay event pipeline for LAN.
-- [ ] Add tests for host/guest lifecycle, wrong address/port, host closure, timeout and duplicate clients.
+**Status:** LOCAL SOURCE, TARGETED JVM AND FULL ANDROID/JVM BUILD VERIFIED. Forced `test assembleDebug --rerun-tasks`: 58/58 Gradle tasks, 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped. Exact-head CI and remote Wi-Fi/device acceptance remain pending. Phase 15A does not claim a playable shared native SPD match.
 
-### Acceptance criteria
-- LAN has one authority and known player identities, with host and guest in the same actual room.
-- A failed bind/discovery/join never reports success or leaves stale listeners.
-- Unsupported network configurations are reported clearly.
+- [x] Bind the host TCP listener synchronously; a successful host start means the `ServerSocket` is actually bound. Do not route the host through a fake `127.0.0.1` guest connection.
+- [x] Validate host/port syntax, require an explicit guest address, use bounded connect/handshake timeouts, and frame canonical JSON as strict UTF-8 with the same 16 MiB limit as the WebSocket transport.
+- [x] Add `HELLO`/`SESSION` identity handshake; validate player IDs, reject duplicate identities and client sender spoofing, reserve pending slots, and cap a host at four players total.
+- [x] Track accepted-but-not-authenticated sockets and authenticated peers; close them deterministically on startup failure, disconnect or host shutdown. Broadcast peer departure to remaining connected peers.
+- [x] Integrate the LAN host endpoint and guest handshake with `MultiplayerManager` without creating a separate LAN gameplay event pipeline.
+- [x] Add localhost JVM tests for endpoint parsing, UTF-8 framing and limits, host/guest handshake and bidirectional messages, duplicate identities, four-player capacity, bind conflicts, fake host endpoints, shutdown cleanup, peer departure, sender spoofing, authenticated-guest host shutdown and refused-port failure.
+- [ ] Complete the shared native gameplay/session contract: server-authoritative roster/readiness/MATCH_START and native SPD action/snapshot authority are not established by opening a TCP connection. Do not claim this transport foundation alone is a playable co-op room; retain the mode/gameplay gates in Phase 17 and the user-facing lobby flow in Phase 20.
 
+### Phase 15B — UDP discovery and local-network selection
+
+**Status:** NOT STARTED. The current 15A host can be joined by a manually entered IPv4 address; UDP host advertisement/discovery is deliberately not treated as available yet.
+
+- [ ] Implement a tracked, cancellable UDP host announcer whose lifetime is owned by the bound host transport and ends on disconnect.
+- [ ] Implement a bounded discovery window that survives individual socket timeouts, ignores malformed/untrusted datagrams without aborting the search, and validates host name/address/port.
+- [ ] Enumerate/select suitable local network interfaces and advertise only an address peers can actually reach; retain manual join-by-address as a fallback.
+- [ ] Marshal discovery callbacks onto the libGDX render thread and fence callbacks against a setup scene that has been closed or replaced.
+- [ ] Add tests for announce cancellation, discovery timeout/cancellation, malformed packets, duplicate hosts, interface/address selection and cleanup after failure.
+
+### Phase 15 acceptance criteria
+
+- 15A: listener readiness is truthful; the host is not a loopback guest; every admitted peer has one validated identity; duplicate/over-capacity/spoofed clients are rejected; message framing is bounded; shutdown leaves no listener, accepted socket or pending identity behind.
+- 15B: advertised addresses are reachable on the selected interface; discovery is bounded/cancellable and malformed packets do not terminate the search; UI updates are render-thread and scene-generation safe.
+- Phase 15 is not CLOSED until both 15A and 15B pass local automated acceptance and the supported real-network acceptance gate. Localhost tests do not prove Wi-Fi discovery or two-device play.
 ## Phase 16 — Bluetooth Transport or Truthful Unavailability
 
 **Priority:** P1 · **Dependencies:** Phase 13.

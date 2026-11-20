@@ -22,16 +22,18 @@ All engineering pages in this set are written in English for consistency with so
 10. SOURCE_FILE_REFERENCE.md — module/file inventory, source-refactor stages and protected native files.
 11. BUILD_TEST_AND_CI.md — exact build/test commands, workflow behavior, deployment boundary and evidence limits.
 12. PHASE14-B3_ANDROID_NETWORK_RECOVERY.md — current Android network/background lifecycle, heartbeat, endpoint and hosted-service gate evidence.
-13. PHASE15_LAN_PREFLIGHT.md — source-only LAN/Bluetooth readiness audit; not implementation evidence.
+13. PHASE15_LAN_PREFLIGHT.md — Phase 15A TCP implementation checkpoint, the remaining 15B UDP discovery boundary and pre-implementation audit notes.
 
-## Current continuation checkpoint — 2026-11-19 — Phase 14-B3 failure feedback; Phase 15 preflight only
+## Current continuation checkpoint — 2026-11-20 — Phase 15A TCP foundation; Phase 15B open
 
-- Current follow-on adds shared safe error-key mapping for `MultiplayerSetupScene` and `WndMultiplayerLobby`; unknown internal strings never get printed as raw UI text. English and Arabic message bundles each contain the same ten connection error keys.
-- Four JVM regressions cover offline/background, session/room timeout, rejected room/session, unavailable server, and unknown/null fallback. Final local full suite: **12 JUnit reports / 176 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,220,632 bytes; SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`. Exact-head CI on the source+documentation commit is pending.
-- The Phase 15 source-only audit is `PHASE15_LAN_PREFLIGHT.md`. It records concrete LAN host-bind/discovery/client-cleanup defects and Bluetooth fabricated-success/provider-reachability risks. Phase 15 implementation has NOT started; Phase 16 remains separate.
-- **UI delivery remains Phase 20 + Phase 21:** Phase 20 rebuilds the complete host/join/setup/lobby and every connection state/action. Phase 21 completes Arabic/English, RTL/LTR, responsive layout, navigation, touch/accessibility and cleanup. A small error-message fix is not UI completion. Visual emulator acceptance is later, after source/UI work; physical play remains Phase 23.
-- No emulator/app/ADB, live Worker room flow, real LAN socket/discovery, Bluetooth device or physical match was run in this follow-on.
-
+- Phase 15 is split into **15A TCP host/guest transport** and **15B UDP advertisement/discovery plus local-network interface/UI integration**. Bluetooth remains Phase 16.
+- Phase 15A source now provides synchronous host bind, truthful local-host startup without loopback self-connection, strict endpoint parsing, bounded client connect/handshake, HELLO/SESSION identity, duplicate/spoof/capacity rejection, strict 16 MiB UTF-8 frames, pending-peer/socket cleanup and peer-departure broadcast. Setup closes an incompletely started LAN transport on a synchronous failure.
+- Local targeted verification: `LanEndpointTest` 3, `LanFrameCodecTest` 4, `LANTransportTest` 9 and `NetworkProtocolParityTest` 20 — **36 selected tests / 0 failures / 0 errors / 0 skipped**. Forced full `test assembleDebug --rerun-tasks --no-daemon` also passed: **58/58 Gradle tasks; 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,226,738 bytes; SHA-256 `FB719C5F4EB592E6E7A8952ADAD15AFAAB3EEAB6AA210C2E0DEFA1C991940626`. Commit/push and exact-head CI remain pending.
+- Phase 15A is a transport/identity foundation only. It does not yet establish an authoritative shared SPD gameplay session, complete roster/ready/MATCH_START lifecycle or the full lobby UX. `EmbeddedMatchAuthority` is not a substitute for a real native gameplay authority. Phase 17 owns shared co-op lifecycle/rules; Phase 20 owns the complete host/join/lobby UI.
+- Phase 15B has NOT started. UDP announcement is not enabled by the 15A host start path; current interim joining requires a manually entered IPv4 address. Add the tracked/cancellable announcer, bounded discovery, interface selection, validation and render-thread/scene-fenced UI callbacks in 15B.
+- Phase 14-B3 and Phase 14 remain OPEN until hosted Worker room lifecycle smoke and Android framework network/background runtime acceptance pass. Bluetooth provider/permission work remains Phase 16.
+- **UI delivery remains Phase 20 + Phase 21:** Phase 20 rebuilds host/join/setup/lobby and every connection state/action; Phase 21 completes Arabic/English, RTL/LTR, responsive layout, navigation, touch/accessibility and cleanup. Visual emulator acceptance stays later; Phase 22 is service smoke and Phase 23 is physical-device gameplay.
+- No real Wi-Fi discovery, Android app launch, emulator/ADB, Bluetooth device, live Worker room or physical match is claimed from the 15A localhost tests.
 ## Historical checkpoint — Phase 14-B3 local follow-on; runtime gates deferred
 
 - Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 implementation and local automated verification are current; parent 14-B and Phase 14 remain OPEN.

@@ -607,3 +607,27 @@ Current local aggregate: 11 JUnit XML reports / 172 tests / 0 failures / 0 error
 `MultiplayerSetupScene` uses this classifier for synchronous startup exceptions. `WndMultiplayerLobby` uses the same classifier instead of exposing raw manager/lobby error strings. The English and Arabic `multiplayer.properties` bundles have identical sets of ten `connection_*` keys.
 
 Local verification for the final source state: forced `test assembleDebug` — **BUILD SUCCESSFUL**, 12 JUnit XML reports / **176 tests / 0 failures / 0 errors / 0 skipped**; Debug APK 35,220,632 bytes, SHA-256 `A3AF4DD93CD8606DBF9F9D217343434E3EFD722BA9C168172CED741C9FD953A4`. This is a source/JVM/build result only: no app launch, emulator/ADB run, live Worker room smoke or physical-device test is implied. Exact-head CI must be checked on the commit containing this source and documentation.
+## Phase 15A — TCP LAN host/guest foundation (2026-11-20)
+
+### Targeted JVM acceptance
+
+The 15A targeted command selected the following four classes and completed `:core:test` successfully:
+
+| Test class | Test methods | Result |
+|---|---:|---|
+| `LanEndpointTest` | 3 | PASS |
+| `LanFrameCodecTest` | 4 | PASS |
+| `LANTransportTest` | 9 | PASS |
+| `NetworkProtocolParityTest` | 20 | PASS |
+| **Total selected** | **36** | **0 failures / 0 errors / 0 skipped** |
+
+Coverage includes IPv4/IPv6 endpoint parsing and invalid ports, strict UTF-8 framing/CRLF/truncation/malformed input/16 MiB bounds, real localhost host/guest HELLO/SESSION exchange, bidirectional messages, duplicate identity rejection, four-player capacity, false host endpoint rejection, bind conflict, pending-socket shutdown, peer departure notification, spoofed sender rejection, authenticated-guest host shutdown and refused TCP port reporting. These tests use real localhost TCP sockets; they do not exercise Wi-Fi interface discovery or two physical devices.
+
+### Implementation boundary
+
+- `LANTransport.startServer` binds synchronously. A host starts on `LAN_HOST`, not by connecting to `127.0.0.1` as an ordinary peer.
+- Guests have bounded connect/handshake timeouts and receive a validated SESSION identity before the manager marks their session joined. Pending sockets and pending identity reservations count toward the four-person limit and are closed on teardown.
+- `LanFrameCodec` uses strict UTF-8 newline JSON frames capped at 16 MiB, matching `WebSocketFrameCodec`. This change does not create a LAN-only gameplay event protocol.
+- 15A establishes a transport/identity foundation only. It does not yet establish an authoritative shared native SPD game, complete room roster/readiness/MATCH_START lifecycle, or full host/join/lobby UI. The legacy `EmbeddedMatchAuthority` is not accepted as a complete native game authority.
+- UDP host announcement/discovery and local network-interface selection are not complete and are explicitly assigned to Phase 15B. Manual IPv4 join is the interim path. Bluetooth remains Phase 16.
+- Latest forced full local command `test assembleDebug --rerun-tasks --no-daemon` completed **BUILD SUCCESSFUL; 58/58 Gradle tasks executed; 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,226,738 bytes; SHA-256 `FB719C5F4EB592E6E7A8952ADAD15AFAAB3EEAB6AA210C2E0DEFA1C991940626`. Exact-head CI after push, real Wi-Fi acceptance and physical-device match remain separate gates and are not inferred from the localhost tests.
