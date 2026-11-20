@@ -53,7 +53,7 @@ The TCP slice now has these source-level behaviors:
 
 ## Remaining Phase 15 implementation and acceptance order
 
-1. Commit/push the fully locally verified 15A source and documentation to the sole permitted branch, then verify exact-head Actions.
+1. The 15A source/docs are committed and pushed. Exact-head Actions passed 3/3 jobs on `e0a697f33b69783c431d6fafca264ca7505a2a83` ([run 44703924181](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44703924181)).
 2. Implement 15B UDP advertisement/discovery and local interface selection with deterministic lifecycle and JVM tests.
 3. Run supported same-network Wi-Fi/device acceptance only after the source and UI phases are ready. No physical-device or real Wi-Fi test is claimed by the localhost JVM tests.
 4. Keep the complete host/join/lobby UX in Phase 20, localization/RTL/touch/layout in Phase 21, service smoke in Phase 22 and physical-device match in Phase 23.

@@ -811,7 +811,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 
 ### Phase 15A — TCP host/guest session transport
 
-**Status:** LOCAL SOURCE, TARGETED JVM AND FULL ANDROID/JVM BUILD VERIFIED. Forced `test assembleDebug --rerun-tasks`: 58/58 Gradle tasks, 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped. Exact-head CI and remote Wi-Fi/device acceptance remain pending. Phase 15A does not claim a playable shared native SPD match.
+**Status:** LOCAL SOURCE, TARGETED JVM AND FULL ANDROID/JVM BUILD VERIFIED. Forced `test assembleDebug --rerun-tasks`: 58/58 Gradle tasks, 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped. Exact-head CI passed 3/3 jobs on `e0a697f33b69783c431d6fafca264ca7505a2a83` ([run 44703924181](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44703924181)). Remote Wi-Fi/device acceptance remains pending. Phase 15A does not claim a playable shared native SPD match.
 
 - [x] Bind the host TCP listener synchronously; a successful host start means the `ServerSocket` is actually bound. Do not route the host through a fake `127.0.0.1` guest connection.
 - [x] Validate host/port syntax, require an explicit guest address, use bounded connect/handshake timeouts, and frame canonical JSON as strict UTF-8 with the same 16 MiB limit as the WebSocket transport.
