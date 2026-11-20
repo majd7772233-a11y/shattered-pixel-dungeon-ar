@@ -876,7 +876,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Exact-head CI passes for the Phase16B implementation commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857) (3/3 jobs). Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 - Co-op Rules and Shared Match Lifecycle
 
-**Priority:** P1; **Dependencies:** phases 12-16. **Status:** OPEN; split into 17-A and 17-B.
+**Priority:** P1; **Dependencies:** phases 12-16. **Status:** OPEN; 17-A ACCEPTED, 17-B NOT STARTED.
 
 ### Phase 17-A - Authoritative room and match lifecycle
 - [x] Preserve and verify server-owned Co-op capacity, membership, minimum players, shared seed/depth/sequence and start/readiness gates.
@@ -885,7 +885,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Persist publisher loss/successor handoff as SUSPENDED or RECOVERING; restore PLAYING only after a successor's validated rebase and current publisher-ready term commit atomically.
 - [x] Make Android validate room/game-state combinations and reject stale MATCH_START or local-sync attempts to bypass recovery.
 - [x] Add backend and Android regressions for current/stale proofs, publisher loss/recovery, invalid state combinations and delayed messages.
-- [ ] Run exact-head CI against the final pushed 17-A commit and record its three required jobs.
+- [x] Exact-head CI on final commit 63bba7e3505d6743983aef006ed09572253bd099 passed 3/3 jobs in [run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
 ### Phase 17-B - Player life-state and match-end policy (NOT STARTED)
 - [ ] Define death, revive, respawn eligibility, resource/cost rules, spectator state and action availability.

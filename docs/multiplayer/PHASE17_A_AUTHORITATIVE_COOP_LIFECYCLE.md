@@ -1,6 +1,6 @@
 # Phase 17-A - Authoritative Co-op Room Lifecycle
 
-**Status:** Implementation and local automated verification complete; exact-head CI remains the acceptance gate.
+**Status:** ACCEPTED for implementation and automated validation; final exact-head CI passed 3/3 jobs.
 **Parent phase:** Phase 17 remains OPEN until both 17-A and 17-B are accepted.
 **Boundary:** This slice does not implement death/respawn policy or the full room UI.
 
@@ -59,4 +59,6 @@ allReady is proof-backed. A ready flag with a stale seed or sequence does not ma
 
 ## Acceptance boundary
 
-17-A can be marked accepted only after the final pushed commit's exact-head CI passes Backend, Durable Object SQLite and Android jobs. 17-B remains NOT STARTED. Parent Phase 17 stays OPEN until 17-B and the full parent acceptance criteria are met.
+Final implementation SHA 63bba7e3505d6743983aef006ed09572253bd099 passed all three required jobs in [exact-head CI run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. 17-A is accepted for implementation and automated validation. 17-B remains NOT STARTED; parent Phase 17 stays OPEN until 17-B and all parent acceptance criteria are met.
+
+The push also triggered the repository's automatic Worker deployment workflow (run [44765157842](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157842)); it deployed Worker version a9653524-1f5e-4014-ac58-5aa324d93183. This was unintended and is recorded separately from acceptance. No live room smoke or client gameplay was performed; Phase 22 remains OPEN.
