@@ -657,3 +657,6 @@ Coverage includes bounded/versioned UTF-8 beacon round-trip, malformed and unsup
 - The 25 selected tests are localhost/injected-provider checks. They do not prove directed Wi-Fi broadcast crosses a real AP, survives AP client isolation, or works between physical Android devices. Real-network acceptance stays open for later device testing.
 - Forced full local Android/JVM command `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 Gradle tasks; 19 JUnit reports / 208 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,234,408 bytes; SHA-256 `FE7C9278E9169B59197323908C623734318EAF89711821A28FB2438931A07AFD`. Exact-head CI after the 15B commit/push remains a separate gate.
 - Exact-head CI for the 15B source+documentation commit and real-network Wi-Fi/physical-device acceptance remain separate pending gates.
+### Exact-head GitHub Actions — Phase 15B
+
+Commit `13f495b615d58fbecaad21c479aa9aff4201e6dd` passed **3/3** jobs in [Multiplayer Branch Validation run 44712869490](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44712869490): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile. This is exact-head CI evidence for the Phase 15B source+documentation commit. It does not replace real same-network Wi-Fi/device acceptance.
