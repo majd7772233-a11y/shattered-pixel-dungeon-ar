@@ -850,7 +850,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Preserve the manager's transport-only state: raw Bluetooth socket success becomes `TRANSPORT_CONNECTED`, never `ROOM_JOINED` or `PLAYING` without a later protocol/authority transition.
 - [x] Add JVM contract/failure tests for provider absence, host/guest starts, invalid MAC, false connected callbacks, stale callback, send before readiness, error/rollback, frame boundaries, canonical message envelope, manager state and localized error mapping.
 - [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: 58/58 Gradle tasks; 21 JUnit reports / 229 tests / 0 failures / 0 errors / 0 skipped; APK 35,241,088 bytes, SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
-- [ ] Exact-head CI on the final source+documentation SHA.
+- [x] Exact-head CI for `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
 ### 16B — Device discovery, pairing consent and user experience (not started)
 

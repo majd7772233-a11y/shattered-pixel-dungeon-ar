@@ -59,5 +59,5 @@ Runtime consent prompt is intentionally not presented yet; 16A fails clearly whe
 - Result: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks executed; 21 JUnit XML reports / 229 tests / 0 failures / 0 errors / 0 skipped**.
 - Debug APK: **35,241,088 bytes**; SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
 - Focused Bluetooth/failure/regression run: **27 selected test methods, 0 failures/errors/skips**.
-- Exact-head CI for the final Phase16A source+documentation commit is not yet recorded in this local checkpoint; do not infer it from the preceding Phase15 run.
+- Exact-head CI for Phase16A commit `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile. This is remote CI for this exact source+documentation SHA; it does not run hardware tests.
 - No Android app launch, emulator/ADB, physical Bluetooth, Wi-Fi peer or two-device test was run.

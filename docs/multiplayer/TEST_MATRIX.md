@@ -681,5 +681,5 @@ Codec coverage includes strict UTF-8, Arabic/emoji payload, LF/CRLF, clean EOF v
 - Result: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks executed; 21 JUnit XML reports / 229 tests / 0 failures / 0 errors / 0 skipped**.
 - Debug APK: **35,241,088 bytes**; SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
 - The Android RFCOMM provider and merged manifest compiled and packaged successfully. This does not launch the app or prove runtime permissions or hardware transport.
-- Exact-head CI for the final Phase16A source+documentation SHA remains pending; do not infer it from the previous Phase15 CI run.
+- Exact-head CI: commit `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile.
 - No Android app launch, emulator/ADB, physical Bluetooth adapter, real Wi-Fi peer or two-device session was run. Per user instruction, hardware/network acceptance is deferred until after Phase22; physical gameplay remains Phase23.
