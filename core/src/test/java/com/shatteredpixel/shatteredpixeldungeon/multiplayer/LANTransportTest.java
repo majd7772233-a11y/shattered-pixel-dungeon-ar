@@ -264,6 +264,24 @@ public class LANTransportTest {
         }
     }
     @Test
+    public void hostAnnouncementStartsWithBoundTcpPortAndStopsOnDisconnect() throws Exception {
+        LANTransport host = new LANTransport();
+        try {
+            host.startServer(0, "test-host", "host-advertised", null);
+            Assert.assertTrue(host.isHosting());
+            Assert.assertTrue(host.getLocalPort() > 0);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (!host.isHostAnnouncerRunningForTests() && System.nanoTime() < deadline) {
+                Thread.sleep(5L);
+            }
+            Assert.assertTrue("host UDP announcement worker did not start", host.isHostAnnouncerRunningForTests());
+        } finally {
+            host.disconnect();
+        }
+        Assert.assertFalse("host UDP announcement worker survived transport disconnect",
+                host.isHostAnnouncerRunningForTests());
+    }
+    @Test
     public void hostShutdownClosesUnauthenticatedPendingSockets() throws Exception {
         LANTransport host = new LANTransport();
         try (Socket pending = new Socket()) {

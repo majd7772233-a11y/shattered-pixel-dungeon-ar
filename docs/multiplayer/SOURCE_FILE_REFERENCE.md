@@ -95,9 +95,13 @@ The package has 34 Java files:
 | EmbeddedMatchAuthority.java | Small embedded/local authority helper; not a Worker replacement |
 | GameMode.java | Mode descriptor interface |
 | InternetTransport.java | Generation-fenced TCP/TLS/WebSocket client; cancellable in-flight HTTP Upgrade; synchronized socket/stream ownership and generation-scoped control frames |
-| LANTransport.java | Phase 15A TCP host/guest, identity handshake and socket lifecycle; UDP discovery is reserved for 15B |
+| LANTransport.java | Phase 15A TCP host/guest plus lifecycle-bound Phase 15B UDP announcement/discovery API |
 | LanEndpoint.java | LAN direct endpoint parser |
 | LanFrameCodec.java | Bounded strict UTF-8 TCP frame codec |
+| LanDiscoveryPacket.java | Versioned bounded UDP discovery packet codec |
+| LanNetworkInterfaces.java | Usable IPv4 local/directed-broadcast interface selection |
+| LanHostAnnouncer.java | Host UDP advertisement lifecycle worker |
+| LanHostDiscovery.java | Bounded cancellable UDP discovery receiver |
 | LootClaimManager.java | In-memory claim helper |
 | MessageRouter.java | Exhaustive 25-value outer-message router; typed PLAYER_JOINED/PLAYER_LEFT/READY/PING, render-thread ROOM_STATE/MATCH_START and snapshot readiness restore |
 | MessageType.java | Outer protocol enum |

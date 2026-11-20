@@ -9,8 +9,6 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -21,10 +19,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/** Direct TCP LAN session transport. UDP discovery and announcements are handled in Phase 15B. */
+/** LAN TCP session transport with lifecycle-bound IPv4 UDP host discovery and advertisement. */
 public class LANTransport implements NetworkTransport {
     public static final int DEFAULT_TCP_PORT = 8990;
     public static final int DEFAULT_UDP_PORT = 8991;
@@ -45,24 +44,31 @@ public class LANTransport implements NetworkTransport {
     private volatile TransportCallback callback;
     private volatile String localPlayerId;
     private volatile String remoteHostId;
+    private volatile LanHostAnnouncer hostAnnouncer;
+    private volatile String hostDisplayName = "HostDevice";
     private long lifecycleGeneration;
 
     public interface LANDiscoveryCallback {
         void onHostDiscovered(String hostName, String hostIp, int port);
+        default void onDiscoveryFinished(boolean cancelled, int discoveredHostCount) { }
     }
 
-    /** Compatibility overload; MultiplayerManager supplies the stable host identity at session start. */
+    public interface LANDiscoverySession {
+        void cancel();
+        boolean isRunning();
+    }
+
+    /** Compatibility overload; creates a stable local host identity when the caller has none. */
     public void startServer(int tcpPort, String hostName, TransportCallback callback) throws Exception {
-        startServer(tcpPort, hostName, null, callback);
+        startServer(tcpPort, hostName, UUID.randomUUID().toString(), callback);
     }
 
-    /** Binds synchronously. A successful return proves that the TCP listener is bound and accepting. */
+    /** Binds synchronously and starts the UDP announcer only after the TCP listener is ready. */
     public void startServer(int tcpPort, String hostName, String hostPlayerId,
                             TransportCallback callback) throws Exception {
         if (tcpPort < 0 || tcpPort > 65535) throw new IllegalArgumentException("LAN_ENDPOINT_INVALID");
-        if (hostPlayerId != null && !isValidPlayerId(hostPlayerId)) {
-            throw new IllegalArgumentException("LAN_PLAYER_ID_INVALID");
-        }
+        final String effectiveHostId = hostPlayerId == null ? UUID.randomUUID().toString() : hostPlayerId;
+        if (!isValidPlayerId(effectiveHostId)) throw new IllegalArgumentException("LAN_PLAYER_ID_INVALID");
 
         final long generation;
         synchronized (stateLock) {
@@ -71,7 +77,8 @@ public class LANTransport implements NetworkTransport {
             }
             generation = ++lifecycleGeneration;
             this.callback = callback;
-            this.localPlayerId = hostPlayerId;
+            this.localPlayerId = effectiveHostId;
+            this.hostDisplayName = hostName == null ? "HostDevice" : hostName.trim();
             this.remoteHostId = null;
         }
 
@@ -103,17 +110,37 @@ public class LANTransport implements NetworkTransport {
                 closeQuietly(listener);
                 throw new IOException("LAN_ACCEPT_START_FAILED", startFailure);
             }
+
+            try {
+                hostAnnouncer = new LanHostAnnouncer(this.hostDisplayName, effectiveHostId,
+                        listener.getLocalPort());
+                hostAnnouncer.start();
+            } catch (Exception announcementUnavailable) {
+                if (hostAnnouncer != null) hostAnnouncer.close();
+                hostAnnouncer = null; // TCP remains usable through manual IP entry.
+            }
         }
     }
-
     public void setLocalPlayerId(String playerId) {
         if (!isValidPlayerId(playerId)) throw new IllegalArgumentException("LAN_PLAYER_ID_INVALID");
+        LanHostAnnouncer previous = null;
         synchronized (stateLock) {
             if (!connectedClients.isEmpty() && !playerId.equals(localPlayerId)) {
                 throw new IllegalStateException("LAN_HOST_ID_ALREADY_IN_USE");
             }
+            boolean changed = !playerId.equals(localPlayerId);
             localPlayerId = playerId;
+            if (changed && isServer && serverSocket != null && !serverSocket.isClosed()) {
+                previous = hostAnnouncer;
+                try {
+                    hostAnnouncer = new LanHostAnnouncer(hostDisplayName, playerId, serverSocket.getLocalPort());
+                    hostAnnouncer.start();
+                } catch (Exception announcementUnavailable) {
+                    hostAnnouncer = null;
+                }
+            }
         }
+        if (previous != null) previous.close();
     }
 
     public boolean isHosting() {
@@ -122,6 +149,11 @@ public class LANTransport implements NetworkTransport {
 
     int getPendingPeerCountForTests() {
         return pendingPeers.size();
+    }
+
+    boolean isHostAnnouncerRunningForTests() {
+        LanHostAnnouncer announcer = hostAnnouncer;
+        return announcer != null && announcer.isRunning();
     }
 
     public int getLocalPort() {
@@ -582,6 +614,7 @@ public class LANTransport implements NetworkTransport {
         final Socket closingClient;
         final List<ClientHandler> closingPeers;
         final List<Socket> closingPendingPeers;
+        final LanHostAnnouncer closingAnnouncer;
         final TransportCallback notify;
         final boolean wasActive;
         synchronized (stateLock) {
@@ -592,6 +625,8 @@ public class LANTransport implements NetworkTransport {
             closingClient = clientSocket;
             closingPeers = new ArrayList<>(connectedClients.values());
             closingPendingPeers = new ArrayList<>(pendingPeers.keySet());
+            closingAnnouncer = hostAnnouncer;
+            hostAnnouncer = null;
             notify = callback;
             serverSocket = null;
             clientSocket = null;
@@ -603,6 +638,7 @@ public class LANTransport implements NetworkTransport {
             isConnected = false;
             remoteHostId = null;
         }
+        if (closingAnnouncer != null) closingAnnouncer.close();
         for (ClientHandler peer : closingPeers) peer.close();
         for (Socket pending : closingPendingPeers) closeQuietly(pending);
         closeQuietly(closingClient);
@@ -628,36 +664,14 @@ public class LANTransport implements NetworkTransport {
         if (socket != null) try { socket.close(); } catch (IOException ignored) { }
     }
 
-    // The UDP search/advertisement pair is deliberately completed in Phase 15B.
-    public static void discoverHosts(LANDiscoveryCallback discoveryCallback) {
-        new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket(DEFAULT_UDP_PORT)) {
-                socket.setSoTimeout(1000);
-                byte[] buffer = new byte[512];
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                long deadline = System.currentTimeMillis() + 5000L;
-                while (System.currentTimeMillis() < deadline) {
-                    try {
-                        packet.setLength(buffer.length);
-                        socket.receive(packet);
-                        String message = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
-                        if (!message.startsWith("SPD_HOST:")) continue;
-                        String[] parts = message.split(":", -1);
-                        if (parts.length != 3 || parts[1].isEmpty()) continue;
-                        int port;
-                        try { port = Integer.parseInt(parts[2]); }
-                        catch (NumberFormatException invalidPort) { continue; }
-                        if (port < 1 || port > 65535) continue;
-                        if (discoveryCallback != null) {
-                            discoveryCallback.onHostDiscovered(parts[1],
-                                    packet.getAddress().getHostAddress(), port);
-                        }
-                    } catch (java.net.SocketTimeoutException timeout) {
-                        // Keep the bounded search window alive; Phase 15B owns UI dispatch/cancellation.
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }, "SPD-LAN-Discovery").start();
+    /** Starts a five-second UDP broadcast search. The returned handle must be cancelled with its screen. */
+    public static LANDiscoverySession discoverHosts(LANDiscoveryCallback discoveryCallback) throws SocketException {
+        return LanHostDiscovery.start(discoveryCallback, DEFAULT_UDP_PORT,
+                LanHostDiscovery.DEFAULT_SEARCH_WINDOW_MS);
+    }
+
+    public static LANDiscoverySession discoverHosts(LANDiscoveryCallback discoveryCallback,
+                                                     long timeoutMs) throws SocketException {
+        return LanHostDiscovery.start(discoveryCallback, DEFAULT_UDP_PORT, timeoutMs);
     }
 }

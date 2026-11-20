@@ -823,18 +823,18 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 
 ### Phase 15B — UDP discovery and local-network selection
 
-**Status:** NOT STARTED. The current 15A host can be joined by a manually entered IPv4 address; UDP host advertisement/discovery is deliberately not treated as available yet.
+**Status:** LOCAL SOURCE, TARGETED JVM AND FULL ANDROID/JVM BUILD VERIFIED. Targeted 15B/TCP tests: 25/25 pass. Forced `test assembleDebug --rerun-tasks --no-daemon`: 58/58 Gradle tasks; 19 JUnit reports / 208 tests / 0 failures / 0 errors / 0 skipped. Debug APK: 35,234,408 bytes; SHA-256 `FE7C9278E9169B59197323908C623734318EAF89711821A28FB2438931A07AFD`. Exact-head CI for the 15B commit and real same-network Wi-Fi/device acceptance remain pending. Localhost and injected-interface tests do not prove broadcast delivery between physical devices.
 
-- [ ] Implement a tracked, cancellable UDP host announcer whose lifetime is owned by the bound host transport and ends on disconnect.
-- [ ] Implement a bounded discovery window that survives individual socket timeouts, ignores malformed/untrusted datagrams without aborting the search, and validates host name/address/port.
-- [ ] Enumerate/select suitable local network interfaces and advertise only an address peers can actually reach; retain manual join-by-address as a fallback.
-- [ ] Marshal discovery callbacks onto the libGDX render thread and fence callbacks against a setup scene that has been closed or replaced.
-- [ ] Add tests for announce cancellation, discovery timeout/cancellation, malformed packets, duplicate hosts, interface/address selection and cleanup after failure.
+- [x] Implement a tracked, cancellable UDP host announcer whose lifetime is owned by the bound host transport and ends on disconnect.
+- [x] Implement a bounded five-second discovery window that survives poll timeouts, rejects malformed/oversized/version-mismatched datagrams, deduplicates hosts and validates host name/identity/TCP port. UDP beacons are discovery hints, not cryptographic peer authentication.
+- [x] Enumerate up non-loopback/non-virtual IPv4 interfaces, send directed broadcasts from the matching local address, filter unusable/limited-broadcast destinations, and retain manual IPv4 join as a fallback. Physical reachability still requires the Wi-Fi acceptance gate.
+- [x] Marshal host-found and search-complete callbacks onto the libGDX render thread; fence both by scene generation and closed/manual-selection state; cancel and close discovery immediately after first-host/manual selection or scene destruction.
+- [x] Add JVM tests for packet version/UTF-8/size and invalid values, interface filtering/order, periodic multi-interface announcement, an interface permission/error failure, announcer shutdown, localhost UDP malformed/duplicate hosts, bounded empty results, completion/cancellation notifications, pending TCP host announcer lifecycle and cleanup.
 
 ### Phase 15 acceptance criteria
 
 - 15A: listener readiness is truthful; the host is not a loopback guest; every admitted peer has one validated identity; duplicate/over-capacity/spoofed clients are rejected; message framing is bounded; shutdown leaves no listener, accepted socket or pending identity behind.
-- 15B: advertised addresses are reachable on the selected interface; discovery is bounded/cancellable and malformed packets do not terminate the search; UI updates are render-thread and scene-generation safe.
+- 15B local automated acceptance: versioned bounded discovery packet; bounded/cancellable search; malformed datagrams do not terminate search; duplicate beacons collapse; announcer lifecycle follows TCP host; UI callbacks are render-thread and scene-generation safe. **Physical reachability on a real selected Wi-Fi interface is still unverified.**
 - Phase 15 is not CLOSED until both 15A and 15B pass local automated acceptance and the supported real-network acceptance gate. Localhost tests do not prove Wi-Fi discovery or two-device play.
 ## Phase 16 — Bluetooth Transport or Truthful Unavailability
 

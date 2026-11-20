@@ -1,6 +1,6 @@
 # Phase 15 — LAN Transport Preflight
 
-**Status:** Phase 15 is split into 15A (TCP host/guest session transport) and 15B (UDP discovery/network selection). 15A is implemented locally with targeted JVM acceptance; 15B has NOT started. The preflight findings below record the source state before the 15A implementation.
+**Status:** Phase 15 is split into 15A TCP and 15B UDP. Both source slices are implemented locally, targeted JVM tests pass, and the forced full Android/JVM build is green (58/58 Gradle tasks; 19 JUnit reports / 208 tests / 0 failures). Exact-head CI for the 15B commit remains pending. Real same-network Wi-Fi/device acceptance remains open. The original preflight findings below are explicitly historical.
 **Pre-implementation audit baseline:** `cb2364dab` plus the Phase 14 connection-feedback slice. The current implementation is being developed on `multiplayer-framework-core-14118577486727081892`.
 **Pre-implementation audit scope:** source inspection only. At that historical audit point no LAN socket had been bound, no UDP discovery had been started, no Bluetooth adapter/device had been queried, and no real-device/network test had been run. The later 15A localhost TCP tests and full local build are recorded below.
 
@@ -49,11 +49,25 @@ The TCP slice now has these source-level behaviors:
 
 **15A boundary:** this is a tested TCP transport/identity foundation, not a complete playable LAN match. It does not yet create a shared authoritative roster, ready-state/MATCH_START flow, or a complete native SPD gameplay authority. UDP advertisement/discovery is intentionally absent from the host startup path until 15B; manual IPv4 entry is the available interim join path. `EmbeddedMatchAuthority` remains a small legacy helper and is not the authority for this transport.
 
-**15B remains open:** add tracked UDP announcements, cancellable discovery, interface selection, validation of advertised addresses and render-thread/scene-fenced UI callbacks. Bluetooth remains Phase 16.
+**15B pre-implementation handoff (historical):** the original source-only audit recommended tracked UDP announcements, cancellable discovery, interface selection and scene-fenced UI callbacks. These items are implemented locally in the Phase 15B checkpoint below. Bluetooth remains Phase 16.
+
+## Phase 15B implementation checkpoint — 2026-11-20
+
+The UDP discovery slice now has these local source behaviors:
+
+- `LanDiscoveryPacket` encodes a versioned `SPD_LAN_HOST` JSON datagram. Encoding and decoding are UTF-8 and bounded to 512 bytes; decoding rejects malformed UTF-8/JSON, wrong type/version, extra fields, invalid names/IDs, non-integral TCP ports, and ports outside 1–65535. The beacon is unauthenticated discovery metadata, not peer authentication.
+- `LanNetworkInterfaces` enumerates interfaces that are up, non-loopback and non-virtual; it selects IPv4 addresses with a usable directed-broadcast destination and filters unspecified, loopback, multicast, same-address and limited-broadcast destinations. Results are deduplicated and sorted. IPv6 remains supported by manual TCP endpoint parsing in 15A, not by this UDP broadcast discovery slice.
+- `LanHostAnnouncer` repeats the versioned beacon once per second on each selected interface, binds the sender socket to that interface's local IPv4 address, and advertises the actual bound TCP port and stable host identity. A failing/permission-blocked interface is isolated from other interfaces. The worker is owned by `LANTransport`, starts only after the TCP listener binds, is refreshed when the host identity is set/changed, and closes on transport disconnect. If enumeration/advertising is unavailable, TCP remains usable with manual IP entry.
+- `LanHostDiscovery` owns a receiver socket bound to UDP 8991, polls at most every 250 ms for a bounded five-second search, caps results at 32 unique host tuples, ignores malformed/oversized/unsupported datagrams without ending the search, deduplicates repeated beacons, and closes its socket on timeout or cancellation. Its finish callback explicitly reports cancellation and the number of unique hosts.
+- `MultiplayerSetupScene` posts host-found and discovery-complete callbacks to the libGDX render thread. Scene-generation, destroyed-screen and user/manual-selection fences prevent stale results from mutating a replaced screen. Destroy cancels the discovery session. The selected advertised TCP port is passed to the guest connection; manual IP entry resets the target port to the default 8990. Empty search and discovery-unavailable states have English/Arabic messages.
+- Targeted JVM acceptance (latest local run): `LanDiscoveryPacketTest` 4, `LanNetworkInterfacesTest` 2, `LanHostAnnouncerTest` 4, `LanHostDiscoveryTest` 5, `LANTransportTest` 10 — **25 tests / 0 failures / 0 errors / 0 skipped**. Tests include real localhost UDP datagrams and real localhost TCP sockets; interface announcement routing uses injected interface/send seams. The full project build is a separate gate.
+- Forced full local command `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 Gradle tasks executed; 19 JUnit reports / 208 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,234,408 bytes; SHA-256 `FE7C9278E9169B59197323908C623734318EAF89711821A28FB2438931A07AFD`. Exact-head CI after commit/push and real Wi-Fi/device acceptance remain pending.
+
+**15B boundary:** no physical Wi-Fi broadcast has been observed. Loopback UDP and injected interface tests do not prove that an access point forwards directed broadcast to other clients, that client isolation is disabled, or that two Android devices can join. The first-host selection remains a minimal setup integration; the full multi-host selection, connection-state and responsive lobby UI remains Phase 20/21. Bluetooth remains Phase 16.
 
 ## Remaining Phase 15 implementation and acceptance order
 
-1. The 15A source/docs are committed and pushed. Exact-head Actions passed 3/3 jobs on `e0a697f33b69783c431d6fafca264ca7505a2a83` ([run 44703924181](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44703924181)).
-2. Implement 15B UDP advertisement/discovery and local interface selection with deterministic lifecycle and JVM tests.
-3. Run supported same-network Wi-Fi/device acceptance only after the source and UI phases are ready. No physical-device or real Wi-Fi test is claimed by the localhost JVM tests.
-4. Keep the complete host/join/lobby UX in Phase 20, localization/RTL/touch/layout in Phase 21, service smoke in Phase 22 and physical-device match in Phase 23.
+1. Full forced Android/JVM `test assembleDebug --rerun-tasks` is complete: 58/58 Gradle tasks, 19 JUnit reports / 208 tests / 0 failures / 0 errors / 0 skipped; APK 35,234,408 bytes, SHA-256 `FE7C9278E9169B59197323908C623734318EAF89711821A28FB2438931A07AFD` (details in TEST_MATRIX.md).
+2. Commit/push code, tests and updated documentation only to `multiplayer-framework-core-14118577486727081892`; verify exact-head Actions for the final SHA.
+3. After Phase 20/21 UI readiness, run same-Wi-Fi tests using two supported physical devices: host advertisement on the chosen interface, discovery on the guest, displayed TCP port, join/leave, host loss, client isolation and discovery timeout/manual-IP fallback. Record device/Android/AP topology and result; do not infer success from loopback.
+4. Keep shared native gameplay authority/readiness/MATCH_START in Phase 17, Bluetooth in Phase 16, full lobby UI in Phase 20, Arabic/English RTL/touch/layout in Phase 21, deployed service smoke in Phase 22 and final physical-device gameplay in Phase 23.

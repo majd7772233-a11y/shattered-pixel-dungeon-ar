@@ -17,6 +17,7 @@ import com.watabou.noosa.BitmapText;
 import com.watabou.noosa.Camera;
 import com.watabou.noosa.Game;
 
+import java.net.SocketException;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -28,6 +29,7 @@ public class MultiplayerSetupScene extends PixelScene {
     public static String selectedTransportType = "INTERNET";
     public static String roomName = generateRoomCode();
     public static String targetIp = "192.168.1.100";
+    public static int targetPort = LANTransport.DEFAULT_TCP_PORT;
     public static boolean isHost = true;
     public static int maxPlayers = 2;
 
@@ -35,6 +37,10 @@ public class MultiplayerSetupScene extends PixelScene {
     private StyledButton btnEditIp;
     private StyledButton btnRoomMode;
     private StyledButton btnRoomCode;
+    private volatile LANTransport.LANDiscoverySession lanDiscoverySession;
+    private volatile long lanDiscoveryGeneration;
+    private volatile boolean sceneDestroyed;
+    private boolean lanHostSelected;
 
     public static boolean isValidIPv4(String ip) {
         if (ip == null) return false;
@@ -44,6 +50,8 @@ public class MultiplayerSetupScene extends PixelScene {
     @Override
     public void create() {
         super.create();
+        sceneDestroyed = false;
+        lanHostSelected = false;
 
         int w = Camera.main.width;
         int h = Camera.main.height;
@@ -104,6 +112,9 @@ public class MultiplayerSetupScene extends PixelScene {
                             public void onSelect(boolean positive, String text) {
                                 if (positive && isValidIPv4(text)) {
                                     targetIp = text.trim();
+                                    targetPort = LANTransport.DEFAULT_TCP_PORT;
+                                    lanHostSelected = true;
+                                    cancelLanDiscovery();
                                     isHost = false;
                                     btnEditIp.text("IP: " + targetIp);
                                 }
@@ -115,20 +126,47 @@ public class MultiplayerSetupScene extends PixelScene {
             btnEditIp.setRect((w - 140) / 2f, h * 0.45f, 140, 20);
             add(btnEditIp);
 
-            LANTransport.discoverHosts((hostName, hostIp, port) -> {
-                if (isValidIPv4(hostIp)) {
-                    targetIp = hostIp;
-                    isHost = false;
-                    if (hostInfoText != null) {
-                        hostInfoText.text(Messages.get("host_found") + ": " + hostName + " (" + hostIp + ")");
-                        hostInfoText.measure();
-                        hostInfoText.x = (w - hostInfoText.width()) / 2f;
+            try {
+                final long generation = ++lanDiscoveryGeneration;
+                lanDiscoverySession = LANTransport.discoverHosts(new LANTransport.LANDiscoveryCallback() {
+                    @Override
+                    public void onHostDiscovered(String hostName, String hostIp, int port) {
+                        Game.runOnRenderThread(() -> {
+                            if (sceneDestroyed || generation != lanDiscoveryGeneration || lanHostSelected) return;
+                            if (!isValidIPv4(hostIp) || port < 1 || port > 65535) return;
+
+                            lanHostSelected = true;
+                            cancelLanDiscovery();
+                            targetIp = hostIp;
+                            targetPort = port;
+                            isHost = false;
+                            if (hostInfoText != null) {
+                                hostInfoText.text(Messages.get("host_found") + ": " + hostName
+                                        + " (" + hostIp + ":" + port + ")");
+                                hostInfoText.measure();
+                                hostInfoText.x = (Camera.main.width - hostInfoText.width()) / 2f;
+                            }
+                            if (btnEditIp != null) btnEditIp.text("IP: " + targetIp);
+                        });
                     }
-                    if (btnEditIp != null) {
-                        btnEditIp.text("IP: " + targetIp);
+
+                    @Override
+                    public void onDiscoveryFinished(boolean cancelled, int discoveredHostCount) {
+                        if (cancelled || discoveredHostCount > 0) return;
+                        Game.runOnRenderThread(() -> {
+                            if (sceneDestroyed || generation != lanDiscoveryGeneration || lanHostSelected
+                                    || hostInfoText == null) return;
+                            hostInfoText.text(Messages.get("lan_no_hosts_found"));
+                            hostInfoText.measure();
+                            hostInfoText.x = (Camera.main.width - hostInfoText.width()) / 2f;
+                        });
                     }
-                }
-            });
+                });
+            } catch (SocketException discoveryFailure) {
+                hostInfoText.text(Messages.get("lan_discovery_unavailable"));
+                hostInfoText.measure();
+                hostInfoText.x = (w - hostInfoText.width()) / 2f;
+            }
         } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
             maxPlayers = 2;
             BitmapText btNote = new BitmapText(Messages.get("bt_limit_error"), pixelFont);
@@ -159,6 +197,12 @@ public class MultiplayerSetupScene extends PixelScene {
     private void showConnectionStartFailure(Throwable failure) {
         add(new WndError(Messages.get(MultiplayerErrorMessages.messageKey(failure == null ? null : failure.getMessage()))));
     }
+    private void cancelLanDiscovery() {
+        LANTransport.LANDiscoverySession session = lanDiscoverySession;
+        lanDiscoverySession = null;
+        if (session != null) session.cancel();
+    }
+
     private void startMultiplayerSession() {
         NetworkTransport transport = null;
         try {
@@ -172,8 +216,10 @@ public class MultiplayerSetupScene extends PixelScene {
                     lan.startServer(LANTransport.DEFAULT_TCP_PORT, "HostDevice", playerId, null);
                     endpoint = LANTransport.LOCAL_HOST_ENDPOINT;
                 } else {
-                    if (!isValidIPv4(targetIp)) throw new IllegalArgumentException("LAN_ENDPOINT_INVALID");
-                    endpoint = targetIp + ":" + LANTransport.DEFAULT_TCP_PORT;
+                    if (!isValidIPv4(targetIp) || targetPort < 1 || targetPort > 65535) {
+                        throw new IllegalArgumentException("LAN_ENDPOINT_INVALID");
+                    }
+                    endpoint = targetIp + ":" + targetPort;
                 }
             } else if ("BLUETOOTH".equalsIgnoreCase(selectedTransportType)) {
                 BluetoothTransport bt = new BluetoothTransport();
@@ -201,5 +247,13 @@ public class MultiplayerSetupScene extends PixelScene {
         }
 
         ShatteredPixelDungeon.switchNoFade(HeroSelectScene.class);
+    }
+
+    @Override
+    public void destroy() {
+        sceneDestroyed = true;
+        lanDiscoveryGeneration++;
+        cancelLanDiscovery();
+        super.destroy();
     }
 }

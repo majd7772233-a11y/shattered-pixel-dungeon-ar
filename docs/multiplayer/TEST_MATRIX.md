@@ -629,5 +629,31 @@ Coverage includes IPv4/IPv6 endpoint parsing and invalid ports, strict UTF-8 fra
 - Guests have bounded connect/handshake timeouts and receive a validated SESSION identity before the manager marks their session joined. Pending sockets and pending identity reservations count toward the four-person limit and are closed on teardown.
 - `LanFrameCodec` uses strict UTF-8 newline JSON frames capped at 16 MiB, matching `WebSocketFrameCodec`. This change does not create a LAN-only gameplay event protocol.
 - 15A establishes a transport/identity foundation only. It does not yet establish an authoritative shared native SPD game, complete room roster/readiness/MATCH_START lifecycle, or full host/join/lobby UI. The legacy `EmbeddedMatchAuthority` is not accepted as a complete native game authority.
-- UDP host announcement/discovery and local network-interface selection are not complete and are explicitly assigned to Phase 15B. Manual IPv4 join is the interim path. Bluetooth remains Phase 16.
+- At the Phase 15A checkpoint, UDP announcement/discovery and local network-interface selection were not yet complete; those items are covered by the Phase 15B acceptance section below. Manual IPv4 join was the interim path. Bluetooth remains Phase 16.
 - Latest forced full local command `test assembleDebug --rerun-tasks --no-daemon` completed **BUILD SUCCESSFUL; 58/58 Gradle tasks executed; 15 JUnit reports / 192 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,226,738 bytes; SHA-256 `FB719C5F4EB592E6E7A8952ADAD15AFAAB3EEAB6AA210C2E0DEFA1C991940626`. Exact-head CI after push, real Wi-Fi acceptance and physical-device match remain separate gates and are not inferred from the localhost tests.
+## Phase 15B — UDP LAN advertisement and discovery (2026-11-20)
+
+### Targeted JVM acceptance
+
+The latest targeted command selected the following five classes and completed `:core:test` successfully:
+
+| Test class | Test methods | Result |
+|---|---:|---|
+| `LanDiscoveryPacketTest` | 4 | PASS |
+| `LanNetworkInterfacesTest` | 2 | PASS |
+| `LanHostAnnouncerTest` | 4 | PASS |
+| `LanHostDiscoveryTest` | 5 | PASS |
+| `LANTransportTest` | 10 | PASS |
+| **Total selected** | **25** | **0 failures / 0 errors / 0 skipped** |
+
+Coverage includes bounded/versioned UTF-8 beacon round-trip, malformed and unsupported packets, fractional port/version rejection, packet size and identity limits, local/directed-broadcast IPv4 filtering (including limited broadcast), deterministic interface ordering, repeated announcements per interface, isolation of a failing or permission-blocked interface, announcement shutdown, real localhost UDP malformed/duplicate datagrams, bounded empty search, distinct normal completion versus cancellation, receiver closure, and host-advertiser lifecycle with TCP bind/disconnect.
+
+### Runtime and UI boundaries
+
+- The host advertises only after its TCP listener is bound and includes the same host ID and actual TCP port. UDP announcement is tied to the `LANTransport` lifecycle; a missing/blocked interface does not make TCP hosting claim failure because manual IP remains available.
+- Discovery is bounded to five seconds, polls on 250 ms timeouts, ignores malformed/untrusted packets, deduplicates by host ID/source address/TCP port, and caps the result set at 32.
+- Setup callbacks are marshalled to the libGDX render thread and fenced by scene generation, screen destruction and explicit/manual selection. Empty-result and unavailable states are localized in English and Arabic. First-host/manual-IP selection and scene destruction cancel the receive socket.
+- A UDP beacon is untrusted locator metadata. It does not authenticate a host, establish room membership, or make the TCP socket an authoritative game session.
+- The 25 selected tests are localhost/injected-provider checks. They do not prove directed Wi-Fi broadcast crosses a real AP, survives AP client isolation, or works between physical Android devices. Real-network acceptance stays open for later device testing.
+- Forced full local Android/JVM command `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 Gradle tasks; 19 JUnit reports / 208 tests / 0 failures / 0 errors / 0 skipped**. Debug APK: 35,234,408 bytes; SHA-256 `FE7C9278E9169B59197323908C623734318EAF89711821A28FB2438931A07AFD`. Exact-head CI after the 15B commit/push remains a separate gate.
+- Exact-head CI for the 15B source+documentation commit and real-network Wi-Fi/physical-device acceptance remain separate pending gates.
