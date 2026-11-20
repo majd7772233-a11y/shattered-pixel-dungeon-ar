@@ -838,6 +838,8 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - 15A and 15B implementation and local automated acceptance are complete. Real Wi-Fi/device acceptance remains a deferred gate after Phase 22; do not run physical network tests earlier. Localhost tests do not prove Wi-Fi discovery or two-device play.
 ## Phase 16 — Bluetooth Transport (split into 16A + 16B)
 
+**Status:** implementation and automated acceptance complete; Android/device/network acceptance is deferred until after Phase 22.
+
 **Priority:** P1 · **Dependencies:** Phase 13.
 
 ### 16A — RFCOMM transport foundation (complete — local automated acceptance and exact-head CI green)
@@ -852,7 +854,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: 58/58 Gradle tasks; 21 JUnit reports / 229 tests / 0 failures / 0 errors / 0 skipped; APK 35,241,088 bytes, SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
 - [x] Exact-head CI for `aa152e622ca2b99ad58e290abab184bd98dce2f1` passed **3/3 jobs** in [run 44725344597](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44725344597): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
-### 16B — Device discovery, pairing consent and user experience (implemented; local automated acceptance green; exact-head CI pending)
+### 16B — Device discovery, pairing consent and user experience (complete — local automated acceptance and exact-head CI green)
 
 - [x] Add platform-neutral paired/discovered peer model, validated MAC/name sanitization, stable paired/discovered merge, selected-peer state, deterministic ordering and a bounded 32-device catalogue.
 - [x] Implement Android Classic Bluetooth discovery with a 20-second bound, cancellation, timeout/error radio stop, receiver unregister, adapter-state handling, stale-generation rejection and scene lifecycle cleanup. Expose only RFCOMM-capable Classic/Dual peers; BLE-only peers are excluded.
@@ -864,14 +866,14 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Add bilingual messages for device search, empty results, selection, pairing/system consent, permission denial/permanent denial, legacy Location services, adapter enable, host visibility, cancellation and peer loss.
 - [x] Add JVM tests for permission-preparation cancellation, stale discovery callbacks, paired/discovered merge, selected-device removal, bounded device catalogue, malformed MAC/display names, host visibility grant/denial and host-scene destruction before discoverability.
 - [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks; 24 JUnit reports / 244 tests / 0 failures / 0 errors / 0 skipped**. Bluetooth-focused classes: 39 tests / 0 failures / 0 errors / 0 skipped. Debug APK: **35,261,178 bytes**; SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
-- [ ] Push the Phase16B implementation + documentation commit and verify exact-head CI for that SHA. Do not reuse Phase16A CI as evidence for 16B.
+- [x] Push and verify exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7`: **3/3 jobs passed** in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857).
 
 ### Phase 16 acceptance criteria
 
 - [x] Bluetooth is never reported connected before a real RFCOMM peer socket and streams exist; missing adapter/provider, disabled adapter, permission denial, timeout, cancellation and disconnect are truthful and recoverable.
 - [x] Framing is bounded, strict UTF-8 and compatible with the canonical network message envelope.
 - [x] Transport connection is not conflated with room membership or authoritative native gameplay.
-- [ ] Exact-head CI passes for the implementation and final documentation commits. Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
+- [x] Exact-head CI passes for the Phase16B implementation commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857) (3/3 jobs). Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 — Co-op Rules and Shared Match Lifecycle
 
 **Priority:** P1 · **Dependencies:** phases 12–16.

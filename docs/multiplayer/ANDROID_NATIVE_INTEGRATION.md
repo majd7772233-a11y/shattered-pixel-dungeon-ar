@@ -388,7 +388,7 @@ A host listener bind still does not signal a connected peer. The guest can proce
 
 The latest forced local `test assembleDebug --rerun-tasks --no-daemon --console=plain` completed **BUILD SUCCESSFUL; 58/58 Gradle tasks; 24 JUnit reports / 244 tests / 0 failures / 0 errors / 0 skipped**. Bluetooth-focused classes contribute **39 test methods** across `BluetoothDeviceDiscoveryControllerTest` (8), `BluetoothDeviceInfoTest` (2), `BluetoothHostPreparationControllerTest` (5), `BluetoothFrameCodecTest` (7), `BluetoothTransportTest` (12) and `MultiplayerErrorMessagesTest` (5). Debug APK: **35,261,178 bytes**, SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
 
-Exact-head CI for the Phase16B source+documentation commit remains pending until that commit is pushed. No Android app launch, emulator/ADB, runtime Bluetooth permission prompt, pairing dialog, physical adapter, Wi-Fi peer, two-device session or gameplay test is claimed. Per user instruction, all hardware/network acceptance is deferred until after Phase 22; physical gameplay remains Phase 23.
+Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` passed **3/3 jobs** in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. No Android app launch, emulator/ADB, runtime Bluetooth permission prompt, pairing dialog, physical adapter, Wi-Fi peer, two-device session or gameplay test is claimed. Per user instruction, all hardware/network acceptance is deferred until after Phase 22; physical gameplay remains Phase 23.
 ## 12. Native change checklist
 
 Before changing native multiplayer behavior:

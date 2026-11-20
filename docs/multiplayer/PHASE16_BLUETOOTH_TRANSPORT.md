@@ -1,6 +1,6 @@
 # Phase 16 — Bluetooth Classic RFCOMM transport and device experience
 
-**Parent status:** implementation and local automated acceptance complete; exact-head CI for the current follow-up commit is pending. Physical-device acceptance is deliberately deferred until after Phase 22. **Scope:** two-player Bluetooth Classic (host + one peer), not a multi-peer mesh.
+**Parent status:** implementation and automated acceptance complete; exact-head CI passed for the Phase16B implementation commit. Physical-device acceptance is deliberately deferred until after Phase 22. **Scope:** two-player Bluetooth Classic (host + one peer), not a multi-peer mesh.
 
 ## Scope split
 
@@ -17,7 +17,7 @@
 
 ### 16B — Discovery, runtime consent, pairing and peer selection
 
-**16B implementation and local automated acceptance are complete.** The exact-head CI for the follow-up implementation/documentation commit is not yet recorded.
+**16B implementation, local automated acceptance and implementation-commit exact-head CI are complete.** The implementation commit passed all three required CI jobs in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857).
 
 #### Core flow and ownership
 
@@ -70,7 +70,7 @@ Additional existing manager-state, canonical-envelope and native render-callback
 - Result: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks executed; 24 JUnit XML reports / 244 tests / 0 failures / 0 errors / 0 skipped**.
 - Debug APK: **35,261,178 bytes**; SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
 - `git diff --check` passed. PowerShell resource-key comparison found identical English/Arabic multiplayer key sets, 75 keys each, with no duplicates.
-- Exact-head CI for the current Phase 16B follow-up commit: **PENDING**. The 16A parent CI result is historical and is not evidence for these changes.
+- Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` passed **3/3 jobs** in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. The 16A parent CI result is historical and is not evidence for these changes.
 
 ## Acceptance boundaries and deferred checks
 
