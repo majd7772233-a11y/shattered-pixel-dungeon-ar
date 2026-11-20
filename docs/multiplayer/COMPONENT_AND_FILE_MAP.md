@@ -14,7 +14,7 @@ The audited tree contains 42 Java files after the Phase 15A/15B LAN transport an
 
 | File | Responsibility observed in source | Related components / change impact |
 |---|---|---|
-| BluetoothTransport.java | Core transport facade; NativeBluetoothProvider, provider setter/getter, server/client start, send, disconnect. | NetworkTransport, TransportCallback, AndroidBluetoothProvider; changes affect platform adapter and session startup. |
+| BluetoothTransport.java | Core Bluetooth facade; required injected provider, SERVER/validated-MAC endpoint, generation-fenced callbacks and canonical framed send; missing provider fails closed. | NetworkTransport, BluetoothFrameCodec, AndroidBluetoothProvider and MultiplayerManager; raw socket success is transport-only, not room membership. |
 | CoopMode.java | Co-op GameMode rule descriptor. | GameMode, Worker rules, UI labels; descriptor alone does not enforce a room rule. |
 | DeathmatchMode.java | Deathmatch GameMode rule descriptor. | GameMode, Worker match-end/scoring/FOV rules; validate all rules on server/client. |
 | EmbeddedMatchAuthority.java | Small embedded/local authority with start() and processAction(...). | LAN/local host assumptions; not the Worker or a complete native authority. |
@@ -74,13 +74,13 @@ These files are outside the multiplayer package but part of the feature.
 | core/.../Dungeon.java | Seed, run and level lifecycle are central despite no direct MultiplayerManager reference in inspected Dungeon.java. | Initialization, seed timing, depth/branch, save/load and switchLevel affect full session. |
 | core/.../scenes/TitleScene.java | Multiplayer entry navigation. | Entry visibility, localization, scene navigation. |
 | core/.../scenes/MultiplayerTransportScene.java | Internet/LAN/Bluetooth selection. | Visible availability and labels must match verified status. |
-| core/.../scenes/MultiplayerSetupScene.java | Transport construction, room/IP defaults, discovery/manual IP, host/client selection, session start. | Connection state, permissions, input, false-success UI. It currently proceeds to HeroSelect immediately after startSession; inspected LAN/Bluetooth host-start exceptions are swallowed. |
+| core/.../scenes/MultiplayerSetupScene.java | Transport construction, room/IP defaults, LAN discovery/manual IP, host/client selection and session start. | It still proceeds to HeroSelect without waiting for a Bluetooth peer socket or authoritative room SESSION; complete pending/connected/error setup states belong to Phase20/21. Bluetooth device picker is Phase16B. |
 | core/.../scenes/HeroSelectScene.java | Applies authoritative seed before native run generation. | Preserve ordering relative to Dungeon generation when startup changes. |
 | core/.../scenes/GameScene.java | Publishes current level/LEVEL_READY, ticks `WndMultiplayerLobby`, and gates native turns/cell input until authoritative PLAYING. | Render-thread safety, scene recreation, FOV, map visuals, snapshot publication and gameplay gating. |
 | core/.../windows/WndMultiplayerLobby.java | In-game room modal: roster/readiness, host Start/readiness reset, Leave, connection errors and retry/exit state. | Keep every action bound to manager requests and authoritative roster state; do not make client display state authoritative. |
 | core/.../scenes/InterlevelScene.java | Completes a multiplayer unblessed-Ankh revival continuation in the inspected flow. | Death/revive and scene transition correctness. |
-| android/.../multiplayer/AndroidBluetoothProvider.java | Android Bluetooth server/client socket adapter for core provider interface. | Permission flow, lifecycle, threading and provider registration must be checked together. |
-| android/.../android/AndroidLauncher.java | Android Activity lifecycle owner; creates platform support, starts monitoring, refreshes on resume, backgrounds the manager on pause and unregisters monitoring on destroy. | Keep Activity ownership and manager foreground/background transitions in the same lifecycle review. |
+| android/.../multiplayer/AndroidBluetoothProvider.java | Phase16A Classic RFCOMM listener/client provider, framed reader/writer and generation-scoped socket lifecycle; registered by AndroidLauncher. | Runtime permission request, pairing/discovery/device selection and user cancel/retry are Phase16B; hardware acceptance is after Phase22. |
+| android/.../android/AndroidLauncher.java | Android Activity lifecycle owner; registers AndroidBluetoothProvider with application context, creates platform support and owns connectivity monitor lifecycle. | Keep Bluetooth provider registration and manager foreground/background transitions in lifecycle review. |
 | android/.../android/AndroidPlatformSupport.java | Android connectivity monitor; API 24+ default-network callback, API 21–23 INTERNET request callback, VALIDATED state, Activity monitor generation and stale-callback fence. | Recheck callback identity/generation, default Network replacement, unregister/teardown and API-specific connectivity semantics; Android framework runtime acceptance remains a separate gate. |
 
 ## 4. Backend, protocol, build and CI map

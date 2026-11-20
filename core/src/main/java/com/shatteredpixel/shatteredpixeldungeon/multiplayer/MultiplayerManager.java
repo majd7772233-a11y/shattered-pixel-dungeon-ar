@@ -1352,6 +1352,9 @@ public class MultiplayerManager implements TransportCallback {
       } else if (this.activeTransport instanceof LANTransport
               && !((LANTransport) this.activeTransport).isHosting()) {
          this.sessionState = MultiplayerManager.SessionState.TRANSPORT_CONNECTED;
+      } else if (this.activeTransport instanceof BluetoothTransport) {
+         // RFCOMM connectivity is not proof of a joined room or an authoritative match.
+         this.sessionState = MultiplayerManager.SessionState.TRANSPORT_CONNECTED;
       } else {
          this.sessionState = MultiplayerManager.SessionState.ROOM_JOINED;
       }

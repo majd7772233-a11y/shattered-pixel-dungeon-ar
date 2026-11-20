@@ -225,10 +225,7 @@ public class MultiplayerSetupScene extends PixelScene {
                 BluetoothTransport bt = new BluetoothTransport();
                 transport = bt;
                 if (isHost) {
-                    try {
-                        bt.startBluetoothServer(null);
-                    } catch (Exception ignored) {}
-                    endpoint = "SERVER";
+                    endpoint = BluetoothTransport.SERVER_ENDPOINT;
                 } else {
                     endpoint = targetIp;
                 }

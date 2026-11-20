@@ -44,6 +44,8 @@ import com.badlogic.gdx.utils.GdxNativesLoader;
 import com.shatteredpixel.shatteredpixeldungeon.SPDSettings;
 import com.shatteredpixel.shatteredpixeldungeon.ShatteredPixelDungeon;
 import com.shatteredpixel.shatteredpixeldungeon.multiplayer.MultiplayerManager;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.BluetoothTransport;
+import com.shatteredpixel.shatteredpixeldungeon.multiplayer.AndroidBluetoothProvider;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.News;
 import com.shatteredpixel.shatteredpixeldungeon.services.news.NewsImpl;
 import com.shatteredpixel.shatteredpixeldungeon.services.updates.UpdateImpl;
@@ -143,6 +145,10 @@ public class AndroidLauncher extends AndroidApplication {
 		config.useCompass = false;
 		config.useAccelerometer = false;
 		
+		if (BluetoothTransport.getNativeProvider() == null) {
+			BluetoothTransport.setNativeProvider(new AndroidBluetoothProvider(getApplicationContext()));
+		}
+
 		if (support == null) support = new AndroidPlatformSupport();
 		else                 support.reloadGenerators();
 		

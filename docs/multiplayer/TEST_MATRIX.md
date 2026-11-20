@@ -660,3 +660,26 @@ Coverage includes bounded/versioned UTF-8 beacon round-trip, malformed and unsup
 ### Exact-head GitHub Actions — Phase 15B
 
 Commit `13f495b615d58fbecaad21c479aa9aff4201e6dd` passed **3/3** jobs in [Multiplayer Branch Validation run 44712869490](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44712869490): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile. This is exact-head CI evidence for the Phase 15B source+documentation commit. It does not replace real same-network Wi-Fi/device acceptance.
+
+## Phase 16A — Bluetooth Classic RFCOMM foundation (2026-11-20)
+
+| Test class / scope | Test methods | Result |
+|---|---:|---|
+| `BluetoothFrameCodecTest` | 7 | PASS |
+| `BluetoothTransportTest` | 12 | PASS |
+| `MultiplayerErrorMessagesTest` | 5 (entire class) | PASS |
+| `MultiplayerReconnectLifecycleTest.bluetoothSocketIsTransportConnectedButNotRoomJoined` | 1 selected method | PASS |
+| `NetworkProtocolParityTest.bluetoothTransportWritesTheCanonicalVersionedEnvelope` | 1 selected method | PASS |
+| `NativeCombatRuntimeIntegrationTest.nestedRenderCallbacksInheritSessionGenerationGuard` | 1 selected regression | PASS |
+| **Focused selected set** | **27** | **0 failures / 0 errors / 0 skipped** |
+
+Codec coverage includes strict UTF-8, Arabic/emoji payload, LF/CRLF, clean EOF versus truncation, malformed UTF-8 and surrogate rejection, delimiter injection, empty input and exact/over-16-MiB limits. Facade coverage includes missing provider, host listener versus actual peer acceptance, client MAC validation, shared service UUID, false-connected callback rejection, stale generation suppression, send-before-ready, canonical envelope serialization, provider error teardown, startup rollback/retry and idempotent disconnect. Manager coverage confirms raw Bluetooth socket success becomes `TRANSPORT_CONNECTED`, never `ROOM_JOINED`.
+
+### Full forced local Android/JVM verification
+
+- Command: `gradlew.bat test assembleDebug --rerun-tasks --no-daemon --console=plain`.
+- Result: **BUILD SUCCESSFUL; 58/58 actionable Gradle tasks executed; 21 JUnit XML reports / 229 tests / 0 failures / 0 errors / 0 skipped**.
+- Debug APK: **35,241,088 bytes**; SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
+- The Android RFCOMM provider and merged manifest compiled and packaged successfully. This does not launch the app or prove runtime permissions or hardware transport.
+- Exact-head CI for the final Phase16A source+documentation SHA remains pending; do not infer it from the previous Phase15 CI run.
+- No Android app launch, emulator/ADB, physical Bluetooth adapter, real Wi-Fi peer or two-device session was run. Per user instruction, hardware/network acceptance is deferred until after Phase22; physical gameplay remains Phase23.

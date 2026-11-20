@@ -266,20 +266,31 @@ public class NetworkProtocolParityTest {
     @Test
     public void bluetoothTransportWritesTheCanonicalVersionedEnvelope() throws Exception {
         final byte[][] captured = new byte[1][];
+        final boolean[] connected = new boolean[] {false};
         BluetoothTransport.NativeBluetoothProvider provider = new BluetoothTransport.NativeBluetoothProvider() {
             @Override public void startServer(java.util.UUID serviceUuid, TransportCallback callback) {}
-            @Override public void connectDevice(String deviceAddress, java.util.UUID serviceUuid, TransportCallback callback) {}
+            @Override public void connectDevice(String deviceAddress, java.util.UUID serviceUuid, TransportCallback callback) {
+                connected[0] = true;
+                callback.onConnected();
+            }
             @Override public void sendData(byte[] data) { captured[0] = data.clone(); }
-            @Override public void disconnect() {}
-            @Override public boolean isConnected() { return true; }
+            @Override public void disconnect() { connected[0] = false; }
+            @Override public boolean isConnected() { return connected[0]; }
         };
         BluetoothTransport.setNativeProvider(provider);
         try {
+            BluetoothTransport transport = new BluetoothTransport();
+            transport.connect("01:23:45:67:89:AB", new TransportCallback() {
+                @Override public void onConnected() { }
+                @Override public void onDisconnected(String reason) { }
+                @Override public void onMessageReceived(NetworkMessage message) { }
+                @Override public void onError(Throwable error) { Assert.fail(error.getMessage()); }
+            });
             NetworkMessage message = new NetworkMessage(MessageType.CHAT, "{\"text\":\"hello\"}");
             message.senderId = "bluetooth-player";
             message.requestId = "bluetooth-request";
             message.sequence = 4L;
-            new BluetoothTransport().send(message);
+            transport.send(message);
 
             Assert.assertNotNull("Bluetooth must write through the canonical envelope serializer", captured[0]);
             String wire = new String(captured[0], "UTF-8");
@@ -296,7 +307,6 @@ public class NetworkProtocolParityTest {
             BluetoothTransport.setNativeProvider(null);
         }
     }
-
     @Test
     public void lanActionParserRejectsMissingMalformedAndUnknownActions() {
         Assert.assertEquals(Optional.of(NetworkActionType.MOVE), LANTransport.parseActionType("{\"action\":\"MOVE\"}"));

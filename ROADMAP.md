@@ -834,24 +834,38 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 ### Phase 15 acceptance criteria
 
 - 15A: listener readiness is truthful; the host is not a loopback guest; every admitted peer has one validated identity; duplicate/over-capacity/spoofed clients are rejected; message framing is bounded; shutdown leaves no listener, accepted socket or pending identity behind.
-- 15B local automated acceptance: versioned bounded discovery packet; bounded/cancellable search; malformed datagrams do not terminate search; duplicate beacons collapse; announcer lifecycle follows TCP host; UI callbacks are render-thread and scene-generation safe. **Physical reachability on a real selected Wi-Fi interface is still unverified.**
-- Phase 15 is not CLOSED until both 15A and 15B pass local automated acceptance and the supported real-network acceptance gate. Localhost tests do not prove Wi-Fi discovery or two-device play.
-## Phase 16 — Bluetooth Transport or Truthful Unavailability
+- 15B automated acceptance: versioned bounded discovery packet; bounded/cancellable search; malformed datagrams do not terminate search; duplicate beacons collapse; announcer lifecycle follows TCP host; UI callbacks are render-thread and scene-generation safe. Physical network reachability is not claimed and is deferred until after Phase 22.
+- 15A and 15B implementation and local automated acceptance are complete. Real Wi-Fi/device acceptance remains a deferred gate after Phase 22; do not run physical network tests earlier. Localhost tests do not prove Wi-Fi discovery or two-device play.
+## Phase 16 — Bluetooth Transport (split into 16A + 16B)
 
 **Priority:** P1 · **Dependencies:** Phase 13.
 
-### Work items
-- [ ] Inspect the existing BluetoothTransport interface and wire a real Android provider for discovery, pairing, permissions and byte-stream callbacks if the repository has a viable provider path.
-- [ ] Implement Android-version-specific permission requests and explicit user selection/consent.
-- [ ] Reuse the same typed messages, session lifecycle and disconnect/reconnect semantics as other transports.
-- [ ] If no viable provider or permissions path can be completed, disable Bluetooth selection and display a specific “unavailable on this build/device” explanation rather than fabricating success.
-- [ ] Add provider-contract tests and failure-path tests for cancelled permission, cancelled pairing, device disappearance and socket loss.
+### 16A — RFCOMM transport foundation (in progress)
 
-### Acceptance criteria
-- Bluetooth is advertised as supported only after the real provider path is verified.
-- Permission denial/cancel/disconnect are recoverable and do not create ghost sessions.
-- No placeholder provider can claim the room is connected.
+- [x] Remove the null-provider fabricated-success path. Missing Android provider now fails as `BLUETOOTH_UNAVAILABLE`; a listening RFCOMM server is not reported as a connected peer.
+- [x] Register the Android RFCOMM provider from `AndroidLauncher`; declare Bluetooth as an optional device feature and add legacy API<=30 permissions plus `BLUETOOTH_CONNECT` for API 31+.
+- [x] Implement Classic Bluetooth RFCOMM server accept and guest MAC-address connect with one stable service UUID. Connect success is delivered only after socket streams are acquired.
+- [x] Add strict UTF-8 newline frame codec capped at 16 MiB, rejecting malformed UTF-8/surrogates, empty/truncated/over-limit frames and delimiter injection.
+- [x] Fence stale operations by generation; own and close listener/pending/active sockets and streams; add bounded client-connect timeout, EOF and failure cleanup; serialize stream writes.
+- [x] Preserve the manager's transport-only state: raw Bluetooth socket success becomes `TRANSPORT_CONNECTED`, never `ROOM_JOINED` or `PLAYING` without a later protocol/authority transition.
+- [x] Add JVM contract/failure tests for provider absence, host/guest starts, invalid MAC, false connected callbacks, stale callback, send before readiness, error/rollback, frame boundaries, canonical message envelope, manager state and localized error mapping.
+- [x] Forced full local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: 58/58 Gradle tasks; 21 JUnit reports / 229 tests / 0 failures / 0 errors / 0 skipped; APK 35,241,088 bytes, SHA-256 `09E3F58DB6EC115A3C352C00927517F5C42221973EDA7CA6E64A1664D22066CD`.
+- [ ] Exact-head CI on the final source+documentation SHA.
 
+### 16B — Device discovery, pairing consent and user experience (not started)
+
+- [ ] Implement paired-device enumeration, explicit device selection, bounded/cancellable discovery and host discoverability where required by the Android API.
+- [ ] Add Android-version-specific runtime permission request flow for `BLUETOOTH_CONNECT` and scan/discovery permissions; handle allow/deny/permanent-denial/cancel without ghost sessions.
+- [ ] Handle pairing consent, device disappearance, adapter state changes, retry/cancel and lifecycle teardown with explicit localized errors.
+- [ ] Integrate the selected peer/device state into the later setup UI work (Phase 20) and Arabic/English RTL/touch/accessibility pass (Phase 21); never reuse the LAN IP field as a Bluetooth MAC picker.
+- [ ] Add automated tests for permission cancellation, pairing cancellation, device disappearance, discovery cancellation and socket loss.
+
+### Phase 16 acceptance criteria
+
+- Bluetooth is never reported connected before a real RFCOMM peer socket and streams exist; missing adapter/provider, disabled adapter, permission denial, timeout and disconnect are truthful and recoverable.
+- Framing is bounded, strict UTF-8 and compatible with the canonical network message envelope.
+- Transport connection is not conflated with room membership or authoritative native gameplay.
+- All automatic tests and exact-head CI are green. Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 — Co-op Rules and Shared Match Lifecycle
 
 **Priority:** P1 · **Dependencies:** phases 12–16.

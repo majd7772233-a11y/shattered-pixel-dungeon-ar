@@ -34,8 +34,46 @@ public class MultiplayerReconnectLifecycleTest {
         manager.onNetworkAvailabilityChanged(true);
         manager.onAppForegrounded();
         manager.setInternetTransportFactoryForTests(null);
+        BluetoothTransport.setNativeProvider(null);
     }
 
+    @Test
+    public void bluetoothSocketIsTransportConnectedButNotRoomJoined() throws Exception {
+        final TransportCallback[] providerCallback = new TransportCallback[1];
+        final boolean[] connected = new boolean[] {false};
+        BluetoothTransport.setNativeProvider(new BluetoothTransport.NativeBluetoothProvider() {
+            @Override public void startServer(java.util.UUID serviceUuid, TransportCallback callback) {
+                providerCallback[0] = callback;
+            }
+            @Override public void connectDevice(String address, java.util.UUID serviceUuid, TransportCallback callback) {
+                providerCallback[0] = callback;
+            }
+            @Override public void sendData(byte[] data) { }
+            @Override public void disconnect() { connected[0] = false; }
+            @Override public boolean isConnected() { return connected[0]; }
+        });
+        try {
+            BluetoothTransport transport = new BluetoothTransport();
+            manager.startSession(BluetoothTransport.SERVER_ENDPOINT, "bluetooth-host", transport, true);
+            Assert.assertEquals(MultiplayerManager.SessionState.CONNECTING, manager.getSessionState());
+            Assert.assertFalse(transport.isConnected());
+
+            connected[0] = true;
+            providerCallback[0].onConnected();
+            long deadline = System.currentTimeMillis() + 2000L;
+            while (manager.getSessionState() == MultiplayerManager.SessionState.CONNECTING
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(5L);
+            }
+
+            Assert.assertEquals(MultiplayerManager.SessionState.TRANSPORT_CONNECTED, manager.getSessionState());
+            Assert.assertNotEquals("A raw RFCOMM socket is not a joined game room",
+                    MultiplayerManager.SessionState.ROOM_JOINED, manager.getSessionState());
+        } finally {
+            manager.endSession();
+            BluetoothTransport.setNativeProvider(null);
+        }
+    }
     @Test
     public void endSessionClearsAnInFlightInitialHandshake() {
         RecordingInternetTransport initial = new RecordingInternetTransport();

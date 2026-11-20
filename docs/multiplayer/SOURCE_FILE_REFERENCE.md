@@ -85,11 +85,12 @@ The temporary rollout tracker is retained while Batch 3 is pending; it must be d
 
 Base path: core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/
 
-The package has 34 Java files:
+The package has 35 Java files at the Phase16A working checkpoint:
 
 | File | Main responsibility |
 |---|---|
-| BluetoothTransport.java | Core Bluetooth facade/provider interface |
+| BluetoothTransport.java | Core Bluetooth facade with injected provider, validated endpoint and generation-fenced state |
+| BluetoothFrameCodec.java | Strict UTF-8 newline frame codec with a 16 MiB bound |
 | CoopMode.java | Co-op rule descriptor |
 | DeathmatchMode.java | Deathmatch rule descriptor |
 | EmbeddedMatchAuthority.java | Small embedded/local authority helper; not a Worker replacement |
@@ -167,12 +168,12 @@ These are automated JVM tests. They do not prove a production Worker deployment 
 
 | Path | Role / current finding |
 |---|---|
-| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java | Android application startup; no direct Bluetooth provider registration was found |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java | Android startup; registers the application-context AndroidBluetoothProvider before initializing the game |
 | android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidPlatformSupport.java | Platform support utilities; no Bluetooth provider registration was found |
-| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java | RFCOMM adapter class implementing NativeBluetoothProvider |
-| android/src/main/AndroidManifest.xml | At baseline declares VIBRATE, INTERNET and ACCESS_NETWORK_STATE; no Bluetooth permission declarations were present |
+| android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java | Classic RFCOMM provider; server/client socket ownership, bounded connect timeout, strict frame reader, serialized writes and generation-fenced cleanup |
+| android/src/main/AndroidManifest.xml | Bluetooth hardware is optional; legacy BLUETOOTH/ADMIN through API30 and BLUETOOTH_CONNECT for API31+ |
 
-BluetoothTransport provider registration and runtime permissions remain open. See ANDROID_NATIVE_INTEGRATION.md and Phase 16.
+The provider is registered and the API31+ permission guard/declarations are implemented in 16A. Runtime consent, scan/discovery, pairing and device selection remain Phase16B. See ANDROID_NATIVE_INTEGRATION.md and PHASE16_BLUETOOTH_TRANSPORT.md.
 
 ## 7. Backend file inventory after the three-stage source refactor
 

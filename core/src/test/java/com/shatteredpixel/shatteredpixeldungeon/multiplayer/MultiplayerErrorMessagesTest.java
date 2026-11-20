@@ -6,6 +6,27 @@ import org.junit.Test;
 public class MultiplayerErrorMessagesTest {
 
     @Test
+    public void mapsBluetoothAdapterAndPermissionFailuresToLocalizedMessages() {
+        Assert.assertEquals("bluetooth_unavailable",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_UNAVAILABLE"));
+        Assert.assertEquals("bluetooth_unavailable",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_UNSUPPORTED"));
+        Assert.assertEquals("bluetooth_disabled",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DISABLED"));
+        Assert.assertEquals("bluetooth_permission_required",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_PERMISSION_REQUIRED"));
+        Assert.assertEquals("bluetooth_device_required",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_DEVICE_ADDRESS_INVALID"));
+        Assert.assertEquals("bluetooth_connection_failed",
+                MultiplayerErrorMessages.messageKey("java.net.SocketTimeoutException: BLUETOOTH_CONNECT_TIMEOUT"));
+        Assert.assertEquals("bluetooth_connection_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_PROVIDER_NOT_CONNECTED"));
+        Assert.assertEquals("bluetooth_connection_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_TRANSPORT_FAILED"));
+        Assert.assertEquals("bluetooth_connection_failed",
+                MultiplayerErrorMessages.messageKey("BLUETOOTH_FRAME_INVALID_UTF8"));
+    }
+    @Test
     public void mapsOfflineAndBackgroundStatesToLocalizedMessages() {
         Assert.assertEquals("connection_network_unavailable",
                 MultiplayerErrorMessages.messageKey("NETWORK_UNAVAILABLE"));

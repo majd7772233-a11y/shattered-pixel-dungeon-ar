@@ -13,6 +13,16 @@ public final class MultiplayerErrorMessages {
         String code = error.toUpperCase(Locale.ROOT);
 
         if (code.contains("NETWORK_UNAVAILABLE")) return "connection_network_unavailable";
+        if (code.contains("BLUETOOTH_PERMISSION_REQUIRED")) return "bluetooth_permission_required";
+        if (code.contains("BLUETOOTH_DISABLED")) return "bluetooth_disabled";
+        if (code.contains("BLUETOOTH_UNSUPPORTED") || code.contains("BLUETOOTH_UNAVAILABLE")) return "bluetooth_unavailable";
+        if (code.contains("BLUETOOTH_DEVICE_REQUIRED") || code.contains("BLUETOOTH_DEVICE_ADDRESS_INVALID")) return "bluetooth_device_required";
+        if (code.contains("BLUETOOTH_CONNECT_TIMEOUT") || code.contains("BLUETOOTH_NOT_CONNECTED")
+                || code.contains("BLUETOOTH_PROVIDER_NOT_CONNECTED")
+                || code.contains("BLUETOOTH_TRANSPORT_FAILED") || code.contains("BLUETOOTH_DISCONNECTED")
+                || code.contains("BLUETOOTH_PEER_CLOSED") || code.contains("BLUETOOTH_FRAME_")) {
+            return "bluetooth_connection_failed";
+        }
         if (code.contains("APP_BACKGROUND")) return "connection_background_paused";
         if (code.contains("SESSION_HANDSHAKE_TIMEOUT")) return "connection_session_timeout";
         if (code.contains("ROOM_OPERATION_TIMEOUT")) return "connection_room_timeout";

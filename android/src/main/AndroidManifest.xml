@@ -4,6 +4,13 @@
 	android:targetSandboxVersion="2">
 
 	<uses-feature android:glEsVersion="0x00020000"/>
+	<uses-feature android:name="android.hardware.bluetooth" android:required="false"/>
+
+	<!-- Android 11 and earlier use the legacy Bluetooth permissions. -->
+	<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+	<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+	<!-- Runtime consent is requested in Phase 16B before user-initiated Bluetooth actions. -->
+	<uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
 
 	<uses-permission android:name="android.permission.VIBRATE" />
 	<uses-permission android:name="android.permission.INTERNET" />

@@ -92,9 +92,9 @@ That presence does not mean all features have passed end-to-end acceptance.
 
 The Java source contains mode descriptor classes for Co-op, PvP, Deathmatch, and Survival. The Worker has a game-mode field and competitive field-of-view broadcast behavior. Mode-specific enforcement remains a separate acceptance concern; the presence of a class or server enum is not proof that scoring, revive, death, visibility, team, or end-condition rules are complete.
 
-The UI exposes Internet, LAN, and Bluetooth choices. The existence of InternetTransport, LANTransport, BluetoothTransport, or AndroidBluetoothProvider does not prove successful handshake, host discovery, peer compatibility, reconnection, Android permission flow, lifecycle correctness, or real-device data transfer.
+The UI exposes Internet, LAN, and Bluetooth choices. Phase16A now wires a real Android Classic RFCOMM provider and removes Bluetooth false-success, but that transport foundation does not prove pairing/discovery UX, runtime permission consent, room handshake, peer compatibility, reconnection or real-device data transfer. Those remain later acceptance boundaries.
 
-The current setup code starts the session and proceeds to Hero selection without an explicit visible connection-success gate. LAN/Bluetooth host-start exceptions are caught and ignored in the inspected setup path. Treat these as known audit targets, not supported-product guarantees.
+The current setup code starts the session and proceeds to Hero selection without waiting for an accepted Bluetooth peer or an authoritative room SESSION. Bluetooth listener-start failures are no longer silently converted to success, but setup still lacks pending/connected/error gates and a paired-device selector; Phase20/21 own that UX.
 
 ## 7. Non-negotiable engineering constraints
 

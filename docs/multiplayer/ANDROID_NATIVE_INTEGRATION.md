@@ -291,7 +291,7 @@ The current multiplayer seed injection is performed through MultiplayerManager.a
 |---|---|---|
 | TitleScene | Exposes multiplayer entry navigation | Entry visibility and localization must match actual feature readiness |
 | MultiplayerTransportScene | Offers INTERNET, LAN and BLUETOOTH choices | Do not claim a transport works based on a button |
-| MultiplayerSetupScene | Creates selected transport, room/IP defaults and starts MultiplayerManager | Current flow switches to HeroSelect immediately after startSession; inspected LAN/Bluetooth server-start exceptions are swallowed |
+| MultiplayerSetupScene | Creates selected transport, room/IP defaults and starts MultiplayerManager | Current flow switches to HeroSelect immediately after startSession without waiting for an accepted peer or authoritative SESSION. Bluetooth startup exceptions now propagate; the paired-device selector and connection-state UI remain Phase16B/20/21 |
 | HeroSelectScene | Calls applyAuthoritativeSeed() before run generation | Preserve seed-before-generation ordering |
 | GameScene | Publishes current level and sends LEVEL_READY during scene creation when multiplayer is active | Native rendering/map/sprite work belongs to render thread |
 | InterlevelScene | Completes pending unblessed-Ankh revival continuation | Preserve native transition/load/resurrection order |
@@ -343,22 +343,24 @@ Timed Buff changes must be audited across:
 
 A Buff disappearing from a serialized list is not proof that its side effects were harmless. If expiry can damage, heal, move, kill, grant items, change inventory, affect another actor or trigger a scene callback, all consequences must be validated or the transition must remain rejected.
 
-## 11. Android Bluetooth adapter — current integration gap
+## 11. Android Bluetooth RFCOMM adapter — Phase 16A implementation
 
 Files:
-- android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java
-- core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothTransport.java
-- android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java
-- android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidPlatformSupport.java
-- android/src/main/AndroidManifest.xml
+- `android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/AndroidBluetoothProvider.java`
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothTransport.java`
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothFrameCodec.java`
+- `android/src/main/java/com/shatteredpixel/shatteredpixeldungeon/android/AndroidLauncher.java`
+- `android/src/main/AndroidManifest.xml`
 
-AndroidBluetoothProvider implements the provider interface and uses RFCOMM BluetoothServerSocket/BluetoothSocket, line-delimited UTF-8 JSON, a reader loop, and background threads for accept/connect. The adapter itself has methods for server start, device connect, stream setup, receive loop, send and disconnect.
+`AndroidLauncher.onCreate` installs one application-context `AndroidBluetoothProvider` through `BluetoothTransport.setNativeProvider`. Android manifest declares the hardware feature optional (a no-Bluetooth device can still install the game), legacy `BLUETOOTH`/`BLUETOOTH_ADMIN` permissions up to API 30, and `BLUETOOTH_CONNECT` for API 31+. The provider checks the dangerous connect permission before accessing the adapter on API 31+, and returns explicit unsupported, disabled and permission-required failures. Runtime permission UI is not yet implemented; this is Phase 16B.
 
-However, the inspected AndroidLauncher and AndroidPlatformSupport do not register a provider through BluetoothTransport.setNativeProvider(...), and a repository code search at this baseline returned no registration call. Treat provider reachability as unproven until a concrete registration point is added and tested.
+The provider implements Classic RFCOMM `listenUsingRfcommWithServiceRecord` and `createRfcommSocketToServiceRecord` using the shared service UUID. Host start means only that the listener was bound; it does not call `onConnected` until a peer is accepted and both streams are acquired. Guest connect is generation-fenced and bounded by a 15-second timeout. Reader, sender and disconnect share a single owned socket/stream lifecycle; stale callbacks are ignored, EOF closes the session, errors release resources, and outgoing writes are serialized. The server accepts one peer, consistent with a two-player Bluetooth transport limit in this slice.
 
-BluetoothTransport has a dangerous fallback: when nativeProvider is null, it can set its local isConnected flag and report onConnected() without establishing any Bluetooth socket. That is not a valid connected state. It must not be represented as successful Bluetooth operation.
+`BluetoothFrameCodec` uses strict UTF-8 newline JSON framing capped at 16 MiB. It rejects empty, truncated, malformed, injected-delimiter and oversized frames. `NetworkMessage.parseBluetoothJson` remains the exact legacy receive compatibility boundary; outbound messages use the canonical versioned envelope. A missing provider throws `BLUETOOTH_UNAVAILABLE`; it never fabricates `onConnected`.
 
-The current AndroidManifest.xml declares VIBRATE, INTERNET and ACCESS_NETWORK_STATE only. It does not declare Bluetooth permissions in the inspected file. No runtime Bluetooth permission request flow was found in the inspected launcher/provider path. Do not claim current Android Bluetooth readiness; Phase 16 must implement or truthfully disable it and test supported Android API levels.
+The manager deliberately maps a connected Bluetooth socket to `TRANSPORT_CONNECTED`, not `ROOM_JOINED`. RFCOMM does not implement the authoritative room roster/readiness/MATCH_START/native action lifecycle; Phase 17 remains responsible for that contract. Setup still lacks a paired-device selector and currently passes the existing endpoint field to the guest transport; that field is not a Bluetooth UX. Device discovery, pairing consent, runtime permission request/recovery, host discoverability, peer selection and cancel/retry are Phase 16B, with full setup/lobby states in Phase20 and RTL/accessibility work in Phase21.
+
+**Automated evidence only:** focused JVM frame/provider-facade/manager/error/parity tests and Android `assembleDebug` are the acceptance gates for this slice. The final local test count and APK hash are recorded in `PHASE16_BLUETOOTH_TRANSPORT.md` / `TEST_MATRIX.md`; exact-head CI for the Phase16A commit is still pending. No Android app launch, emulator/ADB, Bluetooth hardware, two-device or gameplay test is claimed. Per user instruction, real device/network tests are postponed until after Phase22; physical playtesting is Phase23.
 
 ## 12. Native change checklist
 
