@@ -86,6 +86,19 @@ class MemoryMatchRoomSql {
       const value = this.roomMeta.get("levelPublisher");
       return this.cursor(value === undefined ? [] : [{ value }]);
     }
+    if (query === "SELECT key,value FROM room_meta WHERE substr(key,1,?) = ?") {
+      const prefix = String(args[1] || "");
+      return this.cursor(Array.from(this.roomMeta.entries())
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key,value]) => ({ key, value })));
+    }
+    if (query === "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?") {
+      const player = this.players.get(String(args[0]));
+      return this.cursor(player ? [{
+        player_id: player.player_id, class_name: player.class_name, pos: player.pos,
+        ready: player.ready, state: player.state, connected: player.connected
+      }] : []);
+    }
     if (query === "SELECT player_id FROM players WHERE session_token = ?") {
       const rows = Array.from(this.players.values())
         .filter(player => String(player.session_token) === String(args[0]));
@@ -236,6 +249,14 @@ class MemoryMatchRoomSql {
       if (row && Number(row.depth) === Number(args[1])) {
         this.mobs.delete(id);
         this.mobDeletes++;
+      }
+      return this.cursor();
+    }
+    if (query.startsWith("UPDATE players SET connected = 0, ready = 0 WHERE player_id = ? AND session_token = ?")) {
+      const row = this.players.get(String(args[0]));
+      if (row && String(row.session_token || "") === String(args[1])) {
+        row.connected = 0;
+        row.ready = 0;
       }
       return this.cursor();
     }
@@ -1041,6 +1062,58 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     ])).toBe(false);
   });
 
+  it("derives READY and gameplay recovery states only from authoritative Co-op proofs", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, levelSnapshot } = fixture;
+    room.matchSeed = levelSnapshot.seed;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "LOBBY";
+    room.getCurrentLevelSnapshot = vi.fn(() => levelSnapshot);
+    for (const playerId of [ATTACKER_ID, PUBLISHER_ID]) {
+      const player = sql.players.get(playerId)!;
+      player.class_name = "WARRIOR";
+      player.ready = 1;
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: playerId === ATTACKER_ID ? 1 : 2 }));
+      sql.roomMeta.set("roomReady:" + playerId, JSON.stringify({
+        ready: true, seed: levelSnapshot.seed, sequence: room.currentSequence
+      }));
+    }
+    for (const [key,value] of [
+      ["roomLifecycleVersion", "1"], ["roomLifecycleState", "LOBBY"],
+      ["gameMode", "COOP_DUNGEON"], ["roomCapacity", "4"],
+      ["roomCreated", "1"], ["roomOwnerId", ATTACKER_ID],
+      ["levelPublisher", PUBLISHER_ID], ["levelPublisherTerm", "3"],
+      ["levelPublisherReadyTerm", "3"]
+    ]) sql.roomMeta.set(key, value);
+
+    expect((room as any).roomStatePayload("test-ready").roomStatus).toBe("READY");
+
+    sql.roomMeta.set("roomReady:" + PUBLISHER_ID, JSON.stringify({
+      ready: true, seed: levelSnapshot.seed, sequence: room.currentSequence - 1
+    }));
+    const staleReadyState = (room as any).roomStatePayload("stale-ready-proof");
+    expect(staleReadyState.roomStatus).toBe("LOBBY");
+    expect(staleReadyState.allReady).toBe(false);
+    expect(staleReadyState.members.find((member: any) => member.playerId === PUBLISHER_ID).ready).toBe(false);
+    sql.roomMeta.set("roomReady:" + PUBLISHER_ID, JSON.stringify({
+      ready: true, seed: levelSnapshot.seed, sequence: room.currentSequence
+    }));
+
+    room.gameStatus = "PLAYING";
+    sql.roomMeta.set("roomLifecycleState", "RECOVERING");
+    sql.roomMeta.delete("levelPublisherReadyTerm");
+    expect((room as any).roomStatePayload("publisher-recovering").roomStatus).toBe("RECOVERING");
+
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    expect((room as any).roomStatePayload("publisher-not-ready").roomStatus).toBe("RECOVERING");
+    sql.roomMeta.delete("levelPublisher");
+    expect((room as any).roomStatePayload("publisher-missing").roomStatus).toBe("SUSPENDED");
+
+    sql.roomMeta.set("levelPublisher", PUBLISHER_ID);
+    sql.roomMeta.set("levelPublisherReadyTerm", "3");
+    expect((room as any).roomStatePayload("publisher-restored").roomStatus).toBe("PLAYING");
+  });
+
   it("blocks native actions until the active publisher generation has committed its rebase", async () => {
     const fixture = makeSpiritArrowForwardFixture();
     fixture.sql.roomMeta.set("levelPublisherTerm", "9");
@@ -1094,7 +1167,11 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     sql.roomMeta.set("levelPublisher", oldPublisher);
     sql.roomMeta.set("levelPublisherTerm", "4");
     sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
     for (const playerId of [oldPublisher, nextPublisher, attackerId]) {
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: 1 }));
       sql.roomMeta.set("heroState:" + playerId, heroJson);
       sql.players.set(playerId, {
         player_id: playerId, session_token: playerId === oldPublisher ? "old-publisher-token"
@@ -1126,6 +1203,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     };
     room.state.getWebSockets = () => [nextPublisherSocket, attackerSocket];
     room.broadcastCurrentSnapshot = vi.fn();
+    room.broadcastRoomState = vi.fn();
 
     await room.webSocketClose(closingSocket, 1006, "publisher disconnected", false);
 
@@ -1133,6 +1211,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.players.get(oldPublisher)?.connected).toBe(0);
     expect(sql.roomMeta.get("levelPublisher")).toBe(nextPublisher);
     expect(sql.roomMeta.get("levelPublisherTerm")).toBe("5");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("RECOVERING");
+    expect(room.broadcastRoomState).toHaveBeenCalledWith("PUBLISHER_RECOVERY_REQUIRED");
     expect(sql.roomMeta.has("pendingCombat:" + requestId)).toBe(false);
     expect(sql.roomMeta.has("pendingCombatAttacker:" + attackerId)).toBe(false);
     expect(sql.roomMeta.has("pendingCombatTarget:MOB:" + ENTITY_ID)).toBe(false);
@@ -1213,6 +1293,10 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     sql.roomMeta.set("levelPublisher", oldPublisher);
     sql.roomMeta.set("levelPublisherTerm", "2");
     sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
+    room.broadcastRoomState = vi.fn();
     sql.players.set(oldPublisher, {
       player_id: oldPublisher, pos: 9, hp: 0, ht: 20, state: "DEAD", connected: 1
     });
@@ -1232,6 +1316,8 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
 
     expect(sql.roomMeta.has("levelPublisher")).toBe(false);
     expect(sql.roomMeta.get("levelPublisherTerm")).toBe("3");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("SUSPENDED");
+    expect(room.broadcastRoomState).toHaveBeenCalledWith("PUBLISHER_UNAVAILABLE");
     const publisherChange = spectatorSocket.send.mock.calls
       .map(call => JSON.parse(String(call[0])))
       .find(message => message.messageType === "LEVEL_PUBLISHER_CHANGED");

@@ -71,6 +71,9 @@ export class MatchRoomBase {
     this.sql = state.storage.sql;
   }
 
+  /** Lifecycle extension point invoked only after publisher rebase commits durably. */
+  protected onPublisherRecoveryCommitted(): void {}
+
   protected isRoomLifecycleEnabled(): boolean {
     const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomLifecycleVersion").toArray()[0];
     return String(row?.value || "") === "1";

@@ -24,8 +24,14 @@ All engineering pages in this set are written in English for consistency with so
 12. PHASE14-B3_ANDROID_NETWORK_RECOVERY.md — current Android network/background lifecycle, heartbeat, endpoint and hosted-service gate evidence.
 13. PHASE15_LAN_PREFLIGHT.md — Phase 15 TCP/UDP implementation and network acceptance boundaries.
 14. PHASE16_BLUETOOTH_TRANSPORT.md — 16A/16B RFCOMM, discovery, permission/host visibility consent, peer picker, tests and deferred hardware acceptance.
+15. PHASE17_A_AUTHORITATIVE_COOP_LIFECYCLE.md - 17-A authoritative room status, readiness proofs, publisher recovery, Android gameplay gating and 17-B boundary.
 
-## Current continuation checkpoint — 2026-11-20 — Phase 16B implementation and automated acceptance complete
+## Current continuation checkpoint - 2026-11-20 - Phase 17-A local automated verification complete; exact-head CI pending
+- **Phase 17-A local verification:** backend build and 381 tests passed; real Durable Object SQLite suite 17/17; Android build succeeded with 58 Gradle tasks and 246 JVM tests (0 failures/errors/skips). Exact-head CI remains pending for the final pushed SHA; parent Phase 17 remains OPEN.
+- 17-A makes Co-op READY depend on current seed/sequence proofs, complete world snapshot and a connected current-term publisher. Publisher loss becomes SUSPENDED; successor handoff becomes RECOVERING; only a committed native rebase reopens PLAYING.
+- Phase 17-B is NOT STARTED: death/revive/respawn, spectator/last-living-player, leave/rejoin and terminal match-end policies.
+- No physical device, emulator/ADB, hosted Worker smoke or two-device gameplay test was run. Hosted/network acceptance remains Phase 22; physical gameplay remains Phase 23.
+- Full Phase 17-A state matrix and evidence: docs/multiplayer/PHASE17_A_AUTHORITATIVE_COOP_LIFECYCLE.md.
 
 - Phase 15 implementation and automated validation remain complete. 15A TCP host/guest transport and 15B UDP advertisement/discovery have passed exact-head CI in runs [44712869490](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44712869490) and [44713185649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44713185649). Physical Wi-Fi testing remains deferred until after Phase 22.
 - Phase 16A provides the real two-player Classic RFCOMM transport foundation: no fabricated provider success, stable service UUID, strict UTF-8 16 MiB frames, real host accept/client connect, bounded timeout, generation-fenced socket cleanup and transport-only `TRANSPORT_CONNECTED` state.
@@ -34,8 +40,8 @@ All engineering pages in this set are written in English for consistency with so
 - Full forced local `test assembleDebug --rerun-tasks --no-daemon --console=plain`: **BUILD SUCCESSFUL; 58/58 Gradle tasks; 24 JUnit reports / 244 tests / 0 failures / 0 errors / 0 skipped**. Bluetooth test classes: **39 methods / 0 failures / 0 errors / 0 skipped**. APK: **35,261,178 bytes**, SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
 - Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` passed **3/3 jobs** in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. Phase 16 is complete for implementation and automated acceptance; physical Bluetooth/network testing remains deferred until after Phase 22.
 - No Android app launch, emulator/ADB, physical Bluetooth adapter, Wi-Fi peer, two-device session or physical gameplay was run. Hardware/network acceptance waits until after Phase 22; Phase 23 remains physical gameplay.
-- Phase 17 owns shared co-op room/native authority; Phase 20 owns the complete host/join/setup/lobby states; Phase 21 owns responsive Arabic/English RTL/LTR and touch/accessibility. Phase 14 / 14-B3 hosted Worker and Android network/background runtime gates remain OPEN.
-- Detailed implementation, permission matrix, file ownership, local test evidence and deferred device acceptance: `docs/multiplayer/PHASE16_BLUETOOTH_TRANSPORT.md`.
+- Phase 17 is split: 17-A covers authoritative room lifecycle, proof-backed readiness and publisher recovery; 17-B covers player life-state and match-end policy. Phase 20 owns full setup/lobby UI; Phase 21 owns responsive RTL/LTR/touch/accessibility. Phase 14/14-B3 hosted Worker and Android network/background gates remain OPEN.
+- Phase 16 transport, permission matrix and deferred device acceptance: docs/multiplayer/PHASE16_BLUETOOTH_TRANSPORT.md.
 ## Historical checkpoint — Phase 14-B3 local follow-on; runtime gates deferred
 
 - Phase 14-A is CLOSED. Phase 14-B1 callback/transport ownership and 14-B2 render-thread dispatch are CLOSED with exact-head CI. Phase 14-B3 implementation and local automated verification are current; parent 14-B and Phase 14 remain OPEN.

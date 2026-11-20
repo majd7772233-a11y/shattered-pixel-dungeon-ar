@@ -45,6 +45,27 @@ public final class RoomLobbyState {
                     || memberCount < 0 || maxPlayers < 1 || memberCount > maxPlayers) {
                 throw new IllegalArgumentException("INVALID_ROOM_CAPACITY");
             }
+            String roomState = roomStatus.asString();
+            String gameState = gameStatus.asString();
+            boolean validRoomState = "LOBBY".equals(roomState) || "READY".equals(roomState)
+                    || "PLAYING".equals(roomState) || "SUSPENDED".equals(roomState)
+                    || "RECOVERING".equals(roomState) || "ENDED".equals(roomState)
+                    || "CLOSED".equals(roomState);
+            boolean validGameState = "LOBBY".equals(gameState) || "PLAYING".equals(gameState)
+                    || "ENDED".equals(gameState);
+            if (!validRoomState || !validGameState
+                    || (("LOBBY".equals(roomState) || "READY".equals(roomState)) && !"LOBBY".equals(gameState))
+                    || (("PLAYING".equals(roomState) || "SUSPENDED".equals(roomState)
+                        || "RECOVERING".equals(roomState)) && !"PLAYING".equals(gameState))
+                    || ("ENDED".equals(roomState) && !"ENDED".equals(gameState))) {
+                throw new IllegalArgumentException("INVALID_ROOM_LIFECYCLE_STATE");
+            }
+            if ("READY".equals(roomState) && (!allReady.asBoolean() || !snapshot.asBoolean())) {
+                throw new IllegalArgumentException("ROOM_READY_STATUS_MISMATCH");
+            }
+            if ("PLAYING".equals(roomState) && !snapshot.asBoolean()) {
+                throw new IllegalArgumentException("ROOM_PLAYING_SNAPSHOT_MISSING");
+            }
             RoomMemberInfo[] next = new RoomMemberInfo[sourceMembers.size];
             Set<String> seenPlayerIds = new HashSet<>();
             int index = 0;

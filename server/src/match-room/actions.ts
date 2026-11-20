@@ -790,6 +790,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         const sequenceBeforeCommit = this.currentSequence;
         const worldTimeBeforeCommit = this.worldTime;
         let transitionPendingNow: any = null;
+        let publisherRecovered = false;
         try {
           storage.transactionSync(() => {
             this.sql.exec(`DELETE FROM level_tiles WHERE depth = ?`, depth);
@@ -811,6 +812,18 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "levelPublisherReadyTerm", String(publisherTerm)
               );
+              if (this.isRoomLifecycleEnabled() && this.gameMode === "COOP_DUNGEON") {
+                const roomStatusRow = this.sql.exec(
+                  "SELECT value FROM room_meta WHERE key = ?", "roomLifecycleState"
+                ).toArray()[0];
+                if (String(roomStatusRow?.value || "") === "RECOVERING") {
+                  this.sql.exec(
+                    "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    "roomLifecycleState", "PLAYING"
+                  );
+                  publisherRecovered = true;
+                }
+              }
             }
             const heroStateToStore = verifiedMutationHeroStateJson || level.heroStateJson;
             if (typeof heroStateToStore === "string" && heroStateToStore.length <= 200000) {
@@ -911,6 +924,10 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             depth,width,height,tileCount: tiles.length,transitionCount: transitions.length,mobCount: mobs.length,
             nativeWorldTurnCounter: ackTurnCounter,
             entities: mobs.map((mob: any) => ({ mobId: Number(mob.mobId), entityId: String(mob.entityId) })) }) }));
+        if (publisherRecovered) {
+          // The concrete lifecycle class publishes committed recovery through this hook.
+          this.onPublisherRecoveryCommitted();
+        }
         const initialRoomSnapshotMarker = this.isRoomLifecycleEnabled() ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomInitialSnapshotSent").toArray()[0] : null;
         const initialRoomSnapshot = this.isRoomLifecycleEnabled() && this.gameStatus === "LOBBY" && !isNativeWorldTurn && !isNativeWorldMutation && !isPublisherRebase && !initialRoomSnapshotMarker && hasCompleteNativeLevelSnapshot(this.getCurrentLevelSnapshot());
         if (isNativeWorldTurn || isNativeWorldMutation || initialRoomSnapshot) {

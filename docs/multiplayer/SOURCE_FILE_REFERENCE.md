@@ -202,7 +202,7 @@ server/ contains:
 - scripts/validate-publisher-handoff-schema.mjs (publisher handoff/rebase schema contract);
 - scripts/validate-phase10-protocol-enums.mjs (ordered Java/schema enum and protocol-version parity);
 - scripts/validate-phase10-routing.mjs (25-message classification, eight actual Worker ingress routes and 23 explicit ACTION branch guard).
-- src/index.ts (35-line Worker entry + compatibility facade);\n- src/worker.ts (default Worker request router);
+- src/index.ts (35-line Worker entry + compatibility facade);\r\n- src/worker.ts (default Worker request router);
 - src/match-room/ (base, persistence, combat, snapshots, actions, messages, final MatchRoom class);
 - src/protocol/types.ts;
 - src/protocol/message-admission.ts and src/protocol/message-admission.test.ts (Worker envelope classification, fail-closed admission and regressions);
@@ -210,7 +210,7 @@ server/ contains:
 - src/util/seeded-rng.ts;
 - src/index.test.ts;
 - src/native-pickup-side-effect.test.ts;
-- src/protocol/message-admission.test.ts;\n- src/entrypoint.test.ts (Worker root-entry/routing integration).
+- src/protocol/message-admission.test.ts;\r\n- src/entrypoint.test.ts (Worker root-entry/routing integration).
 
 `server/src/index.ts` is the Worker entry and compatibility facade; `server/src/worker.ts` owns default request routing; the complete `MatchRoom` class lives in `server/src/match-room/index.ts`. Pure validator implementations live in the focused modules listed above. See SERVER_VALIDATION_AND_STORAGE.md.
 
@@ -376,3 +376,12 @@ No Android instrumentation/UI automation currently proves rendered layout or tou
 | `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/BluetoothHostPreparationControllerTest.java` | 5 tests: permission/visibility success and denial, bounded duration, missing provider and destroyed-scene cancellation |
 
 The latest full local Android/JVM acceptance is 24 XML reports / 244 tests / 0 failures / 0 errors / 0 skipped with all 58 Gradle tasks executed. The Bluetooth-focused class inventory is 39 methods. This is JVM/build evidence only; Android system permission/broadcast/pairing sheets and physical RFCOMM remain deferred until after Phase 22. Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` passed 3/3 jobs in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857).
+
+## Phase 17-A changed-source index
+
+- server/src/match-room/lifecycle.ts - hasCurrentRoomReadyProof, authoritative roomStatus projection and committed publisher-recovery broadcast hook.
+- server/src/match-room/index.ts - publisher disconnect/owner handoff durability and authorized Co-op publisher promotion on reconnect.
+- server/src/match-room/actions.ts / base.ts - validated rebase transaction and post-commit lifecycle extension point.
+- core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RoomLobbyState.java - strict room/game lifecycle state checks.
+- core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java - explicit recovery session states and stale-message gameplay gate.
+- Focused regressions live alongside existing backend lifecycle and Android reconnect-lifecycle tests; see TEST_MATRIX.md.

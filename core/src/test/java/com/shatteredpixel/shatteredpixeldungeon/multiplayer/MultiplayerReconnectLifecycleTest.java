@@ -449,6 +449,63 @@ public class MultiplayerReconnectLifecycleTest {
     }
 
     @Test
+    public void coopRoomRecoveryStateCannotBeOverriddenByDelayedMatchStartOrSnapshotCallback() {
+        RecordingInternetTransport transport = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/recovering-room/websocket",
+                "host-player", transport, true);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"host-player\",\"sessionToken\":\"lifecycle-session-token-0001\","
+                        + "\"sequence\":0,\"seed\":12345,\"roomLifecycleVersion\":1,\"roomMembership\":false}"));
+
+        String recovering = "{\"lifecycleVersion\":1,\"roomStatus\":\"RECOVERING\",\"gameStatus\":\"PLAYING\","
+                + "\"ownerId\":\"host-player\",\"memberCount\":2,\"maxPlayers\":4,"
+                + "\"allReady\":false,\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":0,"
+                + "\"members\":[{\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":true},"
+                + "{\"playerId\":\"offline-player\",\"className\":\"WARRIOR\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":false}]}";
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, recovering));
+        Assert.assertEquals(MultiplayerManager.SessionState.RECOVERING, manager.getSessionState());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.applyMatchStart(new NetworkMessage(MessageType.MATCH_START, "{\"status\":\"PLAYING\"}"));
+        manager.markWorldSynchronized();
+        Assert.assertEquals("Delayed gameplay/start and snapshot callbacks must not bypass publisher recovery",
+                MultiplayerManager.SessionState.RECOVERING, manager.getSessionState());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE,
+                recovering.replace("\"RECOVERING\"", "\"SUSPENDED\"")));
+        Assert.assertEquals(MultiplayerManager.SessionState.SUSPENDED, manager.getSessionState());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE,
+                recovering.replace("\"RECOVERING\"", "\"PLAYING\"")));
+        Assert.assertEquals(MultiplayerManager.SessionState.PLAYING, manager.getSessionState());
+        Assert.assertTrue("Only the authoritative recovered PLAYING room state reopens gameplay",
+                manager.isRoomGameplayAllowed());
+    }
+
+    @Test
+    public void roomStateRejectsInconsistentCoopLifecycleCombinations() {
+        RecordingInternetTransport transport = new RecordingInternetTransport();
+        manager.startSession("https://example.invalid/room/invalid-lifecycle-room/websocket",
+                "host-player", transport, true);
+        manager.onMessageReceived(new NetworkMessage(MessageType.SESSION,
+                "{\"playerId\":\"host-player\",\"sessionToken\":\"lifecycle-session-token-0001\","
+                        + "\"sequence\":0,\"seed\":12345,\"roomLifecycleVersion\":1,\"roomMembership\":false}"));
+
+        String invalid = "{\"lifecycleVersion\":1,\"roomStatus\":\"RECOVERING\",\"gameStatus\":\"LOBBY\","
+                + "\"ownerId\":\"host-player\",\"memberCount\":1,\"maxPlayers\":4,"
+                + "\"allReady\":false,\"worldSnapshotReady\":true,\"seed\":12345,\"sequence\":0,"
+                + "\"members\":[{\"playerId\":\"host-player\",\"className\":\"HUNTRESS\",\"state\":\"ALIVE\",\"ready\":false,\"connected\":true}]}";
+        manager.applyRoomState(new NetworkMessage(MessageType.ROOM_STATE, invalid));
+
+        Assert.assertFalse(manager.isRoomMember());
+        Assert.assertEquals("INVALID_ROOM_LIFECYCLE_STATE", manager.getRoomLifecycleError());
+        Assert.assertFalse(manager.isRoomGameplayAllowed());
+    }
+
+    @Test
     public void failedInternetLifecycleSessionRemainsBlockedUntilExplicitEndSession() {
         RecordingInternetTransport transport = new RecordingInternetTransport();
         manager.startSession("https://example.invalid/room/failed-lifecycle-room/websocket",

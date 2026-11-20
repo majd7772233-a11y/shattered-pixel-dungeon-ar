@@ -874,21 +874,30 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Framing is bounded, strict UTF-8 and compatible with the canonical network message envelope.
 - [x] Transport connection is not conflated with room membership or authoritative native gameplay.
 - [x] Exact-head CI passes for the Phase16B implementation commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857) (3/3 jobs). Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
-## Phase 17 — Co-op Rules and Shared Match Lifecycle
+## Phase 17 - Co-op Rules and Shared Match Lifecycle
 
-**Priority:** P1 · **Dependencies:** phases 12–16.
+**Priority:** P1; **Dependencies:** phases 12-16. **Status:** OPEN; split into 17-A and 17-B.
 
-### Work items
-- [ ] Enforce Co-op capacity, shared seed/run rules, player membership and readiness on both server and client.
-- [ ] Implement one authoritative match lifecycle: lobby, ready, playing, suspended/recovering and ended.
-- [ ] Make death, revive, respawn eligibility, resource/cost rules, spectator state and action availability consistent with the chosen co-op behavior.
-- [ ] Handle the final living player, a dead player's reconnect, voluntary leave and publisher departure according to explicit documented policies.
-- [ ] Add tests for simultaneous death/revive, leaving/rejoining, publisher departure, match-end determination and floor transitions while another player acts.
+### Phase 17-A - Authoritative room and match lifecycle
+- [x] Preserve and verify server-owned Co-op capacity, membership, minimum players, shared seed/depth/sequence and start/readiness gates.
+- [x] Make allReady depend on connected membership and ready proofs matching current seed/sequence; require a complete current native snapshot and connected current-term publisher before READY.
+- [x] Publish one Co-op roomStatus across LOBBY, READY, PLAYING, SUSPENDED, RECOVERING, ENDED and CLOSED while retaining internal gameStatus compatibility.
+- [x] Persist publisher loss/successor handoff as SUSPENDED or RECOVERING; restore PLAYING only after a successor's validated rebase and current publisher-ready term commit atomically.
+- [x] Make Android validate room/game-state combinations and reject stale MATCH_START or local-sync attempts to bypass recovery.
+- [x] Add backend and Android regressions for current/stale proofs, publisher loss/recovery, invalid state combinations and delayed messages.
+- [ ] Run exact-head CI against the final pushed 17-A commit and record its three required jobs.
 
-### Acceptance criteria
-- All co-op participants agree on match state, membership, alive/dead state and allowed actions.
-- Death/revive/respawn and lifecycle changes are exactly-once events.
-- There is no implicit local-only respawn or fake ready state.
+### Phase 17-B - Player life-state and match-end policy (NOT STARTED)
+- [ ] Define death, revive, respawn eligibility, resource/cost rules, spectator state and action availability.
+- [ ] Define final-living-player and match-end rules, including dead-player reconnect, voluntary leave and rejoin policy.
+- [ ] Make death/revive/respawn/lifecycle events exactly-once and define ordering for simultaneous death/revive and floor transitions while another player acts.
+- [ ] Add race, persistence, reconnect, leave/rejoin and match-end tests.
+
+### Parent Phase 17 acceptance
+- [ ] All co-op participants agree on match state, membership, alive/dead state and allowed actions.
+- [ ] Death/revive/respawn and lifecycle changes are exactly-once events.
+- [ ] There is no implicit local-only respawn or fake ready state.
+- [ ] Complete both 17-A and 17-B, then verify parent exact-head CI and acceptance criteria.
 
 ## Phase 18 — PvP and Deathmatch Enforcement
 

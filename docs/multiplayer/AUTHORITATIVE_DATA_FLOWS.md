@@ -345,3 +345,11 @@ The current cross-layer data flow at code/test SHA `2574489ff25e6f1fedc1e2171816
 5. **Recovery:** reconnect may replay only a complete contiguous retained range of at most 50 events for an eligible non-current publisher. Otherwise the authoritative response is a full SNAPSHOT; RESYNC itself remains full SNAPSHOT. Stale/incomplete snapshots are rejected before live-world mutation.
 
 The 25-message / 23-action protocol vocabulary is unchanged. No production deployment or physical-device proof is implied.
+
+## Phase 17-A - Co-op room lifecycle projection and publisher recovery
+
+The server projects room state from durable facts rather than copying gameStatus into the room payload. In a lifecycle-v1 Co-op room, READY requires at least the mode's minimum membership, every member connected and ready with a persisted proof matching the current seed and sequence, a complete native snapshot for the current depth/seed, and a connected room-member publisher whose ready term equals the current publisher term. allReady uses those same current proofs; a stale ready flag is not sufficient.
+
+During an active match, publisher loss is durable: no eligible successor yields SUSPENDED; a promoted or reconnecting Co-op member yields RECOVERING until it submits a validated native rebase. The rebase transaction persists the level data and new publisher-ready term and changes roomLifecycleState back to PLAYING together. Only after commit does the lifecycle layer broadcast the committed room snapshot and recovered room state. A failed/rolled-back rebase cannot reopen gameplay.
+
+Android treats roomStatus as the room authority and separately validates its relationship with internal gameStatus. SUSPENDED, RECOVERING, ENDED and CLOSED remain non-gameplay states. MATCH_START and local world-sync callbacks cannot supersede a recovery state. Legacy non-lifecycle sessions and non-Co-op publisher behavior remain outside this Co-op transition change.

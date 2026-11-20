@@ -104,6 +104,7 @@ export class MatchRoom extends MatchRoomMessages {
     let preservedSnapshotAvailable = false;
     let handoffCommitted = false;
     let roomOwnerTransferred = false;
+    let roomLifecycleChanged = false;
     const failedCombatRequests: Array<{ attackerId: string; requestId: string }> = [];
     try {
       storage.transactionSync(() => {
@@ -199,6 +200,17 @@ export class MatchRoom extends MatchRoomMessages {
           }
         }
 
+        // Keep the public Co-op lifecycle aligned with publisher availability. A replacement
+        // is only RECOVERING until its current generation commits a validated native rebase.
+        if (this.isRoomLifecycleEnabled() && this.gameMode === "COOP_DUNGEON"
+            && this.gameStatus === "PLAYING") {
+          this.sql.exec(
+            "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "roomLifecycleState", nextPublisherId ? "RECOVERING" : "SUSPENDED"
+          );
+          roomLifecycleChanged = true;
+        }
+
         // Discard combat reservations that depended on the disconnected authority. The
         // original attacker receives a correlated failure after the durable handoff commits.
         const pendingRows = this.sql.exec(
@@ -248,7 +260,11 @@ export class MatchRoom extends MatchRoomMessages {
     if (preservedSnapshotAvailable) this.broadcastCurrentSnapshot(null);
     this.broadcast(this.levelPublisherStateMessage(preservedSnapshotAvailable
       ? "PUBLISHER_DISCONNECTED" : "PUBLISHER_DISCONNECTED_SNAPSHOT_UNAVAILABLE"));
-    if (roomOwnerTransferred) this.broadcastRoomState("ROOM_OWNER_HANDOFF");
+    if (roomLifecycleChanged) {
+      this.broadcastRoomState(nextPublisherId ? "PUBLISHER_RECOVERY_REQUIRED" : "PUBLISHER_UNAVAILABLE");
+    } else if (roomOwnerTransferred) {
+      this.broadcastRoomState("ROOM_OWNER_HANDOFF");
+    }
   }
 
   async alarm(): Promise<void> {
@@ -394,7 +410,13 @@ export class MatchRoom extends MatchRoomMessages {
         const publisherRow = this.sql.exec(
           "SELECT value FROM room_meta WHERE key = 'levelPublisher'"
         ).toArray()[0];
-        if (!publisherRow && !lifecycleEnabled) {
+        const roomOwnerRow = lifecycleEnabled
+          ? this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomOwnerId").toArray()[0]
+          : null;
+        const canPromoteCoopRoomMember = lifecycleEnabled && this.gameMode === "COOP_DUNGEON"
+          && this.isRoomMember(playerId)
+          && (this.gameStatus === "PLAYING" || String(roomOwnerRow?.value || "") === playerId);
+        if (!publisherRow && (!lifecycleEnabled || canPromoteCoopRoomMember)) {
           const existingPlayer = this.sql.exec(
             "SELECT pos,hp,ht,state FROM players WHERE player_id = ?", playerId
           ).toArray()[0];
@@ -445,6 +467,12 @@ export class MatchRoom extends MatchRoomMessages {
               );
             } else {
               this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
+            }
+            if (lifecycleEnabled && this.gameMode === "COOP_DUNGEON" && this.gameStatus === "PLAYING") {
+              this.sql.exec(
+                "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                "roomLifecycleState", "RECOVERING"
+              );
             }
             promotedOnConnect = true;
           }

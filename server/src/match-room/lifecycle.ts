@@ -79,9 +79,25 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     return members.sort((left, right) => left.joinedAt - right.joinedAt || left.playerId.localeCompare(right.playerId));
   }
 
+  private hasCurrentRoomReadyProof(playerId: string): boolean {
+    const proofRow = this.roomMetaValue(ROOM_READY_PREFIX + playerId);
+    let proof: any = null;
+    try { proof = proofRow ? JSON.parse(proofRow) : null; } catch (_) {}
+    return !!proof && proof.ready === true && Number(proof.seed) === this.matchSeed
+      && Number(proof.sequence) === this.currentSequence;
+  }
+
   private roomStatePayload(reason: string): Record<string, unknown> {
-    const members = this.roomMembers();
     const mode = this.roomMetaValue("gameMode") || this.gameMode;
+    const rawMembers = this.roomMembers();
+    // For Co-op, expose only server-verified readiness; clients can validate allReady
+    // from the same roster projection without receiving or trusting the ready-proof rows.
+    const members = mode === "COOP_DUNGEON"
+      ? rawMembers.map(member => ({
+        ...member,
+        ready: member.ready && this.hasCurrentRoomReadyProof(member.playerId)
+      }))
+      : rawMembers;
     const parsedCapacity = Number(this.roomMetaValue("roomCapacity"));
     const capacity = Number.isSafeInteger(parsedCapacity) && parsedCapacity === ROOM_CAPACITY_BY_MODE[mode]
       ? parsedCapacity : (ROOM_CAPACITY_BY_MODE[mode] || 4);
@@ -90,11 +106,36 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     const snapshotReady = hasCompleteNativeLevelSnapshot(snapshot)
       && Number((snapshot as any).depth) === this.currentDepth
       && Number((snapshot as any).seed) === this.matchSeed;
+    const roomClosed = this.roomMetaValue("roomClosed") === "1";
+    const storedRoomStatus = this.roomMetaValue("roomLifecycleState") || "LOBBY";
+    const allReady = members.length > 0 && members.every(member => member.connected && member.ready);
+    const enoughPlayers = members.length >= (ROOM_MIN_PLAYERS_BY_MODE[mode] || 2);
+
+    const publisherId = this.roomMetaValue("levelPublisher");
+    const publisherPresent = !!publisherId && members.some(member => member.playerId === publisherId && member.connected);
+    const publisherReady = this.isLevelPublisherReady();
+    let roomStatus = storedRoomStatus;
+    if (roomClosed || storedRoomStatus === "CLOSED") {
+      roomStatus = "CLOSED";
+    } else if (this.gameStatus === "ENDED" || storedRoomStatus === "ENDED") {
+      roomStatus = "ENDED";
+    } else if (mode === "COOP_DUNGEON" && this.gameStatus === "PLAYING") {
+      if (storedRoomStatus === "SUSPENDED" || !publisherPresent) {
+        roomStatus = "SUSPENDED";
+      } else if (storedRoomStatus === "RECOVERING" || !publisherReady) {
+        roomStatus = "RECOVERING";
+      } else {
+        roomStatus = "PLAYING";
+      }
+    } else if (mode === "COOP_DUNGEON" && this.gameStatus === "LOBBY") {
+      roomStatus = enoughPlayers && allReady && snapshotReady && publisherReady
+        ? "READY" : "LOBBY";
+    }
     return {
       lifecycleVersion: 1,
       roomCreated: this.roomMetaValue("roomCreated") === "1",
-      roomClosed: this.roomMetaValue("roomClosed") === "1",
-      roomStatus: this.roomMetaValue("roomLifecycleState") || "LOBBY",
+      roomClosed,
+      roomStatus,
       gameStatus: this.gameStatus,
       ownerId: ownerId || null,
       gameMode: mode,
@@ -103,7 +144,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
       sequence: this.currentSequence,
       maxPlayers: capacity,
       memberCount: members.length,
-      allReady: members.length > 0 && members.every(member => member.connected && member.ready),
+      allReady,
       worldSnapshotReady: snapshotReady,
       members,
       reason
@@ -144,6 +185,12 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         }));
       } catch (_) {}
     }
+  }
+
+  protected override onPublisherRecoveryCommitted(): void {
+    // Rebase state and publisher-ready term are already committed in SQLite.
+    this.broadcastRoomSnapshot();
+    this.broadcastRoomState("PUBLISHER_RECOVERED");
   }
 
   protected broadcastRoomState(reason: string): void {
@@ -482,13 +529,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
       const sequence = Number(payload.sequence);
       if (!Number.isSafeInteger(seed) || seed !== this.matchSeed
           || !Number.isSafeInteger(sequence) || sequence !== this.currentSequence
-          || members.some(member => {
-            const readyRow = this.roomMetaValue(ROOM_READY_PREFIX + member.playerId);
-            let ready: any = null;
-            try { ready = readyRow ? JSON.parse(readyRow) : null; } catch (_) {}
-            return !ready || ready.ready !== true || Number(ready.seed) !== this.matchSeed
-              || Number(ready.sequence) !== this.currentSequence;
-          })) {
+          || members.some(member => !this.hasCurrentRoomReadyProof(member.playerId))) {
         this.sendLifecycleError(ws, msg, "ROOM_WORLD_NOT_SYNCHRONIZED");
         return;
       }

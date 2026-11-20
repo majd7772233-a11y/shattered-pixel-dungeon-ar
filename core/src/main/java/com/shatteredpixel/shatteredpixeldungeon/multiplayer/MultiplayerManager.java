@@ -823,7 +823,9 @@ public class MultiplayerManager implements TransportCallback {
    }
 
    public boolean cancelRoomMatchStart() {
-      return this.roomMembership && this.localPlayerId.equals(this.roomOwnerId) && "LOBBY".equals(this.roomStatus) ? this.sendRoomLifecycleOperation(MessageType.MATCH_START, "{\"operation\":\"CANCEL\"}") : false;
+      return this.roomMembership && this.localPlayerId.equals(this.roomOwnerId)
+              && ("LOBBY".equals(this.roomStatus) || "READY".equals(this.roomStatus))
+              ? this.sendRoomLifecycleOperation(MessageType.MATCH_START, "{\"operation\":\"CANCEL\"}") : false;
    }
 
    public boolean leaveRoom() {
@@ -832,7 +834,10 @@ public class MultiplayerManager implements TransportCallback {
 
    public void markWorldSynchronized() {
       if (this.roomMembership && this.roomLifecycleVersion >= 1
-              && this.sessionState != MultiplayerManager.SessionState.PLAYING) {
+              && this.sessionState != MultiplayerManager.SessionState.PLAYING
+              && this.sessionState != MultiplayerManager.SessionState.SUSPENDED
+              && this.sessionState != MultiplayerManager.SessionState.RECOVERING
+              && this.sessionState != MultiplayerManager.SessionState.ENDED) {
          if (this.authoritativeSeed != null && this.roomSeed != this.authoritativeSeed) {
             this.roomLifecycleError = "ROOM_SEED_MISMATCH";
          notifyRoomLobbyStateChanged();
@@ -911,13 +916,26 @@ public class MultiplayerManager implements TransportCallback {
                }
             }
 
-            if (closed != null && closed.isBoolean() && closed.asBoolean()) {
+            if ((closed != null && closed.isBoolean() && closed.asBoolean())
+                    || "CLOSED".equals(this.roomStatus)) {
                this.sessionState = MultiplayerManager.SessionState.FAILED;
                this.roomLifecycleError = "ROOM_CLOSED";
-            } else if (game != null && game.isString() && "PLAYING".equals(game.asString())) {
-               this.roomStatus = "PLAYING";
+            } else if ("ENDED".equals(this.roomStatus)) {
+               this.sessionState = MultiplayerManager.SessionState.ENDED;
+               notifyRoomLobbyStateChanged();
+            } else if ("SUSPENDED".equals(this.roomStatus)) {
+               this.sessionState = MultiplayerManager.SessionState.SUSPENDED;
+               notifyRoomLobbyStateChanged();
+            } else if ("RECOVERING".equals(this.roomStatus)) {
+               this.sessionState = MultiplayerManager.SessionState.RECOVERING;
+               notifyRoomLobbyStateChanged();
+            } else if ("PLAYING".equals(this.roomStatus)
+                    && game != null && game.isString() && "PLAYING".equals(game.asString())) {
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
-             notifyRoomLobbyStateChanged();
+               notifyRoomLobbyStateChanged();
+            } else if ("READY".equals(this.roomStatus)) {
+               this.sessionState = MultiplayerManager.SessionState.READY;
+               notifyRoomLobbyStateChanged();
             } else if (!this.roomMembership) {
                this.sessionState = MultiplayerManager.SessionState.SESSION_BOUND;
             } else if (this.localRoomReady) {
@@ -939,10 +957,14 @@ public class MultiplayerManager implements TransportCallback {
          try {
             JsonValue payload = (new JsonReader()).parse(message.payloadJson);
             JsonValue status = payload == null ? null : payload.get("status");
+            if ("SUSPENDED".equals(this.roomStatus) || "RECOVERING".equals(this.roomStatus)
+                    || "ENDED".equals(this.roomStatus) || "CLOSED".equals(this.roomStatus)) {
+               return;
+            }
             if (status != null && status.isString() && "PLAYING".equals(status.asString())) {
                this.roomStatus = "PLAYING";
                this.sessionState = MultiplayerManager.SessionState.PLAYING;
-            notifyRoomLobbyStateChanged();
+               notifyRoomLobbyStateChanged();
             }
          } catch (RuntimeException var4) {
             this.roomLifecycleError = "INVALID_MATCH_START";
@@ -1623,11 +1645,15 @@ public class MultiplayerManager implements TransportCallback {
       WORLD_SYNCED,
       READY,
       PLAYING,
+      SUSPENDED,
+      RECOVERING,
+      ENDED,
       FAILED;
 
       // $FF: synthetic method
       private static SessionState[] $values() {
-         return new SessionState[]{DISCONNECTED, CONNECTING, TRANSPORT_CONNECTED, RECONNECTING, SESSION_BOUND, ROOM_JOINED, WORLD_SYNCED, READY, PLAYING, FAILED};
+         return new SessionState[]{DISCONNECTED, CONNECTING, TRANSPORT_CONNECTED, RECONNECTING, SESSION_BOUND,
+               ROOM_JOINED, WORLD_SYNCED, READY, PLAYING, SUSPENDED, RECOVERING, ENDED, FAILED};
       }
    }
 }

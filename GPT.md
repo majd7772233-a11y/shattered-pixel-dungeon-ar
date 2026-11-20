@@ -1,4 +1,4 @@
-## ACTIVE PROJECT CHECKPOINT — 2026-11-20 (PHASE 16A/16B IMPLEMENTATION + AUTOMATED ACCEPTANCE COMPLETE; HARDWARE TESTS DEFERRED)
+## ACTIVE PROJECT CHECKPOINT - 2026-11-20 (PHASE 17-A LOCAL IMPLEMENTATION + AUTOMATED TESTS; EXACT-HEAD CI PENDING)
 
 - Repository: `majd7772233-a11y/shattered-pixel-dungeon-ar`; only permitted branch: `multiplayer-framework-core-14118577486727081892`. No branch creation, no `main` edits, no merges. Phase16A parent was `95aa66c9d6f9f7069ef2b859ead043b4e14e9b0d`; Phase16B implementation+documentation commit is pushed at `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7`.
 - WebGPT task token `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` must remain RUNNING/open. Never submit/terminate the task unless the user explicitly asks.
@@ -10,8 +10,12 @@
 - Latest local Debug APK: `android/build/outputs/apk/debug/android-debug.apk`, **35,261,178 bytes**, SHA-256 `83E2F714EE4738F5AF4E325EB463C1F048C24F8631DB72D9F8AD1D7FC4509A0B`.
 - Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` passed **3/3 jobs** in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. Do not use the earlier 16A run as 16B evidence. Phase 16 is complete for implementation and automated acceptance; physical hardware/network tests remain deferred until after Phase 22.
 - **Intentionally NOT RUN:** Android app launch, emulator/ADB, physical Bluetooth adapter, actual pairing/discoverability dialogs, two-device RFCOMM, Wi-Fi peer or gameplay. Per user instruction these hardware/network gates wait until after Phase 22; physical gameplay remains Phase 23. JVM state/controller tests and APK packaging are not hardware proof.
-- Remaining project gates: Phase 14 / 14-B3 hosted Worker lifecycle and Android network/background runtime remain OPEN. Phase 17 owns authoritative shared room/native gameplay; Phase 20 owns full host/join/setup/lobby state UI; Phase 21 owns responsive RTL/LTR/touch/accessibility; Phase 22 deployed-service smoke; Phase 23 physical-device gameplay.
-- Current continuation point: Phase16B code/docs commit is pushed and its exact-head CI is green. A documentation-only synchronization commit records this CI result; after pushing that doc update, verify its own exact-head CI too. Keep the WebGPT task RUNNING/open.
+- Phase 17 split: 17-A = authoritative Co-op room lifecycle/readiness/current world proof/publisher recovery and Android gameplay gating. 17-B (NOT STARTED) = death, revive, respawn, spectator, last living player, leave/rejoin and match-end/race policy. Parent Phase 17 remains OPEN until A and B pass.
+- Phase 17-A local verification: server build + 381 Vitest tests passed; real Durable Object SQLite suite 17/17 passed; Android Gradle test assembleDebug BUILD SUCCESSFUL with 58 actionable tasks and 246 JVM tests (0 failures/errors/skips). Exact-head CI on final SHA remains the acceptance gate.
+- Source changes cover MatchRoom lifecycle/hand-off/rebase and Android room-state/session management with focused regressions. Full details: docs/multiplayer/PHASE17_A_AUTHORITATIVE_COOP_LIFECYCLE.md.
+- No hosted live Worker smoke, app launch, emulator/ADB, network toggle, physical Bluetooth/Wi-Fi or two-device gameplay was run. Hosted/network acceptance is Phase 22; physical gameplay is Phase 23.
+- Remaining project gates: Phase 14 / 14-B3 hosted Worker lifecycle and Android network/background runtime remain OPEN. Phase 20 owns full host/join/setup/lobby UI; Phase 21 owns responsive RTL/LTR/touch/accessibility.
+- Current continuation point: start from the final pushed Phase 17-A commit on the only permitted branch multiplayer-framework-core-14118577486727081892; verify exact-head CI. Keep WebGPT task RUNNING/open.
 ---
 
 ## ACTIVE PROJECT CHECKPOINT — 2026-11-19 (PHASE 14-B3 FOLLOW-UP; SERVICE/ANDROID RUNTIME GATES DEFERRED)
