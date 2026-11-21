@@ -126,3 +126,7 @@ The current setup code starts the session and proceeds to Hero selection without
 | Tests and automation | core/src/test/..., server/src/*.test.ts, .github/workflows/multiplayer-ci.yml |
 
 Read SYSTEM_ARCHITECTURE.md, COMPONENT_AND_FILE_MAP.md, and AUTHORITATIVE_DATA_FLOWS.md before modifying cross-layer behavior.
+
+## Current checkpoint — Phase 17-B
+
+Phase 17-A and the implementation scope of 17-B establish the authoritative Co-op lifecycle through the end of a match. Phase 17-B adds the native Ankh/spectator life model, strict gameplay-action admission, floor-transition protection for pending or unknown revival state, voluntary leave and reconnect separation, publisher/owner continuity, and durable exactly-once MATCH_END persistence. See `PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md`. No user-facing claim of playable online multiplayer is made; Phases 20–21 still own the major UI work and real-device acceptance is after Phase 22.

@@ -385,3 +385,13 @@ The latest full local Android/JVM acceptance is 24 XML reports / 244 tests / 0 f
 - core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/RoomLobbyState.java - strict room/game lifecycle state checks.
 - core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MultiplayerManager.java - explicit recovery session states and stale-message gameplay gate.
 - Focused regressions live alongside existing backend lifecycle and Android reconnect-lifecycle tests; see TEST_MATRIX.md.
+
+## Phase 17-B source map
+
+- `server/src/match-room/life-state.ts`: native Hero/Ankh state parsing, life-state, pending revival, terminal-player and match-end predicates.
+- `server/src/match-room/actions.ts`: action admission, publisher election/eligibility and life-state change handling.
+- `server/src/match-room/lifecycle.ts`: voluntary leave, membership cleanup, reconnect distinction and lobby owner/publisher alignment.
+- `server/src/match-room/snapshots.ts`: exactly-once MATCH_END persistence and authority revocation.
+- `server/src/match-room/index.ts`: reconnect admission requires current room membership.
+- `server/src/match-room/life-state.test.ts`, `lifelink-death.integration.test.ts`, `durable-object-sqlite.integration.do.mjs`: unit, integration and persistent SQLite coverage.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java`: sequenced PLAYER_LEFT handling and remote-player cleanup.

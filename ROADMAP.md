@@ -876,7 +876,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Exact-head CI passes for the Phase16B implementation commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857) (3/3 jobs). Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 - Co-op Rules and Shared Match Lifecycle
 
-**Priority:** P1; **Dependencies:** phases 12-16. **Status:** OPEN; 17-A ACCEPTED, 17-B NOT STARTED.
+**Priority:** P1; **Dependencies:** phases 12-16. **Status:** IMPLEMENTATION + LOCAL AUTOMATED ACCEPTANCE COMPLETE; exact-head CI pending.
 
 ### Phase 17-A - Authoritative room and match lifecycle
 - [x] Preserve and verify server-owned Co-op capacity, membership, minimum players, shared seed/depth/sequence and start/readiness gates.
@@ -887,17 +887,17 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Add backend and Android regressions for current/stale proofs, publisher loss/recovery, invalid state combinations and delayed messages.
 - [x] Exact-head CI on final commit 63bba7e3505d6743983aef006ed09572253bd099 passed 3/3 jobs in [run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
-### Phase 17-B - Player life-state and match-end policy (NOT STARTED)
-- [ ] Define death, revive, respawn eligibility, resource/cost rules, spectator state and action availability.
-- [ ] Define final-living-player and match-end rules, including dead-player reconnect, voluntary leave and rejoin policy.
-- [ ] Make death/revive/respawn/lifecycle events exactly-once and define ordering for simultaneous death/revive and floor transitions while another player acts.
-- [ ] Add race, persistence, reconnect, leave/rejoin and match-end tests.
+### Phase 17-B - Player life-state and match-end policy (IMPLEMENTED; LOCAL ACCEPTANCE PASSED)
+- [x] Define death, revive, respawn eligibility, resource/cost rules, spectator state and action availability. No free respawn: native Ankh rules remain authoritative; an unblessed Ankh gates native REVIVE, and a player without a valid unblessed Ankh becomes SPECTATOR.
+- [x] Define final-living-player and match-end rules, including dead-player reconnect, voluntary leave and rejoin policy. A transport disconnect preserves membership/life state; explicit LEAVE persists LEFT, removes membership/readiness and blocks stale-session rejoin.
+- [x] Make death/revive/lifecycle events exactly-once and define ordering for death/revive, voluntary leave and floor transitions while another player acts. Pending or incoherent revival state blocks floor transition. PLAYER_LEFT precedes MATCH_END; both event and terminal state are committed atomically.
+- [x] Add race, persistence, reconnect, leave/rejoin and match-end tests, including missing/orphan member rows, invalid life snapshots, publisher/owner handoff, rollback and Durable Object eviction. Local suites: Backend 408/408; Durable Object SQLite 18/18; Android JVM 246/246 across 24 reports; Gradle 58/58 tasks including Debug APK.
 
 ### Parent Phase 17 acceptance
-- [ ] All co-op participants agree on match state, membership, alive/dead state and allowed actions.
-- [ ] Death/revive/respawn and lifecycle changes are exactly-once events.
-- [ ] There is no implicit local-only respawn or fake ready state.
-- [ ] Complete both 17-A and 17-B, then verify parent exact-head CI and acceptance criteria.
+- [x] All co-op participants agree on match state, membership, alive/dead/spectator/left state and allowed actions.
+- [x] Death/revive and lifecycle changes are exactly-once events.
+- [x] There is no implicit local-only respawn or fake ready state.
+- [ ] Complete parent exact-head CI on the final pushed source/documentation commit, verify all required jobs, and record the exact SHA/run. Device/emulator/ADB/Bluetooth/real-network tests remain deliberately deferred until after Phase 22.
 
 ## Phase 18 — PvP and Deathmatch Enforcement
 
@@ -1181,3 +1181,10 @@ Extract the Durable Object's storage/repository operations, lifecycle/snapshot h
 ### Stage completion gate
 
 A stage is complete only when all moved source is accounted for, no original behavior has been omitted, all dependent files/docs are updated, backend build/tests and required Android CI pass at the exact final commit, and the resulting module tree/import graph has been inspected. A failed check keeps the current stage open.
+
+## Latest implementation checkpoint — Phase 17
+
+- **17-A:** accepted; authoritative room lifecycle, readiness and publisher recovery rules.
+- **17-B:** implementation is in local validation; see [`PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md`](docs/multiplayer/PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md). Do not mark the parent phase complete until local server/JVM/SQLite checks and GitHub CI are green.
+- **17-B acceptance boundary:** automated validation only. Real-device, emulator, ADB, Bluetooth pairing and cross-device gameplay checks remain deferred until after Phase 22.
+- **Next after Phase 17:** continue to the next planned multiplayer backend phase only after Phase 17-B is committed and CI-verified. UI completeness remains assigned to Phases 20–21.

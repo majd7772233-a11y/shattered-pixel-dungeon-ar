@@ -343,3 +343,7 @@ Final local checks on the committed implementation: backend 372 unique source sc
 ### Phase 14-B3 follow-on — Activity callback generation fence (2026-11-19)
 
 The Android `ConnectivityManager.NetworkCallback` captures a `connectivityMonitorGeneration` and checks both generation and callback identity before updating per-network state. Monitor teardown increments the generation before unregistering, clears the exact default/per-network state and synchronizes availability publication with monitor start/stop. This prevents an old Activity monitor callback from changing the session manager after that monitor has been replaced. This is source/build/JVM evidence only; the framework callback sequence, real network handoff, background/screen-off and Activity recreation have not been run. The deferred Emulator helper is guarded and is not part of default CI.
+
+## Phase 17-B — voluntary leave vs reconnect
+
+An unexpected disconnect preserves room membership and life state so an existing member may reconnect without being resurrected or promoted from `SPECTATOR` to `ALIVE`. A voluntary LEAVE deletes membership/readiness, persists `LEFT` and `connected = 0`, emits `PLAYER_LEFT`, and closes the socket; the old membership/session cannot rejoin the same room. Publisher failover is allowed only to an eligible ALIVE member, with fresh current-term readiness after lobby re-election.

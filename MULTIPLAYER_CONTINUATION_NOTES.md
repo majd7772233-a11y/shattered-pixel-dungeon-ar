@@ -146,3 +146,7 @@ The entries below preserve the evidence and decisions at the time each bounded s
 ## Exact next-chat guard
 
 On a new task, re-fetch the live branch HEAD and exact matching CI, reread every Markdown file and the current PROJECT_EXECUTION_PROTOCOL_AR.md before editing. Work only on the named branch, do not create branches or PRs, and stay within the explicitly requested phase/slice. Do not begin any next phase/slice automatically; use the active continuation checkpoint and explicit user request.
+
+## 2026-11-21 — Phase 17-B checkpoint
+
+Resume from local changes on `multiplayer-framework-core-14118577486727081892`, based on committed `f462e00ebd496b9d2f1426ff680d1416970f979f`. Phase 17-A is complete. Phase 17-B changes are not yet committed: life-state classifier, Ankh-only revival eligibility, invalid-state floor-transition blocking, owner/publisher alignment in LOBBY, terminal match persistence and publisher-term revocation, explicit LEAVE state/close, reconnect membership guard, Android `PLAYER_LEFT` cleanup, and tests. Read `docs/multiplayer/PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md` first. Finish final server + Durable Object SQLite + Android JVM/APK + GitHub CI verification before commit. Do not use emulator/ADB or physical devices before post-Phase-22 acceptance. Keep WebGPT task RUNNING.

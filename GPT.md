@@ -588,3 +588,11 @@ At the time of this checkpoint Phase 2 remained open. Later commits added native
 - Intermediate typed-path CI 43521714424 exposed only a compile-time test fixture omission (the new assertions referenced a TestTransport variable not retained by the fixture). The fixture was corrected in `cc61c68625f587576ca530aef3354bfaffe9e140`; no assertion was removed or weakened.
 - Final implementation/test SHA `cc61c68625f587576ca530aef3354bfaffe9e140` passed exact-head CI 43522055301: Backend 10 files / 708 executions, Android JVM tests and Debug APK (`BUILD SUCCESSFUL`), and three Durable Object SQLite runtime tests all passed.
 - Phase 10 remains OPEN because this was one bounded convergence unit, not a claim that every supported outer message has migrated. PLAYER_JOINED and other remaining default/legacy paths, plus field-level contract parity, require separate evidence. Phase 11 was not started; do not start it automatically.
+
+## Latest checkpoint — Phase 17-B
+
+- Current branch remains `multiplayer-framework-core-14118577486727081892`; last committed baseline before this work is `f462e00ebd496b9d2f1426ff680d1416970f979f`.
+- Phase 17-A is accepted. Phase 17-B code now covers Ankh-gated revival, spectator/action gates, unresolved-life floor-transition protection, voluntary leave vs reconnect, lobby owner/publisher alignment, terminal MATCH_END, and Durable Object persistence/rollback.
+- Local source changes and `docs/multiplayer/PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md` are not committed yet. Re-run the complete server suite and Android `test assembleDebug`, then run Durable Object SQLite and CI before committing.
+- Do not launch emulator, ADB or real-device/network tests. Real runtime acceptance stays after Phase 22. Multiplayer UI rebuild remains Phases 20–21.
+- Keep WebGPT task `d8ff20f1-780c-4e55-acc5-ed2dfe8d71be` RUNNING; do not finish the task unless explicitly requested.

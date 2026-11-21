@@ -481,7 +481,7 @@ public final class MessageRouter {
                 || "HERO_BUFF_TICKED".equals(eventType) || "NATIVE_WORLD_MUTATION".equals(eventType)
                 || "ITEM_PICKED_UP".equals(eventType) || "CHEST_OPENED".equals(eventType)
                 || "LEVEL_TRANSITION".equals(eventType) || "LEVEL_TRANSITION_ABORTED".equals(eventType)
-                || "MATCH_END".equals(eventType);
+                || "MATCH_END".equals(eventType) || "PLAYER_LEFT".equals(eventType);
     }
 
     private static boolean isValidSequencedEventAction(String eventType, JsonValue action) {
@@ -503,6 +503,7 @@ public final class MessageRouter {
         if ("CHAR_DIED".equals(eventType)) {
             return hasNonEmptyString(action.get("playerId")) || hasNonEmptyString(action.get("targetPlayerId"));
         }
+        if ("PLAYER_LEFT".equals(eventType)) return hasNonEmptyString(action.get("playerId"));
         if ("PLAYER_REVIVED".equals(eventType)) {
             return hasNonEmptyString(action.get("playerId"))
                     && (isNonNegativeInteger(action.get("hp")) || hasNonEmptyString(action.get("heroStateJson")));
@@ -1286,6 +1287,17 @@ public final class MessageRouter {
                 }
             } else if (playerId != null && hp >= 0) {
                 applyPlayerHp(playerId, hp);
+            }
+        } else if ("PLAYER_LEFT".equals(type)) {
+            String playerId = stringValue(action.get("playerId"), null);
+            if (playerId == null || playerId.isEmpty()) {
+                MultiplayerManager.getInstance().requestResync(seq);
+            } else {
+                NetworkMessage leftMessage = new NetworkMessage();
+                leftMessage.messageType = MessageType.PLAYER_LEFT;
+                leftMessage.senderId = "SERVER";
+                leftMessage.payloadJson = action.toString();
+                handlePlayerLeftMessage(leftMessage);
             }
         } else if ("HERO_BUFF_TICKED".equals(type)) {
             // Timed effects can update HP, shielding, and native Buff bundles together.

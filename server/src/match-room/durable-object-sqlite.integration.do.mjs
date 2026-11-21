@@ -1299,6 +1299,7 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(meta("roomOwnerId")).toBe("phase13-third");
       expect(meta("levelPublisher")).toBe("phase13-third");
       expect(Number(meta("levelPublisherTerm"))).toBe(2);
+      expect(meta("levelPublisherReadyTerm")).toBeUndefined();
       expect(Number(sql.exec("SELECT ready FROM players WHERE player_id = 'phase13-third'").toArray()[0].ready)).toBe(0);
 
       sql.exec("UPDATE players SET connected=1 WHERE player_id=?", "phase13-guest");
@@ -1448,5 +1449,98 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
       expect(observerMessages.some(message =>
         message.messageType === "ROOM_STATE" && JSON.parse(message.payloadJson).reason === "ROOM_OWNER_HANDOFF"
       )).toBe(true);
+    });
+  });
+  it("persists Co-op Ankh revival eligibility and exactly one terminal match event across eviction", async () => {
+    const firstPlayer = "phase17b-do-dead-ankh";
+    const secondPlayer = "phase17b-do-spectator";
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName("phase17b-do-life-state-end-persistence"));
+
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      instance.gameMode = "COOP_DUNGEON";
+      instance.gameStatus = "PLAYING";
+      instance.currentSequence = 0;
+      instance.currentDepth = 1;
+
+      const meta = [
+        ["gameMode", "COOP_DUNGEON"],
+        ["gameStatus", "PLAYING"],
+        ["roomLifecycleVersion", "1"],
+        ["roomCreated", "1"],
+        ["roomLifecycleState", "PLAYING"],
+        ["roomOwnerId", firstPlayer],
+        ["roomCapacity", "4"],
+        ["depth", "1"],
+        ["currentSequence", "0"],
+        ["roomMember:" + firstPlayer, JSON.stringify({ joinedAt: 1, role: "PLAYER" })],
+        ["roomMember:" + secondPlayer, JSON.stringify({ joinedAt: 2, role: "PLAYER" })],
+        ["heroState:" + firstPlayer, JSON.stringify({
+          hp: 0, ht: 20, pos: 9, ankhCount: 1, blessedAnkhCount: 0
+        })],
+        ["heroState:" + secondPlayer, JSON.stringify({
+          hp: 0, ht: 20, pos: 10, ankhCount: 0, blessedAnkhCount: 0
+        })]
+      ];
+      for (const [key, value] of meta) {
+        sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          key, value
+        );
+      }
+      for (const [playerId, stateName] of [
+        [firstPlayer, "DEAD"],
+        [secondPlayer, "SPECTATOR"]
+      ]) {
+        sql.exec(
+          "INSERT INTO players (player_id,session_token,class_name,pos,hp,ht,state,connected) VALUES (?,?,?,?,?,?,?,?)",
+          playerId, playerId + "-token", "WARRIOR", 9, 0, 20, stateName, 1
+        );
+      }
+
+      expect(instance.checkMatchEndCondition()).toBeNull();
+      expect(instance.gameStatus).toBe("PLAYING");
+      expect(sql.exec("SELECT event_type FROM events WHERE event_type = 'MATCH_END'").toArray()).toHaveLength(0);
+
+      // The native WndResurrect choice has been resolved without revival; the saved Ankh
+      // is now consumed, so the last pending DEAD state becomes terminal SPECTATOR.
+      sql.exec("UPDATE players SET state = 'SPECTATOR' WHERE player_id = ?", firstPlayer);
+      sql.exec(
+        "UPDATE room_meta SET value = ? WHERE key = ?",
+        JSON.stringify({ hp: 0, ht: 20, pos: 9, ankhCount: 0, blessedAnkhCount: 0 }),
+        "heroState:" + firstPlayer
+      );
+
+      const end = instance.checkMatchEndCondition();
+      expect(end?.messageType).toBe("EVENT_BATCH");
+      expect(JSON.parse(end.payloadJson)[0]).toMatchObject({
+        eventType: "MATCH_END",
+        action: { reason: "ALL_PLAYERS_ELIMINATED" }
+      });
+      expect(instance.gameStatus).toBe("ENDED");
+      expect(instance.currentSequence).toBe(1);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomLifecycleState").toArray()[0].value).toBe("ENDED");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "gameStatus").toArray()[0].value).toBe("ENDED");
+      expect(sql.exec("SELECT sequence,event_type FROM events WHERE event_type = 'MATCH_END'").toArray())
+        .toEqual([{ sequence: 1, event_type: "MATCH_END" }]);
+      expect(instance.checkMatchEndCondition()).toBeNull();
+      expect(sql.exec("SELECT sequence,event_type FROM events WHERE event_type = 'MATCH_END'").toArray())
+        .toEqual([{ sequence: 1, event_type: "MATCH_END" }]);
+    });
+
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      expect(instance.gameMode).toBe("COOP_DUNGEON");
+      expect(instance.gameStatus).toBe("ENDED");
+      expect(instance.currentSequence).toBe(1);
+      expect(sql.exec("SELECT state FROM players WHERE player_id = ?", firstPlayer).toArray()[0].state).toBe("SPECTATOR");
+      expect(JSON.parse(sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + firstPlayer).toArray()[0].value))
+        .toMatchObject({ hp: 0, ankhCount: 0, blessedAnkhCount: 0 });
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomLifecycleState").toArray()[0].value).toBe("ENDED");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "gameStatus").toArray()[0].value).toBe("ENDED");
+      expect(sql.exec("SELECT sequence,event_type FROM events WHERE event_type = 'MATCH_END'").toArray())
+        .toEqual([{ sequence: 1, event_type: "MATCH_END" }]);
+      expect(instance.checkMatchEndCondition()).toBeNull();
     });
   });});

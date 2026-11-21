@@ -74,6 +74,17 @@ export class MatchRoomBase {
   /** Lifecycle extension point invoked only after publisher rebase commits durably. */
   protected onPublisherRecoveryCommitted(): void {}
 
+  /** Extension hook invoked after a match-end event has committed. */
+  protected onMatchEndCommitted(): void {}
+  /** Extension hook invoked after a Co-op publisher authority change commits. */
+  protected onPublisherAuthorityChangedCommitted(_reason: string): void {}
+  /** Extension hook invoked after a Co-op participant life state commits. */
+  protected onCoopLifeStateChangedCommitted(_reason: string): void {}
+  /** Queue room lifecycle notices through the active action transaction when one exists. */
+  protected sendRoomSocketMessage(socket: WebSocket, message: string): void {
+    socket.send(message);
+  }
+
   protected isRoomLifecycleEnabled(): boolean {
     const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomLifecycleVersion").toArray()[0];
     return String(row?.value || "") === "1";
@@ -136,6 +147,13 @@ export class MatchRoomBase {
     const owner = this.sql.exec(
       "SELECT value FROM room_meta WHERE key = 'levelPublisher'").toArray()[0];
     if (!owner || typeof owner.value !== "string" || !owner.value) return false;
+    if (this.gameMode === "COOP_DUNGEON" && this.isRoomLifecycleEnabled()) {
+      const publisher = this.sql.exec(
+        "SELECT state,connected FROM players WHERE player_id = ?", String(owner.value)
+      ).toArray()[0];
+      if (!publisher || String(publisher.state) !== "ALIVE"
+          || Number(publisher.connected) !== 1 || !this.isRoomMember(String(owner.value))) return false;
+    }
     const term = this.currentLevelPublisherTerm();
     const ready = this.sql.exec(
       "SELECT value FROM room_meta WHERE key = ?", "levelPublisherReadyTerm").toArray()[0];

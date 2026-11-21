@@ -375,3 +375,6 @@ Historical 10-D status: at that checkpoint PLAYER_JOINED remained a live message
 
 **Boundary:** this closes the agreed Phase 10 schema/routing migration and automated acceptance. It does not claim every declared message/action is executable, every optional item/effect subcase is enabled, a Worker was deployed, or two physical devices were play-tested. No replay, sequence, resync, Worker handler, SQL persistence or native SPD gameplay semantics changed in this phase closeout.
 
+## Phase 17-B lifecycle events
+
+`PLAYER_LEFT` is a sequenced server-authored lifecycle event carrying the departing `playerId`; it is applied by Android `MessageRouter` before any later `MATCH_END` event. `MATCH_END` is emitted once only after the authoritative Co-op roster is terminal and is durable across Durable Object eviction. Voluntary leave is not equivalent to transport disconnect: only explicit `LEAVE` emits `PLAYER_LEFT` and marks the member `LEFT`.

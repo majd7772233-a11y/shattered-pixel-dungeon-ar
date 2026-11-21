@@ -3,6 +3,7 @@ import { MAX_SERVER_SNAPSHOT_BYTES, serializeJsonWithinBudget, serializeSnapshot
 import { isValidNativeHeroStateJson } from "../validators/combat-state";
 import { isValidNativeFallLanding, isValidNativeFallDestinationSnapshot, canFinalizeNativeFloorTransition } from "../validators/floor-transitions";
 import { MatchRoomCombat } from "./combat";
+import { hasPendingCoopRevival as hasPendingCoopRevivalForRoster, shouldEndCoopMatch, type CoopLifeParticipant } from "./life-state";
 
 export class MatchRoomSnapshots extends MatchRoomCombat {
   /** Build and enforce the one canonical full-snapshot wire representation. */
@@ -74,6 +75,46 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
     }
   }
 
+  protected coopLifeParticipants(): CoopLifeParticipant[] {
+    if (!this.isRoomLifecycleEnabled() || this.roomMetaValueForLifecycle("roomCreated") !== "1") return [];
+    const members = this.sql.exec(
+      "SELECT key,value FROM room_meta WHERE substr(key,1,?) = ?", "roomMember:".length, "roomMember:"
+    ).toArray();
+    const participants: CoopLifeParticipant[] = [];
+    for (const member of members) {
+      const playerId = String(member.key || "").slice("roomMember:".length);
+      if (!playerId) {
+        participants.push({ state: "UNKNOWN", heroStateJson: null });
+        continue;
+      }
+      const row = this.sql.exec(
+        "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?", playerId
+      ).toArray()[0];
+      if (!row) {
+        // A persisted member without a player row is unresolved, not an empty roster.
+        participants.push({ state: "UNKNOWN", heroStateJson: null });
+        continue;
+      }
+      const hero = this.sql.exec(
+        "SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId
+      ).toArray()[0];
+      participants.push({
+        state: String(row.state || "SPECTATOR"),
+        heroStateJson: hero && typeof hero.value === "string" ? String(hero.value) : null
+      });
+    }
+    return participants;
+  }
+
+  private roomMetaValueForLifecycle(key: string): string | null {
+    const row = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", key).toArray()[0];
+    return row && row.value !== null && row.value !== undefined ? String(row.value) : null;
+  }
+
+  protected hasPendingCoopRevival(): boolean {
+    if (this.gameMode !== "COOP_DUNGEON") return false;
+    return hasPendingCoopRevivalForRoster(this.coopLifeParticipants());
+  }
   protected tryFinalizeLevelTransition() {
     const pendingRow = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray()[0];
     if (!pendingRow) return;
@@ -83,6 +124,13 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
         || pending.depth === this.currentDepth || Math.abs(pending.depth - this.currentDepth) !== 1
         || pending.targetBranch !== 0
         || (pending.transitionType === "FALL" && pending.depth !== pending.fromDepth + 1)) return;
+
+    // A dead member with an unblessed Ankh must get the original native resurrection choice
+    // on the source floor; never commit a destination beneath that pending choice.
+    if (this.hasPendingCoopRevival()) {
+      this.abortPendingLevelTransition(pending, "COOP_REVIVAL_PENDING");
+      return;
+    }
 
     const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${pending.depth}`).toArray()[0];
     let level: any = null;
@@ -227,62 +275,82 @@ export class MatchRoomSnapshots extends MatchRoomCombat {
     };
   }
 
-  protected checkMatchEndCondition() {
-    if (this.gameStatus === "ENDED") return;
+  protected checkMatchEndCondition(): NetworkMessage | null {
+    if (this.gameStatus === "ENDED") return null;
+    let matchEndPayload: Record<string, unknown> | null = null;
     if (this.gameMode === "DEATHMATCH") {
-      const topKills = this.sql.exec(`SELECT player_id, kills FROM players ORDER BY kills DESC LIMIT 1`).toArray();
+      const topKills = this.sql.exec("SELECT player_id, kills FROM players ORDER BY kills DESC LIMIT 1").toArray();
       if (topKills.length > 0 && Number(topKills[0].kills) >= 10) {
-        this.gameStatus = "ENDED";
-        const winnerId = String(topKills[0].player_id);
-
-        this.currentSequence++;
-        const matchEndPayload = {
+        matchEndPayload = {
           reason: "KILL_LIMIT_REACHED",
-          winnerId,
+          winnerId: String(topKills[0].player_id),
           kills: Number(topKills[0].kills)
         };
-
-        this.sql.exec(
-          `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
-          this.currentSequence, JSON.stringify(matchEndPayload)
-        );
-        this.persistEventLogState();
-
-        this.broadcast({
-          protocolVersion: "1.0.0",
-          messageType: "EVENT_BATCH",
-          senderId: "SERVER",
-          sequence: this.currentSequence,
-          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MATCH_END", depth: this.currentDepth, action: matchEndPayload }])
-        });
       }
     } else if (this.gameMode === "PVP_ARENA") {
-      const playerCount = this.sql.exec(`SELECT COUNT(*) AS total FROM players`).toArray();
-      const alivePlayers = this.sql.exec(`SELECT player_id FROM players WHERE state = 'ALIVE'`).toArray();
+      const playerCount = this.sql.exec("SELECT COUNT(*) AS total FROM players").toArray();
+      const alivePlayers = this.sql.exec("SELECT player_id FROM players WHERE state = 'ALIVE'").toArray();
       if (Number(playerCount[0]?.total || 0) >= 2 && alivePlayers.length === 1) {
-        this.gameStatus = "ENDED";
-        const winnerId = String(alivePlayers[0].player_id);
-
-        this.currentSequence++;
-        const matchEndPayload = {
+        matchEndPayload = {
           reason: "LAST_PLAYER_STANDING",
-          winnerId
+          winnerId: String(alivePlayers[0].player_id)
         };
-
-        this.sql.exec(
-          `INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, 'SERVER', 'MATCH_END', ?)`,
-          this.currentSequence, JSON.stringify(matchEndPayload)
-        );
-        this.persistEventLogState();
-
-        this.broadcast({
-          protocolVersion: "1.0.0",
-          messageType: "EVENT_BATCH",
-          senderId: "SERVER",
-          sequence: this.currentSequence,
-          payloadJson: JSON.stringify([{ sequence: this.currentSequence, eventType: "MATCH_END", depth: this.currentDepth, action: matchEndPayload }])
-        });
+      }
+    } else if (this.gameMode === "COOP_DUNGEON" && this.isRoomLifecycleEnabled()
+        && this.roomMetaValueForLifecycle("roomCreated") === "1") {
+      const participants = this.coopLifeParticipants();
+      if (shouldEndCoopMatch(participants)) {
+        matchEndPayload = {
+          reason: participants.length === 0 ? "NO_ACTIVE_PLAYERS" : "ALL_PLAYERS_ELIMINATED"
+        };
       }
     }
+
+    if (!matchEndPayload) return null;
+    const previousSequence = this.currentSequence;
+    const previousGameStatus = this.gameStatus;
+    try {
+      if (this.isRoomLifecycleEnabled()) {
+        this.sql.exec(
+          "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+          "roomLifecycleState", "ENDED"
+        );
+        if (this.gameMode === "COOP_DUNGEON") {
+          const currentPublisherTerm = this.currentLevelPublisherTerm();
+          if (currentPublisherTerm < 0 || currentPublisherTerm >= Number.MAX_SAFE_INTEGER) {
+            throw new Error("INVALID_LEVEL_PUBLISHER_TERM");
+          }
+          this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisher");
+          this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
+          this.sql.exec(
+            "INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            "levelPublisherTerm", String(currentPublisherTerm + 1)
+          );
+        }
+      }
+      this.currentSequence++;
+      this.sql.exec(
+        "INSERT INTO events (sequence, sender_id, event_type, payload) VALUES (?, ?, ?, ?)",
+        this.currentSequence, "SERVER", "MATCH_END", JSON.stringify(matchEndPayload)
+      );
+      this.gameStatus = "ENDED";
+      this.persistEventLogState();
+    } catch (error) {
+      this.currentSequence = previousSequence;
+      this.gameStatus = previousGameStatus;
+      throw error;
+    }
+    return {
+      protocolVersion: "1.0.0",
+      messageType: "EVENT_BATCH",
+      senderId: "SERVER",
+      sequence: this.currentSequence,
+      payloadJson: JSON.stringify([{
+        sequence: this.currentSequence,
+        eventType: "MATCH_END",
+        depth: this.currentDepth,
+        action: matchEndPayload
+      }])
+    };
   }
 }

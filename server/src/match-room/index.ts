@@ -357,6 +357,10 @@ export class MatchRoom extends MatchRoomMessages {
         playerId = requestedPlayerId || crypto.randomUUID();
       }
 
+      if (reconnecting && this.isRoomLifecycleEnabled() && !this.isRoomMember(playerId)) {
+        return new Response("Room membership required", { status: 403 });
+      }
+
       // Accept and attach the socket before rotating credentials. If the platform cannot
       // accept this WebSocket, the caller must retain its current usable session token.
       const sessionData: SessionData = { playerId, sessionToken };

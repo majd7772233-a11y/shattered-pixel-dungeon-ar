@@ -722,3 +722,13 @@ Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` pas
 - Latest local results: backend build + 381 Vitest tests passed; real Workers Durable Object SQLite 17/17; Android test assembleDebug BUILD SUCCESSFUL with 58 Gradle tasks / 246 JVM tests / 0 failures / 0 errors / 0 skipped. Debug APK SHA-256: 34EF9C4A2660B03444CB3DF8B986008B05C58EC9C2909A1815EA23145BD14FFD.
 - Exact-head CI for final SHA 63bba7e3505d6743983aef006ed09572253bd099 passed 3/3 jobs in [run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. Phase 17-A is accepted for implementation and automated validation; Phase 17-B remains NOT STARTED. Parent Phase 17 remains OPEN.
 - The push unintentionally triggered deployment workflow [run 44765157842](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157842), which provisioned MAGD_JWT_SECRET and deployed Worker version a9653524-1f5e-4014-ac58-5aa324d93183. This deployment is not a live service smoke; no hosted room create/join/resume/failure or device gameplay test was run. Physical/network acceptance remains Phase 22/23.
+
+## Phase 17-B automated acceptance matrix
+
+| Area | Automated coverage | Device acceptance |
+|---|---|---|
+| Native life/Ankh | ALIVE/DEAD/SPECTATOR/LEFT classification, Ankh eligibility/consumption, invalid state handling | Deferred after Phase 22 |
+| Gameplay rules | DEAD/SPECTATOR action rejection and pending-revival floor-transition guard | Deferred after Phase 22 |
+| Publisher lifecycle | Publisher death, lobby owner/publisher alignment, current-term readiness, no false-ready handoff | Deferred after Phase 22 |
+| Leave/reconnect | PLAYER_LEFT ordering, LEFT membership removal, reconnect only for retained membership | Deferred after Phase 22 |
+| Match completion | Exactly-once MATCH_END, terminal-state predicate, rollback on event persistence failure, persistence after DO eviction | Deferred after Phase 22 |

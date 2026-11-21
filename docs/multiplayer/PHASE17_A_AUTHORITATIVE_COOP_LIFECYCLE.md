@@ -62,3 +62,7 @@ allReady is proof-backed. A ready flag with a stale seed or sequence does not ma
 Final implementation SHA 63bba7e3505d6743983aef006ed09572253bd099 passed all three required jobs in [exact-head CI run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction and Android debug APK compile. 17-A is accepted for implementation and automated validation. 17-B remains NOT STARTED; parent Phase 17 stays OPEN until 17-B and all parent acceptance criteria are met.
 
 The push also triggered the repository's automatic Worker deployment workflow (run [44765157842](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157842)); it deployed Worker version a9653524-1f5e-4014-ac58-5aa324d93183. This was unintended and is recorded separately from acceptance. No live room smoke or client gameplay was performed; Phase 22 remains OPEN.
+
+## Phase 17-B continuation
+
+Phase 17-A is complemented by [Phase 17-B — Player Life, Revival, Leave and Match Completion](PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md), which closes the native Ankh/spectator lifecycle, explicit leave/reconnect policy, publisher/owner continuity and durable terminal-match behavior. Phase 17-A alone does not imply that the full online user interface or real-device play is ready.

@@ -353,3 +353,7 @@ The server projects room state from durable facts rather than copying gameStatus
 During an active match, publisher loss is durable: no eligible successor yields SUSPENDED; a promoted or reconnecting Co-op member yields RECOVERING until it submits a validated native rebase. The rebase transaction persists the level data and new publisher-ready term and changes roomLifecycleState back to PLAYING together. Only after commit does the lifecycle layer broadcast the committed room snapshot and recovered room state. A failed/rolled-back rebase cannot reopen gameplay.
 
 Android treats roomStatus as the room authority and separately validates its relationship with internal gameStatus. SUSPENDED, RECOVERING, ENDED and CLOSED remain non-gameplay states. MATCH_START and local world-sync callbacks cannot supersede a recovery state. Legacy non-lifecycle sessions and non-Co-op publisher behavior remain outside this Co-op transition change.
+
+## Phase 17-B — death, revival, leave and match end
+
+Native Hero/Ankh state flows from a validated client snapshot into the Durable Object, which derives the member life state and action permissions. Pending unblessed-Ankh revival (or an inconsistent dead/spectator snapshot) blocks floor transition; a coherent spectator state does not. A voluntary LEAVE is serialized as `PLAYER_LEFT`, removes membership/readiness and sets `LEFT`/disconnected before any resulting `MATCH_END`. `MATCH_END` is sequenced and persisted with terminal room/game status and publisher revocation in the same SQLite transaction.

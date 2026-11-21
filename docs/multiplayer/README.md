@@ -183,3 +183,10 @@ At parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb`, matching CI [43523497
 - **Verified local evidence:** TypeScript build/noEmit PASS; backend 5 TypeScript source test files / 372 unique cases PASS (10 reported files / 744 executions including emitted JS mirrors); actual Cloudflare Workers Durable Object SQLite integration 1 file / 14 tests PASS (eviction/replay, retention, legacy room recovery, schema versions 1–2 and preservation of old claims, atomic LEVEL_DATA rollback/retry, publisher loss without a valid snapshot). Android forced `test assembleDebug --rerun-tasks` completed BUILD SUCCESSFUL: 10 XML reports / 132 core JVM tests / 0 failures, errors or skips; Debug APK generated at `android/build/outputs/apk/debug/android-debug.apk` (35,187,190 bytes).
 - **Boundaries:** total retained event rows can exceed 200 to preserve up to 513 LifeLink damage proof rows per sender plus last buff/damage boundary rows. The replay path sends only complete contiguous gaps up to 50; otherwise it uses SNAPSHOT. Schema migrations v1–2, atomic LEVEL_DATA replacement and token-fenced Level Publisher loss/election/rebase are implemented and locally tested. Protocol remains 25 messages / 23 actions.
 - **Exact-head CI:** [GitHub Actions 43921670336](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43921670336) passed all three jobs for `dec3c0b6c66beb9d3a742ae4f12f6fd2160d56a8`. The requested final source review is complete; Phase 12 is CLOSED for implementation and automated acceptance. Production Worker deployment and physical two-device gameplay remain Phase 22/23 gates.
+
+## Phase 17 — Authoritative co-op lifecycle
+
+- [Phase 17-A: authoritative co-op room lifecycle](PHASE17_A_AUTHORITATIVE_COOP_LIFECYCLE.md)
+- [Phase 17-B: player life, revival, leave and match completion](PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md)
+
+Phase 17-B defines Ankh-based revival, spectator restrictions, voluntary-leave/reconnect distinction, publisher handoff and exactly-once match completion. Device-level acceptance remains deferred until after Phase 22.

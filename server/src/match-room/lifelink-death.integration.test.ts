@@ -99,10 +99,32 @@ class MemoryMatchRoomSql {
         ready: player.ready, state: player.state, connected: player.connected
       }] : []);
     }
+    if (query === "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => String(player.state) === "ALIVE" && Number(player.connected) === 1)
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({ player_id: player.player_id, pos: player.pos, hp: player.hp,
+          ht: player.ht, session_token: player.session_token })));
+    }
+    if (query === "SELECT state,connected FROM players WHERE player_id = ?") {
+      const player = this.players.get(String(args[0]));
+      return this.cursor(player ? [{ state: player.state, connected: player.connected }] : []);
+    }
     if (query === "SELECT player_id FROM players WHERE session_token = ?") {
       const rows = Array.from(this.players.values())
         .filter(player => String(player.session_token) === String(args[0]));
       return this.cursor(rows.map(row => ({ player_id: row.player_id })));
+    }
+    if (query === "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
+      return this.cursor(Array.from(this.players.values())
+        .filter(player => String(player.state) === "ALIVE" && Number(player.connected) === 1)
+        .sort((a,b) => String(a.player_id).localeCompare(String(b.player_id)))
+        .map(player => ({ player_id: player.player_id, pos: player.pos, hp: player.hp, ht: player.ht, session_token: player.session_token })));
+    }
+    if (query === "UPDATE players SET ready = 0 WHERE player_id = ?") {
+      const player = this.players.get(String(args[0]));
+      if (player) player.ready = 0;
+      return this.cursor([]);
     }
     if (query === "SELECT session_token FROM players WHERE player_id = ?") {
       const row = this.players.get(String(args[0]));
@@ -250,6 +272,11 @@ class MemoryMatchRoomSql {
         this.mobs.delete(id);
         this.mobDeletes++;
       }
+      return this.cursor();
+    }
+    if (query.startsWith("UPDATE players SET connected = 0, ready = 0, state = 'LEFT' WHERE player_id = ?")) {
+      const row = this.players.get(String(args[0]));
+      if (row) { row.connected = 0; row.ready = 0; row.state = "LEFT"; }
       return this.cursor();
     }
     if (query.startsWith("UPDATE players SET connected = 0, ready = 0 WHERE player_id = ? AND session_token = ?")) {
@@ -1087,6 +1114,20 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     ]) sql.roomMeta.set(key, value);
 
     expect((room as any).roomStatePayload("test-ready").roomStatus).toBe("READY");
+    expect((room as any).isLevelPublisherReady()).toBe(true);
+    room.gameStatus = "PLAYING";
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    const publisherPlayer = sql.players.get(PUBLISHER_ID)!;
+    publisherPlayer.state = "DEAD";
+    expect((room as any).isLevelPublisherReady()).toBe(false);
+    expect((room as any).roomStatePayload("dead-publisher").roomStatus).toBe("SUSPENDED");
+    publisherPlayer.state = "ALIVE";
+    publisherPlayer.connected = 0;
+    expect((room as any).isLevelPublisherReady()).toBe(false);
+    expect((room as any).roomStatePayload("disconnected-publisher").roomStatus).toBe("SUSPENDED");
+    publisherPlayer.connected = 1;
+    room.gameStatus = "LOBBY";
+    sql.roomMeta.set("roomLifecycleState", "LOBBY");
 
     // A matching publisher term is not enough when the stored publisher is no longer a room member.
     sql.roomMeta.set("levelPublisher", "removed-room-member");
@@ -1742,7 +1783,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(event.secondaryMobDeltas.deltas).toHaveLength(1);
     expect(sql.mobs.has(7)).toBe(false);
     expect(JSON.parse(String(sql.roomMeta.get("levelSnapshot:1"))).mobs).toHaveLength(0);
-    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 0, ht: 20, pos: 9, state: "DEAD", deaths: 1 });
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 0, ht: 20, pos: 9, state: "SPECTATOR", deaths: 1 });
     const storedHero = JSON.parse(String(sql.roomMeta.get("heroState:" + PLAYER_ID)));
     expect(JSON.parse(String(storedHero.combatBundle)).exp).toBe(2);
     expect(storedHero.buffCount).toBe(1);
@@ -2418,7 +2459,7 @@ describe("MatchRoom lethal Poison LifeLink event pipeline", () => {
     expect(sql.events.map(event => event.event_type)).toEqual(["CHAR_DAMAGED", "PLAYER_DAMAGED"]);
     const heroEvent = JSON.parse(String(sql.events[1].payload));
     expect(heroEvent.nativeLifeLinkDeathEntityIds).toEqual([ENTITY_ID]);
-    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 0, ht: 20, pos: 9, state: "DEAD", deaths: 1 });
+    expect(sql.players.get(PLAYER_ID)).toMatchObject({ hp: 0, ht: 20, pos: 9, state: "SPECTATOR", deaths: 1 });
     const storedHero = JSON.parse(String(sql.roomMeta.get("heroState:" + PLAYER_ID)));
     expect(JSON.parse(String(storedHero.combatBundle)).exp).toBe(2);
     expect(storedHero.buffCount).toBe(1);
@@ -2765,5 +2806,541 @@ describe("Phase 11-A event ordering and replay characterization", () => {
       JSON.parse(String(call[0])).messageType === "ACTION_ACCEPTED")).toBe(true);
     expect(fixture.room.broadcastWithFOV).toHaveBeenCalledTimes(1);
     expect(fixture.sql.rewardClaimInsertAttempts).toBe(0);
+  });
+});
+describe("Phase 17-B Co-op lifecycle integration", () => {
+  function roomWithMembers(members: Array<{
+    playerId: string;
+    state: string;
+    hp: number;
+    ankhCount?: number;
+    blessedAnkhCount?: number;
+  }>) {
+    const sql = new MemoryMatchRoomSql();
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("roomCreated", "1");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
+    sql.roomMeta.set("roomCapacity", "4");
+    sql.roomMeta.set("roomOwnerId", members[0]?.playerId || "");
+    for (const [index, member] of members.entries()) {
+      sql.players.set(member.playerId, {
+        player_id: member.playerId,
+        session_token: "phase17b-session-" + member.playerId,
+        class_name: "WARRIOR",
+        pos: 9 + index,
+        hp: member.hp,
+        ht: 20,
+        ready: 0,
+        connected: 1,
+        state: member.state,
+        kills: 0,
+        deaths: 0
+      });
+      sql.roomMeta.set("roomMember:" + member.playerId, JSON.stringify({ joinedAt: index + 1 }));
+      sql.roomMeta.set("heroState:" + member.playerId, JSON.stringify({
+        hp: member.hp,
+        ht: 20,
+        pos: 9 + index,
+        ankhCount: member.ankhCount ?? 0,
+        blessedAnkhCount: member.blessedAnkhCount ?? 0
+      }));
+    }
+    const room = makeRoom(sql);
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "PLAYING";
+    delete room.checkMatchEndCondition;
+    return { sql, room };
+  }
+
+  it("does not end while at least one member remains ALIVE", () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-alive", state: "ALIVE", hp: 12 },
+      { playerId: "phase17b-spectator", state: "SPECTATOR", hp: 0 }
+    ]);
+    expect(room.checkMatchEndCondition()).toBeNull();
+    expect(room.gameStatus).toBe("PLAYING");
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(0);
+  });
+
+  it("rejects ordinary gameplay ACTIONs from DEAD and SPECTATOR members before mutation", () => {
+    for (const [index, state] of ["DEAD", "SPECTATOR"].entries()) {
+      const playerId = "phase17b-blocked-action-" + state.toLowerCase();
+      const { sql, room } = roomWithMembers([
+        { playerId, state, hp: 0, ankhCount: state === "DEAD" ? 1 : 0 }
+      ]);
+      sql.roomMeta.set("levelPublisher", playerId);
+      sql.roomMeta.set("levelPublisherTerm", "1");
+      sql.roomMeta.set("levelPublisherReadyTerm", "1");
+      const ws = { send: vi.fn() };
+      const session = {
+        playerId,
+        sessionToken: "phase17b-session-" + playerId
+      };
+
+      (room as any).handleActionInTransaction(ws, actionMessage(
+        "phase17b-blocked-action-" + index,
+        { action: "MOVE", data: { from: 9, to: 10, depth: 1, engineActionCost: 1 } }
+      ), session);
+
+      const response = JSON.parse(String(ws.send.mock.calls[0][0]));
+      expect(response.messageType).toBe("ERROR");
+      expect(JSON.parse(String(response.payloadJson)).error).toBe("PLAYER_NOT_ALIVE");
+      expect(sql.events).toHaveLength(0);
+      expect(sql.players.get(playerId)).toMatchObject({ state, hp: 0, deaths: 0 });
+      expect(room.currentSequence).toBe(0);
+      expect(room.worldTime).toBe(0);
+    }
+  });
+  it("keeps the match open while a dead member has a valid unblessed Ankh choice pending", () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-dead-ankh", state: "DEAD", hp: 0, ankhCount: 1 },
+      { playerId: "phase17b-spectator-2", state: "SPECTATOR", hp: 0 }
+    ]);
+    expect(room.checkMatchEndCondition()).toBeNull();
+    expect(room.gameStatus).toBe("PLAYING");
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(0);
+  });
+
+  it("commits exactly one MATCH_END when every room member is terminal", () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-terminal-1", state: "SPECTATOR", hp: 0 },
+      { playerId: "phase17b-terminal-2", state: "DEAD", hp: 0, ankhCount: 0, blessedAnkhCount: 0 }
+    ]);
+
+    sql.roomMeta.set("levelPublisher", "phase17b-terminal-2");
+    sql.roomMeta.set("levelPublisherTerm", "4");
+    sql.roomMeta.set("levelPublisherReadyTerm", "4");
+    const first = room.checkMatchEndCondition();
+    expect(first?.messageType).toBe("EVENT_BATCH");
+    expect(JSON.parse(String(first?.payloadJson))[0]).toMatchObject({
+      eventType: "MATCH_END",
+      action: { reason: "ALL_PLAYERS_ELIMINATED" }
+    });
+    expect(room.gameStatus).toBe("ENDED");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("ENDED");
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("5");
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(1);
+
+    expect(room.checkMatchEndCondition()).toBeNull();
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(1);
+  });
+
+  it("does not publish ENDED or revoke authority when MATCH_END persistence fails", () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-end-rollback", state: "SPECTATOR", hp: 0 }
+    ]);
+    sql.roomMeta.set("levelPublisher", "phase17b-end-rollback");
+    sql.roomMeta.set("levelPublisherTerm", "8");
+    sql.roomMeta.set("levelPublisherReadyTerm", "8");
+    sql.failEventInsert = true;
+
+    expect(() => room.state.storage.transactionSync(() => room.checkMatchEndCondition()))
+      .toThrow("forced event insert failure");
+    expect(room.gameStatus).toBe("PLAYING");
+    expect(room.currentSequence).toBe(0);
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("PLAYING");
+    expect(sql.roomMeta.get("levelPublisher")).toBe("phase17b-end-rollback");
+    expect(sql.roomMeta.get("levelPublisherReadyTerm")).toBe("8");
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(0);
+  });
+  it("does not end when persisted room membership has no matching player row", () => {
+    const { sql, room } = roomWithMembers([]);
+    sql.roomMeta.set("roomMember:phase17b-orphan", JSON.stringify({ joinedAt: 1 }));
+    expect(room.checkMatchEndCondition()).toBeNull();
+    expect(room.gameStatus).toBe("PLAYING");
+    expect(sql.events.filter(event => event.event_type === "MATCH_END")).toHaveLength(0);
+  });
+  it("uses NO_ACTIVE_PLAYERS for an empty room roster", () => {
+    const { sql, room } = roomWithMembers([]);
+    const end = room.checkMatchEndCondition();
+    expect(JSON.parse(String(end?.payloadJson))[0].action.reason).toBe("NO_ACTIVE_PLAYERS");
+    expect(room.gameStatus).toBe("ENDED");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("ENDED");
+  });
+
+  it("allows a DEAD room member with an unblessed Ankh to reconnect without changing life-state", async () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-reconnect-dead", state: "DEAD", hp: 0, ankhCount: 1 }
+    ]);
+    const ws = { send: vi.fn() };
+    (room as any).buildSnapshotMessage = vi.fn(() => "authoritative-snapshot");
+
+    await (room as any).handleReconnect(ws, {
+      protocolVersion: "1.0.0",
+      messageType: "RECONNECT",
+      requestId: "phase17b-dead-reconnect",
+      payloadJson: JSON.stringify({ lastSequence: 0 })
+    }, {
+      playerId: "phase17b-reconnect-dead",
+      sessionToken: "phase17b-session-phase17b-reconnect-dead"
+    });
+
+    expect((room as any).isRoomMember("phase17b-reconnect-dead")).toBe(true);
+    expect(sql.players.get("phase17b-reconnect-dead")?.state).toBe("DEAD");
+    expect(ws.send).toHaveBeenCalledTimes(2);
+    expect(ws.send.mock.calls[0][0]).toBe("authoritative-snapshot");
+  });
+
+  it("rejects reconnect after voluntary leave without restoring room membership", async () => {
+    const { sql, room } = roomWithMembers([]);
+    sql.players.set("phase17b-reconnect-left", {
+      player_id: "phase17b-reconnect-left",
+      session_token: "phase17b-left-token",
+      class_name: "WARRIOR",
+      pos: 9,
+      hp: 10,
+      ht: 20,
+      ready: 0,
+      connected: 0,
+      state: "LEFT",
+      kills: 0,
+      deaths: 0
+    });
+    const ws = { send: vi.fn() };
+
+    await (room as any).handleReconnect(ws, {
+      protocolVersion: "1.0.0",
+      messageType: "RECONNECT",
+      requestId: "phase17b-left-reconnect",
+      payloadJson: JSON.stringify({ lastSequence: 0 })
+    }, {
+      playerId: "phase17b-reconnect-left",
+      sessionToken: "phase17b-left-token"
+    });
+
+    const response = JSON.parse(String(ws.send.mock.calls[0][0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("ROOM_MEMBERSHIP_REQUIRED");
+    expect((room as any).isRoomMember("phase17b-reconnect-left")).toBe(false);
+    expect(sql.players.get("phase17b-reconnect-left")?.state).toBe("LEFT");
+  });
+  it("orders terminal ROOM_STATE after the sequenced MATCH_END event on ACTION commit", () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-ended-room-member", state: "SPECTATOR", hp: 0 }
+    ]);
+    const order: string[] = [];
+    const deferredBroadcasts: Array<() => void> = [];
+    const socket = {
+      send: vi.fn((data: string) => {
+        order.push(JSON.parse(data).messageType);
+      }),
+      deserializeAttachment: () => ({
+        playerId: "phase17b-ended-room-member",
+        sessionToken: "phase17b-session-phase17b-ended-room-member"
+      })
+    };
+    room.state.getWebSockets = () => [socket];
+    room.gameStatus = "ENDED";
+    sql.roomMeta.set("roomLifecycleState", "ENDED");
+    (room as any).nativeActionTransactionActive = true;
+    (room as any).nativeActionTransactionRoomMessages = [];
+    room.broadcast = (message: any) => deferredBroadcasts.push(() => order.push(message.messageType));
+
+    room.broadcast({
+      protocolVersion: "1.0.0",
+      messageType: "EVENT_BATCH",
+      sequence: 9,
+      senderId: "SERVER",
+      payloadJson: "[]"
+    });
+    room.onMatchEndCommitted();
+
+    expect(socket.send).not.toHaveBeenCalled();
+    expect(deferredBroadcasts).toHaveLength(1);
+    const deferredRoom = (room as any).nativeActionTransactionRoomMessages as Array<() => void>;
+    expect(deferredRoom).toHaveLength(1);
+
+    (room as any).nativeActionTransactionActive = false;
+    (room as any).nativeActionTransactionRoomMessages = null;
+    deferredBroadcasts.forEach(send => send());
+    deferredRoom.forEach(send => send());
+
+    expect(order).toEqual(["EVENT_BATCH", "ROOM_STATE"]);
+    const stateMessage = JSON.parse(String(socket.send.mock.calls[0][0]));
+    expect(stateMessage.messageType).toBe("ROOM_STATE");
+    expect(JSON.parse(stateMessage.payloadJson).roomStatus).toBe("ENDED");
+  });
+  it("makes voluntary mid-match leave terminal, emits PLAYER_LEFT before MATCH_END, and transfers ownership", async () => {
+    const { sql, room } = roomWithMembers([
+      { playerId: "phase17b-leaving-owner", state: "ALIVE", hp: 10 },
+      { playerId: "phase17b-last-spectator", state: "SPECTATOR", hp: 0 }
+    ]);
+    sql.roomMeta.set("levelPublisher", "phase17b-leaving-owner");
+    sql.roomMeta.set("levelPublisherTerm", "8");
+    sql.roomMeta.set("levelPublisherReadyTerm", "8");
+    room.sendRoomStateToSocket = vi.fn();
+    room.broadcastRoomState = vi.fn();
+    room.broadcastToRoomMembers = vi.fn();
+    room.onMatchEndCommitted = vi.fn();
+
+    const ws = { send: vi.fn(), close: vi.fn() };
+    const session = {
+      playerId: "phase17b-leaving-owner",
+      sessionToken: "phase17b-session-phase17b-leaving-owner"
+    };
+    await room.handleRoomLifecycleMessage(ws, {
+      protocolVersion: "1.0.0",
+      messageType: "LEAVE",
+      requestId: "phase17b-leave-request",
+      payloadJson: "{}"
+    }, session);
+
+    expect(sql.roomMeta.has("roomMember:phase17b-leaving-owner")).toBe(false);
+    expect(sql.roomMeta.get("roomOwnerId")).toBe("phase17b-last-spectator");
+    expect(sql.players.get("phase17b-leaving-owner")).toMatchObject({
+      connected: 0, ready: 0, state: "LEFT"
+    });
+    expect(sql.events.map(event => event.event_type)).toEqual(["PLAYER_LEFT", "MATCH_END"]);
+    expect(sql.events.map(event => event.sequence)).toEqual([1, 2]);
+    expect(room.gameStatus).toBe("ENDED");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("ENDED");
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("9");
+    expect(room.onMatchEndCommitted).toHaveBeenCalledTimes(1);
+    expect(ws.close).toHaveBeenCalledWith(1000, "LEFT_MATCH");
+  });
+
+  it("hands publisher authority to an alive connected member when the current publisher dies", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const oldPublisher = PUBLISHER_ID;
+    const nextPublisher = ATTACKER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "PLAYING";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomCreated", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
+    sql.roomMeta.set("levelPublisher", oldPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "7");
+    sql.roomMeta.set("levelPublisherReadyTerm", "7");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [oldPublisher, nextPublisher]) {
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: playerId === oldPublisher ? 1 : 2 }));
+      sql.roomMeta.set("heroState:" + playerId, JSON.stringify(heroBefore));
+    }
+    sql.players.get(oldPublisher)!.state = "SPECTATOR";
+    sql.players.get(oldPublisher)!.hp = 0;
+    sql.players.get(nextPublisher)!.state = "ALIVE";
+    sql.players.get(nextPublisher)!.connected = 1;
+
+    (room as any).recordCoopLifeStateChange(oldPublisher, "ALIVE", "SPECTATOR");
+
+    expect(sql.roomMeta.get("levelPublisher")).toBe(nextPublisher);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("8");
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("RECOVERING");
+    expect((room as any).pendingCoopPublisherAuthorityReason).toBe("PUBLISHER_LIFE_ENDED");
+
+    const order: string[] = [];
+    room.broadcast = vi.fn((message: any) => order.push(message.messageType));
+    room.broadcastRoomState = vi.fn((reason: string) => order.push("ROOM_STATE:" + reason));
+    room.onPublisherAuthorityChangedCommitted("PUBLISHER_LIFE_ENDED");
+    expect(order).toEqual(["LEVEL_PUBLISHER_CHANGED", "ROOM_STATE:PUBLISHER_LIFE_ENDED"]);
+  });
+
+  it("suspends without a replacement and promotes the revived Ankh owner only after revival", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const publisherId = PUBLISHER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "PLAYING";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomCreated", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
+    sql.roomMeta.set("levelPublisher", publisherId);
+    sql.roomMeta.set("levelPublisherTerm", "4");
+    sql.roomMeta.set("levelPublisherReadyTerm", "4");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    sql.roomMeta.set("roomMember:" + publisherId, JSON.stringify({ joinedAt: 1 }));
+    const deadHero = { ...heroBefore, hp: 0, ankhCount: 1, blessedAnkhCount: 0 };
+    sql.roomMeta.set("heroState:" + publisherId, JSON.stringify(deadHero));
+    sql.players.get(publisherId)!.state = "DEAD";
+    sql.players.get(publisherId)!.hp = 0;
+    sql.players.get(publisherId)!.connected = 1;
+    room.state.getWebSockets = () => [];
+
+    (room as any).recordCoopLifeStateChange(publisherId, "ALIVE", "DEAD");
+    expect(sql.roomMeta.has("levelPublisher")).toBe(false);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("5");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("SUSPENDED");
+
+    const revivedHero = { ...heroBefore, hp: 10, ankhCount: 0, blessedAnkhCount: 0 };
+    sql.roomMeta.set("heroState:" + publisherId, JSON.stringify(revivedHero));
+    sql.players.get(publisherId)!.state = "ALIVE";
+    sql.players.get(publisherId)!.hp = 10;
+    const revivedSocket = { deserializeAttachment: () => ({
+      playerId: publisherId, sessionToken: "publisher-session"
+    }), send: vi.fn() };
+    room.state.getWebSockets = () => [revivedSocket];
+
+    (room as any).recordCoopLifeStateChange(publisherId, "DEAD", "ALIVE");
+    expect(sql.roomMeta.get("levelPublisher")).toBe(publisherId);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("6");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("RECOVERING");
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect((room as any).pendingCoopPublisherAuthorityReason).toBe("PUBLISHER_ASSIGNED_AFTER_REVIVAL");
+  });
+
+  it("transfers publisher authority after voluntary LEAVE and orders it after PLAYER_LEFT", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const leavingPublisher = PUBLISHER_ID;
+    const nextPublisher = ATTACKER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "PLAYING";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    sql.roomMeta.set("roomLifecycleVersion", "1");
+    sql.roomMeta.set("roomCreated", "1");
+    sql.roomMeta.set("roomLifecycleState", "PLAYING");
+    sql.roomMeta.set("gameMode", "COOP_DUNGEON");
+    sql.roomMeta.set("roomOwnerId", leavingPublisher);
+    sql.roomMeta.set("levelPublisher", leavingPublisher);
+    sql.roomMeta.set("levelPublisherTerm", "9");
+    sql.roomMeta.set("levelPublisherReadyTerm", "9");
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [leavingPublisher, nextPublisher]) {
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: playerId === leavingPublisher ? 1 : 2 }));
+      sql.roomMeta.set("heroState:" + playerId, JSON.stringify(heroBefore));
+    }
+    const order: string[] = [];
+    const ws = { send: vi.fn(), close: vi.fn() };
+    const nextSocket = { deserializeAttachment: () => ({
+      playerId: nextPublisher, sessionToken: "attacker-session"
+    }), send: vi.fn() };
+    room.state.getWebSockets = () => [nextSocket];
+    room.sendRoomStateToSocket = vi.fn();
+    room.broadcastToRoomMembers = vi.fn((message: any) => order.push(message.messageType));
+    room.broadcast = vi.fn((message: any) => order.push(message.messageType));
+    room.broadcastRoomState = vi.fn((reason: string) => order.push("ROOM_STATE:" + reason));
+
+    await room.handleRoomLifecycleMessage(ws, {
+      protocolVersion: "1.0.0", messageType: "LEAVE", requestId: "phase17b-publisher-leave", payloadJson: "{}"
+    }, { playerId: leavingPublisher, sessionToken: "publisher-session" });
+
+    expect(sql.roomMeta.has("roomMember:" + leavingPublisher)).toBe(false);
+    expect(sql.roomMeta.get("roomOwnerId")).toBe(nextPublisher);
+    expect(sql.roomMeta.get("levelPublisher")).toBe(nextPublisher);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("10");
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("RECOVERING");
+    expect(order).toEqual(["EVENT_BATCH", "LEVEL_PUBLISHER_CHANGED", "ROOM_STATE:PUBLISHER_LEFT_MATCH"]);
+  });
+
+  it("keeps the lobby owner aligned with an already-active publisher when the owner leaves", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const leavingOwner = PUBLISHER_ID;
+    const activePublisher = ATTACKER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "LOBBY";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    for (const [key, value] of [["roomLifecycleVersion", "1"], ["roomCreated", "1"],
+      ["roomLifecycleState", "LOBBY"], ["gameMode", "COOP_DUNGEON"],
+      ["roomOwnerId", leavingOwner], ["levelPublisher", activePublisher],
+      ["levelPublisherTerm", "30"], ["levelPublisherReadyTerm", "30"]]) sql.roomMeta.set(key, value);
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [leavingOwner, activePublisher]) {
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: playerId === leavingOwner ? 1 : 2 }));
+      sql.roomMeta.set("heroState:" + playerId, JSON.stringify(heroBefore));
+    }
+    const ws = { send: vi.fn(), close: vi.fn() };
+    const nextSocket = { deserializeAttachment: () => ({ playerId: activePublisher, sessionToken: "attacker-session" }), send: vi.fn() };
+    room.state.getWebSockets = () => [nextSocket];
+    room.sendRoomStateToSocket = vi.fn();
+    room.broadcastToRoomMembers = vi.fn();
+    room.broadcast = vi.fn();
+    room.broadcastRoomState = vi.fn();
+
+    await room.handleRoomLifecycleMessage(ws, {
+      protocolVersion: "1.0.0", messageType: "LEAVE", requestId: "phase17b-owner-handoff-existing-publisher", payloadJson: "{}"
+    }, { playerId: leavingOwner, sessionToken: "publisher-session" });
+
+    expect(sql.roomMeta.get("roomOwnerId")).toBe(activePublisher);
+    expect(sql.roomMeta.get("levelPublisher")).toBe(activePublisher);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("30");
+    expect(sql.roomMeta.get("levelPublisherReadyTerm")).toBe("30");
+    expect(sql.players.get(leavingOwner)).toMatchObject({ connected: 0, state: "LEFT" });
+  });
+
+  it("prefers the connected room owner when a different lobby publisher leaves", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const leavingPublisher = PUBLISHER_ID;
+    const owner = ATTACKER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "LOBBY";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    for (const [key, value] of [["roomLifecycleVersion", "1"], ["roomCreated", "1"],
+      ["roomLifecycleState", "LOBBY"], ["gameMode", "COOP_DUNGEON"],
+      ["roomOwnerId", owner], ["levelPublisher", leavingPublisher],
+      ["levelPublisherTerm", "40"], ["levelPublisherReadyTerm", "40"]]) sql.roomMeta.set(key, value);
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [leavingPublisher, owner]) {
+      sql.roomMeta.set("roomMember:" + playerId, JSON.stringify({ joinedAt: playerId === leavingPublisher ? 1 : 2 }));
+      sql.roomMeta.set("heroState:" + playerId, JSON.stringify(heroBefore));
+    }
+    const ws = { send: vi.fn(), close: vi.fn() };
+    const ownerSocket = { deserializeAttachment: () => ({ playerId: owner, sessionToken: "attacker-session" }), send: vi.fn() };
+    room.state.getWebSockets = () => [ownerSocket];
+    room.sendRoomStateToSocket = vi.fn();
+    room.broadcastToRoomMembers = vi.fn();
+    room.broadcast = vi.fn();
+    room.broadcastRoomState = vi.fn();
+
+    await room.handleRoomLifecycleMessage(ws, {
+      protocolVersion: "1.0.0", messageType: "LEAVE", requestId: "phase17b-non-owner-publisher-leave", payloadJson: "{}"
+    }, { playerId: leavingPublisher, sessionToken: "publisher-session" });
+
+    expect(sql.roomMeta.get("roomOwnerId")).toBe(owner);
+    expect(sql.roomMeta.get("levelPublisher")).toBe(owner);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("41");
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("LOBBY");
+  });
+  it("reassigns the lobby publisher when the current room owner leaves before MATCH_START", async () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const { sql, room, heroBefore, levelSnapshot } = fixture;
+    const leavingOwner = PUBLISHER_ID;
+    const nextOwner = ATTACKER_ID;
+    room.gameMode = "COOP_DUNGEON";
+    room.gameStatus = "LOBBY";
+    room.currentDepth = 1;
+    room.matchSeed = Number(levelSnapshot.seed);
+    for (const [key,value] of [["roomLifecycleVersion","1"],["roomCreated","1"],["roomLifecycleState","LOBBY"],["gameMode","COOP_DUNGEON"],["roomOwnerId",leavingOwner],["levelPublisher",leavingOwner],["levelPublisherTerm","20"],["levelPublisherReadyTerm","20"]]) sql.roomMeta.set(key,value);
+    sql.roomMeta.set("levelSnapshot:1", JSON.stringify(levelSnapshot));
+    for (const playerId of [leavingOwner,nextOwner]) {
+      sql.roomMeta.set("roomMember:"+playerId, JSON.stringify({ joinedAt: playerId===leavingOwner ? 1 : 2 }));
+      sql.roomMeta.set("heroState:"+playerId, JSON.stringify(heroBefore));
+    }
+    const order: string[] = [];
+    const ws = { send: vi.fn(), close: vi.fn() };
+    const nextSocket = { deserializeAttachment: () => ({ playerId: nextOwner, sessionToken:"attacker-session" }), send: vi.fn() };
+    room.state.getWebSockets = () => [nextSocket];
+    room.sendRoomStateToSocket = vi.fn();
+    room.broadcastToRoomMembers = vi.fn((message: any) => order.push(message.messageType));
+    room.broadcast = vi.fn((message: any) => order.push(message.messageType));
+    room.broadcastRoomState = vi.fn((reason: string) => order.push("ROOM_STATE:"+reason));
+    await room.handleRoomLifecycleMessage(ws, { protocolVersion:"1.0.0", messageType:"LEAVE", requestId:"phase17b-lobby-owner-leave", payloadJson:"{}" }, { playerId:leavingOwner, sessionToken:"publisher-session" });
+    expect(sql.roomMeta.has("roomMember:"+leavingOwner)).toBe(false);
+    expect(sql.roomMeta.get("roomOwnerId")).toBe(nextOwner);
+    expect(sql.roomMeta.get("levelPublisher")).toBe(nextOwner);
+    expect(sql.roomMeta.get("levelPublisherTerm")).toBe("21");
+    expect(sql.roomMeta.has("levelPublisherReadyTerm")).toBe(false);
+    expect(sql.roomMeta.get("roomLifecycleState")).toBe("LOBBY");
+    expect(sql.players.get(leavingOwner)).toMatchObject({ connected: 0, ready: 0, state: "LEFT" });
+    expect(ws.close).toHaveBeenCalledWith(1000, "LEFT_ROOM");
+    expect(order).toEqual(["PLAYER_LEFT","LEVEL_PUBLISHER_CHANGED","ROOM_STATE:PUBLISHER_LEFT_LOBBY"]);
   });
 });

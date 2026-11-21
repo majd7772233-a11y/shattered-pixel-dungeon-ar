@@ -112,7 +112,8 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     const enoughPlayers = members.length >= (ROOM_MIN_PLAYERS_BY_MODE[mode] || 2);
 
     const publisherId = this.roomMetaValue("levelPublisher");
-    const publisherPresent = !!publisherId && members.some(member => member.playerId === publisherId && member.connected);
+    const publisherPresent = !!publisherId && members.some(member => member.playerId === publisherId
+      && member.connected && (mode !== "COOP_DUNGEON" || member.state === "ALIVE"));
     const publisherReady = this.isLevelPublisherReady();
     let roomStatus = storedRoomStatus;
     if (roomClosed || storedRoomStatus === "CLOSED") {
@@ -187,10 +188,23 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     }
   }
 
+  protected override onMatchEndCommitted(): void {
+    this.broadcastRoomState("MATCH_ENDED");
+  }
+
   protected override onPublisherRecoveryCommitted(): void {
     // Rebase state and publisher-ready term are already committed in SQLite.
     this.broadcastRoomSnapshot();
     this.broadcastRoomState("PUBLISHER_RECOVERED");
+  }
+
+  protected override onPublisherAuthorityChangedCommitted(reason: string): void {
+    this.broadcast(this.levelPublisherStateMessage(reason));
+    this.broadcastRoomState(reason);
+  }
+
+  protected override onCoopLifeStateChangedCommitted(reason: string): void {
+    this.broadcastRoomState(reason);
   }
 
   protected broadcastRoomState(reason: string): void {
@@ -218,7 +232,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
           "SELECT session_token FROM players WHERE player_id = ?", session.playerId
         ).toArray()[0];
         if (!row || String(row.session_token || "") !== String(session.sessionToken || "")) continue;
-        socket.send(serialized);
+        this.sendRoomSocketMessage(socket, serialized);
       } catch (_) {}
     }
   }
@@ -592,37 +606,151 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         this.sendRoomStateToSocket(ws, "NOT_A_ROOM_MEMBER");
         return;
       }
-      if (this.gameStatus !== "LOBBY" || this.roomMetaValue("roomLifecycleState") !== "LOBBY") {
+      const lifecycleState = this.roomMetaValue("roomLifecycleState");
+      const inMatchLeave = this.gameMode === "COOP_DUNGEON"
+        && (this.gameStatus === "PLAYING" || this.gameStatus === "ENDED")
+        && ["PLAYING", "SUSPENDED", "RECOVERING", "ENDED"].includes(String(lifecycleState || ""));
+      if (inMatchLeave) {
+        const previousGameStatus = this.gameStatus;
+        const previousSequence = this.currentSequence;
+        const previousOwner = this.roomMetaValue("roomOwnerId");
+        let nextOwner: RoomMemberState | null = null;
+        let leaveEventMessage: NetworkMessage | null = null;
+        let matchEndMessage: NetworkMessage | null = null;
+        let publisherChangedReason: string | null = null;
+        try {
+          this.state.storage.transactionSync(() => {
+            if (!this.isRoomMember(session.playerId)) throw new Error("NOT_A_ROOM_MEMBER");
+            this.deleteRoomMeta(ROOM_MEMBER_PREFIX + session.playerId);
+            this.deleteRoomMeta(ROOM_READY_PREFIX + session.playerId);
+            this.sql.exec(
+              "UPDATE players SET connected = 0, ready = 0, state = 'LEFT' WHERE player_id = ?",
+              session.playerId
+            );
+            const remaining = this.roomMembers();
+            nextOwner = remaining.find(member => member.connected && member.state === "ALIVE")
+              || remaining.find(member => member.connected) || remaining[0] || null;
+            const ownerLeaving = previousOwner === session.playerId;
+            if (ownerLeaving) this.setRoomMeta("roomOwnerId", nextOwner ? nextOwner.playerId : "");
+
+            this.currentSequence++;
+            const leavePayload = { playerId: session.playerId, reason: "VOLUNTARY_LEAVE" };
+            this.sql.exec(
+              "INSERT INTO events (sequence,sender_id,event_type,payload) VALUES (?,?,?,?)",
+              this.currentSequence, "SERVER", "PLAYER_LEFT", JSON.stringify(leavePayload)
+            );
+            this.persistEventLogState();
+            leaveEventMessage = {
+              protocolVersion: "1.0.0",
+              messageType: "EVENT_BATCH",
+              senderId: "SERVER",
+              sequence: this.currentSequence,
+              payloadJson: JSON.stringify([{
+                sequence: this.currentSequence,
+                eventType: "PLAYER_LEFT",
+                depth: this.currentDepth,
+                action: leavePayload
+              }])
+            };
+            matchEndMessage = this.checkMatchEndCondition();
+            const publisherRow = this.sql.exec(
+              "SELECT value FROM room_meta WHERE key = ?", "levelPublisher"
+            ).toArray()[0];
+            const currentPublisherId = String(publisherRow?.value || "");
+            if (currentPublisherId === session.playerId && !matchEndMessage) {
+              publisherChangedReason = this.reassignCoopPublisherAfterAuthorityLoss(
+                session.playerId, this.gameStatus === "LOBBY" ? "PUBLISHER_LEFT_LOBBY" : "PUBLISHER_LEFT_MATCH"
+              );
+            } else if (ownerLeaving && !matchEndMessage) {
+              const activePublisher = currentPublisherId
+                ? remaining.find(member => member.playerId === currentPublisherId && member.connected && member.state === "ALIVE")
+                : null;
+              if (activePublisher) {
+                nextOwner = activePublisher;
+                this.setRoomMeta("roomOwnerId", activePublisher.playerId);
+              } else {
+                publisherChangedReason = currentPublisherId
+                  ? this.reassignCoopPublisherAfterAuthorityLoss(currentPublisherId, "PUBLISHER_LEFT_LOBBY")
+                  : this.reassignCoopPublisherAfterAuthorityLoss(null, "PUBLISHER_LEFT_LOBBY");
+              }
+            }
+            if (this.gameStatus === "LOBBY" && publisherChangedReason) {
+              const electedPublisherId = this.roomMetaValue("levelPublisher");
+              const electedPublisher = remaining.find(member => member.playerId === electedPublisherId
+                && member.connected && member.state === "ALIVE");
+              if (electedPublisher) {
+                nextOwner = electedPublisher;
+                this.setRoomMeta("roomOwnerId", electedPublisher.playerId);
+              }
+            }
+          });
+        } catch (error) {
+          this.gameStatus = previousGameStatus;
+          this.currentSequence = previousSequence;
+          this.sendLifecycleError(ws, msg, error instanceof Error ? error.message : "ROOM_LEAVE_FAILED");
+          return;
+        }
+
+        this.sendLifecycleAck(ws, msg, "LEAVE");
+        this.sendRoomStateToSocket(ws, "ROOM_LEFT");
+        if (leaveEventMessage) this.broadcastToRoomMembers(leaveEventMessage);
+        if (matchEndMessage) {
+          this.broadcastToRoomMembers(matchEndMessage);
+          this.onMatchEndCommitted();
+        } else if (publisherChangedReason) {
+          this.onPublisherAuthorityChangedCommitted(publisherChangedReason);
+        } else {
+          this.broadcastRoomState("PLAYER_LEFT_MATCH");
+        }
+        try {
+          if (typeof ws.close === "function") ws.close(1000, "LEFT_MATCH");
+        } catch (_) {}
+        return;
+      }
+
+      if (this.gameStatus !== "LOBBY" || lifecycleState !== "LOBBY") {
         this.sendLifecycleError(ws, msg, "MATCH_ALREADY_STARTED");
         return;
       }
       const previousOwner = this.roomMetaValue("roomOwnerId");
-      const previousPublisher = this.roomMetaValue("levelPublisher");
       let nextOwner: RoomMemberState | null = null;
+      let publisherChangedReason: string | null = null;
       try {
         this.state.storage.transactionSync(() => {
           this.deleteRoomMeta(ROOM_MEMBER_PREFIX + session.playerId);
           this.deleteRoomMeta(ROOM_READY_PREFIX + session.playerId);
-          this.sql.exec("UPDATE players SET ready = 0 WHERE player_id = ?", session.playerId);
+          this.sql.exec("UPDATE players SET connected = 0, ready = 0, state = 'LEFT' WHERE player_id = ?", session.playerId);
           const remaining = this.roomMembers();
-          nextOwner = remaining.find(member => member.connected) || remaining[0] || null;
+          nextOwner = remaining.find(member => member.connected && member.state === "ALIVE")
+            || remaining.find(member => member.connected)
+            || remaining.find(member => member.state === "ALIVE") || remaining[0] || null;
+          const currentPublisherId = this.roomMetaValue("levelPublisher");
           if (!nextOwner) {
             this.setRoomMeta("roomClosed", "1");
             this.setRoomMeta("roomLifecycleState", "CLOSED");
             this.setRoomMeta("roomOwnerId", "");
-            this.setRoomMeta("levelPublisher", "");
+            this.deleteRoomMeta("levelPublisher");
             this.deleteRoomMeta("levelPublisherReadyTerm");
-          } else if (previousOwner === session.playerId) {
-            this.setRoomMeta("roomOwnerId", nextOwner.playerId);
-            for (const member of remaining) {
-              this.sql.exec("UPDATE players SET ready = 0 WHERE player_id = ?", member.playerId);
-              this.setRoomMeta(ROOM_READY_PREFIX + member.playerId, JSON.stringify({ ready: false, seed: this.matchSeed, sequence: this.currentSequence }));
-            }
             const currentTerm = this.currentLevelPublisherTerm();
             if (currentTerm < 0 || currentTerm >= Number.MAX_SAFE_INTEGER) throw new Error("INVALID_LEVEL_PUBLISHER_TERM");
-            this.setRoomMeta("levelPublisher", nextOwner.playerId);
             this.setRoomMeta("levelPublisherTerm", String(currentTerm + 1));
-            this.setRoomMeta("levelPublisherReadyTerm", String(currentTerm + 1));
+          } else {
+            if (previousOwner === session.playerId) {
+              this.setRoomMeta("roomOwnerId", nextOwner.playerId);
+              for (const member of remaining) {
+                this.sql.exec("UPDATE players SET ready = 0 WHERE player_id = ?", member.playerId);
+                this.setRoomMeta(ROOM_READY_PREFIX + member.playerId, JSON.stringify({ ready: false, seed: this.matchSeed, sequence: this.currentSequence }));
+              }
+            }
+            if (currentPublisherId === session.playerId) {
+              publisherChangedReason = this.reassignCoopPublisherAfterAuthorityLoss(
+                session.playerId, "PUBLISHER_LEFT_LOBBY"
+              );
+            } else if (!currentPublisherId && previousOwner === session.playerId) {
+              publisherChangedReason = this.reassignCoopPublisherAfterAuthorityLoss(
+                null, "PUBLISHER_LEFT_LOBBY"
+              );
+            }
           }
         });
       } catch (error) {
@@ -636,15 +764,15 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         sequence: this.currentSequence,
         payloadJson: JSON.stringify({ playerId: session.playerId, reason: "ROOM_LEAVE" })
       });
-      if (previousOwner === session.playerId && nextOwner) {
-        this.broadcastToRoomMembers(this.levelPublisherStateMessage("ROOM_OWNER_LEFT"));
-      }
       this.sendLifecycleAck(ws, msg, "LEAVE");
       this.sendRoomStateToSocket(ws, "ROOM_LEFT");
-      this.broadcastRoomState("PLAYER_LEFT_LOBBY");
+      if (publisherChangedReason) this.onPublisherAuthorityChangedCommitted(publisherChangedReason);
+      else this.broadcastRoomState("PLAYER_LEFT_LOBBY");
+      try {
+        if (typeof ws.close === "function") ws.close(1000, "LEFT_ROOM");
+      } catch (_) {}
       return;
     }
-
     this.sendLifecycleError(ws, msg, "UNSUPPORTED_ROOM_OPERATION");
   }
 

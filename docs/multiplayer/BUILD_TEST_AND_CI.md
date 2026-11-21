@@ -393,3 +393,13 @@ The deployment pipeline passed TypeScript build and 380/380 Vitest tests. Per us
 - `scripts/ci/android-network-lifecycle-smoke.sh` is a later manual helper. It exits unless `ALLOW_DEFERRED_ANDROID_RUNTIME_SMOKE=1` is explicitly supplied; it was NOT run. No app launch, ADB command, network toggle, screen-off, Activity recreation, room creation/join/resume or hosted WebSocket test is claimed. `android-network-lifecycle.log` is ignored by Git.
 - The DEBUG-only platform/Activity logs are observability aids, not runtime evidence. `AndroidPlatformSupport` now checks both callback identity and monitor generation, invalidates queued callback generations before unregister, clears per-network state and synchronizes publication with monitor start/stop.
 - This is still local JVM/build evidence only. Do not mark Phase 14-B3/Phase 14 closed until hosted Worker create/join/resume/failure and supported Android framework lifecycle acceptance are explicitly authorized and pass.
+
+## Phase 17-B local verification — 2026-11-21
+
+- Backend build and protocol/schema guards: PASS; 7 Vitest source files / 408 tests PASS.
+- Durable Object SQLite integration: 1 file / 18 tests PASS. Malformed recovery exception logs are expected rejection fixtures.
+- Forced Gradle `test assembleDebug --rerun-tasks --no-daemon`: BUILD SUCCESSFUL; 58 actionable tasks, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,261,983 bytes; SHA-256 `8ABC8CB431835C777EABF02F7D46932F9B33094A9DC345EB86DF7BC7ED59E115`.
+- `git diff --check`: PASS. Final pushed commit still requires exact-head GitHub CI; record its SHA and run before declaring parent Phase 17 fully closed.
+## Phase 17-B verification boundary
+
+Phase 17-B uses TypeScript build/unit tests, Durable Object SQLite integration, Android JVM tests and Debug APK assembly. Final counts and CI run links must be recorded only after the final source commit is pushed and the exact remote HEAD is green. Do not run emulator/ADB, Bluetooth pairing, real LAN, or cross-device gameplay verification before post-Phase-22 acceptance.

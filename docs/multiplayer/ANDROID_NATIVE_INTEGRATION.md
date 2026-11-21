@@ -531,3 +531,7 @@ Phase 11-B baseline inventory: NativeCombatRuntimeIntegrationTest.java had 74 @T
 `stopConnectivityMonitoring()` increments the generation before unregistering, marks monitoring inactive, detaches the callback and clears manager/default/per-network references. `publishConnectivityState(generation)` is synchronized with start/stop and performs a generation check before notifying MultiplayerManager. A queued callback from an old Activity therefore cannot publish into the new monitoring generation. `AndroidLauncher` emits DEBUG-only onCreate/onResume/onPause/onDestroy diagnostics; the platform adapter logs DEBUG-only callback and availability transitions. `android/build.gradle` explicitly enables BuildConfig generation.
 
 Current automated evidence is 172/172 core JVM tests and a successful forced `test assembleDebug` build (58/58 Gradle tasks executed). No Android framework callback/network toggle/screen-off/Activity recreation runtime test is claimed; the standalone Emulator helper is gated and deferred by user instruction.
+
+## Phase 17-B — remote departure and life-state events
+
+The Android `MessageRouter` accepts the sequenced `PLAYER_LEFT` lifecycle event and removes the departed remote player from the multiplayer scene model. Room-state payloads continue to expose server-authoritative membership/life state. This work does not complete the lobby or gameplay UI; that remains Phase 20, followed by Phase 21 localization, responsive layout, RTL/LTR and accessibility work.

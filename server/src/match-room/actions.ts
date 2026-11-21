@@ -14,10 +14,14 @@ import { isValidNativeWorldActionIntent } from "../validators/world-actions";
 import { isValidNativeDropIntent, isValidNativePickupIntent, isValidNativeThrowIntent, isValidNativeProjectileCombatIntent, isValidNativeProjectileCombatResult, isValidNativeAlchemyIntent } from "../validators/world-items";
 import { isValidNativeMutationActionCost, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 import { MatchRoomSnapshots } from "./snapshots";
+import { coopDeathStateFromHeroStateJson, hasUnblessedAnkh } from "./life-state";
 
 export class MatchRoomActions extends MatchRoomSnapshots {
   private nativeActionTransactionActive = false;
   private nativeActionTransactionPeerMessages: Array<() => void> | null = null;
+  private nativeActionTransactionRoomMessages: Array<() => void> | null = null;
+  private pendingCoopLifeStateReason: string | null = null;
+  private pendingCoopPublisherAuthorityReason: string | null = null;
 
   /**
    * Every accepted ACTION shares one Durable Object SQL transaction. Hero/world changes,
@@ -25,6 +29,8 @@ export class MatchRoomActions extends MatchRoomSnapshots {
    * Socket messages and broadcasts are released only after the transaction succeeds.
    */
   protected async handleAction(ws: WebSocket, msg: NetworkMessage, session: SessionData) {
+    this.pendingCoopLifeStateReason = null;
+    this.pendingCoopPublisherAuthorityReason = null;
     let payload: any = null;
     try {
       payload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson;
@@ -73,6 +79,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     }
     const deferredSocketMessages: Array<string | ArrayBuffer> = [];
     const deferredPeerMessages: Array<() => void> = [];
+    const deferredRoomMessages: Array<() => void> = [];
     const deferredBroadcasts: Array<() => void> = [];
     const targetWs = ws;
     const transactionalWs = new Proxy(ws, {
@@ -98,6 +105,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     // broadcasts until transactionSync succeeds. MATCH_END persistence stays inside the transaction.
     this.nativeActionTransactionActive = true;
     this.nativeActionTransactionPeerMessages = deferredPeerMessages;
+    this.nativeActionTransactionRoomMessages = deferredRoomMessages;
     room.broadcast = (message: NetworkMessage, excludeWs?: WebSocket) => {
       deferredBroadcasts.push(() => originalBroadcast.call(this, message, excludeWs));
     };
@@ -140,6 +148,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
     } finally {
       this.nativeActionTransactionActive = false;
       this.nativeActionTransactionPeerMessages = null;
+      this.nativeActionTransactionRoomMessages = null;
+      this.pendingCoopLifeStateReason = null;
+      this.pendingCoopPublisherAuthorityReason = null;
       if (hadOwnBroadcast) room.broadcast = ownBroadcast;
       else delete room.broadcast;
       if (hadOwnBroadcastWithFov) room.broadcastWithFOV = ownBroadcastWithFov;
@@ -158,9 +169,20 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       for (const send of deferredBroadcasts) {
         try { send(); } catch (_) {}
       }
+      // Room status follows sequenced match events from the same committed ACTION.
+      for (const send of deferredRoomMessages) {
+        try { send(); } catch (_) {}
+      }
     }
   }
   /** Queue direct sends to another player until an atomic native action commits. */
+  protected override sendRoomSocketMessage(socket: WebSocket, message: string): void {
+    if (this.nativeActionTransactionActive && this.nativeActionTransactionRoomMessages) {
+      this.nativeActionTransactionRoomMessages.push(() => socket.send(message));
+    } else {
+      socket.send(message);
+    }
+  }
   private sendNativeActionPeerMessage(peer: WebSocket, message: string): void {
     if (this.nativeActionTransactionActive && this.nativeActionTransactionPeerMessages) {
       this.nativeActionTransactionPeerMessages.push(() => peer.send(message));
@@ -168,6 +190,113 @@ export class MatchRoomActions extends MatchRoomSnapshots {
       peer.send(message);
     }
   }
+  /** Elect a live connected member; LOBBY elections remain unready until fresh native data is uploaded, while PLAYING requires a complete recoverable world and Hero. */
+  private findConnectedCoopPublisher(excludedPlayerId: string | null): string | null {
+    const levelRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelSnapshot:" + this.currentDepth
+    ).toArray()[0];
+    let level: any = null;
+    try { level = levelRow && typeof levelRow.value === "string" ? JSON.parse(String(levelRow.value)) : null; } catch (_) {}
+    if (this.gameStatus !== "LOBBY"
+        && (!hasCompleteNativeLevelSnapshot(level) || Number(level.depth) !== this.currentDepth
+          || Number(level.seed) !== this.matchSeed || Number(level.branch) !== 0)) return null;
+
+    const liveTokens = new Map<string, Set<string>>();
+    for (const socket of this.state.getWebSockets()) {
+      try {
+        const attached = socket.deserializeAttachment() as SessionData | null;
+        if (!attached?.playerId || !attached.sessionToken) continue;
+        const tokens = liveTokens.get(String(attached.playerId)) || new Set<string>();
+        tokens.add(String(attached.sessionToken));
+        liveTokens.set(String(attached.playerId), tokens);
+      } catch (_) {}
+    }
+    const candidates = this.sql.exec(
+      "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC"
+    ).toArray();
+    if (this.gameStatus === "LOBBY") {
+      const ownerRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomOwnerId").toArray()[0];
+      const ownerId = String(ownerRow?.value || "");
+      const ownerIndex = candidates.findIndex(candidate => String(candidate.player_id) === ownerId);
+      if (ownerIndex > 0) candidates.unshift(candidates.splice(ownerIndex, 1)[0]);
+    }
+    for (const candidate of candidates) {
+      const playerId = String(candidate.player_id || "");
+      const sessionToken = String(candidate.session_token || "");
+      if (!playerId || playerId === excludedPlayerId || !sessionToken || !this.isRoomMember(playerId)
+          || (this.gameStatus !== "LOBBY" && !liveTokens.get(playerId)?.has(sessionToken))) continue;
+      if (this.gameStatus === "LOBBY") return playerId;
+      const currentHp = Number(candidate.hp);
+      const currentHt = Number(candidate.ht);
+      if (!Number.isSafeInteger(currentHp) || currentHp <= 0
+          || !Number.isSafeInteger(currentHt) || currentHt <= 0) continue;
+      const heroRow = this.sql.exec(
+        "SELECT value FROM room_meta WHERE key = ?", "heroState:" + playerId
+      ).toArray()[0];
+      if (!heroRow || typeof heroRow.value !== "string") continue;
+      let hero: any = null;
+      try { hero = JSON.parse(String(heroRow.value)); } catch (_) {}
+      if (!hero || !isValidNativeHeroStateJson(String(heroRow.value), {
+        hp: Number(candidate.hp), ht: Number(candidate.ht), pos: Number(candidate.pos),
+        shielding: Number(hero.shielding)
+      })) continue;
+      return playerId;
+    }
+    return null;
+  }
+
+  /** Revoke the former publisher and require a fresh native rebase from the elected member. */
+  protected reassignCoopPublisherAfterAuthorityLoss(excludedPlayerId: string | null, reason: string): string | null {
+    if (this.gameMode !== "COOP_DUNGEON" || !this.isRoomLifecycleEnabled()
+        || (this.gameStatus !== "PLAYING" && this.gameStatus !== "LOBBY")) return null;
+    const currentRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelPublisher"
+    ).toArray()[0];
+    const currentPublisherId = currentRow && typeof currentRow.value === "string"
+      ? String(currentRow.value) : "";
+    if (excludedPlayerId !== null && currentPublisherId !== excludedPlayerId) return null;
+    if (excludedPlayerId === null && currentPublisherId) return null;
+    const currentTerm = this.currentLevelPublisherTerm();
+    if (currentTerm < 0 || currentTerm >= Number.MAX_SAFE_INTEGER) throw new Error("INVALID_LEVEL_PUBLISHER_TERM");
+    const nextTerm = currentTerm + 1;
+    const nextPublisherId = this.findConnectedCoopPublisher(excludedPlayerId);
+    this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      "levelPublisherTerm", String(nextTerm));
+    this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisherReadyTerm");
+    if (nextPublisherId) {
+      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "levelPublisher", nextPublisherId);
+      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "roomLifecycleState", this.gameStatus === "PLAYING" ? "RECOVERING" : "LOBBY");
+    } else {
+      this.sql.exec("DELETE FROM room_meta WHERE key = ?", "levelPublisher");
+      this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "roomLifecycleState", this.gameStatus === "PLAYING" ? "SUSPENDED" : "LOBBY");
+    }
+    return reason;
+  }
+
+  /** Record a committed Co-op life transition and fence a publisher that is no longer alive. */
+  private recordCoopLifeStateChange(playerId: string, previousState: string, nextState: string): void {
+    if (this.gameMode !== "COOP_DUNGEON" || !this.isRoomLifecycleEnabled()
+        || previousState === nextState || !this.isRoomMember(playerId)) return;
+    this.pendingCoopLifeStateReason = "PLAYER_LIFE_STATE_CHANGED";
+    const publisherRow = this.sql.exec(
+      "SELECT value FROM room_meta WHERE key = ?", "levelPublisher"
+    ).toArray()[0];
+    const publisherId = publisherRow && typeof publisherRow.value === "string"
+      ? String(publisherRow.value) : "";
+    if (publisherId === playerId && nextState !== "ALIVE") {
+      this.pendingCoopPublisherAuthorityReason = this.reassignCoopPublisherAfterAuthorityLoss(
+        playerId, "PUBLISHER_LIFE_ENDED"
+      );
+    } else if (!publisherId && nextState === "ALIVE" && this.gameStatus === "PLAYING") {
+      this.pendingCoopPublisherAuthorityReason = this.reassignCoopPublisherAfterAuthorityLoss(
+        null, "PUBLISHER_ASSIGNED_AFTER_REVIVAL"
+      );
+    }
+  }
+
   /** Avoid opening a nested transaction for item-claim helpers inside handleAction. */
   private nativeActionTransactionStorage(): any {
     if (!this.nativeActionTransactionActive) return this.state.storage;
@@ -188,6 +317,12 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
           requestId: msg.requestId, sequence: this.currentSequence,
           payloadJson: JSON.stringify({ error: "SESSION_REPLACED" }) }));
+        return;
+      }
+      if (this.isRoomLifecycleEnabled() && !this.isRoomMember(session.playerId)) {
+        ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+          requestId: msg.requestId, sequence: this.currentSequence,
+          payloadJson: JSON.stringify({ error: "ROOM_MEMBERSHIP_REQUIRED" }) }));
         return;
       }
       // Authentication was completed by the WebSocket upgrade. Payload identity/token
@@ -1045,7 +1180,25 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           }
         }
 
-        if (!this.isLevelPublisherReady()) {
+        let admissionPayload: any = null;
+        try { admissionPayload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson; } catch (_) {}
+        const admissionAction = String(admissionPayload?.action || admissionPayload?.data?.action || "");
+        const admissionPlayer = this.sql.exec(
+          "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?", session.playerId
+        ).toArray()[0];
+        const admissionHero = this.sql.exec(
+          "SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId
+        ).toArray()[0];
+        const ankhReviveAdmission = this.gameMode === "COOP_DUNGEON"
+          && admissionAction === "REVIVE" && String(admissionPlayer?.state || "") === "DEAD"
+          && hasUnblessedAnkh(admissionHero?.value);
+        if (this.gameMode === "COOP_DUNGEON" && admissionPlayer
+            && String(admissionPlayer.state) !== "ALIVE" && !ankhReviveAdmission) {
+          ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
+            sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PLAYER_NOT_ALIVE" }) }));
+          return;
+        }
+        if (!this.isLevelPublisherReady() && !ankhReviveAdmission) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PUBLISHER_REBASE_REQUIRED" }) }));
           return;
@@ -1091,6 +1244,11 @@ export class MatchRoomActions extends MatchRoomSnapshots {
 
           const actionStr = payload.action || payload.data?.action;
           actionStrForLock = String(actionStr || "");
+          const lifeRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+          const lifeActionAllowed = String(actionStr || "") === "REVIVE" && String(lifeRow?.state || "") === "DEAD" && hasUnblessedAnkh(this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0]?.value);
+          if (this.gameMode === "COOP_DUNGEON" && (!lifeRow || String(lifeRow.state) !== "ALIVE") && !lifeActionAllowed) {
+            actionErrorCode = "PLAYER_NOT_ALIVE";
+          }
           let authorityPending: any = null;
           const nativeMutationLockKey = "nativeMutationPending:" + session.playerId;
           const nativeMutationLockRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", nativeMutationLockKey).toArray()[0];
@@ -1103,7 +1261,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             actionErrorCode = "NATIVE_MUTATION_PENDING";
           }
 
-          if (actionErrorCode === "NATIVE_MUTATION_PENDING" || actionErrorCode === "NATIVE_MUTATION_RESYNC_REQUIRED") {
+          if (actionErrorCode === "NATIVE_MUTATION_PENDING" || actionErrorCode === "NATIVE_MUTATION_RESYNC_REQUIRED" || actionErrorCode === "PLAYER_NOT_ALIVE") {
             // Fail closed until the previous stateful mutation receives its authoritative native post-state.
           } else if (actionStr === "SYNC_PLAYER_COMBAT" && isValidNativeCombatRequestId(msg.requestId)) {
             const data = payload.data || {};
@@ -1216,9 +1374,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 && Math.max(Math.abs((posAfter % width) - (posBefore % width)),
                   Math.abs(Math.floor(posAfter / width) - Math.floor(posBefore / width))) <= 2));
             if (authorityValid) {
-              const newStatus = hpAfter > 0 ? "ALIVE"
-                : this.gameMode === "DEATHMATCH" ? "ALIVE"
-                  : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+              const newStatus = this.gameMode === "COOP_DUNGEON" ? coopDeathStateFromHeroStateJson(mergedState) : hpAfter > 0 ? "ALIVE" : this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
               this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
                 hpAfter, htAfter, posAfter, newStatus, defenderId);
               if (hpAfter <= 0) {
@@ -1227,15 +1383,15 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               }
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + defenderId, mergedState);
+              this.recordCoopLifeStateChange(defenderId, String(defenderRow[0].state), newStatus);
               const mergedAttacker = JSON.parse(mergedAttackerState as string);
-              const attackerStatus = Number(mergedAttacker.hp) > 0 ? "ALIVE"
-                : this.gameMode === "DEATHMATCH" ? "ALIVE"
-                  : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+              const attackerStatus = this.gameMode === "COOP_DUNGEON" ? coopDeathStateFromHeroStateJson(mergedAttackerState) : Number(mergedAttacker.hp) > 0 ? "ALIVE" : this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
               this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
                 Number(mergedAttacker.hp), Number(mergedAttacker.ht), Number(mergedAttacker.pos),
                 attackerStatus, attackerId);
               this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 "heroState:" + attackerId, mergedAttackerState as string);
+              this.recordCoopLifeStateChange(attackerId, String(attackerRow[0].state), attackerStatus);
               if (String(attackerRow[0].state) === "ALIVE" && (attackerStatus === "DEAD" || attackerStatus === "SPECTATOR")) {
                 this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", attackerId);
               }
@@ -1410,13 +1566,12 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "levelSnapshot:" + this.currentDepth, JSON.stringify(levelSnapshot));
                 const attackerAfter = JSON.parse(mergedAttackerState as string);
-                const attackerStatus = Number(attackerAfter.hp) > 0 ? "ALIVE"
-                  : this.gameMode === "DEATHMATCH" ? "ALIVE"
-                    : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+                const attackerStatus = this.gameMode === "COOP_DUNGEON" ? coopDeathStateFromHeroStateJson(mergedAttackerState as string) : Number(attackerAfter.hp) > 0 ? "ALIVE" : this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
                 this.sql.exec("UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?",
                   Number(attackerAfter.hp), Number(attackerAfter.ht), Number(attackerAfter.pos), attackerStatus, String(authorityPending.attackerId));
                 this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   "heroState:" + String(authorityPending.attackerId), mergedAttackerState as string);
+                this.recordCoopLifeStateChange(String(authorityPending.attackerId), String(attackerRow[0].state), attackerStatus);
                 // This stable receipt is independent of the request UUID: re-sending a kill under
                 // a new request ID cannot award the same native Mob twice.
                 for (const rewardId of rewardIds) {
@@ -1769,7 +1924,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               // Hero.damage() publishes the Hero death synchronously, then the Buff publisher
               // intentionally skips its later BUFF_TICK because the Hero is already dead.
               // Validate the complete pre/post Mob batch captured by the same native Poison actor.
-              const isPoisonHeroDeath = hp === 0 && data?.targetState === "DEAD"
+              const isPoisonHeroDeath = hp === 0 && ["DEAD", "SPECTATOR"].includes(String(data?.targetState || ""))
                 && data?.sourceClass === "com.shatteredpixel.shatteredpixeldungeon.actors.buffs.Poison";
               let poisonDeathEvidenceValid = !isPoisonHeroDeath;
               let poisonDeathMobPayload: any = null;
@@ -2007,16 +2162,15 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                     "levelSnapshot:" + this.currentDepth, JSON.stringify(poisonDeathLevelSnapshot));
                 }
                 const oldState = String(playerRow.state);
-                const newState = hp > 0 ? "ALIVE"
-                  : this.gameMode === "DEATHMATCH" ? "ALIVE"
-                    : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
+                const newState = this.gameMode === "COOP_DUNGEON" ? coopDeathStateFromHeroStateJson(finalMergedJson) : hp > 0 ? "ALIVE" : this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
                 const storedHeroState = String(finalMergedJson);
                 this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
                   hp, ht, pos, newState, session.playerId);
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                   ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                   `heroState:${session.playerId}`, storedHeroState);
-                if (oldState === "ALIVE" && newState === "DEAD") {
+                this.recordCoopLifeStateChange(session.playerId, oldState, newState);
+                if (oldState === "ALIVE" && (newState === "DEAD" || newState === "SPECTATOR")) {
                   this.sql.exec(`UPDATE players SET deaths = deaths + 1 WHERE player_id = ?`, session.playerId);
                 }
                 for (const rewardId of poisonDeathRewardIds) {
@@ -2204,14 +2358,13 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               && sourceMobAuthority && sourceMobStateValid;
             if (validDamage) {
               const oldState = String(playerRow.state);
-              const newState = hp === 0
-                ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD")
-                : "ALIVE";
+              const newState = this.gameMode === "COOP_DUNGEON" ? coopDeathStateFromHeroStateJson(mergedDamagedHeroStateJson) : hp === 0 ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD") : "ALIVE";
               this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
                 hp, ht, targetPosAfter, newState, damageTargetId);
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `heroState:${damageTargetId}`, mergedDamagedHeroStateJson);
+              this.recordCoopLifeStateChange(damageTargetId, oldState, newState);
               const savedSourceMob = (Array.isArray(sourceLevel?.mobs) ? sourceLevel.mobs : [])
                 .find((mob: any) => Number(mob?.mobId) === Number(sourceMobId));
               if (!savedSourceMob) throw new Error("Accepted source mob missing from native snapshot");
@@ -2361,6 +2514,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
                 `heroState:${session.playerId}`, storedHeroState);
+              this.recordCoopLifeStateChange(session.playerId, String(playerRow.state), "ALIVE");
               if (unblessedRevival) {
                 levelSnapshot.heaps = data.heaps;
                 this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
@@ -2380,7 +2534,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               actionCost = 0;
             }
           } else if (["UNLOCK", "MINE", "INTERACT", "OPEN_CHEST"].includes(String(actionStr))) {
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray();
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray();
             const data = payload.data || {};
             const saved = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
               "levelSnapshot:" + this.currentDepth).toArray()[0];
@@ -2472,7 +2626,9 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const activePublisher = publisherRow.length > 0
               && this.sql.exec(`SELECT player_id FROM players WHERE player_id = ? AND connected = 1`, String(publisherRow[0]?.value)).toArray().length > 0;
             const transitionData = payload.data || {};
-            if (canStartNativeFloorTransition(pendingRow.length > 0, playerRow[0]?.state, activePublisher)) {
+            if (this.hasPendingCoopRevival()) {
+              actionErrorCode = "COOP_REVIVAL_PENDING";
+            } else if (canStartNativeFloorTransition(pendingRow.length > 0, playerRow[0]?.state, activePublisher)) {
               const currentPos = Number(playerRow[0].pos);
               const transition = resolveNativeTransitionIntent(sourceSnapshot, this.currentDepth, currentPos, transitionData);
               if (transition) {
@@ -2528,7 +2684,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               }
             }
             if (payload.data.attackWeaponMode === "THROWN" || payload.data.projectileMutation != null) {
-              const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+              const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
               const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
                 "heroState:" + session.playerId).toArray()[0];
               const levelRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
@@ -2825,9 +2981,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                       });
                     if (validNativeTarget) {
                       const newHp = targetHp;
-                      const newState = newHp === 0
-                        ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR")
-                        : "ALIVE";
+                      const newState = newHp === 0 ? (this.gameMode === "DEATHMATCH" ? "ALIVE" : "SPECTATOR") : "ALIVE";
                       this.sql.exec(`UPDATE players SET hp = ?, ht = ?, state = ?, pos = ? WHERE player_id = ?`,
                         newHp, targetHt, newState, targetPosAfter, String(targetId));
                       this.sql.exec(`INSERT INTO room_meta (key,value) VALUES (?,?)
@@ -3012,13 +3166,16 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                       const attackerAfter = JSON.parse(String(mergedAttackerState));
                       const attackerHpAfter = Number(attackerAfter.hp);
                       const attackerHtAfter = Number(attackerAfter.ht);
-                      const attackerStateAfter = attackerHpAfter > 0 ? "ALIVE"
+                      const attackerStateAfter = this.gameMode === "COOP_DUNGEON"
+                        ? coopDeathStateFromHeroStateJson(String(mergedAttackerState))
+                        : attackerHpAfter > 0 ? "ALIVE"
                         : this.gameMode === "DEATHMATCH" ? "ALIVE"
                           : this.gameMode === "PVP_ARENA" ? "SPECTATOR" : "DEAD";
                       this.sql.exec(`UPDATE players SET hp = ?, ht = ?, pos = ?, state = ? WHERE player_id = ?`,
                         attackerHpAfter, attackerHtAfter, Number(attackerAfter.pos), attackerStateAfter, session.playerId);
                       this.sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                         `heroState:${session.playerId}`, String(mergedAttackerState));
+                      this.recordCoopLifeStateChange(session.playerId, String(attackerRow[0].state), attackerStateAfter);
                       if (String(attackerRow[0].state) === "ALIVE" && attackerStateAfter !== "ALIVE") {
                         this.sql.exec("UPDATE players SET deaths = deaths + 1 WHERE player_id = ?", session.playerId);
                       }
@@ -3061,7 +3218,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3084,7 +3241,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3108,7 +3265,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3130,7 +3287,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3152,7 +3309,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const pickupHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const transitionPending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             const pickupRequestId = String(msg.requestId || "");
@@ -3186,7 +3343,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && hasCompleteNativeLevelSnapshot(levelSnapshot) && playerRow && heroRow
@@ -3206,7 +3363,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3238,7 +3395,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3274,7 +3431,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3301,7 +3458,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             }
           } else if (actionStr === "EQUIP" || actionStr === "UNEQUIP") {
             const data = payload.data || {};
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             if (!pending && playerRow && heroRow
@@ -3321,7 +3478,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
             const savedRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", `levelSnapshot:${this.currentDepth}`).toArray()[0];
             let levelSnapshot: any = null;
             try { levelSnapshot = savedRow && typeof savedRow.value === "string" ? JSON.parse(String(savedRow.value)) : null; } catch (_) {}
-            const playerRow = this.sql.exec("SELECT pos,state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
+            const playerRow = this.sql.exec("SELECT pos, state FROM players WHERE player_id = ?", session.playerId).toArray()[0];
             const heroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId).toArray()[0];
             const pending = this.sql.exec("SELECT value FROM room_meta WHERE key = 'transitionPending'").toArray().length > 0;
             const validIntent = !pending && requestId.length > 0 && requestId.length <= 128 && playerRow && heroRow
@@ -3462,7 +3619,17 @@ export class MatchRoomActions extends MatchRoomSnapshots {
           }));
 
           this.broadcastWithFOV(session.playerId, eventType, actionResultPayload, ws);
-          this.checkMatchEndCondition();
+          const matchEndMessage = this.checkMatchEndCondition();
+          if (matchEndMessage) {
+            this.broadcast(matchEndMessage);
+            this.onMatchEndCommitted();
+          } else if (this.pendingCoopPublisherAuthorityReason) {
+            // Authority notification follows the committed life/event batch so the new publisher
+            // rebases from a client that has already applied the death/revival event.
+            this.onPublisherAuthorityChangedCommitted(this.pendingCoopPublisherAuthorityReason);
+          } else if (this.pendingCoopLifeStateReason) {
+            this.onCoopLifeStateChangedCommitted(this.pendingCoopLifeStateReason);
+          }
           // Mob turns are resolved exclusively by the original Java SPD Actor scheduler.
           // Running a TypeScript pathfinder here would race the publisher and overwrite native AI.
         } else {
