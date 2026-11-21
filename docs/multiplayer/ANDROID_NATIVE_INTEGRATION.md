@@ -535,3 +535,4 @@ Current automated evidence is 172/172 core JVM tests and a successful forced `te
 ## Phase 17-B — remote departure and life-state events
 
 The Android `MessageRouter` accepts the sequenced `PLAYER_LEFT` lifecycle event and removes the departed remote player from the multiplayer scene model. Room-state payloads continue to expose server-authoritative membership/life state. This work does not complete the lobby or gameplay UI; that remains Phase 20, followed by Phase 21 localization, responsive layout, RTL/LTR and accessibility work.
+LAN TCP guest admission preserves session/event ordering: after a valid HELLO, the host registers the guest for broadcast delivery, writes SESSION first, then flushes any queued lifecycle/world messages in order. This closes the race where a guest could receive SESSION and then miss a peer's immediate PLAYER_LEFT. The queue is bounded to 64 pending frames; overload fails the peer closed rather than growing without limit.

@@ -731,4 +731,5 @@ Exact-head CI for Phase16B commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` pas
 | Gameplay rules | DEAD/SPECTATOR action rejection and pending-revival floor-transition guard | Deferred after Phase 22 |
 | Publisher lifecycle | Publisher death, lobby owner/publisher alignment, current-term readiness, no false-ready handoff | Deferred after Phase 22 |
 | Leave/reconnect | PLAYER_LEFT ordering, LEFT membership removal, reconnect only for retained membership | Deferred after Phase 22 |
+| LAN handshake | SESSION is delivered before queued frames; a peer departure immediately after SESSION reaches all remaining guests | Deferred real-network acceptance after Phase 22 |
 | Match completion | Exactly-once MATCH_END, terminal-state predicate, rollback on event persistence failure, persistence after DO eviction | Deferred after Phase 22 |

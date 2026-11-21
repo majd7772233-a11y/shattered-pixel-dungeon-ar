@@ -103,12 +103,12 @@ A docs-only commit can trigger backend and Android jobs. That confirms the repos
 File: .github/workflows/deploy-server.yml
 
 Observed triggers:
-- push to master or main with changes under server/** or the deploy workflow;
+- push to `master`, `main`, or `multiplayer-framework-core-14118577486727081892` when `server/**` or `.github/workflows/deploy-server.yml` changes;
 - manual workflow_dispatch.
 
-It runs backend install/tests and invokes cloudflare/wrangler-action@v3 using the CLOUDFLARE_API_TOKEN GitHub secret.
+It runs `npm ci`, backend build/tests, provisions `MAGD_JWT_SECRET` through `wrangler secret bulk`, then runs `wrangler deploy` for Worker `spd-multiplayer-backend` using the Cloudflare API/account secrets.
 
-Critical implication: pushing to multiplayer-framework-core-14118577486727081892 does not automatically deploy the Worker through that workflow. Never infer that a successful multiplayer branch CI run published the backend to production. A deployment must be explicitly run through an authorized deployment path and followed by live smoke tests. Avoid suggesting a Wrangler CLI workflow on the user's Android environment; use repository automation/dashboard path where appropriate.
+A push to `multiplayer-framework-core-14118577486727081892` that changes `server/**` automatically triggers this deployment workflow; a green multiplayer CI run and a Worker deployment are separate workflows. This was observed after push of `7eb49092a7b61ed88e2db94d3976a7b33aef65a9`: deployment run [44930275971](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44930275971) completed successfully, including `wrangler deploy`. No live Worker health check, hosted-room WebSocket smoke, or compatibility test was run; production/service acceptance remains incomplete until Phase 22. Do not infer live functionality from a successful deployment.
 
 ## 6. Historical evidence captured at the 2026-11-08 documentation audit (superseded by Section 9)
 
@@ -398,7 +398,7 @@ The deployment pipeline passed TypeScript build and 380/380 Vitest tests. Per us
 
 - Backend build and protocol/schema guards: PASS; 7 Vitest source files / 408 tests PASS.
 - Durable Object SQLite integration: 1 file / 18 tests PASS. Malformed recovery exception logs are expected rejection fixtures.
-- Forced Gradle `test assembleDebug --rerun-tasks --no-daemon`: BUILD SUCCESSFUL; 58 actionable tasks, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,261,983 bytes; SHA-256 `8ABC8CB431835C777EABF02F7D46932F9B33094A9DC345EB86DF7BC7ED59E115`.
+- Forced Gradle `test assembleDebug --rerun-tasks --no-daemon`: BUILD SUCCESSFUL; 58 actionable tasks, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,262,158 bytes; SHA-256 `9FDE2B71BAF9F99B8817EE423C883226CA3746AAD579B2CCB6AEB6184026E1CE`.
 - `git diff --check`: PASS. Final pushed commit still requires exact-head GitHub CI; record its SHA and run before declaring parent Phase 17 fully closed.
 ## Phase 17-B verification boundary
 

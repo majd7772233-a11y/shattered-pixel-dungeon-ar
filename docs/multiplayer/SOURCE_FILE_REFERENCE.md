@@ -395,3 +395,4 @@ The latest full local Android/JVM acceptance is 24 XML reports / 244 tests / 0 f
 - `server/src/match-room/index.ts`: reconnect admission requires current room membership.
 - `server/src/match-room/life-state.test.ts`, `lifelink-death.integration.test.ts`, `durable-object-sqlite.integration.do.mjs`: unit, integration and persistent SQLite coverage.
 - `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/MessageRouter.java`: sequenced PLAYER_LEFT handling and remote-player cleanup.
+- `core/src/main/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/LANTransport.java`: guest SESSION handshake, bounded pre-session broadcast queue and PLAYER_LEFT delivery ordering; `core/src/test/java/com/shatteredpixel/shatteredpixeldungeon/multiplayer/LANTransportTest.java` proves departure reaches remaining guests.

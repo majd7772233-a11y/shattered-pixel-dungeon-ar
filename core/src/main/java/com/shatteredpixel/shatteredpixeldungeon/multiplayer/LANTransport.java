@@ -30,6 +30,7 @@ public class LANTransport implements NetworkTransport {
     public static final int DEFAULT_CONNECT_TIMEOUT_MS = 5000;
     public static final int DEFAULT_HANDSHAKE_TIMEOUT_MS = 5000;
     public static final int MAX_PLAYERS = 4;
+    private static final int MAX_PENDING_HANDSHAKE_MESSAGES = 64;
     public static final String LOCAL_HOST_ENDPOINT = "LAN_HOST";
 
     private final Object stateLock = new Object();
@@ -329,6 +330,8 @@ public class LANTransport implements NetworkTransport {
         private String playerId;
         private OutputStream output;
         private boolean registered;
+        private boolean sessionWritten;
+        private final List<String> pendingSessionMessages = new ArrayList<>();
 
         ClientHandler(long generation, Socket socket) {
             this.generation = generation;
@@ -358,11 +361,12 @@ public class LANTransport implements NetworkTransport {
                     return;
                 }
 
-                // The peer is not visible to host broadcasts until its SESSION frame is fully written.
-                send(buildSessionMessage(playerId).toJson());
-                socket.setSoTimeout(0);
+                // Register before SESSION, but queue broadcasts until SESSION is flushed so a peer
+                // cannot observe the handshake and then miss an immediate departure event.
                 if (!completePeerRegistration(this)) return;
                 registered = true;
+                sendSession(buildSessionMessage(playerId).toJson());
+                socket.setSoTimeout(0);
 
                 while (isCurrentHost(generation) && !socket.isClosed()) {
                     String frame = LanFrameCodec.readFrame(input);
@@ -385,12 +389,31 @@ public class LANTransport implements NetworkTransport {
                     if (playerId != null) pendingPlayerIds.remove(playerId, socket);
                     if (registered) connectedClients.remove(playerId, this);
                 }
-                if (registered) notifyPeerLeft(playerId, generation);
+                if (registered && sessionWritten) notifyPeerLeft(playerId, generation);
                 closeQuietly(socket);
             }
         }
 
+        synchronized void sendSession(String frame) throws IOException {
+            writeFrame(frame);
+            sessionWritten = true;
+            while (!pendingSessionMessages.isEmpty()) {
+                writeFrame(pendingSessionMessages.remove(0));
+            }
+        }
+
         synchronized void send(String frame) throws IOException {
+            if (!sessionWritten) {
+                if (pendingSessionMessages.size() >= MAX_PENDING_HANDSHAKE_MESSAGES) {
+                    throw new IOException("LAN_HANDSHAKE_BACKLOG");
+                }
+                pendingSessionMessages.add(frame);
+                return;
+            }
+            writeFrame(frame);
+        }
+
+        private void writeFrame(String frame) throws IOException {
             OutputStream target = output;
             if (target == null || socket.isClosed()) throw new IOException("LAN_PEER_NOT_READY");
             synchronized (target) {

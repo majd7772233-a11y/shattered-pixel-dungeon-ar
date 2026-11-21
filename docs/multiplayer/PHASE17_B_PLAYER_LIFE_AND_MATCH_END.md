@@ -43,7 +43,7 @@ A voluntary `LEAVE` is terminal for the current room membership:
 
 An unexpected transport disconnect is different: it does not mark the player `LEFT` and does not change `ALIVE`/`DEAD`/`SPECTATOR`. The member can reconnect only while the original room membership still exists; reconnect does not resurrect a dead player or turn a spectator back into an active player.
 
-The Android `MessageRouter` applies the sequenced `PLAYER_LEFT` event and removes the departed remote player from the local multiplayer scene model.
+The Android `MessageRouter` applies the sequenced `PLAYER_LEFT` event and removes the departed remote player from the local multiplayer scene model. In LAN transport, the host registers a guest for broadcasts before sending `SESSION`, but buffers up to 64 pending frames until the `SESSION` frame is flushed; this guarantees an immediate `PLAYER_LEFT` cannot overtake the handshake or be lost after the guest has observed it.
 
 ## Match completion and persistence
 
@@ -53,14 +53,14 @@ The match-end event, event sequence, persisted `gameStatus = ENDED`, lifecycle s
 
 ## Automated acceptance coverage
 
-The focused suites cover life-state classification, Ankh eligibility/consumption, gameplay-action admission, floor-transition blocking, publisher death/failover, owner/publisher alignment in the lobby, voluntary leave, disconnect/reconnect distinction, `PLAYER_LEFT`/`MATCH_END` ordering, exactly-once match completion, persistence after Durable Object eviction, and rollback when MATCH_END cannot be stored.
+The focused suites cover life-state classification, Ankh eligibility/consumption, gameplay-action admission, floor-transition blocking, publisher death/failover, owner/publisher alignment in the lobby, voluntary leave, disconnect/reconnect distinction, `PLAYER_LEFT`/`MATCH_END` ordering, exactly-once match completion, persistence after Durable Object eviction, and rollback when MATCH_END cannot be stored, plus LAN peer-departure ordering across the `SESSION` handshake.
 
 ## Local verification — 2026-11-21
 
 - Backend build and protocol/schema guards: PASS; 7 Vitest files / 408 tests PASS.
 - Durable Object SQLite integration: 1 file / 18 tests PASS. The recovery exceptions in the log are expected corrupted-state rejection fixtures.
-- Android/Java: forced `test assembleDebug --rerun-tasks --no-daemon`; 58 Gradle tasks successful, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,261,983 bytes; SHA-256 `8ABC8CB431835C777EABF02F7D46932F9B33094A9DC345EB86DF7BC7ED59E115`.
-- `git diff --check`: PASS. Exact-head GitHub CI remains the parent-phase closure gate and must be recorded with its exact source SHA and run URL.
+- Android/Java: forced `test assembleDebug --rerun-tasks --no-daemon`; 58 Gradle tasks successful, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,262,158 bytes; SHA-256 `9FDE2B71BAF9F99B8817EE423C883226CA3746AAD579B2CCB6AEB6184026E1CE`.
+- Cross-platform CI attempt on `7eb49092a7b61ed88e2db94d3976a7b33aef65a9`: Backend and Durable Object SQLite PASS; Android exposed a Linux-only timing race in `LANTransportTest.peerDepartureIsBroadcastToRemainingGuests`. The race is fixed in `LANTransport.java` by registering the peer before SESSION while buffering outbound messages until SESSION flush. Windows full Gradle/JVM/APK rerun after the fix: 58/58 tasks, 24 JUnit reports / 246 tests PASS, 0 failures/errors/skips. Exact-head GitHub CI is being rerun for this fix.
 ## Explicitly deferred
 
 - No emulator launch, ADB session, Bluetooth pairing test, real Wi-Fi broadcast test or two-device game test is part of Phase 17-B. Real device/runtime acceptance remains after Phase 22, as requested.
