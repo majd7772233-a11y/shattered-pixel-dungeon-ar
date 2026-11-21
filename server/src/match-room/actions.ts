@@ -15,6 +15,7 @@ import { isValidNativeDropIntent, isValidNativePickupIntent, isValidNativeThrowI
 import { isValidNativeMutationActionCost, isValidNativeWorldMutation, hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 import { MatchRoomSnapshots } from "./snapshots";
 import { coopDeathStateFromHeroStateJson, hasUnblessedAnkh } from "./life-state";
+import { canPlayerTargetPlayer, getMatchModeRules } from "./mode-rules";
 
 export class MatchRoomActions extends MatchRoomSnapshots {
   private nativeActionTransactionActive = false;
@@ -1184,7 +1185,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         try { admissionPayload = typeof msg.payloadJson === "string" ? JSON.parse(msg.payloadJson) : msg.payloadJson; } catch (_) {}
         const admissionAction = String(admissionPayload?.action || admissionPayload?.data?.action || "");
         const admissionPlayer = this.sql.exec(
-          "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?", session.playerId
+          "SELECT player_id,class_name,pos,ready,state,connected,hp FROM players WHERE player_id = ?", session.playerId
         ).toArray()[0];
         const admissionHero = this.sql.exec(
           "SELECT value FROM room_meta WHERE key = ?", "heroState:" + session.playerId
@@ -1192,8 +1193,15 @@ export class MatchRoomActions extends MatchRoomSnapshots {
         const ankhReviveAdmission = this.gameMode === "COOP_DUNGEON"
           && admissionAction === "REVIVE" && String(admissionPlayer?.state || "") === "DEAD"
           && hasUnblessedAnkh(admissionHero?.value);
-        if (this.gameMode === "COOP_DUNGEON" && admissionPlayer
-            && String(admissionPlayer.state) !== "ALIVE" && !ankhReviveAdmission) {
+        const requiresLiveCompetitiveHero = this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH";
+        const hasPositiveCompetitiveHp = Number.isSafeInteger(Number(admissionPlayer?.hp))
+          && Number(admissionPlayer?.hp) > 0;
+        const modeLifeGate = !!admissionPlayer && (
+          (this.gameMode === "COOP_DUNGEON" && String(admissionPlayer.state) !== "ALIVE")
+          || (requiresLiveCompetitiveHero
+            && (String(admissionPlayer.state) !== "ALIVE" || !hasPositiveCompetitiveHp))
+        );
+        if (modeLifeGate && !ankhReviveAdmission) {
           ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR", requestId: msg.requestId,
             sequence: this.currentSequence, payloadJson: JSON.stringify({ error: "PLAYER_NOT_ALIVE" }) }));
           return;
@@ -2660,6 +2668,13 @@ export class MatchRoomActions extends MatchRoomSnapshots {
                 payloadJson: JSON.stringify({ error: "INVALID_NATIVE_ATTACK_INTENT" }) }));
               return;
             }
+            if (targetType === "PLAYER"
+                && getMatchModeRules(this.gameMode)?.playerTargetPolicy !== "FREE_FOR_ALL") {
+              ws.send(JSON.stringify({ protocolVersion: "1.0.0", messageType: "ERROR",
+                requestId: msg.requestId, sequence: this.currentSequence,
+                payloadJson: JSON.stringify({ error: "PLAYER_TARGET_NOT_ALLOWED" }) }));
+              return;
+            }
             if (payload.data.attackWeaponMode === "SPIRIT_ARROW") {
               const trustedHeroRow = this.sql.exec("SELECT value FROM room_meta WHERE key = ?",
                 "heroState:" + session.playerId).toArray()[0];
@@ -2806,7 +2821,7 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               }
             }
             if (targetType === "PLAYER" && isValidNativeCombatRequestId(msg.requestId)
-                && (this.gameMode === "PVP_ARENA" || this.gameMode === "DEATHMATCH")) {
+                && getMatchModeRules(this.gameMode)?.playerTargetPolicy === "FREE_FOR_ALL") {
               const defenderId = String(targetId || "");
               const attackerRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", session.playerId).toArray();
               const defenderRow = this.sql.exec("SELECT pos,hp,ht,state FROM players WHERE player_id = ?", defenderId).toArray();
@@ -2821,9 +2836,19 @@ export class MatchRoomActions extends MatchRoomSnapshots {
               const defenderStateBefore = defenderStateRow && typeof defenderStateRow.value === "string"
                 ? String(defenderStateRow.value) : "";
               const attackerPos = Number(attackerRow[0]?.pos), defenderPos = Number(defenderRow[0]?.pos);
-              const preStatesMatch = !!defenderId && defenderId !== session.playerId
-                && attackerRow.length > 0 && defenderRow.length > 0
-                && String(attackerRow[0].state) === "ALIVE" && String(defenderRow[0].state) === "ALIVE"
+              const lifecycleRoom = this.isRoomLifecycleEnabled();
+              const preStatesMatch = attackerRow.length > 0 && defenderRow.length > 0
+                && canPlayerTargetPlayer({
+                  gameMode: this.gameMode,
+                  attackerId: session.playerId,
+                  targetPlayerId: defenderId,
+                  attackerState: attackerRow[0].state,
+                  targetState: defenderRow[0].state,
+                  attackerHp: Number(attackerRow[0].hp),
+                  targetHp: Number(defenderRow[0].hp),
+                  attackerIsRoomMember: !lifecycleRoom || this.isRoomMember(session.playerId),
+                  targetIsRoomMember: !lifecycleRoom || this.isRoomMember(defenderId)
+                })
                 && hasMatchingNativeHeroStateSnapshot(attackerStateBefore, trustedAttacker)
                 && hasMatchingNativeHeroStateSnapshot(defenderStateBefore, trustedDefender)
                 && Number(attackerRow[0].hp) === Number(reportedAttacker?.hp)

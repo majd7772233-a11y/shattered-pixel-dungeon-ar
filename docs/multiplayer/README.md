@@ -190,3 +190,8 @@ At parent HEAD `cf3714c82a210eace79614ab7c575acb04b8aebb`, matching CI [43523497
 - [Phase 17-B: player life, revival, leave and match completion](PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md)
 
 Phase 17-B defines Ankh-based revival, spectator restrictions, voluntary-leave/reconnect distinction, publisher handoff and exactly-once match completion. Device-level acceptance remains deferred until after Phase 22.
+
+## Phase 18 - PvP and Deathmatch enforcement
+
+- [Phase 18-A: authoritative mode policy and target admission](PHASE18_A_MODE_POLICY_AND_TARGET_ADMISSION.md)
+- Phase 18-B: competitive life/respawn, kill/death scoring, visibility audit, deterministic races and final match resolution. Scope and acceptance criteria are defined in the repository ROADMAP; implementation has not started.

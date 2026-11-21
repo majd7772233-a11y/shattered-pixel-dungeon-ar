@@ -1,6 +1,7 @@
 import { isNativeLootClaimSchemaCurrent } from "../validators/inventory-claims";
 import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 import { MatchRoomBase } from "./base";
+import { isMatchGameMode } from "./mode-rules";
 
 export class MatchRoomPersistence extends MatchRoomBase {
   protected migrateProcessedActions(): void {
@@ -217,7 +218,7 @@ export class MatchRoomPersistence extends MatchRoomBase {
     const modeRow = this.sql.exec(`SELECT value FROM room_meta WHERE key = 'gameMode'`).toArray();
     if (modeRow.length > 0) {
       const persistedMode = String(modeRow[0].value);
-      if (!["COOP_DUNGEON", "PVP_ARENA", "DEATHMATCH", "SURVIVAL"].includes(persistedMode)) {
+      if (!isMatchGameMode(persistedMode)) {
         throw new Error("ROOM_RECOVERY_INVALID_GAME_MODE");
       }
       this.gameMode = persistedMode as any;

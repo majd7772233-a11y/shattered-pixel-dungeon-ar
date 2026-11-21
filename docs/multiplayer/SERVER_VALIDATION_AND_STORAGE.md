@@ -425,7 +425,15 @@ checkMatchEndCondition() currently contains:
 - DEATHMATCH: end when the highest kill count reaches 10;
 - PVP_ARENA: end when at least two players exist and exactly one player remains ALIVE.
 
-No Survival end condition appears in this method at the baseline. Mode descriptors in Java are not enough to prove full server-side mode enforcement.
+No Survival end condition appears in this method at the baseline.
+
+### Phase 18-A - Mode policy enforcement
+
+`server/src/match-room/mode-rules.ts` is the Worker-side source of truth for the four known mode identities and their min/max player counts, target policy, team policy, friendly fire, revive/respawn capability, shared-map flag and death behavior. The lifecycle path reads the matrix for room creation, join-capacity validation, room-state projection and MATCH_START minimums; persistence validates restored mode identity against the same matrix.
+
+Player targets are accepted only in PVP_ARENA and DEATHMATCH. Both attacker and defender must be distinct, ALIVE and have positive HP; in lifecycle-v1 rooms, both must also have durable room membership. Co-op and Survival player-target attempts fail closed. PvP SPECTATOR members cannot submit normal gameplay ACTIONs. PvP Arena and Deathmatch normal ACTION admission requires ALIVE state and strictly positive HP; a zero-HP or contradictory state is blocked until native Deathmatch respawn is implemented in 18-B. The Worker still routes native combat to the defender; it does not synthesize damage.
+
+This does not complete the full competitive mode lifecycle. Actual Deathmatch respawn, kill/death score accounting, race/duplicate handling, final result persistence and the FOV/reconnect disclosure audit remain Phase 18-B. Survival run/end-condition enforcement remains Phase 19.
 
 ## 10. Default Worker entry
 

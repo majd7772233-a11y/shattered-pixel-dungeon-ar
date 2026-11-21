@@ -2,20 +2,7 @@ import type { NetworkMessage, SessionData } from "../protocol/types";
 import { hasCompleteNativeLevelSnapshot } from "../validators/world-state";
 import { isValidNativeHeroStateJson } from "../validators/combat-state";
 import { MatchRoomActions } from "./actions";
-
-const ROOM_CAPACITY_BY_MODE: Record<string, number> = {
-  COOP_DUNGEON: 4,
-  PVP_ARENA: 4,
-  DEATHMATCH: 6,
-  SURVIVAL: 4
-};
-
-const ROOM_MIN_PLAYERS_BY_MODE: Record<string, number> = {
-  COOP_DUNGEON: 2,
-  PVP_ARENA: 2,
-  DEATHMATCH: 2,
-  SURVIVAL: 2
-};
+import { getMatchModeRules } from "./mode-rules";
 
 const ROOM_MEMBER_PREFIX = "roomMember:";
 const ROOM_READY_PREFIX = "roomReady:";
@@ -98,9 +85,12 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         ready: member.ready && this.hasCurrentRoomReadyProof(member.playerId)
       }))
       : rawMembers;
+    const modeRules = getMatchModeRules(mode);
     const parsedCapacity = Number(this.roomMetaValue("roomCapacity"));
-    const capacity = Number.isSafeInteger(parsedCapacity) && parsedCapacity === ROOM_CAPACITY_BY_MODE[mode]
-      ? parsedCapacity : (ROOM_CAPACITY_BY_MODE[mode] || 4);
+    const capacity = modeRules
+      ? Number.isSafeInteger(parsedCapacity) && parsedCapacity === modeRules.maxPlayers
+        ? parsedCapacity : modeRules.maxPlayers
+      : 0;
     const ownerId = this.roomMetaValue("roomOwnerId");
     const snapshot = this.getCurrentLevelSnapshot();
     const snapshotReady = hasCompleteNativeLevelSnapshot(snapshot)
@@ -109,7 +99,7 @@ export class MatchRoomLifecycle extends MatchRoomActions {
     const roomClosed = this.roomMetaValue("roomClosed") === "1";
     const storedRoomStatus = this.roomMetaValue("roomLifecycleState") || "LOBBY";
     const allReady = members.length > 0 && members.every(member => member.connected && member.ready);
-    const enoughPlayers = members.length >= (ROOM_MIN_PLAYERS_BY_MODE[mode] || 2);
+    const enoughPlayers = !!modeRules && members.length >= modeRules.minPlayers;
 
     const publisherId = this.roomMetaValue("levelPublisher");
     const publisherPresent = !!publisherId && members.some(member => member.playerId === publisherId
@@ -276,8 +266,9 @@ export class MatchRoomLifecycle extends MatchRoomActions {
 
     if (msg.messageType === "CREATE_ROOM") {
       const requestedMode = String(payload.gameMode || this.gameMode).trim().toUpperCase();
-      const capacity = ROOM_CAPACITY_BY_MODE[requestedMode];
-      if (!capacity) {
+      const modeRules = getMatchModeRules(requestedMode);
+      const capacity = modeRules?.maxPlayers;
+      if (!modeRules || !capacity) {
         this.sendLifecycleError(ws, msg, "INVALID_GAME_MODE");
         return;
       }
@@ -372,8 +363,9 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         return;
       }
       const members = this.roomMembers();
+      const modeRules = getMatchModeRules(this.gameMode);
       const capacity = Number(this.roomMetaValue("roomCapacity"));
-      if (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 6) {
+      if (!modeRules || !Number.isSafeInteger(capacity) || capacity !== modeRules.maxPlayers) {
         this.sendLifecycleError(ws, msg, "ROOM_CAPACITY_INVALID");
         return;
       }
@@ -530,7 +522,12 @@ export class MatchRoomLifecycle extends MatchRoomActions {
         return;
       }
       const members = this.roomMembers();
-      const minimumPlayers = ROOM_MIN_PLAYERS_BY_MODE[this.gameMode] || 2;
+      const modeRules = getMatchModeRules(this.gameMode);
+      if (!modeRules) {
+        this.sendLifecycleError(ws, msg, "INVALID_GAME_MODE");
+        return;
+      }
+      const minimumPlayers = modeRules.minPlayers;
       if (members.length < minimumPlayers) {
         this.sendLifecycleError(ws, msg, "ROOM_NOT_ENOUGH_PLAYERS");
         return;

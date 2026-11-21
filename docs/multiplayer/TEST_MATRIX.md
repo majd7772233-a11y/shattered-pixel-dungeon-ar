@@ -21,6 +21,13 @@ Stage 1 keeps the existing backend test files and their `./index` import path. T
 
 Gameplay/test baseline `bc6c46b03fee040ff20311adb473b19ff78e9bb7`; exact code/test CI [43472587588 — all three jobs passed](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/43472587588). Backend 682 executions across eight Vitest files passed. The number includes generated/mirrored JavaScript and is not a unique-case count. Android JVM/Debug APK and three Workers-runtime SQLite tests also passed. Verify live branch HEAD and its exact-head Actions run before the next change.
 
+## Phase 18-A - Mode policy and target-admission coverage
+
+- `server/src/match-room/mode-rules.test.ts`: 10 cases cover the four supported mode descriptors, unknown/malformed modes, permitted/forbidden player-target policy, self-targeting, non-living combatants, positive-HP checks and strict room-membership booleans.
+- `server/src/match-room/lifelink-death.integration.test.ts`: six new MatchRoom regressions cover Co-op PLAYER-target rejection, a PvP target absent from lifecycle-v1 membership, valid member-to-member PvP forwarding after native pre-state checks, PvP Arena zero-HP action rejection, and Deathmatch zero-HP/contradictory-DEAD action rejection.
+- Local full backend acceptance after Phase 18-A changes: 8 Vitest files / 424 tests passed; `npm run build` passed; all static protocol/schema/routing/payload guards passed. Real Workers Durable Object SQLite: 1 file / 19 tests passed, including the Deathmatch capacity/room-state contract.
+- Exact-head GitHub Actions is still required for the final pushed source/documentation HEAD. Local test results are not a CI or deployed-service claim.
+
 ## 2. Backend suite map — server/src/index.test.ts
 
 The 57 describe groups are grouped below by their primary coverage domain. Their names are retained to make source lookup easier.

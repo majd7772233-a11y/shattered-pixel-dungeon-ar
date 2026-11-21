@@ -223,15 +223,23 @@ broadcastWithFOV() filters event visibility in PVP_ARENA and DEATHMATCH:
 
 At the inspected baseline, this exact filter does not run for COOP_DUNGEON or SURVIVAL. A future mode-policy change must test event disclosure for movement, combat, unseen targets, missing target positions and disconnect/reconnect snapshots. A FOV filter is an information-disclosure boundary, not merely a visual optimization.
 
-## 11. Mode/security caveats
+## 11. Mode/security boundaries
 
-Java GameMode descriptors currently declare properties:
+Java GameMode descriptors declare the following capabilities, and the Worker-side `server/src/match-room/mode-rules.ts` now provides the authoritative server matrix:
 - Co-op: no friendly fire, revive enabled, no auto-respawn, shared map, four players;
-- PvP Arena: friendly fire, no revive/auto-respawn, no shared map, spectator death behavior, four players;
-- Deathmatch: friendly fire, no revive, auto-respawn, no shared map, six players;
-- Survival: no friendly fire/revive/auto-respawn, shared map, four players.
+- PvP Arena: free-for-all player targeting, friendly fire, no revive/auto-respawn, no shared map, spectator death behavior, four players;
+- Deathmatch: free-for-all player targeting, friendly fire, no revive, auto-respawn capability, no shared map, six players;
+- Survival: no player targeting/friendly fire/revive/auto-respawn, shared map, four players.
 
-These are descriptor properties. The Worker currently has explicit Deathmatch kill-limit and PvP last-player-standing end conditions. The inspected checkMatchEndCondition() has no Survival end condition. Do not claim every mode property is enforced end-to-end.
+Phase 18-A now uses that matrix to:
+- enforce minimum/maximum room size at create/join/start and validate persisted mode identity during recovery;
+- reject PLAYER targets outside PvP Arena and Deathmatch;
+- require distinct ALIVE attacker/defender identities with positive HP and, for lifecycle-v1 rooms, verified membership for both combatants;
+- block SPECTATOR PvP members from normal ACTION admission; require PvP Arena and Deathmatch actors to be ALIVE with strictly positive HP until Phase 18-B supplies the validated native respawn path.
+
+Competitive modes are currently free-for-all. The durable player schema has no team identity, so teams and client-authored team assignments are not supported. The presence of `autoRespawnAllowed` in the Deathmatch rule matrix describes the target mode policy; it does not mean the full native Deathmatch respawn loop is already implemented. Phase 18-B owns respawn integration, scoring, simultaneous result races, final match resolution and the exhaustive FOV/replay/reconnect audit.
+
+The current Worker also has a Deathmatch kill-limit and PvP last-player-standing branch in `checkMatchEndCondition()`; these existing branches still require Phase 18-B race, duplicate-event and durable-score acceptance before their end-to-end behavior is considered closed. Survival has no end condition in that method and remains Phase 19 scope. Do not infer complete mode enforcement from a Java descriptor or a single Worker branch.
 
 ## 12. Logging and error-handling requirements
 

@@ -899,19 +899,35 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] There is no implicit local-only respawn or fake ready state.
 - [x] Exact-head CI passed all 3 required jobs (Backend typecheck/tests, Durable Object SQLite rollback/eviction, Android JVM tests + Debug APK) on `e1971328767f55ea4b923e3539827fa7885c6c1d` ([run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879)). Device/emulator/ADB/Bluetooth/real-network tests remain deliberately deferred until after Phase 22.
 
-## Phase 18 — PvP and Deathmatch Enforcement
+## Phase 18 - PvP and Deathmatch Enforcement
 
-**Priority:** P1 · **Dependencies:** phase 17 and the recovery/event rules in phases 10–12.
+**Priority:** P1 | **Dependencies:** Phase 17 and the recovery/event rules in Phases 10-12.
 
-### Work items
-- [ ] Turn PvP/Deathmatch descriptors into enforced rules: teams/target restrictions, friendly-fire policy, player limits, kill/death scoring and win condition.
-- [ ] Enforce server-side visibility/FOV rules so co-op users receive needed state and competitive users do not receive hidden arena state.
-- [ ] Resolve simultaneous kills, same-tick attacks, duplicate score events, player disconnect/rejoin and match end deterministically.
-- [ ] Keep native Java SPD combat outcomes authoritative; the Worker validates/commits them rather than inventing damage formulas.
-- [ ] Add positive and negative tests for every mode rule, score race, visibility boundary, revive/death behavior and duplicate kill/reward.
+### Phase 18-A - Authoritative mode policy and target admission
 
-### Acceptance criteria
-- PvP/Deathmatch cannot bypass target, team, score or win rules by sending a forged payload.
+- [x] Establish one Worker-side mode-rule matrix for supported mode identity, minimum/maximum room size, player-target policy, team policy, friendly fire, revive/respawn capability, shared-map flag and death behavior.
+- [x] Apply that matrix when creating rooms, joining rooms, projecting room capacity, starting matches and recovering persisted mode metadata.
+- [x] Enforce player-target restrictions server-side: only PvP Arena and Deathmatch permit free-for-all player targets; both identities must be distinct, ALIVE, have positive HP and be verified room members in lifecycle-v1 rooms.
+- [x] Keep PvP spectators from submitting normal gameplay actions; Deathmatch normal ACTIONs also require ALIVE state and positive HP until native respawn is implemented in 18-B.
+- [x] Preserve native Java SPD combat as the source of damage outcomes; the Worker validates and routes combat requests/results.
+- [x] Add positive/negative mode-matrix and real MatchRoom action-admission tests.
+
+**18-A acceptance:** the Worker fails closed for unknown modes, mismatched room capacities, forbidden player targets, non-members, and competitive combatants whose state is not ALIVE or whose HP is not positive. Automated local verification is complete; exact-head CI is the remaining closeout gate. Team assignment remains unsupported: competitive rooms are free-for-all because no durable team identity exists in the player schema.
+
+### Phase 18-B - Competitive life, scoring, visibility and match resolution
+
+- [ ] Implement and verify actual Deathmatch auto-respawn and PvP spectator/elimination behavior without bypassing SPD's native life flow.
+- [ ] Complete exactly-once kill/death scoring, killer attribution, score limits/tiebreaks and durable score persistence.
+- [ ] Resolve simultaneous kills, same-tick attacks, target/attacker locks, duplicate completions, disconnect/rejoin and authority handoff deterministically.
+- [ ] Audit PvP/Deathmatch FOV disclosure for movement, player/Mob combat, unseen targets, missing positions, snapshots, replay and reconnect.
+- [ ] Verify the existing win conditions and persist/broadcast exactly one final result accepted consistently by all clients.
+- [ ] Add positive/negative race, replay, scoring, life-state, visibility-boundary and end-condition tests.
+
+**18-B acceptance:** forged payloads cannot alter score or winner; concurrent outcomes converge to one persisted score table and one terminal match result; clients receive only information permitted by the mode.
+
+### Phase 18 aggregate acceptance
+
+- PvP/Deathmatch cannot bypass target, team-policy, score or win rules through forged payloads.
 - All clients agree on final scores and exactly one match-end outcome.
 - Hidden information follows the documented mode policy.
 

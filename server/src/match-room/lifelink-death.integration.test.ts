@@ -92,11 +92,12 @@ class MemoryMatchRoomSql {
         .filter(([key]) => key.startsWith(prefix))
         .map(([key,value]) => ({ key, value })));
     }
-    if (query === "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?") {
+    if (query === "SELECT player_id,class_name,pos,ready,state,connected FROM players WHERE player_id = ?"
+        || query === "SELECT player_id,class_name,pos,ready,state,connected,hp FROM players WHERE player_id = ?") {
       const player = this.players.get(String(args[0]));
       return this.cursor(player ? [{
         player_id: player.player_id, class_name: player.class_name, pos: player.pos,
-        ready: player.ready, state: player.state, connected: player.connected
+        ready: player.ready, state: player.state, connected: player.connected, hp: player.hp
       }] : []);
     }
     if (query === "SELECT player_id,pos,hp,ht,session_token FROM players WHERE state = 'ALIVE' AND connected = 1 ORDER BY player_id ASC") {
@@ -3342,5 +3343,177 @@ describe("Phase 17-B Co-op lifecycle integration", () => {
     expect(sql.players.get(leavingOwner)).toMatchObject({ connected: 0, ready: 0, state: "LEFT" });
     expect(ws.close).toHaveBeenCalledWith(1000, "LEFT_ROOM");
     expect(order).toEqual(["PLAYER_LEFT","LEVEL_PUBLISHER_CHANGED","ROOM_STATE:PUBLISHER_LEFT_LOBBY"]);
+  });
+  it("blocks Deathmatch actions while the persisted Hero has zero HP before a native respawn is accepted", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.room.gameMode = "DEATHMATCH";
+    fixture.sql.players.get(ATTACKER_ID)!.hp = 0;
+    fixture.sql.players.get(ATTACKER_ID)!.state = "ALIVE";
+    const requestId = "phase18a-deathmatch-zero-hp-001";
+
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage(requestId, {
+        action: "MOVE",
+        data: { from: 9, to: 10, depth: 1, engineActionCost: 1 }
+      }),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("PLAYER_NOT_ALIVE");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.room.worldTime).toBe(0);
+    expect(fixture.sql.players.get(ATTACKER_ID)).toMatchObject({ state: "ALIVE", hp: 0 });
+  });
+  it("blocks Deathmatch actions when the life-state is not ALIVE even if a positive HP value is present", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.room.gameMode = "DEATHMATCH";
+    fixture.sql.players.get(ATTACKER_ID)!.hp = 10;
+    fixture.sql.players.get(ATTACKER_ID)!.state = "DEAD";
+    const requestId = "phase18a-deathmatch-dead-state-001";
+
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage(requestId, {
+        action: "MOVE",
+        data: { from: 9, to: 10, depth: 1, engineActionCost: 1 }
+      }),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("PLAYER_NOT_ALIVE");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.sql.players.get(ATTACKER_ID)).toMatchObject({ state: "DEAD", hp: 10 });
+  });
+  it("blocks PvP Arena actions when the persisted Hero has zero HP despite an ALIVE row state", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    fixture.room.gameMode = "PVP_ARENA";
+    fixture.sql.players.get(ATTACKER_ID)!.hp = 0;
+    fixture.sql.players.get(ATTACKER_ID)!.state = "ALIVE";
+    const requestId = "phase18a-pvp-zero-hp-001";
+
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage(requestId, {
+        action: "MOVE",
+        data: { from: 9, to: 10, depth: 1, engineActionCost: 1 }
+      }),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("PLAYER_NOT_ALIVE");
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.room.currentSequence).toBe(0);
+    expect(fixture.sql.players.get(ATTACKER_ID)).toMatchObject({ state: "ALIVE", hp: 0 });
+  });
+});
+
+describe("Phase 18-A authoritative PvP target admission", () => {
+  function makePlayerTargetFixture(targetIsRoomMember: boolean) {
+    const fixture = makeSpiritArrowForwardFixture();
+    const defenderBefore = { ...fixture.heroBefore, pos: 17 };
+    const defenderId = PVP_DEFENDER_ID;
+    fixture.room.gameMode = "PVP_ARENA";
+    fixture.sql.roomMeta.set("roomLifecycleVersion", "1");
+    fixture.sql.roomMeta.set("roomMember:" + ATTACKER_ID, JSON.stringify({ joinedAt: 1, role: "PLAYER" }));
+    if (targetIsRoomMember) {
+      fixture.sql.roomMeta.set("roomMember:" + defenderId, JSON.stringify({ joinedAt: 2, role: "PLAYER" }));
+    }
+    fixture.sql.roomMeta.set("heroState:" + defenderId, JSON.stringify(defenderBefore));
+    fixture.sql.players.set(defenderId, {
+      player_id: defenderId, session_token: "phase18a-defender-session",
+      pos: 17, hp: 20, ht: 20, state: "ALIVE", deaths: 0, connected: 1
+    });
+    fixture.authorityWs.deserializeAttachment = () => ({
+      playerId: defenderId, sessionToken: "phase18a-defender-session"
+    });
+    fixture.room.state.getWebSockets = () => [fixture.authorityWs, fixture.senderWs];
+
+    const payload = {
+      action: "ATTACK",
+      data: {
+        targetType: "PLAYER",
+        targetId: defenderId,
+        attackerPos: 9,
+        attackerStateBefore: JSON.stringify(fixture.heroBefore),
+        targetHeroStateBefore: JSON.stringify(defenderBefore),
+        attackWeaponMode: "EQUIPPED",
+        attackWeaponBundle: fixture.bowBundle,
+        damageMultiplier: 1,
+        damageBonus: 0,
+        accuracyMultiplier: 1
+      },
+      heroStateJson: JSON.stringify(fixture.heroBefore)
+    };
+    return { ...fixture, defenderId, payload };
+  }
+
+  it("rejects player targeting in Co-op before reserving or forwarding combat", () => {
+    const fixture = makeSpiritArrowForwardFixture();
+    const data = {
+      ...fixture.attackData,
+      targetType: "PLAYER",
+      targetId: PVP_DEFENDER_ID,
+      attackWeaponMode: "EQUIPPED",
+      spiritArrow: undefined
+    };
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage("phase18a-coop-player-target-001", {
+        action: "ATTACK", data, heroStateJson: JSON.stringify(fixture.heroBefore)
+      }),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("PLAYER_TARGET_NOT_ALLOWED");
+    expect(fixture.authorityWs.send).not.toHaveBeenCalled();
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.roomMeta.has("pendingCombat:phase18a-coop-player-target-001")).toBe(false);
+  });
+
+  it("rejects PvP attacks against a player who is not a member of the same lifecycle room", () => {
+    const fixture = makePlayerTargetFixture(false);
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage("phase18a-pvp-nonmember-target-001", fixture.payload),
+      fixture.attackerSession
+    );
+
+    const response = JSON.parse(String(fixture.senderWs.send.mock.calls.at(-1)?.[0]));
+    expect(response.messageType).toBe("ERROR");
+    expect(JSON.parse(String(response.payloadJson)).error).toBe("NATIVE_PVP_PRESTATE_REJECTED");
+    expect(fixture.authorityWs.send).not.toHaveBeenCalled();
+    expect(fixture.sql.events).toHaveLength(0);
+    expect(fixture.sql.roomMeta.has("pendingCombat:phase18a-pvp-nonmember-target-001")).toBe(false);
+  });
+
+  it("forwards PvP combat only after both living room members and their native pre-states are verified", () => {
+    const fixture = makePlayerTargetFixture(true);
+    (fixture.room as any).handleActionInTransaction(
+      fixture.senderWs,
+      actionMessage("phase18a-pvp-member-target-001", fixture.payload),
+      fixture.attackerSession
+    );
+
+    const forwarded = JSON.parse(String(fixture.authorityWs.send.mock.calls[0]?.[0]));
+    expect(forwarded.messageType).toBe("COMBAT_REQUEST");
+    expect(forwarded.requestId).toBe("phase18a-pvp-member-target-001");
+    expect(JSON.parse(String(forwarded.payloadJson))).toMatchObject({
+      attackerId: ATTACKER_ID,
+      targetType: "PLAYER",
+      targetPlayerId: fixture.defenderId
+    });
+    expect(fixture.sql.roomMeta.has("pendingCombat:phase18a-pvp-member-target-001")).toBe(true);
+    expect(fixture.sql.events).toHaveLength(0);
   });
 });

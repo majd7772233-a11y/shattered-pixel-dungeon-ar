@@ -1,4 +1,5 @@
 import type { NetworkMessage, SessionData } from "../protocol/types";
+import type { MatchGameMode } from "./mode-rules";
 
 export const MAX_REPLAY_WINDOW_EVENTS = 200;
 export const MAX_RETAINED_LIFELINK_DAMAGE_EVENTS_PER_PLAYER = 513;
@@ -10,7 +11,7 @@ export class MatchRoomBase {
   matchSeed: number = 123456789;
   currentDepth: number = 1;
   worldTime: number = 0.0;
-  gameMode: "COOP_DUNGEON" | "PVP_ARENA" | "DEATHMATCH" | "SURVIVAL" = "COOP_DUNGEON";
+  gameMode: MatchGameMode = "COOP_DUNGEON";
   gameStatus: "LOBBY" | "PLAYING" | "ENDED" = "LOBBY";
 
   /**

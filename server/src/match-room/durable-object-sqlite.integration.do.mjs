@@ -1543,4 +1543,92 @@ describe("MatchRoom real Durable Object SQLite lifecycle", () => {
         .toEqual([{ sequence: 1, event_type: "MATCH_END" }]);
       expect(instance.checkMatchEndCondition()).toBeNull();
     });
-  });});
+  });
+
+  it("enforces Deathmatch mode minimum, six-player capacity, room-state projection and persisted capacity integrity", async () => {
+    const roomName = "phase18a-deathmatch-mode-capacity";
+    const stub = env.MATCH_ROOM.get(env.MATCH_ROOM.idFromName(roomName));
+    await runInDurableObject(stub, async (instance, state) => {
+      const sql = state.storage.sql;
+      sql.exec("INSERT INTO room_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        "roomLifecycleVersion", "1");
+      const players = [
+        "phase18a-dm-host",
+        "phase18a-dm-member-2",
+        "phase18a-dm-member-3",
+        "phase18a-dm-member-4",
+        "phase18a-dm-member-5",
+        "phase18a-dm-member-6",
+        "phase18a-dm-overflow"
+      ];
+      const clients = new Map();
+      for (const playerId of players) {
+        const sessionToken = playerId + "-token";
+        sql.exec(
+          "INSERT INTO players (player_id,session_token,pos,hp,ht,state,connected,ready) VALUES (?,?,?,?,?,?,?,?)",
+          playerId, sessionToken, 0, 10, 10, "ALIVE", 1, 0
+        );
+        const sent = [];
+        clients.set(playerId, {
+          sent,
+          socket: {
+            send: value => sent.push(String(value)),
+            deserializeAttachment: () => ({ playerId, sessionToken })
+          }
+        });
+      }
+      let requestNumber = 0;
+      const send = async (playerId, messageType, payload) => {
+        const client = clients.get(playerId);
+        const startAt = client.sent.length;
+        await instance.webSocketMessage(client.socket, JSON.stringify({
+          protocolVersion: "1.0.0",
+          messageType,
+          requestId: "phase18a-dm-" + (++requestNumber),
+          senderId: "untrusted",
+          payloadJson: JSON.stringify(payload || {})
+        }));
+        return client.sent.slice(startAt).map(value => JSON.parse(value));
+      };
+      const errorOf = messages => {
+        const error = messages.find(message => message.messageType === "ERROR");
+        return error?.payloadJson ? JSON.parse(error.payloadJson).error : null;
+      };
+      const memberCount = () => Number(sql.exec(
+        "SELECT COUNT(*) AS count FROM room_meta WHERE substr(key,1,11)='roomMember:'"
+      ).toArray()[0].count);
+
+      const created = await send(players[0], "CREATE_ROOM", { gameMode: "DEATHMATCH" });
+      expect(created.some(message => message.messageType === "ACK")).toBe(true);
+      expect(errorOf(created)).toBe(null);
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "gameMode").toArray()[0].value)
+        .toBe("DEATHMATCH");
+      expect(sql.exec("SELECT value FROM room_meta WHERE key = ?", "roomCapacity").toArray()[0].value)
+        .toBe("6");
+      expect(instance.roomStatePayload("PHASE18A_TEST")).toMatchObject({
+        gameMode: "DEATHMATCH",
+        maxPlayers: 6
+      });
+      expect(memberCount()).toBe(1);
+
+      expect(errorOf(await send(players[0], "MATCH_START", {
+        seed: instance.matchSeed,
+        sequence: instance.currentSequence
+      }))).toBe("ROOM_NOT_ENOUGH_PLAYERS");
+
+      for (const playerId of players.slice(1, 6)) {
+        const joined = await send(playerId, "JOIN_ROOM", {});
+        expect(errorOf(joined)).toBe(null);
+        expect(joined.some(message => message.messageType === "ACK")).toBe(true);
+      }
+      expect(memberCount()).toBe(6);
+
+      expect(errorOf(await send(players[6], "JOIN_ROOM", {}))).toBe("ROOM_FULL");
+      expect(memberCount()).toBe(6);
+
+      sql.exec("UPDATE room_meta SET value = ? WHERE key = ?", "4", "roomCapacity");
+      expect(errorOf(await send(players[6], "JOIN_ROOM", {}))).toBe("ROOM_CAPACITY_INVALID");
+      expect(memberCount()).toBe(6);
+    });
+  });
+});
