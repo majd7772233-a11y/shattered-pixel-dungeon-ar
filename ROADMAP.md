@@ -876,7 +876,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Exact-head CI passes for the Phase16B implementation commit `e0d3c48b9be6a07e7b2190d26868cc6ba9d2f0c7` in [run 44750636857](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44750636857) (3/3 jobs). Real hardware/network acceptance is deliberately postponed until **after Phase 22**, per user instruction; no Android app/emulator/ADB/physical adapter test is to be run earlier. Physical gameplay remains Phase 23.
 ## Phase 17 - Co-op Rules and Shared Match Lifecycle
 
-**Priority:** P1; **Dependencies:** phases 12-16. **Status:** IMPLEMENTATION + LOCAL AUTOMATED ACCEPTANCE COMPLETE; exact-head CI pending.
+**Priority:** P1; **Dependencies:** phases 12-16. **Status:** IMPLEMENTATION + AUTOMATED ACCEPTANCE COMPLETE; exact-head GitHub Actions passed 3/3 jobs on `e1971328767f55ea4b923e3539827fa7885c6c1d` ([run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879)). Real-service acceptance remains Phase 22; physical-device gameplay remains Phase 23.
 
 ### Phase 17-A - Authoritative room and match lifecycle
 - [x] Preserve and verify server-owned Co-op capacity, membership, minimum players, shared seed/depth/sequence and start/readiness gates.
@@ -887,17 +887,17 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Add backend and Android regressions for current/stale proofs, publisher loss/recovery, invalid state combinations and delayed messages.
 - [x] Exact-head CI on final commit 63bba7e3505d6743983aef006ed09572253bd099 passed 3/3 jobs in [run 44765157649](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44765157649): Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android debug APK compile.
 
-### Phase 17-B - Player life-state and match-end policy (IMPLEMENTED; LOCAL ACCEPTANCE PASSED)
+### Phase 17-B - Player life-state and match-end policy (IMPLEMENTED; EXACT-HEAD CI PASSED 3/3)
 - [x] Define death, revive, respawn eligibility, resource/cost rules, spectator state and action availability. No free respawn: native Ankh rules remain authoritative; an unblessed Ankh gates native REVIVE, and a player without a valid unblessed Ankh becomes SPECTATOR.
 - [x] Define final-living-player and match-end rules, including dead-player reconnect, voluntary leave and rejoin policy. A transport disconnect preserves membership/life state; explicit LEAVE persists LEFT, removes membership/readiness and blocks stale-session rejoin.
 - [x] Make death/revive/lifecycle events exactly-once and define ordering for death/revive, voluntary leave and floor transitions while another player acts. Pending or incoherent revival state blocks floor transition. PLAYER_LEFT precedes MATCH_END; both event and terminal state are committed atomically.
-- [x] Add race, persistence, reconnect, leave/rejoin and match-end tests, including missing/orphan member rows, invalid life snapshots, publisher/owner handoff, rollback, Durable Object eviction, and LAN SESSION/PLAYER_LEFT handshake ordering. Local suites: Backend 408/408; Durable Object SQLite 18/18; Android JVM 246/246 across 24 reports; Gradle 58/58 tasks including Debug APK. First GitHub Android CI exposed a Linux LAN handshake race; fixed locally in LANTransport and exact-head CI rerun is pending.
+- [x] Add race, persistence, reconnect, leave/rejoin and match-end tests, including missing/orphan member rows, invalid life snapshots, publisher/owner handoff, rollback, Durable Object eviction, and LAN SESSION/PLAYER_LEFT handshake ordering. Local suites: Backend 408/408; Durable Object SQLite 18/18; Android JVM 246/246 across 24 reports; Gradle 58/58 tasks including Debug APK. Final exact-head CI passed Backend, Durable Object SQLite and Android on `e1971328767f55ea4b923e3539827fa7885c6c1d` ([run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879)).
 
 ### Parent Phase 17 acceptance
 - [x] All co-op participants agree on match state, membership, alive/dead/spectator/left state and allowed actions.
 - [x] Death/revive and lifecycle changes are exactly-once events.
 - [x] There is no implicit local-only respawn or fake ready state.
-- [ ] Complete parent exact-head CI on the final pushed source/documentation commit, verify all required jobs, and record the exact SHA/run. Device/emulator/ADB/Bluetooth/real-network tests remain deliberately deferred until after Phase 22.
+- [x] Exact-head CI passed all 3 required jobs (Backend typecheck/tests, Durable Object SQLite rollback/eviction, Android JVM tests + Debug APK) on `e1971328767f55ea4b923e3539827fa7885c6c1d` ([run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879)). Device/emulator/ADB/Bluetooth/real-network tests remain deliberately deferred until after Phase 22.
 
 ## Phase 18 — PvP and Deathmatch Enforcement
 
@@ -1185,6 +1185,6 @@ A stage is complete only when all moved source is accounted for, no original beh
 ## Latest implementation checkpoint — Phase 17
 
 - **17-A:** accepted; authoritative room lifecycle, readiness and publisher recovery rules.
-- **17-B:** implementation is in local validation; see [`PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md`](docs/multiplayer/PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md). Do not mark the parent phase complete until local server/JVM/SQLite checks and GitHub CI are green.
+- **17-B:** implementation and automated acceptance are complete; Backend 408/408, Durable Object SQLite 18/18, Android JVM 246/246 and exact-head CI 3/3 passed on `e1971328767f55ea4b923e3539827fa7885c6c1d` ([run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879)). See [`PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md`](docs/multiplayer/PHASE17_B_PLAYER_LIFE_AND_MATCH_END.md).
 - **17-B acceptance boundary:** automated validation only. Real-device, emulator, ADB, Bluetooth pairing and cross-device gameplay checks remain deferred until after Phase 22.
-- **Next after Phase 17:** continue to the next planned multiplayer backend phase only after Phase 17-B is committed and CI-verified. UI completeness remains assigned to Phases 20–21.
+- **Next after Phase 17:** Phase 17 is closed for implementation and automated acceptance. Do not start the next phase until explicitly requested. UI completeness remains assigned to Phases 20–21.

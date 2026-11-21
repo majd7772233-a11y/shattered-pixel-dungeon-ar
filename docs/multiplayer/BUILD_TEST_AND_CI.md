@@ -399,7 +399,7 @@ The deployment pipeline passed TypeScript build and 380/380 Vitest tests. Per us
 - Backend build and protocol/schema guards: PASS; 7 Vitest source files / 408 tests PASS.
 - Durable Object SQLite integration: 1 file / 18 tests PASS. Malformed recovery exception logs are expected rejection fixtures.
 - Forced Gradle `test assembleDebug --rerun-tasks --no-daemon`: BUILD SUCCESSFUL; 58 actionable tasks, 24 JUnit reports / 246 tests PASS, 0 failures, 0 errors, 0 skipped. Debug APK: 35,262,158 bytes; SHA-256 `9FDE2B71BAF9F99B8817EE423C883226CA3746AAD579B2CCB6AEB6184026E1CE`.
-- `git diff --check`: PASS. Final pushed commit still requires exact-head GitHub CI; record its SHA and run before declaring parent Phase 17 fully closed.
+- Exact-head GitHub Actions passed **3/3 required jobs** on `e1971328767f55ea4b923e3539827fa7885c6c1d`: Backend typecheck/tests, real Durable Object SQLite rollback/eviction, and Android JVM tests + Debug APK. Evidence: [run 44931950879](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44931950879). `git diff --check`: PASS. This closes Phase 17 implementation and automated acceptance; live-service smoke remains Phase 22 and physical-device gameplay remains Phase 23.
 ## Phase 17-B verification boundary
 
 Phase 17-B uses TypeScript build/unit tests, Durable Object SQLite integration, Android JVM tests and Debug APK assembly. Final counts and CI run links must be recorded only after the final source commit is pushed and the exact remote HEAD is green. Do not run emulator/ADB, Bluetooth pairing, real LAN, or cross-device gameplay verification before post-Phase-22 acceptance.
