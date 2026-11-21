@@ -1,6 +1,6 @@
 # Phase 18-A - Authoritative mode policy and target admission
 
-**Status:** Local implementation and automated backend verification complete. Exact-head GitHub Actions is the remaining closeout gate. Phase 18-B has not started.
+**Status:** CLOSED for implementation and automated acceptance. Source commit `f81c6bfb1510c22a724dbb11c326ade85d0789c0` passed exact-head GitHub Actions [run 44943258563](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258563), 3/3 jobs. Phase 18-B has not started.
 
 ## Scope
 
@@ -33,7 +33,7 @@ Competitive modes are free-for-all in this phase. The current durable player sch
 - `src/match-room/mode-rules.test.ts` - 10 tests for all four mode descriptors, malformed/unknown modes, target policy, distinct identities, positive HP, life state and strict membership booleans.
 - `server/src/match-room/lifelink-death.integration.test.ts` - 74 tests, including six Phase 18-A MatchRoom admission regressions: Co-op player-target rejection; non-member PvP defender rejection; valid member-to-member PvP request forwarding; PvP Arena zero-HP action rejection; and Deathmatch zero-HP and contradictory DEAD-state action rejection.
 - Real Workers Durable Object SQLite integration: 19/19 PASS, including Deathmatch minimum, six-player maximum, room-state maxPlayers projection, seventh-player rejection and corrupted persisted capacity rejection.
-- Exact-head GitHub Actions server, Durable Object SQLite and Android JVM/Debug APK jobs must pass on the final pushed commit before 18-A is marked CLOSED.
+- Exact-head CI: [run 44943258563](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258563) passed 3/3 jobs on the source commit. Deployment workflow [run 44943258545](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258545) also succeeded; this is deployment-pipeline evidence, not a live Worker health check or WebSocket smoke test.
 
 ## Explicit Phase 18-B boundary
 

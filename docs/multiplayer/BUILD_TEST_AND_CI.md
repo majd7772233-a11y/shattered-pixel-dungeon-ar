@@ -38,7 +38,7 @@ This section records local and exact-head CI evidence for the closed Phase 14-A 
 - Focused PvP/mode policy tests: **84/84** across `mode-rules.test.ts` and `lifelink-death.integration.test.ts`.
 - The integration cases verify Co-op player-target rejection; rejection of a non-member PvP defender in a lifecycle-v1 room; valid native PvP forwarding only after both members and their native pre-states are validated; and rejection of ordinary PvP Arena/Deathmatch actions when persisted state is not ALIVE or HP is not positive.
 - `cd server && npx vitest run --config vitest.durable-objects.config.mjs` - PASS: real Workers Durable Object SQLite, 1 file / 19 tests, including the Phase 18-A Deathmatch min/max/room-state/capacity-integrity regression.
-- **Exact-head CI:** pending the implementation/documentation commit; do not mark 18-A closed until all required jobs pass on the final pushed HEAD.
+- **Exact-source-head CI:** [run 44943258563](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258563) passed 3/3 jobs on `f81c6bfb1510c22a724dbb11c326ade85d0789c0`: Backend typecheck/tests, Durable Object SQLite rollback/eviction, and Android JVM tests + Debug APK. Deployment workflow [run 44943258545](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258545) succeeded on the same source commit; no live Worker/WebSocket smoke test is claimed.
 - **Scope boundary:** no actual Deathmatch auto-respawn, kill/death scoring, winner resolution, FOV audit or production Worker smoke test is claimed. Those remain 18-B (live service acceptance remains the later service gate).
 
 ## 2. Backend package

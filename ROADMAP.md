@@ -912,7 +912,7 @@ The intended account host `spd-multiplayer-backend.magd.workers.dev` is deployed
 - [x] Preserve native Java SPD combat as the source of damage outcomes; the Worker validates and routes combat requests/results.
 - [x] Add positive/negative mode-matrix and real MatchRoom action-admission tests.
 
-**18-A acceptance:** the Worker fails closed for unknown modes, mismatched room capacities, forbidden player targets, non-members, and competitive combatants whose state is not ALIVE or whose HP is not positive. Automated local verification is complete; exact-head CI is the remaining closeout gate. Team assignment remains unsupported: competitive rooms are free-for-all because no durable team identity exists in the player schema.
+**18-A acceptance:** the Worker fails closed for unknown modes, mismatched room capacities, forbidden player targets, non-members, and competitive combatants whose state is not ALIVE or whose HP is not positive. Implementation and automated acceptance are CLOSED on source commit `f81c6bfb1510c22a724dbb11c326ade85d0789c0`; exact-head GitHub Actions run [44943258563](https://github.com/majd7772233-a11y/shattered-pixel-dungeon-ar/actions/runs/44943258563) passed all 3 required jobs (Backend, Durable Object SQLite, Android JVM/Debug APK). Team assignment remains unsupported: competitive rooms are free-for-all because no durable team identity exists in the player schema.
 
 ### Phase 18-B - Competitive life, scoring, visibility and match resolution
 
